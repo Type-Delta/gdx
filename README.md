@@ -24,14 +24,16 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 ## Installation
 
-**Requirements:**
+> _Installation instructions coming soon!_
+
+<!-- **Requirements:**
 
 - Node.js (LTS recommended)
 - Git
 
 ```bash
 npm install -g gdx
-```
+``` -->
 
 ## Core Features
 
