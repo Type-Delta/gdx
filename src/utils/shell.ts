@@ -8,7 +8,7 @@ export { $ } from 'execa';
 /**
  * An execa instance configured to inherit stdout/stderr from the parent process.
  */
-export const $inherit = execa({ stdout: 'inherit' });
+export const $inherit = execa({ stdout: 'inherit', stderr: 'inherit' });
 
 
 /**
@@ -28,7 +28,7 @@ export const $inherit = execa({ stdout: 'inherit' });
  */
 export async function whichExec(cmd: string): Promise<string | null> {
    // If the command contains a path separator, check it directly
-   if (cmd.includes(path.sep) || cmd.includes('/')) {
+   if (cmd.includes(path.sep)) {
       const resolved = path.resolve(cmd);
       return (await isExecutable(resolved)) ? resolved : null;
    }
