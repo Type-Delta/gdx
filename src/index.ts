@@ -5,18 +5,26 @@ import cmd from './commands'
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './utils/shell';
 import { arrDelete, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
+import { ArgsSet } from './utils/arguments';
+import { GdxContext } from './common/types';
 
-const args = process.argv.slice(2);
+const _args = process.argv.slice(2);
 
 async function main(): Promise<number> {
-   if (args.includes('--help') || args.includes('-h')) {
-      cmd.help();
-      return 0;
-   }
-
    const git$ = await whichExec('git');
    if (!git$) {
       throw new Error('Git is not installed or not found in PATH.');
+   }
+
+   const ctx: GdxContext = {
+      args: new ArgsSet(_args),
+      git$,
+   }
+   let args = ctx.args;
+
+   if (args.includes('--help') || args.includes('-h')) {
+      cmd.help();
+      return 0;
    }
 
    const originalCmd = args[0];
@@ -111,7 +119,8 @@ async function main(): Promise<number> {
                return await cmd.stash.dropRange(git$, args);
             }
          }
-
+         case 'graph':
+            return cmd.graph(ctx);
          default:
             if (candidates && candidates.length > 1)
                break AliasNCustomCmd;
