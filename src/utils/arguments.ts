@@ -37,3 +37,7 @@ export function getValueFromOption(option: string): string | null {
    }
    return null;
 }
+
+export function argsSet(args: string[]): ArgsSet {
+   return new ArgsSet(args);
+}

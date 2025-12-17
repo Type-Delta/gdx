@@ -1,9 +1,27 @@
-import { execa } from 'execa';
+import { execa, ExecaMethod, Options } from 'execa';
 import * as path from 'path';
 
 import { isExecutable } from './utilities';
 
 export { $ } from 'execa';
+
+/**
+ * Creates an execa tag template that shares a single AbortController.
+ * Calling `abort()` cancels all in-flight commands started from the returned `$`.
+ */
+export function createAbortableExec(options: Options = {}) {
+   const controller = new AbortController();
+   const _shell = execa({
+      cancelSignal: controller.signal,
+      ...options
+   } satisfies Options);
+
+   return {
+      $: _shell as ExecaMethod<{ stdout: 'pipe'; stderr: 'pipe' }>,
+      abort: () => controller.abort(),
+      signal: controller.signal,
+   } as const;
+}
 
 /**
  * An execa instance configured to inherit stdout/stderr from the parent process.

@@ -5,7 +5,7 @@ const exeBasename = path.basename(process.argv[0] || "gdx")
 
 export const EXECUTABLE_NAME = exeBasename.startsWith("bun") ? "gdx" : exeBasename;
 export const VERSION = "0.0.1";
-export const COMMON_GIT_CMDS = [
+export const COMMON_GIT_CMDS = [ // For original git commands ONLY
    'add',
    'branch',
    'checkout',
@@ -32,3 +32,9 @@ export const COLOR: Record<string, RgbVec> = {
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
 }
+
+export const STATS_EST = {
+   AVG_CHARS_PER_LINE: 40,
+   AVG_LINES_PER_FUNCTION: 45,
+   AVG_LINES_PER_FILE: 500,
+};

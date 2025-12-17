@@ -121,6 +121,8 @@ async function main(): Promise<number> {
          }
          case 'graph':
             return cmd.graph(ctx);
+         case 'stats':
+            return cmd.stats(ctx);
          default:
             if (candidates && candidates.length > 1)
                break AliasNCustomCmd;
