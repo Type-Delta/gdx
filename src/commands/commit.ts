@@ -15,7 +15,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
    // Filter out gdx-specific flags to get pass-through args
    const gdxFlags = ['auto', '--no-commit', '-nc', '--copy', '-cp'];
-   const passThruArgs = args.filter(arg => !gdxFlags.includes(arg));
+   const passThruArgs = args.slice(1).filter(arg => !gdxFlags.includes(arg));
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
 
