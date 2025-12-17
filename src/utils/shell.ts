@@ -1,4 +1,4 @@
-import { execa, ExecaMethod, Options } from 'execa';
+import { execa, ExecaMethod, Options, $ } from 'execa';
 import * as path from 'path';
 import { createInterface } from 'readline';
 
@@ -113,4 +113,35 @@ export async function whichExec(cmd: string): Promise<string | null> {
    }
 
    return null;
+}
+
+/**
+ * Copies text to the system clipboard in a cross-platform manner.
+ * @param text - The text to copy to the clipboard.
+ * @returns A promise that resolves to true if successful, false otherwise.
+ */
+export async function copyToClipboard(text: string): Promise<boolean> {
+   try {
+      switch (process.platform) {
+         case 'win32':
+            await $({ input: text })`clip`;
+            return true;
+         case 'darwin':
+            await $({ input: text })`pbcopy`;
+            return true;
+         case 'linux':
+            // Try xclip first, then xsel
+            try {
+               await $({ input: text })`xclip -selection clipboard`;
+               return true;
+            } catch {
+               await $({ input: text })`xsel --clipboard --input`;
+               return true;
+            }
+         default:
+            return false;
+      }
+   } catch {
+      return false;
+   }
 }

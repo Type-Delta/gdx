@@ -1,6 +1,6 @@
 
 import { execa } from 'execa';
-import { ncc } from '../lib/esm/Tools';
+import { Err, ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands'
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './utils/shell';
@@ -52,6 +52,10 @@ async function main(): Promise<number> {
             break;
          case 'cmi': // alias for 'commit'
             args[0] = 'commit';
+         case 'commit':
+            if (args[1] === 'auto') {
+               return await cmd.commit.auto(ctx);
+            }
             break;
          case 'mg': // alias for 'merge'
             args[0] = 'merge';
@@ -125,6 +129,8 @@ async function main(): Promise<number> {
             return cmd.stats(ctx);
          case 'clear':
             return cmd.clear(ctx);
+         case 'gdx-config':
+            return cmd.gdxConfig(ctx);
          default:
             if (candidates && candidates.length > 1)
                break AliasNCustomCmd;
@@ -152,7 +158,7 @@ async function main(): Promise<number> {
       }
    }
    catch (err) {
-      console.error('Command failed.', err);
+      console.error('Command failed.\n' + yuString(err, { color: true }));
    };
 
    return 0;
@@ -164,7 +170,7 @@ async function main(): Promise<number> {
       process.exit(exitCode);
    }
    catch (error) {
-      console.error('Error:', error);
+      console.error(yuString(error, { color: true }));
       process.exit(1);
    }
 })();

@@ -4,12 +4,17 @@ import stash from './stash';
 import graph from './graph';
 import stats from './stats';
 import clear from './clear';
+import commit from './commit';
+import gdxConfig from './gdx-config';
 
 export default {
    help,
    stash,
    graph,
    stats,
-   clear
+   clear,
+   commit,
+   gdxConfig
 }
+
 
