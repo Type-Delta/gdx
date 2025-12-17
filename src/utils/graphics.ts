@@ -1,4 +1,4 @@
-import { CheckCache, MathKit } from "../../lib/esm/Tools";
+import { CheckCache, MathKit } from "@lib/Tools";
 
 /**
  * A 3- or 4-element tuple representing a color in 8-bit RGB(A) components.

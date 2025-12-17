@@ -1,6 +1,6 @@
 import { $ } from "../utils/shell";
 import { quickPrint } from "../utils/utilities";
-import { ncc } from "../../lib/esm/Tools";
+import { ncc } from "@lib/Tools";
 import { GdxContext } from "../common/types";
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from "../utils/graphics";
 import { COLOR } from "../consts";

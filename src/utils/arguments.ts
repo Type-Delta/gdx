@@ -1,6 +1,9 @@
 export class ArgsSet extends Array<string> {
    constructor(args: string[]) {
-      super(...args);
+      if (Array.isArray(args))
+         super(...args);
+      else
+         super(args);
    }
 
    delete(arg: string): boolean {

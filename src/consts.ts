@@ -5,6 +5,7 @@ const exeBasename = path.basename(process.argv[0] || "gdx")
 
 export const EXECUTABLE_NAME = exeBasename.startsWith("bun") ? "gdx" : exeBasename;
 export const VERSION = "0.0.1";
+
 export const COMMON_GIT_CMDS = [ // For original git commands ONLY
    'add',
    'branch',
@@ -38,3 +39,8 @@ export const STATS_EST = {
    AVG_LINES_PER_FUNCTION: 45,
    AVG_LINES_PER_FILE: 500,
 };
+
+
+// Source of Truth
+export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+

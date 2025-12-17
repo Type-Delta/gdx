@@ -3,10 +3,13 @@ import help from './help';
 import stash from './stash';
 import graph from './graph';
 import stats from './stats';
+import clear from './clear';
 
 export default {
    help,
    stash,
    graph,
-   stats
+   stats,
+   clear
 }
+

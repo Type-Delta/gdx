@@ -1,4 +1,4 @@
-import { ncc } from "../../lib/esm/Tools";
+import { ncc } from "@lib/Tools";
 import { $inherit } from "../utils/shell";
 import { progressiveMatch, quickPrint } from "../utils/utilities";
 

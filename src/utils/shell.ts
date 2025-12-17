@@ -1,5 +1,6 @@
 import { execa, ExecaMethod, Options } from 'execa';
 import * as path from 'path';
+import { createInterface } from 'readline';
 
 import { isExecutable } from './utilities';
 
@@ -27,6 +28,25 @@ export function createAbortableExec(options: Options = {}) {
  * An execa instance configured to inherit stdout/stderr from the parent process.
  */
 export const $inherit = execa({ stdout: 'inherit', stderr: 'inherit' });
+
+/**
+ * Prompts the user with a question and returns their input.
+ * @param question - The question to ask the user.
+ * @returns A promise that resolves to the user's input.
+ */
+export async function $prompt(question: string): Promise<string> {
+   const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+   });
+
+   return new Promise((resolve) => {
+      rl.question(question, (answer) => {
+         rl.close();
+         resolve(answer.trim());
+      });
+   });
+}
 
 
 /**

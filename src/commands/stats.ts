@@ -1,7 +1,7 @@
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
-import { maxFraction, ncc, toShortNum } from '../../lib/esm/Tools';
+import { maxFraction, ncc, toShortNum } from '@lib/Tools';
 import graph from './graph';
 import { argsSet } from '../utils/arguments';
 import { STATS_EST } from '../consts';
