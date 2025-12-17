@@ -1,3 +1,4 @@
+import { OPENROUTER_API_BASE } from '@/consts';
 import { getConfig } from '../../config';
 import { OpenAIAdapter } from './openai';
 import { LLMProvider } from './types';
@@ -7,7 +8,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
 
    let providerType = config.get<string>('llm.provider') || 'openai';
    const apiKey = config.get<string>('llm.apiKey');
-   const model = config.get<string>('llm.model') || 'gpt-4o';
+   const model = config.get<string>('llm.model');
 
    if (!apiKey) {
       throw new Error('No API key found. Please set llm.apiKey in ~/.gdxrc.toml or GDX_LLM_API_KEY env var.');
@@ -19,7 +20,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
 
    switch (providerType.toLowerCase()) {
       case 'openrouter':
-         return new OpenAIAdapter(apiKey, 'https://openrouter.ai/api/v1', model);
+         return new OpenAIAdapter(apiKey, OPENROUTER_API_BASE, model);
       case 'openai':
          return new OpenAIAdapter(apiKey, undefined, model);
       default:

@@ -1,7 +1,10 @@
+import dedent from 'dedent';
+
+import { maxFraction, ncc, toShortNum, yuString } from '@lib/Tools';
+
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
-import { maxFraction, ncc, toShortNum } from '@lib/Tools';
 import graph from './graph';
 import { argsSet } from '../utils/arguments';
 import { STATS_EST } from '../consts';
@@ -28,7 +31,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
    catch (err) {
       exec.abort();
       quickPrint(ncc('Red') + 'Error: Failed to read git config user.email.' + ncc());
-      console.error(err);
+      quickPrint(yuString(err, { color: true }));
       return 1;
    }
 
@@ -126,14 +129,16 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       // Last Commit
       const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
 
-      quickPrint(`\n=== ${username} Git Stats ===`);
-      quickPrint(`Project:             ${ncc('Cyan')}${projectName}${ncc()}`);
-      quickPrint(`Total Commits:       ${ncc('Green')}${userTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)`);
-      quickPrint(`Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)${ncc()}`);
-      quickPrint(`Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)${ncc()}`);
-      quickPrint(`Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project`);
-      quickPrint(`Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)`);
-      quickPrint(`Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`);
+      quickPrint(dedent`
+         \n=== ${username} Git Stats ===
+         Project:             ${ncc('Cyan')}${projectName}${ncc()}
+         Total Commits:       ${ncc('Green')}${userTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)
+         Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)${ncc()}
+         Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)${ncc()}
+         Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project
+         Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
+         Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}
+      `);
 
       // Pass --quiet to graph to match the PS behavior
       await graph({ ...ctx, args: argsSet(['--quiet', '--author', email]) });
@@ -141,8 +146,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
    }
    catch (err) {
       exec.abort();
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      quickPrint(ncc('Red') + `Error: ${message}` + ncc());
+      quickPrint(yuString(err, { color: true }));
       return 1;
    }
 

@@ -1,8 +1,11 @@
+import dedent from 'dedent';
+
+import { ncc, strClamp } from '@lib/Tools';
+
 import { GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
-import { ncc, strClamp } from '@lib/Tools';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -138,11 +141,13 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
       // Set value: gdx gdx-config <key> <value>
       return await setConfigValue(ctx);
    } else {
-      quickPrint(`${ncc('Cyan')}Usage:${ncc()}`);
-      quickPrint(`  gdx gdx-config list           - List all configuration`);
-      quickPrint(`  gdx gdx-config path           - Show config file path`);
-      quickPrint(`  gdx gdx-config <key>          - Get configuration value`);
-      quickPrint(`  gdx gdx-config <key> <value>  - Set configuration value`);
+      quickPrint(dedent(
+         `${ncc('Cyan')}Usage:${ncc()}
+            gdx gdx-config list           - List all configuration
+            gdx gdx-config path           - Show config file path
+            gdx gdx-config <key>          - Get configuration value
+            gdx gdx-config <key> <value>  - Set configuration value`
+      ));
       return 0;
    }
 }

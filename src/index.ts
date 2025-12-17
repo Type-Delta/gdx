@@ -1,6 +1,6 @@
 
 import { execa } from 'execa';
-import { Err, ncc, yuString } from '../lib/esm/Tools';
+import { ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands'
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './utils/shell';
@@ -34,8 +34,6 @@ async function main(): Promise<number> {
    AliasNCustomCmd:
    if (args[0]) {
       const { match, candidates } = progressiveMatch(args[0], COMMON_GIT_CMDS);
-
-      // console.log('Progressive match result:', { match, candidates });
 
       if (match)
          args[0] = match;
@@ -144,7 +142,6 @@ async function main(): Promise<number> {
    }
 
    try {
-      // console.log('Executing:', git$, ...args);
       if (redirectTo) {
          await execa({
             stdout: {
@@ -169,8 +166,8 @@ async function main(): Promise<number> {
       const exitCode = await main();
       process.exit(exitCode);
    }
-   catch (error) {
-      console.error(yuString(error, { color: true }));
+   catch (err) {
+      console.error(yuString(err, { color: true }));
       process.exit(1);
    }
 })();

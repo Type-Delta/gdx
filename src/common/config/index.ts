@@ -5,9 +5,8 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import * as keytar from 'keytar';
 
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
+import { KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
 
-const KEYCHAIN_SERVICE = 'gdx-cli';
-const SECURE_KEYS = ['llm.apiKey'];
 
 export class ConfigService {
    private configPath: string;
@@ -103,7 +102,7 @@ export class ConfigService {
       }
 
       // If this is a secure key, store it in keychain
-      if (SECURE_KEYS.includes(keyPath)) {
+      if (SECURE_CONF_KEYS.includes(keyPath)) {
          await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
       }
 
@@ -199,7 +198,7 @@ export class ConfigService {
     * Loads secure keys from system keychain.
     */
    private async loadSecureKeys(): Promise<void> {
-      for (const keyPath of SECURE_KEYS) {
+      for (const keyPath of SECURE_CONF_KEYS) {
          try {
             const value = await keytar.getPassword(KEYCHAIN_SERVICE, keyPath);
             if (value) {
@@ -229,7 +228,7 @@ export class ConfigService {
    private removeSecureKeys(config: GdxConfig): GdxConfig {
       const result = structuredClone(config);
 
-      for (const keyPath of SECURE_KEYS) {
+      for (const keyPath of SECURE_CONF_KEYS) {
          const keys = keyPath.split('.');
          let target: any = result;
 
@@ -248,7 +247,7 @@ export class ConfigService {
     * Deletes a secure key from the keychain.
     */
    async deleteSecureKey(keyPath: string): Promise<boolean> {
-      if (!SECURE_KEYS.includes(keyPath)) return false;
+      if (!SECURE_CONF_KEYS.includes(keyPath)) return false;
 
       try {
          return await keytar.deletePassword(KEYCHAIN_SERVICE, keyPath);

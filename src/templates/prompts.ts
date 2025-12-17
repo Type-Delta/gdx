@@ -5,13 +5,13 @@ export function commitMsgGenerator(changesSummary: string) {
 
    <rules>
    Commit message must be in the following format:
-   \`\`\`\`\`\`
+   \`\`\`
    <type>(<scope>): <title>
 
    <description>
 
    <recap>
-   \`\`\`\`\`\`
+   \`\`\`
 
    Where:
    - \`<type>\` is one of the following: feat, fix, docs, style, refactor, test, chore, ci, build, revert

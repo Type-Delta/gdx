@@ -39,7 +39,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          return 1;
       }
 
-      res = res.replace(/(^\s*["'`]+|["'`]+\s*$)/g, ''); // Remove surrounding quotes if any
+      res = res.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
 
       if (args.includes('--no-commit') || args.includes('-nc')) {
          quickPrint(`${ncc('Cyan')}Generated Commit Message:${ncc()}\n`);

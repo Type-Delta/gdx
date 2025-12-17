@@ -1,4 +1,5 @@
 import path from "path";
+
 import { RgbVec } from "./utils/graphics";
 
 const exeBasename = path.basename(process.argv[0] || "gdx")
@@ -6,6 +7,8 @@ const exeBasename = path.basename(process.argv[0] || "gdx")
 export const EXECUTABLE_NAME = exeBasename.startsWith("bun") ? "gdx" : exeBasename;
 export const VERSION = "0.0.1";
 
+export const KEYCHAIN_SERVICE = 'gdx-cli';
+export const SECURE_CONF_KEYS = ['llm.apiKey'];
 export const COMMON_GIT_CMDS = [ // For original git commands ONLY
    'add',
    'branch',
@@ -43,4 +46,5 @@ export const STATS_EST = {
 
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
+export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
 

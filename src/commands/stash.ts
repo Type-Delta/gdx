@@ -1,6 +1,6 @@
 import { ncc } from "@lib/Tools";
 import { $inherit } from "../utils/shell";
-import { progressiveMatch, quickPrint } from "../utils/utilities";
+import { quickPrint } from "../utils/utilities";
 
 
 
@@ -21,7 +21,7 @@ async function dropRange(git$: string, args: string[]): Promise<number> {
       const { code } = await $inherit`${git$} stash drop stash@{${i}}`;
 
       if (code !== 0) {
-         console.error(ncc('Red') + `Failed to drop stash@{${i}}` + ncc());
+         quickPrint(ncc('Red') + `Failed to drop stash@{${i}}` + ncc());
          return 1;
       }
    }
