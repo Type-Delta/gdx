@@ -1,11 +1,16 @@
 # gdx (Git Developer Experience)
 
-**The CLI wrapper that treats you like a human, not a compiler.**
+**The git CLI wrapper that treats you like a human, not a compiler.**
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Status](https://img.shields.io/badge/status-experimental-orange.svg)
 
 > [!WARNING]
-> **⚠️ PRE-ALPHA WARNING:** This project is currently in a "trial phase" (i.e., I'm dogfooding it daily). Expect breaking changes, missing features, and the occasional hiccup. Use with curiosity!
+> **⚠️ PRE-ALPHA WARNING:** This project is currently in a "trial phase" (i.e., I'm dogfooding it daily). Expect breaking changes, missing features, and the occasional hiccup.
+
+> [!IMPORTANT]
+> This project is a translation from a prototype which has all the features but is written in PowerShell.
+> The translation to TypeScript/Bun is ongoing and you can expect 90% of the listed features missing until the initial port is complete.
+> When? idk.
 
 ---
 
