@@ -59,6 +59,8 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    // Calculate start date (totalWeeks ago, aligned to week start)
    const today = new Date();
    const startDate = new Date(today);
+   const dayOfWeek = startDate.getDay(); // 0 (Sun) to 6 (Sat)
+   startDate.setDate(startDate.getDate() - dayOfWeek); // Move to last Sunday
    startDate.setDate(startDate.getDate() - (totalWeeks * 7));
 
    quickPrint(
