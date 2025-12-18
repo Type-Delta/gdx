@@ -20,7 +20,7 @@ async function main(): Promise<number> {
       args: new ArgsSet(_args),
       git$,
    }
-   let args = ctx.args;
+   const args = ctx.args;
 
    if (args.includes('--help') || args.includes('-h')) {
       cmd.help();

@@ -12,7 +12,7 @@ export interface GdxConfig {
 export const DEFAULT_CONFIG: GdxConfig = {
    llm: {
       provider: 'openai',
-      model: 'gpt-4o',
+      model: 'gpt-5-nano',
       temperature: 0.14,
       maxTokens: undefined,
       apiKey: undefined,

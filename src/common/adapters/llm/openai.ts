@@ -6,7 +6,7 @@ export class OpenAIAdapter implements LLMProvider {
    private client: OpenAI;
    private defaultModel: string;
 
-   constructor(apiKey: string, baseURL?: string, defaultModel: string = 'gpt-4o') {
+   constructor(apiKey: string, baseURL?: string, defaultModel: string = 'gpt-5-nano') {
       this.client = new OpenAI({
          apiKey,
          baseURL,
