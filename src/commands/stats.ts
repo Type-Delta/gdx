@@ -61,7 +61,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
          $`${git$} log --all --pretty=tformat: --numstat`,
          $`${git$} for-each-ref --format=%(refname:short) refs/heads/`,
-         $`${git$} log --all --author=${email} -1 --format=${"%ar [at %h] (on %ad)"}`
+         $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`
       ]);
 
       const projectName = repoRootRes.stdout.trim().split(/[\\/]/).pop();
