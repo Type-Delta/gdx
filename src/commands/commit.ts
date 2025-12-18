@@ -5,7 +5,7 @@ import os from 'os';
 import { ncc, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, copyToClipboard } from '../utils/shell';
+import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import { commitMsgGenerator } from '../templates/prompts';
@@ -28,11 +28,50 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
    try {
       const llm = await getLLMProvider();
-      let res = await llm.generate({
+
+      const spin = spinner({
+         message: 'connecting...',
+         animateGradient: false
+      });
+
+      const connection = llm.streamGenerate({
          prompt: commitMsgGenerator(cachedChanges),
          temperature: 0.14,
-         // reasoning: "medium" // Not supported by standard OpenAI types yet, but some providers might use it.
+         reasoning: 'low'
       });
+
+      let res = '';
+      let hasReceivedContent = false;
+      let isReasoning = false;
+
+      for await (const response of connection) {
+         if (response.error) {
+            spin.stop();
+            quickPrint(`${ncc('Red')}Error: ${response.error.message}${ncc()}`);
+            return 1;
+         }
+
+         if (response.thinkingChunk) {
+            if (!isReasoning) {
+               isReasoning = true;
+               spin.options.message = 'reasoning...';
+               spin.options.animateGradient = true;
+            }
+            continue;
+         }
+
+         if (response.chunk) {
+            if (!hasReceivedContent) {
+               hasReceivedContent = true;
+               spin.stop();
+               quickPrint(`${ncc('Cyan')}Generated Commit Message:${ncc()}`);
+            }
+            quickPrint(response.chunk, '');
+            res += response.chunk;
+         }
+      }
+
+      quickPrint('\n'); // 2 Final newline after message output
 
       if (!res) {
          quickPrint(`${ncc('Red')}Error: Unable to generate commit message (empty response).${ncc()}`);
@@ -42,15 +81,12 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       res = res.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
 
       if (args.includes('--no-commit') || args.includes('-nc')) {
-         quickPrint(`${ncc('Cyan')}Generated Commit Message:${ncc()}\n`);
-         quickPrint(res);
-
          if (args.includes('--copy') || args.includes('-cp')) {
             const copied = await copyToClipboard(res);
             if (copied)
-               quickPrint(`\n${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
+               quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
             else
-               quickPrint(`\n${ncc('Yellow')}(failed to copy to clipboard)${ncc()}`);
+               quickPrint(`${ncc('Yellow')}(failed to copy to clipboard)${ncc()}`);
          }
          return 0;
       }
