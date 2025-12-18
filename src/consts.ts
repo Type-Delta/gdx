@@ -30,7 +30,7 @@ export const COMMON_GIT_CMDS = [ // For original git commands ONLY
 ];
 
 // palette taken from https://tailwindcss.com/docs/colors
-export const COLOR: Record<string, RgbVec> = {
+export const COLOR = {
    OceanDeepBlue: [46, 149, 153],
    OceanGreen: [57, 211, 83],
    ForestGreen: [34, 139, 34],
@@ -38,9 +38,9 @@ export const COLOR: Record<string, RgbVec> = {
    MidnightBlack: [10, 16, 36],
    Zinc700: [63, 63, 70],
    Zinc100: [244, 244, 245],
-   Fuchsia800: [134, 25, 143],
+   Fuchsia400: [232, 121, 249],
    Teal300: [94, 234, 212]
-}
+} as const satisfies Record<string, RgbVec>;
 
 export const SPINNER: string[] = [
    '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'

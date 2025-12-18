@@ -35,7 +35,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
          message: 'cooking up a roast...',
          animateGradient: true,
          gradientColor: COLOR.Teal300,
-         gradientColorBg: COLOR.Fuchsia700
+         gradientColorBg: COLOR.Fuchsia400
       });
 
       const connection = llm.streamGenerate({
@@ -78,7 +78,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       return 0;
 
    } catch (err) {
-      quickPrint(`${ncc('Red')}Error: ${err}${ncc()}`);
+      quickPrint(yuString(err, { color: true }));
       return 1;
    }
 }

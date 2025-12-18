@@ -18,14 +18,14 @@ export function commitMsgGenerator(changesSummary: string) {
    - \`<scope>\` is a noun describing the section of the codebase affected (e.g., component or file name)
    - \`<title>\` is a short description of the change (max 90 characters)
    - \`<description>\` is a detailed an comprehensive description of the changes (wrap at 72 characters)
-   - \`<recap>\` Only if there are more than two changes; bullet points listing important changes
+   - \`<recap>\` Only if there are more than two MAJOR changes; bullet points listing important changes
 
    Additional rules:
    - Use the imperative mood in the title (e.g., "Fix bug" not "Fixed bug" or "Fixes bug")
    - Total commit message length must not exceed 800 characters
    - Do not use Markdown or any other formatting in the output
    - Do not use bullet points outside of the recap section
-   - Do not prefix sections with labels like "Description:" or "Recap:"
+   - DO NOT PREFIX SECTIONS with labels like "Description:" or "Recap:"
    </rules>
 
    <git-diff>
