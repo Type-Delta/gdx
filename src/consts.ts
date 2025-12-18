@@ -35,7 +35,13 @@ export const COLOR: Record<string, RgbVec> = {
    ForestGreen: [34, 139, 34],
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
+   Natural700: [85, 107, 47],
+   Natural100: [245, 245, 220],
 }
+
+export const SPINNER: string[] = [
+   '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'
+];
 
 export const STATS_EST = {
    AVG_CHARS_PER_LINE: 40,

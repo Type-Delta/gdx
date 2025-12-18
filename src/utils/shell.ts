@@ -1,8 +1,13 @@
 import { execa, ExecaMethod, Options, $ } from 'execa';
-import * as path from 'path';
+import path from 'path';
 import { createInterface } from 'readline';
 
+import { CheckCache } from '@lib/Tools';
+
 import { isExecutable } from './utilities';
+import { Easing, radialGradient } from './graphics';
+import { SpinnerOptions } from '@/common/types';
+import { COLOR, SPINNER } from '@/consts';
 
 export { $ } from 'execa';
 
@@ -144,4 +149,90 @@ export async function copyToClipboard(text: string): Promise<boolean> {
    } catch {
       return false;
    }
+}
+
+/**
+ * Creates an animated spinner that displays in the terminal.
+ * Temporarily switches stdout to raw mode to draw animated frames.
+ *
+ * @param options - Configuration options for the spinner
+ * @returns An object with `stop()` method to halt the spinner and restore stdout
+ *
+ * @example
+ * const spinner = spinner({ message: 'Loading...', animateGradient: true });
+ * // ... do work ...
+ * spinner.stop();
+ */
+export function spinner(options: SpinnerOptions = {}) {
+   const {
+      message = '',
+      interval = 80,
+      frames = SPINNER,
+      animateGradient = false,
+      gradientColor = COLOR.Natural100,
+      gradientColorBg = COLOR.Natural700,
+      gradientSpeed = 0.1,
+   } = options;
+
+   let frameIndex = 0;
+   let gradientOffset = 0;
+   let isRunning = true;
+   let intervalId: NodeJS.Timeout | null = null;
+
+   // Hide cursor
+   process.stdout.write('\x1b[?25l');
+
+   const render = () => {
+      if (!isRunning) return;
+
+      // Draw spinner frame
+      let frame = frames[frameIndex % frames.length];
+
+      // Draw message
+      if (message) {
+         if (animateGradient && CheckCache.supportsColor >= 3) {
+            // Create animated gradient effect with easing
+            const rawOffset = gradientOffset % 1;
+            const easedOffset = Easing.easeInOut(rawOffset);
+            const gradientText = radialGradient(
+               message,
+               gradientColor,
+               gradientColorBg,
+               easedOffset,
+               0.3
+            );
+            frame += ' ' + gradientText;
+            gradientOffset += gradientSpeed;
+         } else {
+            frame += ' ' + message;
+         }
+      }
+
+      // Clear the current line and move cursor to start then write frame
+      process.stdout.write('\r\x1b[K' + frame);
+      frameIndex++;
+   };
+
+   // Start the animation loop
+   intervalId = setInterval(render, interval);
+   render(); // Initial render
+
+   return {
+      /**
+       * Stops the spinner and cleans up
+       */
+      stop: () => {
+         isRunning = false;
+         if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+         }
+         // Clear line and show cursor
+         process.stdout.write('\r\x1b[K\x1b[?25h');
+      },
+      /**
+       * Spinner options reference
+       */
+      options
+   };
 }
