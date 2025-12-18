@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-import { ncc } from '@lib/Tools';
+import { ncc, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../utils/shell';
@@ -116,8 +116,11 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          await fs.unlink(latestBackup.path);
          quickPrint(`${ncc('Cyan')}Pardon applied successfully from backup: ${ncc('Bright')}${latestBackup.path}${ncc()}`);
          await $inherit`${git$} status`;
-      } catch (e) {
-         quickPrint(`${ncc('Red')}Failed to apply patch. Pardon aborted.${ncc()}`);
+      } catch (err) {
+         quickPrint(
+            `${ncc('Red')}Failed to apply patch. Pardon aborted.${ncc()}\n` +
+            yuString(err, { color: true })
+         );
          return 1;
       }
       return 0;

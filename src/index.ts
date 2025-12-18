@@ -60,15 +60,59 @@ async function main(): Promise<number> {
             break;
          case 'pl': // alias for 'pull'
             args[0] = 'pull';
+         case 'pull':
+            // Handle -au flag (allow-unrelated-histories)
+            for (let i = 1; i < args.length; i++) {
+               if (args[i] === '-au') {
+                  args[i] = '--allow-unrelated-histories';
+                  break;
+               }
+            }
             break;
          case 'ps': // alias for 'push'
             args[0] = 'push';
+         case 'push':
+            // Handle -fl flag (force-with-lease)
+            for (let i = 1; i < args.length; i++) {
+               if (args[i] === '-fl') {
+                  args[i] = '--force-with-lease';
+                  break;
+               }
+            }
+            break;
+         case 'ad': // alias for 'add'
+            args[0] = 'add';
             break;
          case 'rv': // alias for 'revert'
             args[0] = 'revert';
             break;
          case 'rb': // alias for 'rebase'
             args[0] = 'rebase';
+            break;
+         case 'reset':
+            args[0] = 'reset';
+            // Handle special reset flags
+            for (let i = 1; i < args.length; i++) {
+               if (args[i] === '-h') {
+                  args[i] = '--hard';
+                  break;
+               }
+               if (args[i] === '-s') {
+                  args[i] = '--soft';
+                  break;
+               }
+               // Handle '~' notation
+               if (args[i] === '~') {
+                  args[i] = 'HEAD';
+                  break;
+               }
+               // Handle ~N notation (e.g., ~1, ~2)
+               if (/^~\d+$/.test(args[i])) {
+                  const num = args[i].substring(1);
+                  args[i] = `HEAD~${num}`;
+                  break;
+               }
+            }
             break;
          case 'lg': // alias for 'log'
             args[0] = 'log';
@@ -129,6 +173,8 @@ async function main(): Promise<number> {
             return cmd.clear(ctx);
          case 'gdx-config':
             return cmd.gdxConfig(ctx);
+         case 'nocap':
+            return cmd.nocap(ctx);
          default:
             if (candidates && candidates.length > 1)
                break AliasNCustomCmd;

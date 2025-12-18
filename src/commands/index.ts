@@ -6,6 +6,7 @@ import stats from './stats';
 import clear from './clear';
 import commit from './commit';
 import gdxConfig from './gdx-config';
+import nocap from './nocap';
 
 export default {
    help,
@@ -14,7 +15,8 @@ export default {
    stats,
    clear,
    commit,
-   gdxConfig
+   gdxConfig,
+   nocap
 }
 
 

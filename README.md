@@ -9,8 +9,7 @@
 
 > [!IMPORTANT]
 > This project is a translation from a prototype which has all the features but is written in PowerShell.
-> The translation to TypeScript/Bun is ongoing and you can expect 90% of the listed features missing until the initial port is complete.
-> When? idk.
+> The translation to TypeScript/Bun is ongoing and you can expect 50% of the listed features missing until the initial port is complete.
 
 ---
 
