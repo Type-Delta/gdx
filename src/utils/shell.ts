@@ -2,10 +2,10 @@ import { execa, ExecaMethod, Options, $ } from 'execa';
 import path from 'path';
 import { createInterface } from 'readline';
 
-import { CheckCache } from '@lib/Tools';
+import { CheckCache, ncc } from '@lib/Tools';
 
 import { isExecutable } from './utilities';
-import { Easing, radialGradient } from './graphics';
+import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { COLOR, SPINNER } from '@/consts';
 
@@ -164,20 +164,22 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * spinner.stop();
  */
 export function spinner(options: SpinnerOptions = {}) {
-   const {
-      message = '',
-      interval = 80,
-      frames = SPINNER,
-      animateGradient = false,
-      gradientColor = COLOR.Natural100,
-      gradientColorBg = COLOR.Natural700,
-      gradientSpeed = 0.1,
-   } = options;
+   options = {
+      message: '',
+      interval: 80,
+      frames: SPINNER,
+      animateGradient: false,
+      gradientColor: COLOR.Zinc100,
+      gradientColorBg: COLOR.Zinc700,
+      gradientSpeed: 0.11,
+      ...options
+   } satisfies Required<SpinnerOptions>;
 
    let frameIndex = 0;
    let gradientOffset = 0;
    let isRunning = true;
    let intervalId: NodeJS.Timeout | null = null;
+   const resetColor = ncc();
 
    // Hide cursor
    process.stdout.write('\x1b[?25l');
@@ -186,25 +188,33 @@ export function spinner(options: SpinnerOptions = {}) {
       if (!isRunning) return;
 
       // Draw spinner frame
-      let frame = frames[frameIndex % frames.length];
+      let frame = options.frames![frameIndex % options.frames!.length];
 
       // Draw message
-      if (message) {
-         if (animateGradient && CheckCache.supportsColor >= 3) {
+      if (options.message) {
+         if (options.animateGradient && CheckCache.supportsColor >= 3) {
             // Create animated gradient effect with easing
-            const rawOffset = gradientOffset % 1;
-            const easedOffset = Easing.easeInOut(rawOffset);
-            const gradientText = radialGradient(
-               message,
-               gradientColor,
-               gradientColorBg,
-               easedOffset,
-               0.3
-            );
-            frame += ' ' + gradientText;
-            gradientOffset += gradientSpeed;
+            const rawOffset = gradientOffset % 2;
+            if (rawOffset <= 1) {
+               const easedOffset = Easing.easeInOut(rawOffset);
+               const gradientText = radialGradient(
+                  options.message,
+                  options.gradientColor as RgbVec,
+                  options.gradientColorBg as RgbVec,
+                  easedOffset,
+                  0.3
+               );
+               frame += ' ' + gradientText;
+            }
+            else {
+               frame += ' ' +
+                  ncc(rgbVec2decimal(options.gradientColorBg as RgbVec)) +
+                  options.message +
+                  resetColor;
+            }
+            gradientOffset += options.gradientSpeed ?? 0.1;
          } else {
-            frame += ' ' + message;
+            frame += ' ' + options.message;
          }
       }
 
@@ -214,7 +224,7 @@ export function spinner(options: SpinnerOptions = {}) {
    };
 
    // Start the animation loop
-   intervalId = setInterval(render, interval);
+   intervalId = setInterval(render, options.interval);
    render(); // Initial render
 
    return {

@@ -100,7 +100,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       await fs.unlink(tempFile).catch(() => { });
       return 0;
 
-   } catch (err: any) {
+   } catch (err) {
       quickPrint(yuString(err, { color: true }));
       return 1;
    }

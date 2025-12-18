@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import { LLMProvider, LLMRequest, OpenAICouldHaveReasoningChunk, StreamChunk } from './types';
-import fs from 'fs';
 
 export class OpenAIAdapter implements LLMProvider {
    private client: OpenAI;
@@ -42,8 +41,6 @@ export class OpenAIAdapter implements LLMProvider {
          });
 
          for await (const chunk of stream) {
-            // TODO: Remove me!
-            // fs.appendFileSync('debug_openai_stream.json', JSON.stringify(chunk, null, 2) + '\n', { encoding: 'utf-8' }); // Debugging line
             const delta = chunk.choices[0]?.delta as (OpenAICouldHaveReasoningChunk & typeof chunk.choices[number]['delta']);
             const content = delta?.content;
             const thinking = delta?.reasoning_content || delta?.reasoning || delta?.reasoning_details?.[0]?.summary;

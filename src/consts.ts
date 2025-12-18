@@ -35,8 +35,8 @@ export const COLOR: Record<string, RgbVec> = {
    ForestGreen: [34, 139, 34],
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
-   Natural700: [85, 107, 47],
-   Natural100: [245, 245, 220],
+   Zinc700: [63, 63, 70],
+   Zinc100: [244, 244, 245]
 }
 
 export const SPINNER: string[] = [
