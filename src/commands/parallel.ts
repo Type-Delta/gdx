@@ -5,7 +5,7 @@ import os from 'os';
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, $prompt, openInEditor } from '../utils/shell';
+import { $, $inherit, $prompt, copyToClipboard, openInEditor } from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 
 interface ParallelMetadata {
@@ -371,11 +371,15 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
 
    const destination = path.join(ctx.parallelRoot, target);
 
-   try {
-      await fs.access(destination);
-   } catch {
+   if (!await fs.exists(destination)) {
       quickPrint(`${ncc('Red')}Error: Worktree '${target}' not found for branch '${ctx.branchName}'.${ncc()}`);
       return 1;
+   }
+
+   if (args.includes('-c') || args.includes('--copy')) {
+      await copyToClipboard(destination);
+      quickPrint(`${ncc('Cyan')}Worktree path copied to clipboard!${ncc()}`);
+      return 0;
    }
 
    await openInEditor(destination);
