@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-import { ncc, yuString } from '@lib/Tools';
+import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
@@ -79,6 +79,10 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       }
 
       res = res.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
+      res = strWrap(res, 72, {
+         mode: 'softboundery',
+         redundancyLv: -1
+      }); // Wrap at 72 chars
 
       if (args.includes('--no-commit') || args.includes('-nc')) {
          if (args.includes('--copy') || args.includes('-cp')) {

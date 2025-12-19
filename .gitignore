@@ -4,3 +4,4 @@ test/dev/
 
 package-lock.json
 bun.lockb
+bun.lock
