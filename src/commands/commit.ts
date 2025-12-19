@@ -79,10 +79,15 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       }
 
       res = res.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
-      res = strWrap(res, 72, {
-         mode: 'softboundery',
-         redundancyLv: -1
-      }); // Wrap at 72 chars
+
+      const titleBodySplit = res.indexOf('\n');
+      if (titleBodySplit !== -1) {
+         const [cmiTitle, cmiBody] = res.slice(titleBodySplit + 1);
+         res = cmiTitle + '\n' + strWrap(cmiBody, 72, {
+            mode: 'softboundery',
+            redundancyLv: -1
+         }); // Wrap at 72 chars
+      }
 
       if (args.includes('--no-commit') || args.includes('-nc')) {
          if (args.includes('--copy') || args.includes('-cp')) {
