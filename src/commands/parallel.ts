@@ -5,7 +5,7 @@ import os from 'os';
 import { ncc, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, $prompt } from '../utils/shell';
+import { $, $inherit, $prompt, openInEditor } from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 
 interface ParallelMetadata {
@@ -338,9 +338,9 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
 }
 
 /**
- * Switch command - switches to a different worktree
+ * Open command - opens a different worktree in the editor
  */
-async function cmdSwitch(git$: string, args: string[]): Promise<number> {
+async function cmdOpen(git$: string, args: string[]): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -360,8 +360,7 @@ async function cmdSwitch(git$: string, args: string[]): Promise<number> {
          return 1;
       }
 
-      process.chdir(ctx.originPath);
-      quickPrint(`${ncc('Cyan')}Switched to origin worktree.${ncc()}`);
+      await openInEditor(ctx.originPath);
       return 0;
    }
 
@@ -379,9 +378,7 @@ async function cmdSwitch(git$: string, args: string[]): Promise<number> {
       return 1;
    }
 
-   process.chdir(destination);
-   quickPrint(`${ncc('Cyan')}Switched to worktree:${ncc()} ${destination}`);
-
+   await openInEditor(destination);
    return 0;
 }
 
@@ -618,8 +615,8 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
          return await cmdFork(git$, remaining);
       case 'remove':
          return await cmdRemove(git$, remaining);
-      case 'switch':
-         return await cmdSwitch(git$, remaining);
+      case 'open':
+         return await cmdOpen(git$, remaining);
       case 'list':
          return await cmdList(git$);
       case 'join':
