@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { isError } from '@lib/Tools';
+import { Err, isError } from '@lib/Tools';
 import { LLMProvider, LLMRequest, OpenAICouldHaveReasoningChunk, StreamChunk } from './types';
 
 export class OpenAIAdapter implements LLMProvider {
@@ -59,7 +59,10 @@ export class OpenAIAdapter implements LLMProvider {
          }
       } catch (error) {
          yield {
-            error: isError(error) ? error as Error : new Error(String(error))
+            error: isError(error) ? error as Error : new Err(
+               String(error),
+               'OPENAI_STREAM_ERROR'
+            )
          };
       }
    }

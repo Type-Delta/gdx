@@ -2,6 +2,7 @@ import { OPENROUTER_API_BASE } from '@/consts';
 import { getConfig } from '../../config';
 import { OpenAIAdapter } from './openai';
 import { LLMProvider } from './types';
+import { Err } from '@lib/Tools';
 
 export async function getLLMProvider(): Promise<LLMProvider> {
    const config = await getConfig();
@@ -11,7 +12,10 @@ export async function getLLMProvider(): Promise<LLMProvider> {
    const model = config.get<string>('llm.model');
 
    if (!apiKey) {
-      throw new Error('No API key found. Please set llm.apiKey in ~/.gdxrc.toml or GDX_LLM_API_KEY env var.');
+      throw new Err(
+         'No API key found. Please set llm.apiKey in ~/.gdxrc.toml or GDX_LLM_API_KEY env var.',
+         'NO_API_KEY'
+      );
    }
 
    if (apiKey.startsWith('sk-or-')) {
@@ -24,7 +28,10 @@ export async function getLLMProvider(): Promise<LLMProvider> {
       case 'openai':
          return new OpenAIAdapter(apiKey, undefined, model);
       default:
-         throw new Error(`Unsupported LLM provider: ${providerType}`);
+         throw new Err(
+            `Unsupported LLM provider: ${providerType}`,
+            'UNSUPPORTED_LLM_PROVIDER'
+         );
    }
 }
 

@@ -1,6 +1,6 @@
 
 import { execa } from 'execa';
-import { ncc, yuString } from '../lib/esm/Tools';
+import { Err, ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands'
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './utils/shell';
@@ -13,7 +13,10 @@ const _args = process.argv.slice(2);
 async function main(): Promise<number> {
    const git$ = await whichExec('git');
    if (!git$) {
-      throw new Error('Git is not installed or not found in PATH.');
+      throw new Err(
+         'Git is not installed or not found in PATH.',
+         'GIT_NOT_FOUND'
+      );
    }
 
    const ctx: GdxContext = {

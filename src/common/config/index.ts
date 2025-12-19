@@ -6,6 +6,7 @@ import * as keytar from 'keytar';
 
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
 import { KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
+import { Err } from '@lib/Tools';
 
 
 export class ConfigService {
@@ -27,8 +28,9 @@ export class ConfigService {
       try {
          const fileContent = await fs.readFile(this.configPath, 'utf-8');
          const parsed = parseToml(fileContent);
-         this.config = this.mergeConfig(DEFAULT_CONFIG, parsed as GdxConfig);
-      } catch (err: any) {
+         this.config = this.mergeConfig(DEFAULT_CONFIG, parsed as unknown as GdxConfig);
+      } catch (e) {
+         const err = new Err(e)
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not a fatal error
             console.warn(`Warning: Failed to parse config file at ${this.configPath}: ${err.message}`);
@@ -190,7 +192,7 @@ export class ConfigService {
          }
       };
 
-      merge(result as Record<string, unknown>, override as Record<string, unknown>);
+      merge(result as unknown as Record<string, unknown>, override as unknown as Record<string, unknown>);
       return result;
    }
 
