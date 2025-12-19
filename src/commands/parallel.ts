@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-import { ncc, yuString } from '@lib/Tools';
+import { ncc, yuString, hyperLink, strClamp } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt, openInEditor } from '../utils/shell';
@@ -383,6 +383,45 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
 }
 
 /**
+ * Compares two worktrees and returns commits ahead/behind
+ */
+async function getCommitComparison(git$: string, worktreePath: string, originPath: string): Promise<{ ahead: number; behind: number }> {
+   try {
+      // Get HEAD of both worktrees
+      const wtHead = (await $`${git$} -C ${worktreePath} rev-parse HEAD`).stdout.trim();
+      const originHead = (await $`${git$} -C ${originPath} rev-parse HEAD`).stdout.trim();
+
+      if (wtHead === originHead) {
+         return { ahead: 0, behind: 0 };
+      }
+
+      // Count commits ahead (in worktree but not in origin)
+      let ahead = 0;
+      try {
+         const aheadOutput = (await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`).stdout.trim();
+         ahead = parseInt(aheadOutput, 10) || 0;
+      } catch {
+         // If the range is invalid, might be diverged completely
+         ahead = 0;
+      }
+
+      // Count commits behind (in origin but not in worktree)
+      let behind = 0;
+      try {
+         const behindOutput = (await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`).stdout.trim();
+         behind = parseInt(behindOutput, 10) || 0;
+      } catch {
+         // If the range is invalid, might be diverged completely
+         behind = 0;
+      }
+
+      return { ahead, behind };
+   } catch {
+      return { ahead: 0, behind: 0 };
+   }
+}
+
+/**
  * List command - lists all parallel worktrees
  */
 async function cmdList(git$: string): Promise<number> {
@@ -426,11 +465,32 @@ async function cmdList(git$: string): Promise<number> {
          // Keep 'unknown'
       }
 
-      const marker = (ctx.isParallelWorktree && aliasLabel === ctx.alias) ? '*' : ' ';
+      // Get commit comparison with origin
+      const { ahead, behind } = await getCommitComparison(git$, wtPath, ctx.originPath);
+
+      let commitInfo = '';
+      if (ahead > 0 && behind > 0) {
+         commitInfo = `${ncc('Yellow')}↑${ahead} ↓${behind}${ncc()}`;
+      } else if (ahead > 0) {
+         commitInfo = `${ncc('Green')}↑${ahead}${ncc()}`;
+      } else if (behind > 0) {
+         commitInfo = `${ncc('Red')}↓${behind}${ncc()}`;
+      } else {
+         commitInfo = `${ncc('Dim')}up-to-date${ncc()}`;
+      }
+
+      const marker = (ctx.isParallelWorktree && aliasLabel === ctx.alias) ? '●' : '○';
       const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
 
       const aliasCol = aliasLabel.padEnd(12);
-      quickPrint(`${marker} ${aliasCol} ${statusLabel.padEnd(18)} (${shortHead}) ${wtPath}`);
+      const hashCol = shortHead.padEnd(9);
+
+      // Format path with hyperlink and clamp it to reasonable length
+      const maxPathLength = 50;
+      const clampedPath = strClamp(wtPath, maxPathLength, 'mid', -1);
+      const linkedPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
+
+      quickPrint(`${ncc('Dim')}${marker}${ncc()} ${aliasCol} ${statusLabel.padEnd(18)} ${ncc('Dim')}${hashCol}${ncc()} ${commitInfo.padEnd(25)} ${linkedPath}`);
    }
 
    quickPrint('');
