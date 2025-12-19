@@ -71,11 +71,11 @@ async function getParallelContext(git$: string): Promise<ParallelContext | null>
          branchName = 'HEAD';
       }
 
-      const safeProject = normalizePath(projectName);
-      const safeBranch = normalizePath(branchName);
-
       const worktreeRoot = path.join(os.tmpdir(), 'worktrees');
       const isParallel = repoRoot.startsWith(worktreeRoot.replace(/\\/g, '/'));
+
+      let safeProject = projectName;
+      let safeBranch = branchName;
 
       let alias: string | null = null;
       let originPath = repoRoot;
@@ -89,8 +89,12 @@ async function getParallelContext(git$: string): Promise<ParallelContext | null>
          } else {
             alias = path.basename(repoRoot);
          }
+         safeProject = meta?.safeProject || safeProject;
+         safeBranch = meta?.safeBranch || safeBranch;
       }
 
+      safeProject = normalizePath(safeProject);
+      safeBranch = normalizePath(safeBranch);
       const parallelRoot = path.join(worktreeRoot, safeProject, safeBranch);
 
       return {
@@ -439,15 +443,14 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
    quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel}`);
    quickPrint('');
 
-   try {
-      await fs.access(ctx.parallelRoot);
-   } catch {
+   if (!await fs.exists(ctx.parallelRoot)) {
       quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
       return 0;
    }
 
    const entries = await fs.readdir(ctx.parallelRoot, { withFileTypes: true });
-   const worktrees = entries.filter(e => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
+   const worktrees = entries.filter(e => e.isDirectory())
+      .sort((a, b) => a.name.localeCompare(b.name));
 
    if (worktrees.length === 0) {
       quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
