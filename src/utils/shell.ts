@@ -2,12 +2,13 @@ import { execa, ExecaMethod, Options, $ } from 'execa';
 import path from 'path';
 import { createInterface } from 'readline';
 
-import { CheckCache, ncc } from '@lib/Tools';
+import { CheckCache, Err, ncc } from '@lib/Tools';
 
 import { isExecutable } from './utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { COLOR, SPINNER } from '@/consts';
+import { getConfig } from '@/common/config';
 
 export { $ } from 'execa';
 
@@ -245,4 +246,24 @@ export function spinner(options: SpinnerOptions = {}) {
        */
       options
    };
+}
+
+/**
+ * Opens the specified file in the user's default editor as defined in the configuration.
+ * @param filePath - The path to the file to open.
+ * @throws Will throw an error if the default editor is not found.
+ */
+export async function openInEditor(filePath: string): Promise<void> {
+   const config = await getConfig();
+   const editor = config.getAll().defaultEditor;
+   const editorPath = await whichExec(editor);
+
+   if (!editorPath) {
+      throw new Err(
+         `Default editor "${editor}" not found in PATH. Set a valid editor in the configuration.`,
+         'EDITOR_NOT_FOUND'
+      );
+   }
+
+   await $inherit`${editorPath} ${filePath}`;
 }
