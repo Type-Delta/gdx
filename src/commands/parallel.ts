@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
-import { ncc, yuString, hyperLink, strClamp } from '@lib/Tools';
+import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt, openInEditor } from '../utils/shell';
@@ -120,7 +120,7 @@ function showUsage(): void {
    quickPrint('  fork <alias>              Create a forked worktree in temp and move pending changes');
    quickPrint('  remove <alias>            Remove a forked worktree');
    quickPrint('  join [--keep] [--all]     Merge forked worktree back into origin');
-   quickPrint('  switch <alias|origin>     Switch between worktrees');
+   quickPrint('  Open <alias|origin>       Open a worktree in the default editor');
    quickPrint('  list                      List forked worktrees for the current branch');
 }
 
@@ -424,7 +424,7 @@ async function getCommitComparison(git$: string, worktreePath: string, originPat
 /**
  * List command - lists all parallel worktrees
  */
-async function cmdList(git$: string): Promise<number> {
+async function cmdList(git$: string, args: string[]): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -451,7 +451,7 @@ async function cmdList(git$: string): Promise<number> {
    }
 
    for (const wt of worktrees) {
-      const wtPath = path.join(ctx.parallelRoot, wt.name);
+      let wtPath = path.join(ctx.parallelRoot, wt.name);
       const meta = await getParallelMetadata(wtPath);
       const aliasLabel = meta?.alias || wt.name;
 
@@ -482,15 +482,15 @@ async function cmdList(git$: string): Promise<number> {
       const marker = (ctx.isParallelWorktree && aliasLabel === ctx.alias) ? '●' : '○';
       const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
 
-      const aliasCol = aliasLabel.padEnd(12);
-      const hashCol = shortHead.padEnd(9);
+      if (args.includes('--short') || args.includes('-s')) {
+         // Format path with hyperlink and clamp it to reasonable length
+         const clampedPath = strClamp(wtPath, 50, 'mid', -1);
+         wtPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
+      }
 
-      // Format path with hyperlink and clamp it to reasonable length
-      const maxPathLength = 50;
-      const clampedPath = strClamp(wtPath, maxPathLength, 'mid', -1);
-      const linkedPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
-
-      quickPrint(`${ncc('Dim')}${marker}${ncc()} ${aliasCol} ${statusLabel.padEnd(18)} ${ncc('Dim')}${hashCol}${ncc()} ${commitInfo.padEnd(25)} ${linkedPath}`);
+      quickPrint(
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${shortHead}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
+      );
    }
 
    quickPrint('');
@@ -678,7 +678,7 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
       case 'open':
          return await cmdOpen(git$, remaining);
       case 'list':
-         return await cmdList(git$);
+         return await cmdList(git$, remaining);
       case 'join':
          return await cmdJoin(git$, remaining);
       case 'help':
