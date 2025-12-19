@@ -76,3 +76,15 @@ export function arrDelete<T>(item: T, arr: T[]): T[] {
    }
    return arr;
 }
+
+
+/**
+ * Normalizes a path component to be safe for filesystem use
+ */
+export function normalizePath(pathStr: string): string {
+   if (!pathStr) return '';
+
+   return pathStr
+      .replace(/[/\\]/g, '_')
+      .replace(/[<>:"|?*\x00-\x1f]/g, '_');
+}

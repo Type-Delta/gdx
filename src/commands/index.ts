@@ -7,6 +7,7 @@ import clear from './clear';
 import commit from './commit';
 import gdxConfig from './gdx-config';
 import nocap from './nocap';
+import parallel from './parallel';
 
 export default {
    help,
@@ -16,7 +17,8 @@ export default {
    clear,
    commit,
    gdxConfig,
-   nocap
+   nocap,
+   parallel
 }
 
 

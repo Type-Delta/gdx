@@ -175,6 +175,8 @@ async function main(): Promise<number> {
             return cmd.gdxConfig(ctx);
          case 'nocap':
             return cmd.nocap(ctx);
+         case 'parallel':
+            return cmd.parallel(ctx);
          default:
             if (candidates && candidates.length > 1)
                break AliasNCustomCmd;
