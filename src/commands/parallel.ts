@@ -75,7 +75,7 @@ async function getParallelContext(git$: string): Promise<ParallelContext | null>
       const safeBranch = normalizePath(branchName);
 
       const worktreeRoot = path.join(os.tmpdir(), 'worktrees');
-      const isParallel = repoRoot.toLowerCase().startsWith(worktreeRoot.toLowerCase());
+      const isParallel = repoRoot.startsWith(worktreeRoot.replace(/\\/g, '/'));
 
       let alias: string | null = null;
       let originPath = repoRoot;
