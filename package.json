@@ -15,6 +15,7 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
+    "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
     "transpile-esm": "npx tsc -p lib/tsconfig.json && npx babel lib/*.js --out-dir lib/esm",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix"
