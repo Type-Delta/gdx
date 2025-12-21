@@ -208,13 +208,12 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
    }
 
    const targetPath = path.join(ctx.parallelRoot, alias);
+   const moveMode = args.includes('--move') || args.includes('-mv');
+   const mirrorMode = args.includes('--mirror') || args.includes('-mr');
 
-   try {
-      await fs.access(targetPath);
+   if (await fs.exists(targetPath)) {
       quickPrint(`${ncc('Red')}Error: Worktree alias '${alias}' already exists for this branch.${ncc()}`);
       return 1;
-   } catch {
-      // Target path doesn't exist, which is what we want
    }
 
    // Set .git-parallel.json as ignored file
@@ -239,10 +238,16 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
    const hasChanges = statusOutput.length > 0;
    let stashRef: string | null = null;
 
-   if (hasChanges) {
+   if (hasChanges && (moveMode || mirrorMode)) {
       const stashMessage = `git-parallel:${alias}`;
       try {
-         await $`${git$} stash push --include-untracked -m ${stashMessage}`;
+         if (mirrorMode) {
+            const hash = await $`${git$} stash create --include-untracked`;
+            await $`${git$} stash store -m ${stashMessage} ${hash}`;
+         }
+         else if (moveMode) {
+            await $`${git$} stash push --include-untracked -m ${stashMessage}`;
+         }
          stashRef = 'stash@{0}';
       } catch {
          quickPrint(`${ncc('Red')}Error: Failed to stash changes before forking.${ncc()}`);
@@ -320,9 +325,9 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
    const targetPath = path.join(ctx.parallelRoot, alias);
 
    try {
-      await fs.access(targetPath);
+      await fs.access(targetPath, fs.constants.F_OK | fs.constants.W_OK);
    } catch {
-      quickPrint(`${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}'.${ncc()}`);
+      quickPrint(`${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}' or is not accessible.${ncc()}`);
       return 1;
    }
 
@@ -457,10 +462,14 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
       return 0;
    }
 
+   let hasAnyWt = false;
    for (const wt of worktrees) {
       let wtPath = path.join(ctx.parallelRoot, wt.name);
       const meta = await getParallelMetadata(wtPath);
+      if (!meta) continue; // Skip invalid worktrees
+
       const aliasLabel = meta?.alias || wt.name;
+      hasAnyWt = true;
 
       const statusOutput = (await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
       const isDirty = statusOutput.length > 0;
@@ -498,6 +507,10 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
       quickPrint(
          `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${shortHead}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
       );
+   }
+
+   if (!hasAnyWt) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
    }
 
    quickPrint('');
