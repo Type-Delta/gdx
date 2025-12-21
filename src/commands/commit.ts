@@ -82,8 +82,9 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
       const titleBodySplit = res.indexOf('\n');
       if (titleBodySplit !== -1) {
-         const [cmiTitle, cmiBody] = res.slice(titleBodySplit + 1);
-         res = cmiTitle + '\n' + strWrap(cmiBody, 72, {
+         const cmiTitle = res.slice(0, titleBodySplit);
+         const cmiBody = res.slice(titleBodySplit + 1).trim();
+         res = cmiTitle + '\n\n' + strWrap(cmiBody, 72, {
             mode: 'softboundery',
             redundancyLv: -1
          }); // Wrap at 72 chars
@@ -104,7 +105,8 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       const tempFile = path.join(os.tmpdir(), `gdx_commit_msg_${Date.now()}.txt`);
       await fs.writeFile(tempFile, res, 'utf8');
 
-      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`;
+      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`
+         .catch(() => { });
 
       await fs.unlink(tempFile).catch(() => { });
       return 0;
