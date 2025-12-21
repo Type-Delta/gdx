@@ -14,7 +14,10 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       const authorMail = (await $`${git$} config user.email`).stdout.trim();
 
       // Get latest commit message from this author
-      const latestCommitMessage = (await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`).stdout.trim();
+      const latestCommitMessage = (
+         await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`
+            .catch(() => { })
+      )?.stdout.trim();
 
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
          quickPrint(`${ncc('Red')}Bro, you haven't committed anything yet. 🤣${ncc()}`);

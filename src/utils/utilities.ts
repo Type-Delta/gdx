@@ -8,13 +8,15 @@ interface ProgressiveMatchResult {
    isExact: boolean;
 }
 
+const _process = process;
+export { _process };
 
 /**
  * Quickly prints a message to stdout with a newline.
  * @param msg - The message to print.
  */
 export function quickPrint(msg: string, end: string = '\n'): void {
-   process.stdout.write(msg + end);
+   _process.stdout.write(msg + end);
 }
 
 

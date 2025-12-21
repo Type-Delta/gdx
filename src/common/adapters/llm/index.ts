@@ -1,10 +1,16 @@
+import { Err } from '@lib/Tools';
+
 import { OPENROUTER_API_BASE } from '@/consts';
 import { getConfig } from '../../config';
 import { OpenAIAdapter } from './openai';
 import { LLMProvider } from './types';
-import { Err } from '@lib/Tools';
+import { MockLLMAdapter } from './mock';
 
 export async function getLLMProvider(): Promise<LLMProvider> {
+   if (process.env.NODE_ENV === 'test') {
+      return new MockLLMAdapter();
+   }
+
    const config = await getConfig();
 
    let providerType = config.get<string>('llm.provider') || 'openai';

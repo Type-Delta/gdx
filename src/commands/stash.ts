@@ -1,4 +1,4 @@
-import { Err, ncc } from "@lib/Tools";
+import { ncc } from "@lib/Tools";
 import { $inherit } from "../utils/shell";
 import { quickPrint } from "../utils/utilities";
 
@@ -11,22 +11,15 @@ async function dropRange(git$: string, args: string[]): Promise<number> {
       .map(s => parseInt(s, 10));
 
    if (isNaN(start) || isNaN(end) || start > end) {
-      throw new Err(
-         'Invalid stash drop range.',
-         'STASH.INVALID_RANGE'
-      );
+      quickPrint(ncc('Red') + `Invalid stash range: ${args[2]}` + ncc());
+      return 1;
    }
 
    quickPrint(
       ncc('Cyan') + `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` + ncc()
    );
    for (let i = end; i >= start; i--) {
-      const { code } = await $inherit`${git$} stash drop stash@{${i}}`;
-
-      if (code !== 0) {
-         quickPrint(ncc('Red') + `Failed to drop stash@{${i}}` + ncc());
-         return 1;
-      }
+      await $inherit`${git$} stash drop stash@{${i}}`;
    }
 
    return 0;

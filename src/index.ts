@@ -162,11 +162,12 @@ async function main(): Promise<number> {
 
             if (
                args[1] === 'drop' &&
-               args.length > 3 &&
+               args.length >= 3 &&
                /\d+\.\.\d+$/.test(args[2])
             ) {
                return await cmd.stash.dropRange(git$, args);
             }
+            break;
          }
          case 'graph':
             return cmd.graph(ctx);
