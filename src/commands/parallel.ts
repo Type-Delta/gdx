@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import dedent from 'dedent';
 
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
@@ -8,7 +7,7 @@ import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Too
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt, copyToClipboard, openInEditor } from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME } from '@/consts';
+import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
 
 interface ParallelMetadata {
    alias: string;
@@ -73,7 +72,7 @@ async function getParallelContext(git$: string): Promise<ParallelContext | null>
          branchName = 'HEAD';
       }
 
-      const worktreeRoot = path.join(os.tmpdir(), 'worktrees');
+      const worktreeRoot = path.join(TEMP_DIR, 'worktrees');
       const isParallel = repoRoot.startsWith(worktreeRoot.replace(/\\/g, '/'));
 
       let safeProject = projectName;
@@ -123,7 +122,9 @@ function showUsage(): void {
    quickPrint('Usage: git parallel <command> [options]');
    quickPrint('');
    quickPrint('Commands:');
-   quickPrint('  fork <alias>                    Create a forked worktree in temp and move pending changes');
+   quickPrint(
+      '  fork <alias>                    Create a forked worktree in temp and move pending changes'
+   );
    quickPrint('  remove <alias>                  Remove a forked worktree');
    quickPrint('  join [<alias>] [--keep] [--all] Merge forked worktree back into origin');
    quickPrint('  Open <alias|origin>             Open a worktree in the default editor');
@@ -142,7 +143,9 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
    try {
       await fs.access(targetPath);
    } catch {
-      quickPrint(`${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}'.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}'.${ncc()}`
+      );
       return 1;
    }
 
@@ -160,17 +163,22 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
       return 0;
    } catch (err) {
       quickPrint(
-         `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` + yuString(err, { color: true })
+         `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
+            yuString(err, { color: true })
       );
 
-      const response = await $prompt('Do you want to force remove the worktree directory? This will delete all files in it. (y/n): ');
+      const response = await $prompt(
+         'Do you want to force remove the worktree directory? This will delete all files in it. (y/n): '
+      );
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
             await fs.rm(targetPath, { recursive: true, force: true });
             quickPrint(`${ncc('Cyan')}Force removed worktree directory:${ncc()} ${alias}`);
             return 0;
          } catch {
-            quickPrint(`${ncc('Red')}Error: Failed to force remove worktree directory '${alias}'.${ncc()}`);
+            quickPrint(
+               `${ncc('Red')}Error: Failed to force remove worktree directory '${alias}'.${ncc()}`
+            );
             return 1;
          }
       } else {
@@ -188,12 +196,16 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
    if (!ctx) return 1;
 
    if (ctx.isParallelWorktree) {
-      quickPrint(`${ncc('Red')}Error: Run \`git parallel fork\` from the original worktree, not from a fork.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Run \`git parallel fork\` from the original worktree, not from a fork.${ncc()}`
+      );
       return 1;
    }
 
    if (ctx.branchName === 'HEAD') {
-      quickPrint(`${ncc('Red')}Error: Detached HEAD detected. Switch to a branch before forking.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Detached HEAD detected. Switch to a branch before forking.${ncc()}`
+      );
       return 1;
    }
 
@@ -205,7 +217,9 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
 
    const alias = args[0];
    if (!testParallelAlias(alias)) {
-      quickPrint(`${ncc('Red')}Error: Alias '${alias}' contains invalid characters or spaces.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Alias '${alias}' contains invalid characters or spaces.${ncc()}`
+      );
       return 1;
    }
 
@@ -214,7 +228,9 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
    const mirrorMode = args.includes('--mirror') || args.includes('-mr');
 
    if (await fs.exists(targetPath)) {
-      quickPrint(`${ncc('Red')}Error: Worktree alias '${alias}' already exists for this branch.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Worktree alias '${alias}' already exists for this branch.${ncc()}`
+      );
       return 1;
    }
 
@@ -236,7 +252,9 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
    const baseCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
    // Check for changes
-   const statusOutput = (await $`${git$} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
+   const statusOutput = (
+      await $`${git$} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
    const hasChanges = statusOutput.length > 0;
    let stashRef: string | null = null;
 
@@ -246,8 +264,7 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
          if (mirrorMode) {
             const hash = await $`${git$} stash create --include-untracked`;
             await $`${git$} stash store -m ${stashMessage} ${hash}`;
-         }
-         else if (moveMode) {
+         } else if (moveMode) {
             await $`${git$} stash push --include-untracked -m ${stashMessage}`;
          }
          stashRef = 'stash@{0}';
@@ -275,8 +292,12 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
          await $`${git$} -C ${targetPath} stash apply --index ${stashRef}`;
          await $`${git$} stash drop ${stashRef}`;
       } catch {
-         quickPrint(`${ncc('Red')}Error: Failed to move local changes into the new worktree.${ncc()}`);
-         quickPrint(`${ncc('Yellow')}Your changes remain stashed as '${stashRef}'. Apply them manually when ready.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Failed to move local changes into the new worktree.${ncc()}`
+         );
+         quickPrint(
+            `${ncc('Yellow')}Your changes remain stashed as '${stashRef}'. Apply them manually when ready.${ncc()}`
+         );
          quickPrint(`${ncc('Yellow')}Worktree path:${ncc()} ${targetPath}`);
          return 1;
       }
@@ -317,7 +338,9 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
 
    const alias = args[0];
    if (!testParallelAlias(alias)) {
-      quickPrint(`${ncc('Red')}Error: Alias '${alias}' contains invalid characters or spaces.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Alias '${alias}' contains invalid characters or spaces.${ncc()}`
+      );
       return 1;
    }
 
@@ -329,19 +352,27 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
    try {
       await fs.access(targetPath, fs.constants.F_OK | fs.constants.W_OK);
    } catch {
-      quickPrint(`${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}' or is not accessible.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Worktree '${alias}' not found for branch '${ctx.branchName}' or is not accessible.${ncc()}`
+      );
       return 1;
    }
 
    if (path.resolve(ctx.repoRoot) === path.resolve(targetPath)) {
-      quickPrint(`${ncc('Red')}Error: Cannot remove the worktree you are currently in. Switch to origin first.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Cannot remove the worktree you are currently in. Switch to origin first.${ncc()}`
+      );
       return 1;
    }
 
    // Check for uncommitted changes
-   const statusOutput = (await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
+   const statusOutput = (
+      await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
    if (statusOutput.length > 0) {
-      quickPrint(`${ncc('Red')}Error: Worktree '${alias}' has uncommitted changes. Join or clean it before removing.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Worktree '${alias}' has uncommitted changes. Join or clean it before removing.${ncc()}`
+      );
       return 1;
    }
 
@@ -367,7 +398,9 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
       try {
          await fs.access(ctx.originPath);
       } catch {
-         quickPrint(`${ncc('Red')}Error: Origin worktree path not found at '${ctx.originPath}'.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Origin worktree path not found at '${ctx.originPath}'.${ncc()}`
+         );
          return 1;
       }
 
@@ -376,14 +409,18 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
    }
 
    if (!testParallelAlias(target)) {
-      quickPrint(`${ncc('Red')}Error: Alias '${target}' contains invalid characters or spaces.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Alias '${target}' contains invalid characters or spaces.${ncc()}`
+      );
       return 1;
    }
 
    const destination = path.join(ctx.parallelRoot, target);
 
-   if (!await fs.exists(destination)) {
-      quickPrint(`${ncc('Red')}Error: Worktree '${target}' not found for branch '${ctx.branchName}'.${ncc()}`);
+   if (!(await fs.exists(destination))) {
+      quickPrint(
+         `${ncc('Red')}Error: Worktree '${target}' not found for branch '${ctx.branchName}'.${ncc()}`
+      );
       return 1;
    }
 
@@ -400,7 +437,11 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
 /**
  * Compares two worktrees and returns commits ahead/behind
  */
-async function getCommitComparison(git$: string, worktreePath: string, originPath: string): Promise<{ ahead: number; behind: number }> {
+async function getCommitComparison(
+   git$: string,
+   worktreePath: string,
+   originPath: string
+): Promise<{ ahead: number; behind: number }> {
    try {
       // Get HEAD of both worktrees
       const wtHead = (await $`${git$} -C ${worktreePath} rev-parse HEAD`).stdout.trim();
@@ -413,7 +454,9 @@ async function getCommitComparison(git$: string, worktreePath: string, originPat
       // Count commits ahead (in worktree but not in origin)
       let ahead = 0;
       try {
-         const aheadOutput = (await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`).stdout.trim();
+         const aheadOutput = (
+            await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
+         ).stdout.trim();
          ahead = parseInt(aheadOutput, 10) || 0;
       } catch {
          // If the range is invalid, might be diverged completely
@@ -423,7 +466,9 @@ async function getCommitComparison(git$: string, worktreePath: string, originPat
       // Count commits behind (in origin but not in worktree)
       let behind = 0;
       try {
-         const behindOutput = (await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`).stdout.trim();
+         const behindOutput = (
+            await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
+         ).stdout.trim();
          behind = parseInt(behindOutput, 10) || 0;
       } catch {
          // If the range is invalid, might be diverged completely
@@ -450,13 +495,14 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
    quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel}`);
    quickPrint('');
 
-   if (!await fs.exists(ctx.parallelRoot)) {
+   if (!(await fs.exists(ctx.parallelRoot))) {
       quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
       return 0;
    }
 
    const entries = await fs.readdir(ctx.parallelRoot, { withFileTypes: true });
-   const worktrees = entries.filter(e => e.isDirectory())
+   const worktrees = entries
+      .filter((e) => e.isDirectory())
       .sort((a, b) => a.name.localeCompare(b.name));
 
    if (worktrees.length === 0) {
@@ -473,7 +519,9 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
       const aliasLabel = meta?.alias || wt.name;
       hasAnyWt = true;
 
-      const statusOutput = (await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
+      const statusOutput = (
+         await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
+      ).stdout.trim();
       const isDirty = statusOutput.length > 0;
 
       let shortHead = 'unknown';
@@ -497,7 +545,7 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
          commitInfo = `${ncc('Dim')}up-to-date${ncc()}`;
       }
 
-      const marker = (ctx.isParallelWorktree && aliasLabel === ctx.alias) ? '●' : '○';
+      const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
       const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
 
       if (args.includes('--short') || args.includes('-s')) {
@@ -554,12 +602,16 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
    if (targetAlias) {
       // Join specified alias from current location
       if (ctx.isParallelWorktree && ctx.alias === targetAlias) {
-         quickPrint(`${ncc('Red')}Error: Cannot join the fork you are currently in. Switch to origin or another fork first.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Cannot join the fork you are currently in. Switch to origin or another fork first.${ncc()}`
+         );
          return 1;
       }
 
       if (!testParallelAlias(targetAlias)) {
-         quickPrint(`${ncc('Red')}Error: Alias '${targetAlias}' contains invalid characters or spaces.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Alias '${targetAlias}' contains invalid characters or spaces.${ncc()}`
+         );
          return 1;
       }
 
@@ -569,13 +621,17 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
       try {
          await fs.access(forkPath);
       } catch {
-         quickPrint(`${ncc('Red')}Error: Worktree '${targetAlias}' not found for branch '${ctx.branchName}'.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Worktree '${targetAlias}' not found for branch '${ctx.branchName}'.${ncc()}`
+         );
          return 1;
       }
    } else {
       // No alias specified - must be run from within a fork
       if (!ctx.isParallelWorktree) {
-         quickPrint(`${ncc('Red')}Error: Either run join from inside a forked worktree, or specify which fork to join.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Either run join from inside a forked worktree, or specify which fork to join.${ncc()}`
+         );
          quickPrint(`${ncc('Yellow')}Usage: git parallel join [<alias>] [--keep] [--all]${ncc()}`);
          return 1;
       }
@@ -586,7 +642,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
 
    const meta = await getParallelMetadata(forkPath);
    if (!meta) {
-      quickPrint(`${ncc('Red')}Error: Missing metadata for worktree '${forkAlias}'. Unable to join automatically.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Missing metadata for worktree '${forkAlias}'. Unable to join automatically.${ncc()}`
+      );
       return 1;
    }
 
@@ -595,29 +653,41 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
    try {
       await fs.access(originPath);
    } catch {
-      quickPrint(`${ncc('Red')}Error: Original worktree path not found. Expected at '${meta.originPath}'.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Original worktree path not found. Expected at '${meta.originPath}'.${ncc()}`
+      );
       return 1;
    }
 
    // Check fork status
-   const forkStatus = (await $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
+   const forkStatus = (
+      await $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
    const forkDirty = forkStatus.length > 0;
 
    if (forkDirty && !bringAll) {
-      quickPrint(`${ncc('Red')}Error: Fork '${forkAlias}' has uncommitted changes. Re-run with --all to include them or clean the worktree first.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Fork '${forkAlias}' has uncommitted changes. Re-run with --all to include them or clean the worktree first.${ncc()}`
+      );
       return 1;
    }
 
    // Check origin status
-   const originStatus = (await $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`).stdout.trim();
+   const originStatus = (
+      await $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
    if (originStatus.length > 0) {
-      quickPrint(`${ncc('Red')}Error: Origin worktree has pending changes. Commit or stash them before joining.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Origin worktree has pending changes. Commit or stash them before joining.${ncc()}`
+      );
       return 1;
    }
 
    const baseCommit = meta.baseCommit?.trim();
    if (!baseCommit) {
-      quickPrint(`${ncc('Red')}Error: Fork metadata is missing base commit information. Unable to perform an automatic join.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}Error: Fork metadata is missing base commit information. Unable to perform an automatic join.${ncc()}`
+      );
       return 1;
    }
 
@@ -629,7 +699,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
          await $`${git$} -C ${forkPath} stash push --include-untracked -m ${stashMessage}`;
          stashRef = 'stash@{0}';
       } catch {
-         quickPrint(`${ncc('Red')}Error: Failed to stash uncommitted changes before joining.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Failed to stash uncommitted changes before joining.${ncc()}`
+         );
          return 1;
       }
    }
@@ -638,8 +710,15 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
    let commitList: string[];
    try {
       const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
-      const output = (await $`${git$} -C ${forkPath} rev-list --reverse ${baseCommit}..${forkHead}`).stdout.trim();
-      commitList = output ? output.split('\n').map(c => c.trim()).filter(c => c) : [];
+      const output = (
+         await $`${git$} -C ${forkPath} rev-list --reverse ${baseCommit}..${forkHead}`
+      ).stdout.trim();
+      commitList = output
+         ? output
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
+         : [];
    } catch {
       if (stashRef) {
          await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
@@ -660,9 +739,13 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
          await $`${git$} -C ${originPath} cherry-pick --abort`;
          if (stashRef) {
             await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
-            quickPrint(`${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${ncc()}`);
+            quickPrint(
+               `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${ncc()}`
+            );
          }
-         quickPrint(`${ncc('Red')}Error: Cherry-pick failed while applying commit ${commit}.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Cherry-pick failed while applying commit ${commit}.${ncc()}`
+         );
          return 1;
       }
    }
@@ -677,27 +760,39 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
          await $`${git$} -C ${originPath} stash apply --index ${targetStash}`;
          await $`${git$} -C ${forkPath} stash drop ${targetStash}`;
       } catch {
-         quickPrint(`${ncc('Red')}Error: Failed to apply uncommitted changes to the origin worktree.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Failed to apply uncommitted changes to the origin worktree.${ncc()}`
+         );
          try {
             await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
-            quickPrint(`${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' for safety.${ncc()}`);
+            quickPrint(
+               `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' for safety.${ncc()}`
+            );
          } catch {
-            quickPrint(`${ncc('Yellow')}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${ncc()}`);
+            quickPrint(
+               `${ncc('Yellow')}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${ncc()}`
+            );
          }
          return 1;
       }
    }
 
    if (appliedCommits.length > 0) {
-      quickPrint(`${ncc('Cyan')}Cherry-picked ${appliedCommits.length} commit(s) into origin.${ncc()}`);
+      quickPrint(
+         `${ncc('Cyan')}Cherry-picked ${appliedCommits.length} commit(s) into origin.${ncc()}`
+      );
    } else {
-      quickPrint(`${ncc('Cyan')}No new commits to cherry-pick. Origin was already up to date.${ncc()}`);
+      quickPrint(
+         `${ncc('Cyan')}No new commits to cherry-pick. Origin was already up to date.${ncc()}`
+      );
    }
 
    if (!keep) {
       const removeResult = await removeWorktree(git$, forkAlias);
       if (removeResult !== 0) {
-         quickPrint(`${ncc('Yellow')}Warning: Failed to remove fork '${forkAlias}' after joining. Please remove it manually later.${ncc()}`);
+         quickPrint(
+            `${ncc('Yellow')}Warning: Failed to remove fork '${forkAlias}' after joining. Please remove it manually later.${ncc()}`
+         );
          return 1;
       }
       quickPrint(`${ncc('Cyan')}Fork '${forkAlias}' merged and removed successfully.${ncc()}`);
@@ -714,7 +809,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
       } catch {
          // Ignore metadata update errors
       }
-      quickPrint(`${ncc('Cyan')}Fork '${forkAlias}' merged into origin. Worktree kept at:${ncc()} ${forkPath}`);
+      quickPrint(
+         `${ncc('Cyan')}Fork '${forkAlias}' merged into origin. Worktree kept at:${ncc()} ${forkPath}`
+      );
    }
 
    return 0;
@@ -786,5 +883,5 @@ export const help = {
          ${EXECUTABLE_NAME} parallel fork feature-x --move
          ${EXECUTABLE_NAME} parallel list --short
          ${EXECUTABLE_NAME} parallel join feature-x --all
-   `)
-}
+   `),
+};

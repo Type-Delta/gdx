@@ -1,12 +1,23 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import { GdxContext } from "@/common/types";
-import { ArgsSet } from "./arguments";
-import { getConfig } from "@/common/config";
-import { $ } from "./shell";
+import { GdxContext } from '@/common/types';
+import { ArgsSet } from './arguments';
+import { resetConfig } from '@/common/config';
+import { $ } from './shell';
 import { _process } from './utilities';
+import { mock } from 'bun:test';
 
+class TestEnvTracker {
+   sysClipboard: string[] = [];
+   subprocessStack: string[] = [];
+   spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
+
+   reset() {
+      this.sysClipboard = [];
+      this.subprocessStack = [];
+   }
+}
 
 export function createGdxContext(tempDir: string, args: string[] = []): GdxContext {
    return {
@@ -18,7 +29,13 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 export async function createTestEnv() {
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));
-   const _$ = $({ cwd: tmpDir });
+   const tmpMockProjDir = path.join(tmpDir, 'project');
+   await fs.mkdir(tmpMockProjDir, { recursive: true });
+
+   let tracker = new TestEnvTracker();
+   tracker = overrideModules(tracker, tmpDir);
+
+   const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = async () => {
       try {
          console.log(`Cleaning up temp dir: ${tmpDir}`);
@@ -35,28 +52,72 @@ export async function createTestEnv() {
    await _$`git config user.name "Test User"`;
    await _$`git config user.email "test@example.com"`;
 
+   // Create initial commit to ensure HEAD exists
+   await _$`git commit --allow-empty -m ${'Initial commit'}`;
+
+   // Set env vars for isolation
+   process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdxrc.toml');
+   process.env.GDX_TEMP_DIR = tmpDir;
+   process.env.GIT_CONFIG_NOSYSTEM = '1';
+   // Create an empty global config file
+   const globalConfigPath = path.join(tmpDir, '.gitconfig');
+   await fs.writeFile(globalConfigPath, '');
+   process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
+
+   resetConfig();
+
    const buffer = { stdout: '', stderr: '' };
    process.env.NODE_ENV = 'test';
    // @ts-expect-error function signature mismatch
-   _process.stdout.write = (msg: string) => buffer.stdout += msg;
+   _process.stdout.write = (msg: string) => (buffer.stdout += msg);
    // @ts-expect-error function signature mismatch
-   _process.stderr.write = (msg: string) => buffer.stderr += msg;
+   _process.stderr.write = (msg: string) => (buffer.stderr += msg);
 
-   return { tmpDir, $: _$, buffer, cleanup };
+   return {
+      tmpDir: tmpMockProjDir,
+      tmpRootDir: tmpDir,
+      $: _$,
+      buffer,
+      tracker,
+      cleanup,
+   };
 }
 
-export async function assertLlmEnvReady(): Promise<void> {
-   const config = await getConfig();
+function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTracker {
+   mock.module('@/utils/shell', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const original = require('./shell');
+      return {
+         ...original,
+         copyToClipboard: async (content: string) => {
+            tracker.sysClipboard.push(content);
+            return true;
+         },
+         openInEditor: async () => {
+            tracker.subprocessStack.push('openInEditor called');
+         },
+         $prompt: async () => 'y', // Auto-confirm prompts
+         spinner: () => {
+            tracker.spinnerStatus = 'started';
+            return {
+               stop: () => {
+                  tracker.spinnerStatus = 'stopped';
+               },
+               options: {},
+            };
+         },
+      };
+   });
 
-   if (!config.get<string>('llm.provider')?.trim()) {
-      throw new Error('LLM provider is not set in config.');
-   }
-
-   if (!config.get<string>('llm.model')?.trim()) {
-      throw new Error('LLM model is not set in config.');
-   }
-
-   if (!config.get<string>('llm.apiKey')?.trim()) {
-      throw new Error('LLM API key is not set in config.');
-   }
+   mock.module('@/consts', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const original = require('../consts');
+      return {
+         ...original,
+         TEMP_DIR: path.join(tempDir, 'tmp'),
+         CURRENT_DIR: path.join(tempDir, 'project'),
+         CONFIG_PATH: path.join(tempDir, '.gdxrc.toml'),
+      };
+   });
+   return tracker;
 }

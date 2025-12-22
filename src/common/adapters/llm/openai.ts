@@ -16,9 +16,7 @@ export class OpenAIAdapter implements LLMProvider {
 
    async generate(request: LLMRequest): Promise<string> {
       const completion = await this.client.chat.completions.create({
-         messages: [
-            { role: 'user', content: request.prompt }
-         ],
+         messages: [{ role: 'user', content: request.prompt }],
          model: request.model || this.defaultModel,
          temperature: request.temperature,
          max_tokens: request.maxTokens,
@@ -31,9 +29,7 @@ export class OpenAIAdapter implements LLMProvider {
    async *streamGenerate(request: LLMRequest): AsyncGenerator<StreamChunk> {
       try {
          const stream = await this.client.chat.completions.create({
-            messages: [
-               { role: 'user', content: request.prompt }
-            ],
+            messages: [{ role: 'user', content: request.prompt }],
             model: request.model || this.defaultModel,
             temperature: request.temperature,
             max_tokens: request.maxTokens,
@@ -42,9 +38,13 @@ export class OpenAIAdapter implements LLMProvider {
          });
 
          for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta as (OpenAICouldHaveReasoningChunk & typeof chunk.choices[number]['delta']);
+            const delta = chunk.choices[0]?.delta as OpenAICouldHaveReasoningChunk &
+               (typeof chunk.choices)[number]['delta'];
             const content = delta?.content;
-            const thinking = delta?.reasoning_content || delta?.reasoning || delta?.reasoning_details?.[0]?.summary;
+            const thinking =
+               delta?.reasoning_content ||
+               delta?.reasoning ||
+               delta?.reasoning_details?.[0]?.summary;
 
             if (content || thinking) {
                yield {
@@ -53,16 +53,15 @@ export class OpenAIAdapter implements LLMProvider {
                   metadata: {
                      model: chunk.model,
                      finishReason: chunk.choices[0]?.finish_reason ?? undefined,
-                  }
+                  },
                };
             }
          }
       } catch (error) {
          yield {
-            error: isError(error) ? error as Error : new Err(
-               String(error),
-               'OPENAI_STREAM_ERROR'
-            )
+            error: isError(error)
+               ? (error as Error)
+               : new Err(String(error), 'OPENAI_STREAM_ERROR'),
          };
       }
    }

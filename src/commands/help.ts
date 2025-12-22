@@ -1,7 +1,10 @@
-import dedent from "dedent";
+import dedent from 'dedent';
 
-import { EXECUTABLE_NAME } from "../consts";
-import { quickPrint } from "../utils/utilities";
+import { ncc } from '@lib/Tools';
+
+import { COLOR, EXECUTABLE_NAME } from '@/consts';
+import { quickPrint } from '@/utils/utilities';
+import { _2PointGradient } from '@/utils/graphics';
 
 import { help as stashHelp } from './stash';
 import { help as statsHelp } from './stats';
@@ -12,14 +15,19 @@ import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
 
-
 export default function help(name?: string): number {
    if (!name) {
+      // @LINK: dn2jka text literal in spec
       quickPrint(
-         dedent`(Run \`${EXECUTABLE_NAME}\` (without arguments) to show the original ${EXECUTABLE_NAME} help)
+         dedent`
+         ─────────────────
+         ${ncc('Bright') + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83)}
+         ─────────────────
+         Git, but with better DX. The raw power of Git,
+         aligned with human workflows.
 
          NAME
-         ${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for ${EXECUTABLE_NAME} with common shortcuts,
+         ${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for git (executable) with common shortcuts,
          stash-range support, and convenience expansions.
 
          SYNOPSIS
@@ -123,15 +131,15 @@ export default function help(name?: string): number {
 
    const cmdName = name.replace(/^\/+/, '');
    const HELP_MAP: Record<string, any> = {
-      'stash': stashHelp,
-      'stats': statsHelp,
-      'graph': graphHelp,
-      'nocap': nocapHelp,
-      'parallel': parallelHelp,
+      stash: stashHelp,
+      stats: statsHelp,
+      graph: graphHelp,
+      nocap: nocapHelp,
+      parallel: parallelHelp,
       'gdx-config': gdxConfigHelp,
-      'gdx_config': gdxConfigHelp,
-      'commit': commitHelp,
-      'clear': clearHelp,
+      gdx_config: gdxConfigHelp,
+      commit: commitHelp,
+      clear: clearHelp,
    };
 
    if (cmdName === 'help') {
@@ -145,6 +153,7 @@ export default function help(name?: string): number {
       return 0;
    }
 
+   // @LINK: dnn2j2k text literal in spec
    quickPrint(`No help found for '${cmdName}'.`);
    return 1;
 }

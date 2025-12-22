@@ -8,6 +8,7 @@ import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../utils/arguments';
 import { EXECUTABLE_NAME, STATS_EST } from '../consts';
+import { assertInGitWorktree } from '@/utils/git';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -15,12 +16,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    const { args, git$ } = ctx;
 
-   try {
-      await $`${git$} rev-parse --is-inside-work-tree`;
-   } catch {
-      quickPrint(ncc('Red') + 'Error: This command must be run inside a git repository.' + ncc());
+   if (!await assertInGitWorktree(git$))
       return 1;
-   }
 
    let email = '';
    let username = 'Your';
@@ -35,8 +32,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          const { stdout } = await $`${git$} config user.email`;
          email = stdout.trim();
       }
-   }
-   catch (err) {
+   } catch (err) {
       exec.abort();
       quickPrint(ncc('Red') + 'Error: Failed to read git config user.email.' + ncc());
       quickPrint(yuString(err, { color: true }));
@@ -48,7 +44,15 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   quickPrint(ncc('Cyan') + `Gathering stats for user: ` + ncc('Yellow') + email + ncc('Cyan') + ` this may take a while...` + ncc());
+   quickPrint(
+      ncc('Cyan') +
+      `Gathering stats for user: ` +
+      ncc('Yellow') +
+      email +
+      ncc('Cyan') +
+      ` this may take a while...` +
+      ncc()
+   );
 
    try {
       // Parallel execution group 1
@@ -60,7 +64,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          logStatsRes,
          projectLineStatsRes,
          branchesRes,
-         lastCommitTimeRes
+         lastCommitTimeRes,
       ] = await Promise.all([
          $`${git$} rev-parse --show-toplevel`,
          $`${git$} rev-list --all --count --author=${email}`,
@@ -69,13 +73,15 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
          $`${git$} log --all --pretty=tformat: --numstat`,
          $`${git$} for-each-ref --format=%(refname:short) refs/heads/`,
-         $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`
+         $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`,
       ]);
 
       const projectName = repoRootRes.stdout.trim().split(/[\\/]/).pop();
       const userTotalCmi = userTotalCmiRes.stdout.trim();
       const projectTotalCmi = projectTotalCmiRes.stdout.trim();
-      const todayCommits = todayCommitsRes.stdout.trim() ? todayCommitsRes.stdout.trim().split('\n').length : 0;
+      const todayCommits = todayCommitsRes.stdout.trim()
+         ? todayCommitsRes.stdout.trim().split('\n').length
+         : 0;
 
       // Line stats
       const logStats = logStatsRes.stdout;
@@ -94,10 +100,28 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const addedSize = toShortNum(totalAdded * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'B';
       const removedSize = toShortNum(totalRemoved * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'B';
 
-      const addedFuncs = toShortNum(totalAdded / STATS_EST.AVG_LINES_PER_FUNCTION, 1, 1e3, false, 0);
-      const removedFuncs = toShortNum(totalRemoved / STATS_EST.AVG_LINES_PER_FUNCTION, 1, 1e3, false, 0);
+      const addedFuncs = toShortNum(
+         totalAdded / STATS_EST.AVG_LINES_PER_FUNCTION,
+         1,
+         1e3,
+         false,
+         0
+      );
+      const removedFuncs = toShortNum(
+         totalRemoved / STATS_EST.AVG_LINES_PER_FUNCTION,
+         1,
+         1e3,
+         false,
+         0
+      );
       const addedFiles = toShortNum(totalAdded / STATS_EST.AVG_LINES_PER_FILE, 1, 1e3, false, 0);
-      const removedFiles = toShortNum(totalRemoved / STATS_EST.AVG_LINES_PER_FILE, 1, 1e3, false, 0);
+      const removedFiles = toShortNum(
+         totalRemoved / STATS_EST.AVG_LINES_PER_FILE,
+         1,
+         1e3,
+         false,
+         0
+      );
 
       // Contribution %
       const projectLineStats = projectLineStatsRes.stdout;
@@ -112,20 +136,21 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       }
       const totalChanged = totalAdded + totalRemoved;
       const projChanged = projAdded + projRemoved;
-      const contributionPct = projChanged > 0
-         ? maxFraction(totalChanged / projChanged * 100, 2, true)
-         : '0.00';
+      const contributionPct =
+         projChanged > 0 ? maxFraction((totalChanged / projChanged) * 100, 2, true) : '0.00';
 
       // Most Active Branch
-      const branches = branchesRes.stdout.split('\n').filter(b => b.trim());
+      const branches = branchesRes.stdout.split('\n').filter((b) => b.trim());
       let maxCommits = 0;
       let topBranch = 'N/A';
 
       // Parallel execution for branches
-      const branchCounts = await Promise.all(branches.map(async (branch) => {
-         const { stdout } = await $`${git$} rev-list --count --author=${email} ${branch}`;
-         return { branch, count: parseInt(stdout.trim(), 10) };
-      }));
+      const branchCounts = await Promise.all(
+         branches.map(async (branch) => {
+            const { stdout } = await $`${git$} rev-list --count --author=${email} ${branch}`;
+            return { branch, count: parseInt(stdout.trim(), 10) };
+         })
+      );
 
       for (const { branch, count } of branchCounts) {
          if (count > maxCommits) {
@@ -151,13 +176,11 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       // Pass --quiet to graph to match the PS behavior
       await graph({ ...ctx, args: argsSet(['--quiet', '--author', email]) });
       return 0;
-   }
-   catch (err) {
+   } catch (err) {
       exec.abort();
       quickPrint(yuString(err, { color: true }));
       return 1;
    }
-
 }
 
 export const help = {
@@ -181,5 +204,5 @@ export const help = {
       Examples:
         ${EXECUTABLE_NAME} stats                             # Stats for configured git user
         ${EXECUTABLE_NAME} stats --author alice@example.com  # Stats for specified author
-   `)
-}
+   `),
+};

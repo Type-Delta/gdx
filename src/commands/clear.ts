@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
 
 import dedent from 'dedent';
 import { ncc, yuString } from '@lib/Tools';
@@ -8,15 +7,17 @@ import { ncc, yuString } from '@lib/Tools';
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME, ONE_DAY_MS } from '../consts';
+import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
-   const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim().replace(/\//g, '-');
+   const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout
+      .trim()
+      .replace(/\//g, '-');
    const repoRoot = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
    const projectName = path.basename(repoRoot);
-   const osTemp = os.tmpdir();
+   const osTemp = TEMP_DIR;
    const backupFileBlob = `${projectName}_${branchName}_backup_*.patch`;
 
    // backup files naming pattern
@@ -29,12 +30,16 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${branchName}`);
       quickPrint(`${ncc('Cyan')}Backup location:${ncc()} ${osTemp}`);
       quickPrint(`${ncc('Cyan')}Use \`git clear pardon\` to restore the latest backup.${ncc()}\n`);
-      quickPrint(`${ncc('Cyan')}Looking for backup patch files matching:${ncc()} ${backupFileBlob}\n`);
+      quickPrint(
+         `${ncc('Cyan')}Looking for backup patch files matching:${ncc()} ${backupFileBlob}\n`
+      );
 
       const backupFiles = await getBackupFiles(osTemp, prefix, suffix);
 
       if (backupFiles.length === 0) {
-         quickPrint(`${ncc('Yellow')}No backup patch files found for project '${projectName}' on branch '${branchName}'.${ncc()}`);
+         quickPrint(
+            `${ncc('Yellow')}No backup patch files found for project '${projectName}' on branch '${branchName}'.${ncc()}`
+         );
          return 0;
       }
 
@@ -69,8 +74,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          try {
             await fs.unlink(file.path);
             allBackupFiles.splice(allBackupFiles.indexOf(file), 1);
-         }
-         catch (e) {
+         } catch (e) {
             console.error(`Failed to delete old backup file: ${file.path}`, e);
          }
       }
@@ -83,7 +87,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
       if (hasChanges) {
          if (!isForce) {
-            quickPrint(`${ncc('Red')}Working Directory is dirty, aborting pardon to prevent unintended data loss. (use \`-f\` to force)${ncc()}`);
+            quickPrint(
+               `${ncc('Red')}Working Directory is dirty, aborting pardon to prevent unintended data loss. (use \`-f\` to force)${ncc()}`
+            );
             await $inherit`${git$} status`;
             return 1;
          }
@@ -94,7 +100,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       }
 
       if (allBackupFiles.length === 0) {
-         quickPrint(`${ncc('Red')}No backup patch file found for branch '${branchName}'. Pardon failed.${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}No backup patch file found for branch '${branchName}'. Pardon failed.${ncc()}`
+         );
          return 1;
       }
 
@@ -103,7 +111,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
       if (!isForce && latestBackup.stats.mtime < oneDayAgo) {
-         quickPrint(`${ncc('Yellow')}Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)${ncc()}`);
+         quickPrint(
+            `${ncc('Yellow')}Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)${ncc()}`
+         );
 
          const answer = await $prompt("Type 'y' to confirm: ");
          if (answer.toLowerCase() !== 'y') {
@@ -115,12 +125,14 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       try {
          await $`${git$} apply ${latestBackup.path}`;
          await fs.unlink(latestBackup.path);
-         quickPrint(`${ncc('Cyan')}Pardon applied successfully from backup: ${ncc('Bright')}${latestBackup.path}${ncc()}`);
+         quickPrint(
+            `${ncc('Cyan')}Pardon applied successfully from backup: ${ncc('Bright')}${latestBackup.path}${ncc()}`
+         );
          await $inherit`${git$} status`;
       } catch (err) {
          quickPrint(
             `${ncc('Red')}Failed to apply patch. Pardon aborted.${ncc()}\n` +
-            yuString(err, { color: true })
+               yuString(err, { color: true })
          );
          return 1;
       }
@@ -129,7 +141,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    // CLEAR (Default)
    if (args.includes('-a') || args.includes('--all')) {
-      quickPrint(`${ncc('Cyan')}Staging all changes (including untracked files) before clearing...${ncc()}`);
+      quickPrint(
+         `${ncc('Cyan')}Staging all changes (including untracked files) before clearing...${ncc()}`
+      );
       await $inherit`${git$} add -A`;
    }
 
@@ -145,15 +159,21 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    }
 
    if (!isForce) {
-      const hasUntracked = (await $`${git$} ls-files --others --exclude-standard`).stdout.length > 0;
+      const hasUntracked =
+         (await $`${git$} ls-files --others --exclude-standard`).stdout.length > 0;
       if (hasUntracked) {
-         quickPrint(`${ncc('Yellow')}Untracked files will be removed during clear operation. Clear aborted.\nUse \`-f\` to force.${ncc()}`);
+         quickPrint(
+            `${ncc('Yellow')}Untracked files will be removed during clear operation. Clear aborted.\nUse \`-f\` to force.${ncc()}`
+         );
          await $inherit`${git$} status`;
          return 1;
       }
    }
 
-   const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14); // yyyyMMddHHmmss
+   const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:T.]/g, '')
+      .slice(0, 14); // yyyyMMddHHmmss
    const backupFileName = `${projectName}_${branchName}_backup_${timestamp}.patch`;
    const backupFilePath = path.join(osTemp, backupFileName);
 
@@ -161,7 +181,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    // We need to combine diff and diff --cached
    await fs.writeFile(backupFilePath, diffUnstaged.stdout + '\n' + diffStaged.stdout);
 
-   quickPrint(`${ncc('Cyan')}Backup of staged changes saved to: ${ncc('Bright')}${backupFilePath}${ncc()}\n${ncc('Cyan')}(\`git clear pardon\` to undo)${ncc()}`);
+   quickPrint(
+      `${ncc('Cyan')}Backup of staged changes saved to: ${ncc('Bright')}${backupFilePath}${ncc()}\n${ncc('Cyan')}(\`git clear pardon\` to undo)${ncc()}`
+   );
 
    await $inherit`${git$} reset --hard HEAD`;
    await $inherit`${git$} clean -fd`;
@@ -194,19 +216,20 @@ export const help = {
         ${EXECUTABLE_NAME} clear list                  # Show recent backup patches
         ${EXECUTABLE_NAME} clear pardon                # Restore the latest backup patch
         ${EXECUTABLE_NAME} clear -a                    # Stage untracked files then clear
-   `)
-}
-
+   `),
+};
 
 async function getBackupFiles(backupDir: string, prefix: string, suffix: string) {
    const files = await fs.readdir(backupDir);
-   const matchedFiles = files.filter(f => f.startsWith(prefix) && f.endsWith(suffix));
+   const matchedFiles = files.filter((f) => f.startsWith(prefix) && f.endsWith(suffix));
 
-   const fileStats = await Promise.all(matchedFiles.map(async (f) => {
-      const fullPath = path.join(backupDir, f);
-      const stats = await fs.stat(fullPath);
-      return { name: f, path: fullPath, stats };
-   }));
+   const fileStats = await Promise.all(
+      matchedFiles.map(async (f) => {
+         const fullPath = path.join(backupDir, f);
+         const stats = await fs.stat(fullPath);
+         return { name: f, path: fullPath, stats };
+      })
+   );
 
    return fileStats.sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
-};
+}

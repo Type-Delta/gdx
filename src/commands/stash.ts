@@ -1,18 +1,13 @@
 import dedent from 'dedent';
 
-import { ncc } from "@lib/Tools";
+import { ncc } from '@lib/Tools';
 
-import { $inherit } from "../utils/shell";
-import { quickPrint } from "../utils/utilities";
+import { $inherit } from '../utils/shell';
+import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME } from '@/consts';
 
-
-
-
 async function dropRange(git$: string, args: string[]): Promise<number> {
-   const [start, end] = args[2]
-      .split('..')
-      .map(s => parseInt(s, 10));
+   const [start, end] = args[2].split('..').map((s) => parseInt(s, 10));
 
    if (isNaN(start) || isNaN(end) || start > end) {
       quickPrint(ncc('Red') + `Invalid stash range: ${args[2]}` + ncc());
@@ -20,7 +15,9 @@ async function dropRange(git$: string, args: string[]): Promise<number> {
    }
 
    quickPrint(
-      ncc('Cyan') + `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` + ncc()
+      ncc('Cyan') +
+         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+         ncc()
    );
    for (let i = end; i >= start; i--) {
       await $inherit`${git$} stash drop stash@{${i}}`;
@@ -30,8 +27,8 @@ async function dropRange(git$: string, args: string[]): Promise<number> {
 }
 
 export default {
-   dropRange
-}
+   dropRange,
+};
 
 export const help = {
    long: dedent(`${ncc('Cyan')}stash drop - Remove a contiguous range of stash entries${ncc()}
@@ -51,5 +48,5 @@ export const help = {
       Examples:
         ${EXECUTABLE_NAME} stash drop 0..0            # Drop the most recent stash
         ${EXECUTABLE_NAME} stash drop 2..5            # Drop stashes 2,3,4,5 (inclusive)
-   `)
-}
+   `),
+};

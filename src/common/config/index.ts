@@ -1,13 +1,10 @@
 import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import * as keytar from 'keytar';
 
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
-import { KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
+import { CONFIG_PATH, KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
 import { Err } from '@lib/Tools';
-
 
 export class ConfigService {
    private configPath: string;
@@ -15,7 +12,7 @@ export class ConfigService {
    private loaded = false;
 
    constructor(configPath?: string) {
-      this.configPath = configPath || path.join(os.homedir(), '.gdxrc.toml');
+      this.configPath = configPath || CONFIG_PATH;
    }
 
    /**
@@ -30,10 +27,12 @@ export class ConfigService {
          const parsed = parseToml(fileContent);
          this.config = this.mergeConfig(DEFAULT_CONFIG, parsed as unknown as GdxConfig);
       } catch (e) {
-         const err = new Err(e)
+         const err = new Err(e);
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not a fatal error
-            console.warn(`Warning: Failed to parse config file at ${this.configPath}: ${err.message}`);
+            console.warn(
+               `Warning: Failed to parse config file at ${this.configPath}: ${err.message}`
+            );
          }
          // Use defaults if file doesn't exist or can't be parsed
          this.config = { ...DEFAULT_CONFIG };
@@ -157,7 +156,11 @@ export class ConfigService {
    private mergeConfig(base: GdxConfig, override: GdxConfig): GdxConfig {
       const result: GdxConfig = structuredClone(base);
 
-      const merge = (target: Record<string, unknown>, source: Record<string, unknown>, path: string = '') => {
+      const merge = (
+         target: Record<string, unknown>,
+         source: Record<string, unknown>,
+         path: string = ''
+      ) => {
          for (const key in source) {
             const currentPath = path ? `${path}.${key}` : key;
             const sourceValue = source[key];
@@ -168,7 +171,11 @@ export class ConfigService {
                continue;
             }
 
-            if (typeof sourceValue === 'object' && sourceValue !== null && !Array.isArray(sourceValue)) {
+            if (
+               typeof sourceValue === 'object' &&
+               sourceValue !== null &&
+               !Array.isArray(sourceValue)
+            ) {
                if (typeof targetValue === 'object' && targetValue !== null) {
                   merge(
                      target[key] as Record<string, unknown>,
@@ -192,7 +199,10 @@ export class ConfigService {
          }
       };
 
-      merge(result as unknown as Record<string, unknown>, override as unknown as Record<string, unknown>);
+      merge(
+         result as unknown as Record<string, unknown>,
+         override as unknown as Record<string, unknown>
+      );
       return result;
    }
 
@@ -217,8 +227,7 @@ export class ConfigService {
 
                target[keys[keys.length - 1]] = value;
             }
-         }
-         catch (err) {
+         } catch (err) {
             console.warn(`Warning: Failed to load secure key '${keyPath}' from keychain:`, err);
          }
       }

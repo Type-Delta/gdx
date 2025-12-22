@@ -16,8 +16,9 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
 
       // Get latest commit message from this author
       const latestCommitMessage = (
-         await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`
-            .catch(() => { })
+         await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`.catch(
+            () => {}
+         )
       )?.stdout.trim();
 
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
@@ -39,14 +40,14 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
          message: 'cooking up a roast...',
          animateGradient: true,
          gradientColor: COLOR.Teal300,
-         gradientColorBg: COLOR.Fuchsia400
+         gradientColorBg: COLOR.Fuchsia400,
       });
 
       const connection = llm.streamGenerate({
          prompt: nocapPrompt(latestCommitMessage),
          temperature: 0.8,
          maxTokens: 269,
-         reasoning: 'low'
+         reasoning: 'low',
       });
 
       let res = '';
@@ -57,7 +58,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
             spin.stop();
             quickPrint(
                `${ncc('Red')}😭 ill bro, the server rejected u${ncc()}\n\n` +
-               yuString(response.error, { color: true })
+                  yuString(response.error, { color: true })
             );
             return 1;
          }
@@ -80,7 +81,6 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       }
 
       return 0;
-
    } catch (err) {
       quickPrint(yuString(err, { color: true }));
       return 1;
@@ -106,5 +106,5 @@ export const help = {
 
       Examples:
         ${EXECUTABLE_NAME} nocap                     # Roast the latest commit by the configured git user
-   `)
-}
+   `),
+};

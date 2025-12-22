@@ -10,12 +10,13 @@ export class MockLLMAdapter implements LLMProvider {
       const prompt = `Mock response from LLM`;
       const words = prompt.split(' ');
 
-      const thinking = `I should generate a mock response for prompt with ${words.length} words.`.split(' ');
+      const thinking =
+         `I should generate a mock response for prompt with ${words.length} words.`.split(' ');
       for (const thought of thinking) {
          yield {
             chunk: undefined,
             thinkingChunk: thought + ' ',
-            metadata: {}
+            metadata: {},
          };
       }
 
@@ -23,7 +24,7 @@ export class MockLLMAdapter implements LLMProvider {
          yield {
             chunk: word + ' ',
             thinkingChunk: undefined,
-            metadata: {}
+            metadata: {},
          };
       }
    }

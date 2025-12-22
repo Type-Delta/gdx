@@ -1,26 +1,31 @@
-import { afterAll, describe, it } from "bun:test";
-import { expect } from "chai";
+import { afterAll, describe, it } from 'bun:test';
+import { expect } from 'chai';
 
-import nocap from "@/commands/nocap";
-import {
-   createGdxContext,
-   createTestEnv
-} from "@/utils/testHelper";
+import fs from 'fs/promises';
+import path from 'path';
 
-describe("gdx nocap", async () => {
+import nocap from '@/commands/nocap';
+import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+
+describe('gdx nocap', async () => {
    const { tmpDir, $, buffer, cleanup } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
    afterAll(cleanup);
 
    let result: number;
-   it("should return 1 when no commits exist", async () => {
-      result = await nocap(ctx);
+   it('should return 1 when no commits exist', async () => {
+      const emptyDir = path.join(tmpDir, 'empty_repo');
+      await fs.mkdir(emptyDir);
+      await $`git init ${emptyDir}`;
+      const emptyCtx = createGdxContext(emptyDir);
+
+      result = await nocap(emptyCtx);
       expect(result).to.equal(1);
    });
 
-   it("should return 0 when a commit exists", async () => {
+   it('should return 0 when a commit exists', async () => {
       // Create a commit
-      await $`git -C ${tmpDir} commit --allow-empty -m ${"My Initial commit"}`;
+      await $`git -C ${tmpDir} commit --allow-empty -m ${'My Initial commit'}`;
       buffer.stdout = '';
       buffer.stderr = '';
 
@@ -28,16 +33,16 @@ describe("gdx nocap", async () => {
       expect(result).to.equal(0);
    });
 
-   it("should print the roast to stdout", async () => {
+   it('should print the roast to stdout', async () => {
       // output is captured in the test environment.
       const output = buffer.stdout;
-      expect(output, 'Missing llm response').to.include("Mock response from LLM");
+      expect(output, 'Missing llm response').to.include('Mock response from LLM');
    });
 
-   it("should print the original commit message", async () => {
+   it('should print the original commit message', async () => {
       const output = buffer.stdout;
-      const cmiMsgPos = output.indexOf("My Initial commit");
-      const roastPos = output.indexOf("Mock response from LLM");
+      const cmiMsgPos = output.indexOf('My Initial commit');
+      const roastPos = output.indexOf('Mock response from LLM');
       expect(cmiMsgPos, 'Missing original commit message').to.be.greaterThan(-1);
       expect(roastPos, 'Missing roast message').to.be.greaterThan(-1);
       expect(cmiMsgPos, 'Missing or out of order messages').to.be.lessThan(roastPos);

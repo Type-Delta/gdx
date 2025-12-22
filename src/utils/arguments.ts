@@ -1,9 +1,7 @@
 export class ArgsSet extends Array<string> {
    constructor(args: string[]) {
-      if (Array.isArray(args))
-         super(...args);
-      else
-         super(args);
+      if (Array.isArray(args)) super(...args);
+      else super(args);
    }
 
    delete(arg: string): boolean {
@@ -25,7 +23,7 @@ export class ArgsSet extends Array<string> {
             this.splice(index, 2);
          }
          // eslint-disable-next-line no-cond-assign
-         else if (value = getValueFromOption(this[index])) {
+         else if ((value = getValueFromOption(this[index]))) {
             this.splice(index, 1);
          }
          return value;

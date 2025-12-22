@@ -20,7 +20,7 @@ export function createAbortableExec(options: Options = {}) {
    const controller = new AbortController();
    const _shell = execa({
       cancelSignal: controller.signal,
-      ...options
+      ...options,
    } satisfies Options);
 
    return {
@@ -53,7 +53,6 @@ export async function $prompt(question: string): Promise<string> {
       });
    });
 }
-
 
 /**
  * Finds the full path of a given executable command, similar to `Bun.which()`.
@@ -173,7 +172,7 @@ export function spinner(options: SpinnerOptions = {}) {
       gradientColor: COLOR.Zinc100,
       gradientColorBg: COLOR.Zinc700,
       gradientSpeed: 0.11,
-      ...options
+      ...options,
    } satisfies Required<SpinnerOptions>;
 
    let frameIndex = 0;
@@ -206,9 +205,9 @@ export function spinner(options: SpinnerOptions = {}) {
                   0.3
                );
                frame += ' ' + gradientText;
-            }
-            else {
-               frame += ' ' +
+            } else {
+               frame +=
+                  ' ' +
                   ncc(rgbVec2decimal(options.gradientColorBg as RgbVec)) +
                   options.message +
                   resetColor;
@@ -244,7 +243,7 @@ export function spinner(options: SpinnerOptions = {}) {
       /**
        * Spinner options reference
        */
-      options
+      options,
    };
 }
 

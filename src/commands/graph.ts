@@ -1,31 +1,34 @@
 import dedent from 'dedent';
 
-import { $ } from "../utils/shell";
-import { quickPrint } from "../utils/utilities";
-import { ncc } from "@lib/Tools";
-import { GdxContext } from "../common/types";
-import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from "../utils/graphics";
-import { COLOR, EXECUTABLE_NAME } from "../consts";
-
+import { $ } from '../utils/shell';
+import { quickPrint } from '../utils/utilities';
+import { ncc } from '@lib/Tools';
+import { GdxContext } from '../common/types';
+import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../utils/graphics';
+import { COLOR, EXECUTABLE_NAME } from '../consts';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
-const COL_WIDTH = 2;   // "■ "
+const COL_WIDTH = 2; // "■ "
 const RIGHT_MARGIN = 4;
 const MIN_TERM_WIDTH = 12;
 
 export default async function graph(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
-   const email =
-      args.popValue('--email') ||
-      (await $`${git$} config user.email`).stdout;
+   const email = args.popValue('--email') || (await $`${git$} config user.email`).stdout;
 
    if (!email) {
-      quickPrint(ncc('Red') + 'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' + ncc());
+      quickPrint(
+         ncc('Red') +
+            'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
+            ncc()
+      );
       return 1;
    }
 
    if (!args.includes('--quiet')) {
-      quickPrint(ncc('Cyan') + `Generating commit graph for user: ` + ncc('Yellow') + email + ncc());
+      quickPrint(
+         ncc('Cyan') + `Generating commit graph for user: ` + ncc('Yellow') + email + ncc()
+      );
    }
 
    const termWidth = process.stdout.columns || 80;
@@ -33,14 +36,20 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
 
    if (graphWidth < MIN_TERM_WIDTH) {
-      quickPrint(ncc('Red') + `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` + ncc());
+      quickPrint(
+         ncc('Red') +
+            `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
+            ncc()
+      );
       return 1;
    }
 
    // Fetch commit data
-   const strLog = (await $`
-      ${git$} --no-pager log --all --author=${email} --since=${(totalWeeks + 1) + ' weeks ago'} --date=short --format=%ad
-   `).stdout.trim();
+   const strLog = (
+      await $`
+      ${git$} --no-pager log --all --author=${email} --since=${totalWeeks + 1 + ' weeks ago'} --date=short --format=%ad
+   `
+   ).stdout.trim();
 
    const commitCounts: Record<string, number> = {};
    for (const line of strLog.split('\n')) {
@@ -63,12 +72,13 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const startDate = new Date(today);
    const dayOfWeek = startDate.getDay(); // 0 (Sun) to 6 (Sat)
    startDate.setDate(startDate.getDate() - dayOfWeek); // Move to last Sunday
-   startDate.setDate(startDate.getDate() - (totalWeeks * 7));
+   startDate.setDate(startDate.getDate() - totalWeeks * 7);
 
    quickPrint(
-      '\n  ' + ncc('Bright') +
-      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, .12, .83) +
-      ` (Max: ${maxCommits} commits/day)\n`
+      '\n  ' +
+         ncc('Bright') +
+         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+         ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
@@ -78,7 +88,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    for (let week = 0; week <= totalWeeks; week++) {
       const weekStartDate = new Date(startDate);
-      weekStartDate.setDate(weekStartDate.getDate() + (week * 7));
+      weekStartDate.setDate(weekStartDate.getDate() + week * 7);
       const targetIndex = week * COL_WIDTH;
 
       // Only print if we are past the end of the previous label
@@ -88,7 +98,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
          const monthStr = weekStartDate.toLocaleString('default', { month: 'short' });
          monthLabel += monthStr.padEnd(COL_WIDTH * 3, ' ');
-         nextFreeIndex = targetIndex + (COL_WIDTH * 3);
+         nextFreeIndex = targetIndex + COL_WIDTH * 3;
          prevMonth = weekStartDate.getMonth();
       }
    }
@@ -101,7 +111,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
       for (let week = 0; week <= totalWeeks; week++) {
          const cellDate = new Date(startDate);
-         cellDate.setDate(cellDate.getDate() + (week * 7) + day);
+         cellDate.setDate(cellDate.getDate() + week * 7 + day);
 
          if (cellDate > today) {
             row += '  ';
@@ -119,7 +129,11 @@ export default async function graph(ctx: GdxContext): Promise<number> {
             cellChar = '▨'; // Different char for zero commits
          } else {
             const intensity = Math.min(commitCount / maxCommits, 1);
-            const interpColor = _2PointGradientInterp(COLOR.MidnightBlack, COLOR.OceanGreen, intensity);
+            const interpColor = _2PointGradientInterp(
+               COLOR.MidnightBlack,
+               COLOR.OceanGreen,
+               intensity
+            );
             color = ncc(rgbVec2decimal(interpColor));
          }
 
@@ -153,5 +167,5 @@ export const help = {
       Examples:
         ${EXECUTABLE_NAME} graph                         # Graph for configured git user
         ${EXECUTABLE_NAME} graph --email bob@example.com  # Graph for specified author
-   `)
-}
+   `),
+};

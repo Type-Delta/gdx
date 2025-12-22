@@ -1,5 +1,4 @@
-
-import * as fs from 'fs/promises';
+import fs from 'fs/promises';
 import { constants } from 'fs';
 
 interface ProgressiveMatchResult {
@@ -19,7 +18,6 @@ export function quickPrint(msg: string, end: string = '\n'): void {
    _process.stdout.write(msg + end);
 }
 
-
 /**
  * Checks if a file exists and is executable.
  * @param filePath - The path to the file to check.
@@ -35,7 +33,6 @@ export async function isExecutable(filePath: string): Promise<boolean> {
       return false;
    }
 }
-
 
 export function progressiveMatch(input: string, candidates: string[]): ProgressiveMatchResult {
    const matchedCandidates = [];
@@ -57,19 +54,17 @@ export function progressiveMatch(input: string, candidates: string[]): Progressi
       match: matchedCandidates.length === 1 ? matchedCandidates[0] : null,
       candidates: matchedCandidates,
       isExact: matchedCandidates.includes(input),
-   }
+   };
 }
 
-
 export function escapeCmdArgs(args: string[]): string[] {
-   return args.map(arg => {
+   return args.map((arg) => {
       if (/[\s"`$\\]/.test(arg)) {
          return `"${arg.replace(/(["\\$`])/g, '\\$1')}"`;
       }
       return arg;
    });
 }
-
 
 export function arrDelete<T>(item: T, arr: T[]): T[] {
    const index = arr.indexOf(item);
@@ -79,14 +74,11 @@ export function arrDelete<T>(item: T, arr: T[]): T[] {
    return arr;
 }
 
-
 /**
  * Normalizes a path component to be safe for filesystem use
  */
 export function normalizePath(pathStr: string): string {
    if (!pathStr) return '';
 
-   return pathStr
-      .replace(/[/\\]/g, '_')
-      .replace(/[<>:"|?*\x00-\x1f]/g, '_');
+   return pathStr.replace(/[/\\]/g, '_').replace(/[<>:"|?*\x00-\x1f]/g, '_');
 }

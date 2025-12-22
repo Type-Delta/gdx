@@ -32,7 +32,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'llm.model': 'GDX_LLM_MODEL',
    'llm.temperature': 'GDX_LLM_TEMPERATURE',
    'llm.maxTokens': 'GDX_LLM_MAX_TOKENS',
-   'defaultEditor': 'GDX_DEFAULT_EDITOR',
+   defaultEditor: 'GDX_DEFAULT_EDITOR',
 };
 
 // Configuration field descriptions
@@ -43,5 +43,5 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.model': 'Model to use for LLM requests',
    'llm.temperature': 'Temperature for LLM generation (0-2)',
    'llm.maxTokens': 'Maximum tokens for LLM responses',
-   'defaultEditor': 'Default code editor to open files with',
+   defaultEditor: 'Default code editor to open files with',
 };

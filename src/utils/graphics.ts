@@ -1,4 +1,4 @@
-import { CheckCache, MathKit } from "@lib/Tools";
+import { CheckCache, MathKit } from '@lib/Tools';
 
 /**
  * A 3- or 4-element tuple representing a color in 8-bit RGB(A) components.
@@ -51,7 +51,13 @@ export type RgbVec = [number, number, number, number?];
  * const out = _2PointGradient('Hello', [255,0,0], [0,255,0]);
  * console.log(out);
  */
-export function _2PointGradient(text: string, colorA: RgbVec, colorB: RgbVec, aPos = 0, bPos = 1): string {
+export function _2PointGradient(
+   text: string,
+   colorA: RgbVec,
+   colorB: RgbVec,
+   aPos = 0,
+   bPos = 1
+): string {
    if (aPos < 0) aPos = 0;
    else if (bPos > 1) bPos = 1;
    if (!(aPos < bPos) || CheckCache.supportsColor < 3) return text; // no gradient possible
@@ -71,22 +77,19 @@ export function _2PointGradient(text: string, colorA: RgbVec, colorB: RgbVec, aP
    for (let i = 0; i < len; i++) {
       if (i < startIdx) {
          result += `\x1b[38;2;${colorA[0]};${colorA[1]};${colorA[2]}m${text[i]}`;
-      }
-      else if (i >= startIdx && i <= endIdx) {
+      } else if (i >= startIdx && i <= endIdx) {
          const step = i - startIdx;
          const r = Math.round(MathKit.clamp(colorA[0] + deltaR * step, 0, 255));
          const g = Math.round(MathKit.clamp(colorA[1] + deltaG * step, 0, 255));
          const b = Math.round(MathKit.clamp(colorA[2] + deltaB * step, 0, 255));
          result += `\x1b[38;2;${r};${g};${b}m${text[i]}`;
-      }
-      else {
+      } else {
          result += `\x1b[38;2;${colorB[0]};${colorB[1]};${colorB[2]}m${text[i]}`;
       }
    }
    result += `\x1b[0m`; // reset
    return result;
 }
-
 
 export function _2PointGradientInterp(colorA: RgbVec, colorB: RgbVec, t: number): RgbVec {
    const r = MathKit.clamp(Math.round(colorA[0] + (colorB[0] - colorA[0]) * t), 0, 255);
@@ -161,7 +164,6 @@ export function radialGradient(
    result += `\x1b[0m`; // reset
    return result;
 }
-
 
 export function rgbVec2decimal(rgb: RgbVec): number {
    const r = MathKit.clamp(Math.round(rgb[0]), 0, 255);

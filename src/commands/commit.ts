@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import os from 'os';
 import dedent from 'dedent';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
@@ -10,19 +9,21 @@ import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import { commitMsgGenerator } from '../templates/prompts';
-import { EXECUTABLE_NAME } from '@/consts';
+import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
    // Filter out gdx-specific flags to get pass-through args
    const gdxFlags = ['auto', '--no-commit', '-nc', '--copy', '-cp'];
-   const passThruArgs = args.slice(1).filter(arg => !gdxFlags.includes(arg));
+   const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
 
    if (!cachedChanges || cachedChanges.trim().length === 0) {
-      quickPrint(`${ncc('Red')}No staged changes found. Please stage your changes before generating a commit message.${ncc()}`);
+      quickPrint(
+         `${ncc('Red')}No staged changes found. Please stage your changes before generating a commit message.${ncc()}`
+      );
       return 1;
    }
 
@@ -33,13 +34,13 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
       const spin = spinner({
          message: 'connecting...',
-         animateGradient: false
+         animateGradient: false,
       });
 
       const connection = llm.streamGenerate({
          prompt: commitMsgGenerator(cachedChanges),
          temperature: 0.14,
-         reasoning: 'low'
+         reasoning: 'low',
       });
 
       let res = '';
@@ -76,7 +77,9 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       quickPrint('\n'); // 2 Final newline after message output
 
       if (!res) {
-         quickPrint(`${ncc('Red')}Error: Unable to generate commit message (empty response).${ncc()}`);
+         quickPrint(
+            `${ncc('Red')}Error: Unable to generate commit message (empty response).${ncc()}`
+         );
          return 1;
       }
 
@@ -86,43 +89,41 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       if (titleBodySplit !== -1) {
          const cmiTitle = res.slice(0, titleBodySplit);
          const cmiBody = res.slice(titleBodySplit + 1).trim();
-         res = cmiTitle + '\n\n' + strWrap(cmiBody, 72, {
-            mode: 'softboundery',
-            redundancyLv: -1
-         }); // Wrap at 72 chars
+         res =
+            cmiTitle +
+            '\n\n' +
+            strWrap(cmiBody, 72, {
+               mode: 'softboundery',
+               redundancyLv: -1,
+            }); // Wrap at 72 chars
       }
 
       if (args.includes('--no-commit') || args.includes('-nc')) {
          if (args.includes('--copy') || args.includes('-cp')) {
             const copied = await copyToClipboard(res);
-            if (copied)
-               quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
-            else
-               quickPrint(`${ncc('Yellow')}(failed to copy to clipboard)${ncc()}`);
+            if (copied) quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
+            else quickPrint(`${ncc('Yellow')}(failed to copy to clipboard)${ncc()}`);
          }
          return 0;
       }
 
       // Write to temp file and commit
-      const tempFile = path.join(os.tmpdir(), `gdx_commit_msg_${Date.now()}.txt`);
+      const tempFile = path.join(TEMP_DIR, `gdx_commit_msg_${Date.now()}.txt`);
       await fs.writeFile(tempFile, res, 'utf8');
 
-      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`
-         .catch(() => { });
+      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`.catch(() => {});
 
-      await fs.unlink(tempFile).catch(() => { });
+      await fs.unlink(tempFile).catch(() => {});
       return 0;
-
    } catch (err) {
       quickPrint(yuString(err, { color: true }));
       return 1;
    }
 }
 
-
 export default {
-   auto: autoCommit
-}
+   auto: autoCommit,
+};
 
 export const help = {
    long: dedent(`${ncc('Cyan')}commit auto - Generate a commit message from staged changes using an LLM${ncc()}
@@ -146,5 +147,5 @@ export const help = {
         ${EXECUTABLE_NAME} commit auto                  # Generate and commit using LLM-generated message
         ${EXECUTABLE_NAME} commit auto --no-commit      # Print generated message without committing
         ${EXECUTABLE_NAME} commit auto --no-commit --copy  # Copy generated message to clipboard
-   `)
-}
+   `),
+};

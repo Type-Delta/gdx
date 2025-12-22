@@ -22,10 +22,10 @@ export interface LLMProvider {
 }
 
 export interface OpenAIReasoningDetails {
-   type: "reasoning.summary" | (string & {}),
-   summary: string,
-   format: "openai-responses-v1" | (string & {}),
-   index: number
+   type: 'reasoning.summary' | (string & {});
+   summary: string;
+   format: 'openai-responses-v1' | (string & {});
+   index: number;
 }
 
 export interface OpenAICouldHaveReasoningChunk {

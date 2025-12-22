@@ -17,7 +17,5 @@ export default {
    commit,
    gdxConfig,
    nocap,
-   parallel
-}
-
-
+   parallel,
+};

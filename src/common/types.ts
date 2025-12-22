@@ -1,9 +1,9 @@
-import { ArgsSet } from "@/utils/arguments";
+import { ArgsSet } from '@/utils/arguments';
 import { RgbVec } from '@/utils/graphics';
 
 export interface GdxContext {
-   args: ArgsSet,
-   git$: string,
+   args: ArgsSet;
+   git$: string;
 }
 
 export interface SpinnerOptions {

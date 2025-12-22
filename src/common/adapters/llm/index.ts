@@ -34,12 +34,8 @@ export async function getLLMProvider(): Promise<LLMProvider> {
       case 'openai':
          return new OpenAIAdapter(apiKey, undefined, model);
       default:
-         throw new Err(
-            `Unsupported LLM provider: ${providerType}`,
-            'UNSUPPORTED_LLM_PROVIDER'
-         );
+         throw new Err(`Unsupported LLM provider: ${providerType}`, 'UNSUPPORTED_LLM_PROVIDER');
    }
 }
-
 
 export * from './types';

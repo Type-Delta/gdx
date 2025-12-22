@@ -19,7 +19,8 @@
     "start": "bun run src/index.ts",
     "transpile-esm": "npx tsc -p lib/tsconfig.json && npx babel lib/*.js --out-dir lib/esm",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
-    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode"
+    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode",
+    "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\""
   },
   "devDependencies": {
     "@babel/cli": "^7.28.0",

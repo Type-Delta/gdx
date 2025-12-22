@@ -14,7 +14,11 @@ async function listConfig(): Promise<number> {
    const flatDefaults = flattenConfig(DEFAULT_CONFIG);
    const currentSection: string[] = [];
 
-   quickPrint(ncc('Dim') + `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` + ncc());
+   quickPrint(
+      ncc('Dim') +
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         ncc()
+   );
 
    for (const { key } of flatDefaults) {
       const parts = key.split('.');
@@ -52,12 +56,16 @@ async function listConfig(): Promise<number> {
          displayValue = String(currentValue);
       }
 
-      const marker = isDefault ? '' : ` ${ncc() + ncc('Yellow') + ncc('Italic')}[Modified]${ncc() + ncc('Dim')}`;
+      const marker = isDefault
+         ? ''
+         : ` ${ncc() + ncc('Yellow') + ncc('Italic')}[Modified]${ncc() + ncc('Dim')}`;
       const comment = description ? ` ${ncc('Dim')}#${marker} ${description}${ncc()}` : '';
 
       if (isUnset) {
          // Show unset values as comments
-         quickPrint(`${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}`);
+         quickPrint(
+            `${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}`
+         );
       } else {
          quickPrint(`${ncc('Dim') + ncc('Cyan') + fieldName + ncc()} = ${displayValue}${comment}`);
       }
@@ -107,8 +115,7 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
          return 1;
       }
       parsedValue = num;
-   }
-   else if (typeof defaultValue === 'boolean') {
+   } else if (typeof defaultValue === 'boolean') {
       parsedValue = value.toLowerCase() === 'true';
    }
 
@@ -129,26 +136,26 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
 
    if (subcommand === 'list') {
       return await listConfig();
-   }
-   else if (subcommand === 'path') {
+   } else if (subcommand === 'path') {
       const config = await getConfig();
       quickPrint(config.getConfigPath());
       return 0;
-   }
-   else if (ctx.args.length === 2) {
+   } else if (ctx.args.length === 2) {
       // Get value: gdx gdx-config <key>
       return await getConfigValue(ctx);
    } else if (ctx.args.length === 3) {
       // Set value: gdx gdx-config <key> <value>
       return await setConfigValue(ctx);
    } else {
-      quickPrint(dedent(
-         `${ncc('Cyan')}Usage:${ncc()}
+      quickPrint(
+         dedent(
+            `${ncc('Cyan')}Usage:${ncc()}
             gdx gdx-config list           - List all configuration
             gdx gdx-config path           - Show config file path
             gdx gdx-config <key>          - Get configuration value
             gdx gdx-config <key> <value>  - Set configuration value`
-      ));
+         )
+      );
       return 0;
    }
 }
@@ -176,8 +183,8 @@ export const help = {
       Examples:
         ${EXECUTABLE_NAME} gdx-config list
         ${EXECUTABLE_NAME} gdx-config editor.code true
-   `)
-}
+   `),
+};
 
 /**
  * Flatten the config object to get all keys
@@ -197,4 +204,4 @@ function flattenConfig(obj: any, prefix = ''): Array<{ key: string; value: any }
    }
 
    return result;
-};
+}
