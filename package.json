@@ -18,7 +18,8 @@
     "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
     "transpile-esm": "npx tsc -p lib/tsconfig.json && npx babel lib/*.js --out-dir lib/esm",
-    "lint": "eslint src --ext .ts -c eslint.config.ts --fix"
+    "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
+    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode"
   },
   "devDependencies": {
     "@babel/cli": "^7.28.0",

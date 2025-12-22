@@ -14,6 +14,14 @@ export default async function stats(ctx: GdxContext): Promise<number> {
    const $ = exec.$;
 
    const { args, git$ } = ctx;
+
+   try {
+      await $`${git$} rev-parse --is-inside-work-tree`;
+   } catch {
+      quickPrint(ncc('Red') + 'Error: This command must be run inside a git repository.' + ncc());
+      return 1;
+   }
+
    let email = '';
    let username = 'Your';
 
