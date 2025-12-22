@@ -1,12 +1,14 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import dedent from 'dedent';
 
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt, copyToClipboard, openInEditor } from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
+import { EXECUTABLE_NAME } from '@/consts';
 
 interface ParallelMetadata {
    alias: string;
@@ -750,4 +752,39 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
          showUsage();
          return 1;
    }
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}parallel - Manage parallel (forked) worktrees for iterative development${ncc()}
+
+      ${ncc('Bright')}Overview:${ncc()} \`${EXECUTABLE_NAME} parallel\` helps you create and manage temporary forked worktrees
+      for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file
+      (.git-parallel.json) so the tool can later join, list or remove them cleanly.
+
+      ${ncc('Bright')}Subcommands and behavior:${ncc()}
+      - ${ncc('Dim')}fork <alias>${ncc()}: Creates a detached worktree in a safe temporary namespace. If
+         pending changes exist and you run with \`--move\` or \`--mirror\`, changes will be moved/applied to the fork.
+      - ${ncc('Dim')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the
+         origin worktree. \`--keep\` retains the fork and updates its base; \`--all\` also includes uncommitted changes.
+      - ${ncc('Dim')}list${ncc()}: Lists forks for the current branch with status (clean/dirty), commit
+         divergence and optional path hyperlinks.
+      - ${ncc('Dim')}remove <alias>${ncc()}: Removes the forked worktree and cleans up the directory.
+
+      ${ncc('Bright')}Safety and notes:${ncc()} Joining cherry-picks commits into origin; conflicts during
+      cherry-pick will abort the join and restore stashes when possible. Removing a fork will also delete the
+      worktree directory when forced.
+    `),
+   short: 'Manage temporary forked worktrees: create, list, join, open and remove.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} parallel fork <alias> [--move|--mirror]    # Create fork and optionally move changes
+      ${EXECUTABLE_NAME} parallel list                              # Show forks for current branch
+      ${EXECUTABLE_NAME} parallel open <alias|origin> [-c|--copy]   # Open fork or copy its path
+      ${EXECUTABLE_NAME} parallel join <alias> [--keep|--all]       # Merge fork back into origin
+      ${EXECUTABLE_NAME} parallel remove <alias>                    # Remove fork
+
+      Examples:
+         ${EXECUTABLE_NAME} parallel fork feature-x --move
+         ${EXECUTABLE_NAME} parallel list --short
+         ${EXECUTABLE_NAME} parallel join feature-x --all
+   `)
 }

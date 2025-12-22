@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import dedent from 'dedent';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
@@ -9,6 +10,7 @@ import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import { commitMsgGenerator } from '../templates/prompts';
+import { EXECUTABLE_NAME } from '@/consts';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -120,4 +122,29 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
 export default {
    auto: autoCommit
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}commit auto - Generate a commit message from staged changes using an LLM${ncc()}
+
+      ${ncc('Bright')}Purpose:${ncc()} Analyze the staged diff and ask the configured LLM provider to produce
+      a well-formed commit message (title and body). The generated text is streamed for interactive
+      feedback; you may choose to commit it automatically or inspect/copy it first.
+
+      ${ncc('Bright')}Flags and behavior:${ncc()} Use ${ncc('Dim')}--no-commit (-nc)${ncc()} to prevent creating the
+      commit (message will be printed). Use ${ncc('Dim')}--copy (-cp)${ncc()} in combination with --no-commit to
+      copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
+
+      ${ncc('Bright')}Requirements:${ncc()} A non-empty staged diff is required; the command will error
+      if there are no staged changes.
+   `),
+   short: 'Auto-generate a commit message from staged changes using an LLM.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} commit auto [--no-commit] [--copy]
+
+      Examples:
+        ${EXECUTABLE_NAME} commit auto                  # Generate and commit using LLM-generated message
+        ${EXECUTABLE_NAME} commit auto --no-commit      # Print generated message without committing
+        ${EXECUTABLE_NAME} commit auto --no-commit --copy  # Copy generated message to clipboard
+   `)
 }

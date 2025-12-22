@@ -6,6 +6,7 @@ import { GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
+import { EXECUTABLE_NAME } from '@/consts';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -150,6 +151,32 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
       ));
       return 0;
    }
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}gdx-config - View and modify gdx configuration${ncc()}
+
+      ${ncc('Bright')}Overview:${ncc()} Manage gdx settings stored in the configuration file. The command
+      supports listing all config values, getting the path to the currently loaded config file, and
+      getting/setting individual keys. API keys and sensitive values are masked when displayed.
+
+      ${ncc('Bright')}Commands:${ncc()}
+        - list: Prints flattened configuration with defaults and modified markers.
+        - path: Prints the path to the active config file used by gdx.
+        - <key> [value]: Get or set a config key. When setting, types are coerced based on the
+          existing default value where possible.
+   `),
+   short: 'Inspect and edit gdx configuration values.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} gdx-config list                # List all config keys and values
+      ${EXECUTABLE_NAME} gdx-config path                # Print config file path
+      ${EXECUTABLE_NAME} gdx-config <key>               # Get value for a key
+      ${EXECUTABLE_NAME} gdx-config <key> <value>       # Set value for a key
+
+      Examples:
+        ${EXECUTABLE_NAME} gdx-config list
+        ${EXECUTABLE_NAME} gdx-config editor.code true
+   `)
 }
 
 /**

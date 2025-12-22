@@ -7,7 +7,7 @@ import { createAbortableExec } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../utils/arguments';
-import { STATS_EST } from '../consts';
+import { EXECUTABLE_NAME, STATS_EST } from '../consts';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -150,4 +150,28 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}stats - Gather detailed contribution statistics for a git author in this repository${ncc()}
+
+      ${ncc('Bright')}What it computes:${ncc()} Total commits by the author, today's commits, lines added/removed,
+      rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the
+      project, most active branch, and time of the last commit.
+
+      ${ncc('Bright')}How it works:${ncc()} The command runs multiple git queries in parallel to collect
+      commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take
+      some time; progress messages are shown while queries run.
+
+      ${ncc('Bright')}Options:${ncc()} Use \`--author <email>\` to target a different author than the configured
+      git user.email. Output includes a small visual graph invocation via the \`graph\` command by default.
+   `),
+   short: 'Show comprehensive commit and line-change statistics for a repository author.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} stats [--author <email>]
+
+      Examples:
+        ${EXECUTABLE_NAME} stats                             # Stats for configured git user
+        ${EXECUTABLE_NAME} stats --author alice@example.com  # Stats for specified author
+   `)
 }

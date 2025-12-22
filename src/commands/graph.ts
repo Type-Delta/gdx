@@ -1,9 +1,11 @@
+import dedent from 'dedent';
+
 import { $ } from "../utils/shell";
 import { quickPrint } from "../utils/utilities";
 import { ncc } from "@lib/Tools";
 import { GdxContext } from "../common/types";
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from "../utils/graphics";
-import { COLOR } from "../consts";
+import { COLOR, EXECUTABLE_NAME } from "../consts";
 
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
@@ -129,4 +131,27 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(''); // Final newline
    return 0;
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}graph - Render a calendar-style contribution graph for a repository author${ncc()}
+
+      ${ncc('Bright')}Purpose:${ncc()} Visualize commit activity as a calendar-like heatmap showing commit
+      density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate
+      relative commit frequency and can be clamped to a maximum of 52 weeks.
+
+      ${ncc('Bright')}Options:${ncc()} Supply \`--email <email>\` to override the configured git user email.
+      Use \`--quiet\` to suppress informational headers when embedding the graph in other scripts.
+
+      ${ncc('Bright')}Terminal notes:${ncc()} The graph respects \`process.stdout.columns\`. If the terminal is
+      too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
+   `),
+   short: 'Render a calendar-style contribution graph for an author.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} graph [--email <email>] [--quiet]
+
+      Examples:
+        ${EXECUTABLE_NAME} graph                         # Graph for configured git user
+        ${EXECUTABLE_NAME} graph --email bob@example.com  # Graph for specified author
+   `)
 }

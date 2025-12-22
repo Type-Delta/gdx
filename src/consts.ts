@@ -2,7 +2,7 @@ import path from "path";
 
 import { RgbVec } from "./utils/graphics";
 
-const exeBasename = path.basename(process.argv[0] || "gdx")
+const exeBasename = path.basename(process.argv[0] || "gdx", path.extname(process.argv[0] || ""));
 
 export const EXECUTABLE_NAME = exeBasename.startsWith("bun") ? "gdx" : exeBasename;
 export const VERSION = "0.0.1";

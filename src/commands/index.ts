@@ -1,5 +1,4 @@
-
-import help from './help';
+import helpCmd from './help';
 import stash from './stash';
 import graph from './graph';
 import stats from './stats';
@@ -10,7 +9,7 @@ import nocap from './nocap';
 import parallel from './parallel';
 
 export default {
-   help,
+   help: helpCmd,
    stash,
    graph,
    stats,

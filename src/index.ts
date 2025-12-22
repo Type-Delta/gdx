@@ -25,7 +25,12 @@ async function main(): Promise<number> {
    }
    const args = ctx.args;
 
-   if (args.includes('--help') || args.includes('-h')) {
+   if (
+      args.includes('--ghelp') ||
+      args.includes('-gh') ||
+      args.includes('--gdx-help') ||
+      args.length === 0
+   ) {
       cmd.help();
       return 0;
    }
@@ -177,6 +182,9 @@ async function main(): Promise<number> {
             return cmd.clear(ctx);
          case 'gdx-config':
             return cmd.gdxConfig(ctx);
+         case 'gdx-help':
+         case 'ghelp':
+            return cmd.help(args[1]);
          case 'nocap':
             return cmd.nocap(ctx);
          case 'parallel':
@@ -193,24 +201,33 @@ async function main(): Promise<number> {
       );
    }
 
+   let exitCode: number | undefined = 0;
    try {
       if (redirectTo) {
-         await execa({
+         const { exitCode: eCode } = await execa({
             stdout: {
                file: redirectTo,
                append: redirectMode === '>>'
-            }
+            },
+            stderr: 'inherit'
          })`${git$} ${args}`;
+         exitCode = eCode;
       }
       else {
-         await $inherit`${git$} ${args}`;
+         const { exitCode: eCode } = await $inherit`${git$} ${args}`;
+         exitCode = eCode;
       }
    }
-   catch (err) {
+   catch (_err) {
+      const err = Err.from(_err);
+      if (err.name === 'ExecaError' && err.message.startsWith('Command failed'))
+         return exitCode || 1; // git command failed, return exit code
+
       console.error('Command failed.\n' + yuString(err, { color: true }));
+      return 1;
    };
 
-   return 0;
+   return exitCode ?? 0;
 }
 
 (async () => {

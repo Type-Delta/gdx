@@ -2,12 +2,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 
+import dedent from 'dedent';
 import { ncc, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
-import { ONE_DAY_MS } from '../consts';
+import { EXECUTABLE_NAME, ONE_DAY_MS } from '../consts';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -167,6 +168,33 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    await $inherit`${git$} status`;
    return 0;
+}
+
+export const help = {
+   long: dedent(`${ncc('Cyan')}clear - Safely backup and clear local working changes${ncc()}
+
+      ${ncc('Bright')}What it does:${ncc()} Creates a patch file containing the current unstaged and staged
+      changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via
+      \`git reset --hard\` and \`git clean -fd\`. The latest patch is kept so you can restore it with
+      ${ncc('Dim')}${EXECUTABLE_NAME} clear pardon${ncc()}.
+
+      ${ncc('Bright')}Subcommands:${ncc()}
+        - list: Show available backup patch files for this project/branch.
+        - pardon: Restore the most recent backup patch (requires clean or forced conditions).
+
+      ${ncc('Bright')}Safety:${ncc()} By default the command refuses to run if untracked files would be removed
+      unless forced with \`-f\`/\`--force\`. Use \`-a\`/\`--all\` to stage untracked files before creating a backup.
+   `),
+   short: 'Backup and clear local changes, with a restore (pardon) option.',
+   usage: dedent(`
+      ${EXECUTABLE_NAME} clear [list|pardon] [-f|--force] [-a|--all]
+
+      Examples:
+        ${EXECUTABLE_NAME} clear                       # Create backup patch and clear working tree
+        ${EXECUTABLE_NAME} clear list                  # Show recent backup patches
+        ${EXECUTABLE_NAME} clear pardon                # Restore the latest backup patch
+        ${EXECUTABLE_NAME} clear -a                    # Stage untracked files then clear
+   `)
 }
 
 
