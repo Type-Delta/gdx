@@ -41,7 +41,7 @@ describe('gdx graph', async () => {
    });
 
    it('should respect --email flag', async () => {
-      const emailCtx = createGdxContext(tmpDir, ['--email', 'other@example.com']);
+      const emailCtx = createGdxContext(tmpDir, ['graph', '--email', 'other@example.com']);
       buffer.stdout = '';
 
       const result = await graph(emailCtx);

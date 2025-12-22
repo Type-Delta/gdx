@@ -8,6 +8,8 @@ import { $ } from './shell';
 import { _process } from './utilities';
 import { mock } from 'bun:test';
 
+let testEnvCleared = false;
+
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
@@ -27,6 +29,8 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 }
 
 export async function createTestEnv() {
+   await clearTestEnvs();
+
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));
    const tmpMockProjDir = path.join(tmpDir, 'project');
@@ -120,4 +124,17 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
       };
    });
    return tracker;
+}
+
+async function clearTestEnvs() {
+   if (testEnvCleared) return;
+
+   const baseTestEnvDir = path.join(process.cwd(), 'test/env');
+   try {
+      console.log(`Clearing all test envs in: ${baseTestEnvDir}`);
+      await fs.rm(baseTestEnvDir, { recursive: true, force: true });
+      testEnvCleared = true;
+   } catch {
+      console.error(`Failed to clear test envs in: ${baseTestEnvDir}`);
+   }
 }

@@ -17,7 +17,7 @@ import { help as clearHelp } from './clear';
 
 export default function help(name?: string): number {
    if (!name) {
-      // @LINK: dn2jka text literal in spec
+      // LINK: dn2jka text literal in spec
       quickPrint(
          dedent`
          ─────────────────
@@ -153,7 +153,7 @@ export default function help(name?: string): number {
       return 0;
    }
 
-   // @LINK: dnn2j2k text literal in spec
+   // LINK: dnn2j2k text literal in spec
    quickPrint(`No help found for '${cmdName}'.`);
    return 1;
 }

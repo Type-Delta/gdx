@@ -39,7 +39,7 @@ describe('gdx commit', async () => {
       await $`git -C ${tmpDir} add newfile.txt`;
 
       buffer.stdout = '';
-      const ncCtx = createGdxContext(tmpDir, ['--no-commit']);
+      const ncCtx = createGdxContext(tmpDir, ['commit', '--no-commit']);
       const result = await commit.auto(ncCtx);
 
       expect(result).toBe(0);

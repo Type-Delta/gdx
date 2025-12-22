@@ -14,7 +14,7 @@ describe('gdx help', async () => {
       const result = help();
 
       expect(result).toBe(0);
-      // @LINK: dn2jka text literal in spec
+      // LINK: dn2jka text literal in spec
       expect(cleanString(buffer.stdout)).toContain('Git Developer eXperience');
    });
 
@@ -32,7 +32,7 @@ describe('gdx help', async () => {
       const result = help('unknown-command');
 
       expect(result).toBe(1);
-      // @LINK: dnn2j2k text literal in spec
+      // LINK: dnn2j2k text literal in spec
       expect(cleanString(buffer.stdout)).toContain("No help found for 'unknown-command'");
    });
 });

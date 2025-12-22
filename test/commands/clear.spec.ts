@@ -43,7 +43,7 @@ describe('gdx clear', async () => {
 
    it('should list backups', async () => {
       buffer.stdout = '';
-      const listCtx = createGdxContext(tmpDir, ['list']);
+      const listCtx = createGdxContext(tmpDir, ['clear', 'list']);
       const result = await clear(listCtx);
 
       expect(result).toBe(0);
@@ -53,7 +53,7 @@ describe('gdx clear', async () => {
 
    it('should restore backup with pardon', async () => {
       // Run pardon
-      const pardonCtx = createGdxContext(tmpDir, ['pardon']);
+      const pardonCtx = createGdxContext(tmpDir, ['clear', 'pardon']);
       const result = await clear(pardonCtx);
 
       expect(result).toBe(0);

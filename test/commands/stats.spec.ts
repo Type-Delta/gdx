@@ -38,7 +38,7 @@ describe('gdx stats', async () => {
    });
 
    it('should respect --author flag', async () => {
-      const authorCtx = createGdxContext(tmpDir, ['--author', 'other@example.com']);
+      const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'other@example.com']);
       buffer.stdout = '';
 
       const result = await stats(authorCtx);

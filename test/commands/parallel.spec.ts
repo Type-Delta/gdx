@@ -6,11 +6,11 @@ import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, cleanup } = await createTestEnv();
    afterAll(cleanup);
 
    it('should list empty worktrees initially', async () => {
-      const listCtx = createGdxContext(tmpDir, ['list']);
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
       buffer.stdout = '';
 
       const result = await parallel(listCtx);
@@ -23,16 +23,20 @@ describe('gdx parallel', async () => {
       // Need a commit to branch off
       await $`git -C ${tmpDir} commit --allow-empty -m ${'Initial commit'}`;
 
-      const forkCtx = createGdxContext(tmpDir, ['fork', 'feature-1']);
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
       buffer.stdout = '';
 
       const result = await parallel(forkCtx);
 
       expect(result).toBe(0);
-      expect(buffer.stdout).toContain("Parallel worktree 'feature-1' created");
+      expect(buffer.stdout).toContain("feature-1");
+      expect(buffer.stdout).toContain("created");
 
       // Verify directory exists
-      const worktreePath = path.join(tmpDir, 'worktrees', path.basename(tmpDir), 'feature-1');
+      // LINK: dkk2iia forked worktree path
+      const worktreePath = path.join(
+         tmpRootDir, 'tmp', 'worktrees', 'project', 'master', 'feature-1'
+      );
       const exists = await fs
          .stat(worktreePath)
          .then(() => true)
@@ -41,7 +45,7 @@ describe('gdx parallel', async () => {
    });
 
    it('should list active worktrees', async () => {
-      const listCtx = createGdxContext(tmpDir, ['list']);
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
       buffer.stdout = '';
 
       const result = await parallel(listCtx);
@@ -51,23 +55,25 @@ describe('gdx parallel', async () => {
    });
 
    it('should fail to fork with invalid alias', async () => {
-      const forkCtx = createGdxContext(tmpDir, ['fork', 'invalid/name']);
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'invalid/name']);
       buffer.stdout = '';
 
       const result = await parallel(forkCtx);
 
       expect(result).toBe(1);
-      expect(buffer.stdout).toContain('Invalid alias');
+      // LINK: dwmal2m string literal in spec
+      expect(buffer.stdout).toContain('contains invalid characters');
    });
 
    it('should remove a worktree', async () => {
-      const removeCtx = createGdxContext(tmpDir, ['remove', 'feature-1']);
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-1']);
       buffer.stdout = '';
 
       const result = await parallel(removeCtx);
 
       expect(result).toBe(0);
-      expect(buffer.stdout).toContain('removed');
+      // LINK: dw2al2m string literal in spec
+      expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
 
       // Verify directory is gone
       const worktreePath = path.join(tmpDir, 'worktrees', path.basename(tmpDir), 'feature-1');

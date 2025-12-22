@@ -72,6 +72,7 @@ async function getParallelContext(git$: string): Promise<ParallelContext | null>
          branchName = 'HEAD';
       }
 
+      // LINK: dkk2iia forked worktree path
       const worktreeRoot = path.join(TEMP_DIR, 'worktrees');
       const isParallel = repoRoot.startsWith(worktreeRoot.replace(/\\/g, '/'));
 
@@ -159,12 +160,13 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
          // Ignore cleanup errors
       }
 
+      // LINK: dw2al2m string literal in spec
       quickPrint(`${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
       return 0;
    } catch (err) {
       quickPrint(
          `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
-            yuString(err, { color: true })
+         yuString(err, { color: true })
       );
 
       const response = await $prompt(
@@ -217,6 +219,7 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
 
    const alias = args[0];
    if (!testParallelAlias(alias)) {
+      // LINK: dwmal2m string literal in spec
       quickPrint(
          `${ncc('Red')}Error: Alias '${alias}' contains invalid characters or spaces.${ncc()}`
       );
@@ -715,9 +718,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch {
       if (stashRef) {
