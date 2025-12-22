@@ -22,3 +22,9 @@ export interface SpinnerOptions {
    /** Speed of gradient animation (0-1, default: 0.02) */
    gradientSpeed?: number;
 }
+
+export interface CommandHelpObj {
+   long: string;
+   short: string;
+   usage: string;
+}

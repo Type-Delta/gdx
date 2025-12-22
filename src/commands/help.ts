@@ -14,6 +14,7 @@ import { help as parallelHelp } from './parallel';
 import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
+import { CommandHelpObj } from '@/common/types';
 
 export default function help(name?: string): number {
    if (!name) {
@@ -130,7 +131,7 @@ export default function help(name?: string): number {
    }
 
    const cmdName = name.replace(/^\/+/, '');
-   const HELP_MAP: Record<string, any> = {
+   const HELP_MAP: Record<string, CommandHelpObj> = {
       stash: stashHelp,
       stats: statsHelp,
       graph: graphHelp,

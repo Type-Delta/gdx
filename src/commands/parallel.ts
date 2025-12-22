@@ -166,7 +166,7 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
    } catch (err) {
       quickPrint(
          `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
-         yuString(err, { color: true })
+            yuString(err, { color: true })
       );
 
       const response = await $prompt(
@@ -718,9 +718,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch {
       if (stashRef) {

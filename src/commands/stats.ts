@@ -16,8 +16,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    const { args, git$ } = ctx;
 
-   if (!await assertInGitWorktree(git$))
-      return 1;
+   if (!(await assertInGitWorktree(git$))) return 1;
 
    let email = '';
    let username = 'Your';
@@ -46,12 +45,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-      `Gathering stats for user: ` +
-      ncc('Yellow') +
-      email +
-      ncc('Cyan') +
-      ` this may take a while...` +
-      ncc()
+         `Gathering stats for user: ` +
+         ncc('Yellow') +
+         email +
+         ncc('Cyan') +
+         ` this may take a while...` +
+         ncc()
    );
 
    try {

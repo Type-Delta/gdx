@@ -1,6 +1,6 @@
-import { ncc } from "@lib/Tools";
-import { quickPrint } from "./utilities";
-import { $ } from "./shell";
+import { ncc } from '@lib/Tools';
+import { quickPrint } from './utilities';
+import { $ } from './shell';
 
 export async function assertInGitWorktree(git$: string): Promise<boolean> {
    try {

@@ -29,13 +29,18 @@ describe('gdx parallel', async () => {
       const result = await parallel(forkCtx);
 
       expect(result).toBe(0);
-      expect(buffer.stdout).toContain("feature-1");
-      expect(buffer.stdout).toContain("created");
+      expect(buffer.stdout).toContain('feature-1');
+      expect(buffer.stdout).toContain('created');
 
       // Verify directory exists
       // LINK: dkk2iia forked worktree path
       const worktreePath = path.join(
-         tmpRootDir, 'tmp', 'worktrees', 'project', 'master', 'feature-1'
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         'project',
+         'master',
+         'feature-1'
       );
       const exists = await fs
          .stat(worktreePath)

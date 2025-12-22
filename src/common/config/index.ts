@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import fs from 'fs/promises';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import * as keytar from 'keytar';

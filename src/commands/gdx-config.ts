@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import dedent from 'dedent';
 
 import { ncc, strClamp } from '@lib/Tools';
