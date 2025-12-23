@@ -20,7 +20,7 @@ export default function help(name?: string): number {
    if (!name) {
       // LINK: dn2jka text literal in spec
       quickPrint(
-         dedent`
+         dedent.withOptions({ escapeSpecialCharacters: false })`
          ─────────────────
          ${ncc('Bright') + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83)}
          ─────────────────

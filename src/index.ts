@@ -2,10 +2,12 @@ import { execa } from 'execa';
 import { Err, ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
-import { $, $inherit, whichExec } from './utils/shell';
+import { $, $inherit, scheduleChangeDir, whichExec } from './utils/shell';
 import { arrDelete, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './utils/arguments';
 import { GdxContext } from './common/types';
+import { getShellScript } from './templates/shell';
+import global from './global';
 
 const _args = process.argv.slice(2);
 
@@ -20,6 +22,32 @@ async function main(): Promise<number> {
       git$,
    };
    const args = ctx.args;
+
+   if (args[0] === 'test') {
+      await scheduleChangeDir(args[1] || '');
+      return 0;
+   }
+
+   if (args[0] === '--init') {
+      const shell = args.popValue('--shell');
+      const cmdAlias = args.popValue('--cmd');
+
+      if (shell) {
+         try {
+            const script = getShellScript(shell, cmdAlias || undefined);
+            quickPrint(script);
+            return 0;
+         } catch (err) {
+            console.error(yuString(err, { color: true }));
+            return 1;
+         }
+      } else {
+         console.error(
+            ncc('Red') + 'Error: --shell <shell-name> is required for initialization.' + ncc()
+         );
+         return 1;
+      }
+   }
 
    if (
       args.includes('--ghelp') ||
@@ -223,7 +251,15 @@ async function main(): Promise<number> {
 (async () => {
    try {
       const exitCode = await main();
-      process.exit(exitCode);
+      if (global.finalStringOutput) {
+         quickPrint(global.finalStringOutput);
+      }
+
+      process.exit(
+         global.exitCodeOverride >= 0
+            ? global.exitCodeOverride
+            : exitCode
+      );
    } catch (err) {
       console.error(yuString(err, { color: true }));
       process.exit(1);

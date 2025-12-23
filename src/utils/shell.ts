@@ -7,8 +7,11 @@ import { CheckCache, Err, ncc } from '@lib/Tools';
 import { isExecutable } from './utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
-import { COLOR, SPINNER } from '@/consts';
+import { COLOR, GDX_RESULT_FILE, GDX_SIGNAL_CODE, SPINNER } from '@/consts';
 import { getConfig } from '@/common/config';
+import global from '@/global';
+import { writeFile } from 'fs/promises';
+import { unlink } from 'fs/promises';
 
 export { $ } from 'execa';
 
@@ -265,4 +268,24 @@ export async function openInEditor(filePath: string): Promise<void> {
    }
 
    await $inherit`${editorPath} ${filePath}`;
+}
+
+/**
+ * Schedules a directory change by setting global output and exit code.
+ * The calling shell integration should handle the actual directory change
+ * based on these global values.
+ *
+ * @param targetDir - The target directory to change to. If undefined, no change is scheduled.
+ */
+export async function scheduleChangeDir(targetDir?: string): Promise<void> {
+   if (!targetDir) {
+      if (GDX_RESULT_FILE)
+         await unlink(GDX_RESULT_FILE).catch(() => { });
+      global.exitCodeOverride = -1;
+      return;
+   }
+
+   if (GDX_RESULT_FILE)
+      await writeFile(GDX_RESULT_FILE, targetDir, 'utf-8');
+   global.exitCodeOverride = GDX_SIGNAL_CODE;
 }

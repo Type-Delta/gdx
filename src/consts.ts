@@ -11,6 +11,8 @@ export const CURRENT_DIR = process.env.GDX_CURRENT_DIR || process.cwd();
 export const CONFIG_FILE_NAME = '.gdxrc.toml';
 export const CONFIG_PATH = path.join(os.homedir(), CONFIG_FILE_NAME);
 export const GIT_DIR_NAME = '.git';
+export const GDX_SIGNAL_CODE = 150;
+export const GDX_RESULT_FILE = process.env.GDX_RESULT;
 export const VERSION = '0.0.1';
 
 export const KEYCHAIN_SERVICE = 'gdx-cli';

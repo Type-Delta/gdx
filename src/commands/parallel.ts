@@ -5,9 +5,9 @@ import dedent from 'dedent';
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, $prompt, copyToClipboard, openInEditor } from '../utils/shell';
+import { $, $inherit, $prompt, copyToClipboard, openInEditor, scheduleChangeDir } from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
 
 interface ParallelMetadata {
    alias: string;
@@ -166,7 +166,7 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
    } catch (err) {
       quickPrint(
          `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
-            yuString(err, { color: true })
+         yuString(err, { color: true })
       );
 
       const response = await $prompt(
@@ -385,7 +385,7 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
 /**
  * Open command - opens a different worktree in the editor
  */
-async function cmdOpen(git$: string, args: string[]): Promise<number> {
+async function cmdOpen(git$: string, args: string[], changeDir = false): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -433,7 +433,9 @@ async function cmdOpen(git$: string, args: string[]): Promise<number> {
       return 0;
    }
 
-   await openInEditor(destination);
+   if (changeDir)
+      await scheduleChangeDir(destination);
+   else await openInEditor(destination);
    return 0;
 }
 
@@ -719,9 +721,9 @@ async function cmdJoin(git$: string, args: string[]): Promise<number> {
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch {
       if (stashRef) {
@@ -840,6 +842,14 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
          return await cmdFork(git$, remaining);
       case 'remove':
          return await cmdRemove(git$, remaining);
+      case 'switch':
+         if (!GDX_RESULT_FILE) {
+            quickPrint(
+               `${ncc('Red')}Error: 'git parallel switch' requires the shell integration.${ncc()}`
+            );
+            return 1;
+         }
+         return await cmdOpen(git$, remaining, true);
       case 'open':
          return await cmdOpen(git$, remaining);
       case 'list':
