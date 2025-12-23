@@ -1,21 +1,23 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import graph from '@/commands/graph';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx graph', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
-
    afterAll(cleanup);
 
    it('should fail if no email configured (and not provided)', async () => {
       // Unset email
       try {
-         await $`git -C ${tmpDir} config --unset user.email`;
+         // We can't use --unset bc the value would failback to global config if set
+         // thus we set it to empty string
+         await $`git -C ${tmpDir} config user.email ${''}`;
 
          const result = await graph(ctx);
          expect(result).toBe(1);
-         expect(buffer.stdout).toContain('User email not configured');
+         // LINK: uwnkd11 string literal in spec
+         expect(buffer.stdout.toLowerCase()).toContain('user email not configured');
       } finally {
          // Restore email for next tests
          await $`git -C ${tmpDir} config user.email "test@example.com"`;
@@ -42,8 +44,6 @@ describe('gdx graph', async () => {
 
    it('should respect --email flag', async () => {
       const emailCtx = createGdxContext(tmpDir, ['graph', '--email', 'other@example.com']);
-      buffer.stdout = '';
-
       const result = await graph(emailCtx);
 
       expect(result).toBe(0);

@@ -1,4 +1,4 @@
-import { afterAll, describe, it } from 'bun:test';
+import { afterAll, describe } from 'bun:test';
 import fs from 'fs/promises';
 import { expect } from 'chai';
 
@@ -6,7 +6,7 @@ import stash from '@/commands/stash';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx stash drop X..Y (stash.dropRange())', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
    afterAll(cleanup);
 
@@ -34,7 +34,6 @@ describe('gdx stash drop X..Y (stash.dropRange())', async () => {
    });
 
    it('should return error code when given an invalid range', async () => {
-      buffer.stdout = '';
       const result = await stash.dropRange(ctx.git$, ['stash', 'drop', '3..1']);
 
       expect(buffer.stdout).to.include('Invalid stash range: 3..1');

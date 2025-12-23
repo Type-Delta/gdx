@@ -1,4 +1,4 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -6,27 +6,35 @@ import clear from '@/commands/clear';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx clear', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
-   const ctx = createGdxContext(tmpDir);
-
+   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
    afterAll(cleanup);
 
-   it('should abort if directory is dirty and no force flag (implicit check, clear usually forces?)', async () => {
-      // Actually clear command does `git reset --hard` so it might not abort, but let's check the code.
-      // The code says: "Backs up... then resets". It doesn't seem to abort on dirty, it backs up dirty state.
-      // Let's verify it creates a backup.
-   });
-
-   it('should create a backup and clean the directory', async () => {
-      // Create a file and stage it
+   it('should abort if directory containts untrack file', async () => {
+      // Create a file and stage it (dirty state)
       await fs.writeFile(path.join(tmpDir, 'test.txt'), 'content');
       await $`git -C ${tmpDir} add test.txt`;
 
-      // Create an unstaged file
+      // Create an unstaged file (this file should prevent clear without --force)
       await fs.writeFile(path.join(tmpDir, 'unstaged.txt'), 'content');
 
-      // Run clear
+      const ctx = createGdxContext(tmpDir);
       const result = await clear(ctx);
+      expect(result).toBe(1);
+      // LINK: mmhrb3j string literal in spec
+      expect(buffer.stdout.toLocaleLowerCase()).toContain('clear aborted');
+
+      // Verify files are still there
+      const files = await fs.readdir(tmpDir);
+      expect(files).toContain('test.txt');
+      expect(files).toContain('unstaged.txt');
+   });
+
+   it('should create a backup and clean the directory', async () => {
+      // from previous test, we have staged and unstaged files
+
+      // Run clear
+      const forceCtx = createGdxContext(tmpDir, ['--force']); // we need --force to override abort
+      const result = await clear(forceCtx);
       expect(result).toBe(0);
 
       // Verify files are gone
@@ -34,15 +42,15 @@ describe('gdx clear', async () => {
       expect(files).not.toContain('test.txt');
       expect(files).not.toContain('unstaged.txt');
 
-      // Verify backup exists in temp dir (which is tmpDir because of GDX_TEMP_DIR)
-      const backupFiles = (await fs.readdir(tmpDir)).filter(
+      // Verify backup exists in temp dir (which is tmpDir/tmp because of mock)
+      const backupDir = path.join(tmpRootDir, 'tmp');
+      const backupFiles = (await fs.readdir(backupDir)).filter(
          (f) => f.includes('_backup_') && f.endsWith('.patch')
       );
       expect(backupFiles.length).toBe(1);
    });
 
    it('should list backups', async () => {
-      buffer.stdout = '';
       const listCtx = createGdxContext(tmpDir, ['clear', 'list']);
       const result = await clear(listCtx);
 
@@ -61,8 +69,5 @@ describe('gdx clear', async () => {
       // Verify files are back
       const files = await fs.readdir(tmpDir);
       expect(files).toContain('test.txt');
-      // Unstaged files might be restored as staged or unstaged depending on how patch works,
-      // but they should be there.
-      // Note: `git apply` might fail if file already exists or something, but here dir was clean.
    });
 });

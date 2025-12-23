@@ -1,9 +1,9 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import stats from '@/commands/stats';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
 
    afterAll(cleanup);
@@ -19,7 +19,6 @@ describe('gdx stats', async () => {
    });
 
    it('should calculate stats for empty repo', async () => {
-      buffer.stdout = '';
       const result = await stats(ctx);
 
       expect(result).toBe(0);
@@ -29,7 +28,6 @@ describe('gdx stats', async () => {
 
    it('should calculate stats with commits', async () => {
       await $`git -C ${tmpDir} commit --allow-empty -m ${'commit 1'}`;
-      buffer.stdout = '';
       const result = await stats(ctx);
 
       expect(result).toBe(0);
@@ -39,8 +37,6 @@ describe('gdx stats', async () => {
 
    it('should respect --author flag', async () => {
       const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'other@example.com']);
-      buffer.stdout = '';
-
       const result = await stats(authorCtx);
 
       expect(result).toBe(0);

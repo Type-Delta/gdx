@@ -1,15 +1,13 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import help from '@/commands/help';
 import { createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx help', async () => {
-   const { buffer, cleanup } = await createTestEnv();
-
+   const { buffer, cleanup, it } = await createTestEnv();
    afterAll(cleanup);
 
    it('should print help message', async () => {
-      buffer.stdout = '';
       // help command doesn't take context, it takes an optional string name
       const result = help();
 
@@ -19,7 +17,6 @@ describe('gdx help', async () => {
    });
 
    it('should print specific command help when name is provided', async () => {
-      buffer.stdout = '';
       const result = help('stats');
 
       expect(result).toBe(0);
@@ -28,7 +25,6 @@ describe('gdx help', async () => {
    });
 
    it('should print error for unknown command', async () => {
-      buffer.stdout = '';
       const result = help('unknown-command');
 
       expect(result).toBe(1);

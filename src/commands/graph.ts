@@ -17,6 +17,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const email = args.popValue('--email') || (await $`${git$} config user.email`).stdout;
 
    if (!email) {
+      // LINK: uwnkd11 string literal in spec
       quickPrint(
          ncc('Red') +
             'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +

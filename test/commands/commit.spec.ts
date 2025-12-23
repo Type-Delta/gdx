@@ -1,14 +1,13 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
 import commit from '@/commands/commit';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
-describe('gdx commit', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
-   const ctx = createGdxContext(tmpDir);
-
+describe('gdx commit auto', async () => {
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    afterAll(cleanup);
 
    it('should fail if no staged changes', async () => {
@@ -18,11 +17,13 @@ describe('gdx commit', async () => {
    });
 
    it('should generate commit message and commit', async () => {
+      // Set dummy editor to simulate open and close action from user
+      await $`git -C ${tmpDir} config core.editor ${'bun run dummy-editor --'}`;
+
       // Create and stage a file
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'content');
       await $`git -C ${tmpDir} add newfile.txt`;
 
-      buffer.stdout = '';
       const result = await commit.auto(ctx);
 
       expect(result).toBe(0);
@@ -38,15 +39,12 @@ describe('gdx commit', async () => {
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'modified content');
       await $`git -C ${tmpDir} add newfile.txt`;
 
-      buffer.stdout = '';
-      const ncCtx = createGdxContext(tmpDir, ['commit', '--no-commit']);
+      const ncCtx = createGdxContext(tmpDir, ['commit', 'auto', '--no-commit']);
       const result = await commit.auto(ncCtx);
 
       expect(result).toBe(0);
 
       // Verify NO commit was made (HEAD should be same as before)
-      // But wait, previous test made a commit.
-      // Let's check if changes are still staged.
       const status = (await $`git -C ${tmpDir} status --porcelain`).stdout;
       expect(status).toContain('M  newfile.txt');
    });

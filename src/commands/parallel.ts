@@ -499,6 +499,7 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
    quickPrint('');
 
    if (!(await fs.exists(ctx.parallelRoot))) {
+      // LINK: dkn2ika string literal in spec
       quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
       return 0;
    }

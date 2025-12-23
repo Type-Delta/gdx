@@ -1,4 +1,4 @@
-import { afterAll, describe, it, expect } from 'bun:test';
+import { afterAll, describe, expect } from 'bun:test';
 import path from 'path';
 
 import gdxConfig from '@/commands/gdx-config';
@@ -6,13 +6,11 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
 
 describe('gdx gdx-config', async () => {
-   const { tmpDir, tmpRootDir, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, tmpRootDir, buffer, cleanup, it } = await createTestEnv();
    afterAll(cleanup);
 
    it('should list configuration', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'list']);
-      buffer.stdout = '';
-
       const result = await gdxConfig(ctx);
 
       expect(result).toBe(0);
@@ -22,8 +20,6 @@ describe('gdx gdx-config', async () => {
 
    it('should show config path', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'path']);
-      buffer.stdout = '';
-
       const result = await gdxConfig(ctx);
 
       expect(result).toBe(0);
@@ -32,8 +28,6 @@ describe('gdx gdx-config', async () => {
 
    it('should set a config value', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'llm.provider', 'openai']);
-      buffer.stdout = '';
-
       const result = await gdxConfig(ctx);
 
       expect(result).toBe(0);
@@ -47,8 +41,6 @@ describe('gdx gdx-config', async () => {
 
    it('should get a config value', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'llm.provider']);
-      buffer.stdout = '';
-
       const result = await gdxConfig(ctx);
 
       expect(result).toBe(0);
@@ -57,8 +49,6 @@ describe('gdx gdx-config', async () => {
 
    it('should handle invalid keys gracefully', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'invalid.key']);
-      buffer.stdout = '';
-
       const result = await gdxConfig(ctx);
 
       // Code returns 1 if key is not set

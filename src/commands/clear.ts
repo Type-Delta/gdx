@@ -162,6 +162,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       const hasUntracked =
          (await $`${git$} ls-files --others --exclude-standard`).stdout.length > 0;
       if (hasUntracked) {
+         // LINK: mmhrb3j string literal in spec
          quickPrint(
             `${ncc('Yellow')}Untracked files will be removed during clear operation. Clear aborted.\nUse \`-f\` to force.${ncc()}`
          );

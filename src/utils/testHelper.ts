@@ -4,20 +4,34 @@ import path from 'path';
 import { GdxContext } from '@/common/types';
 import { ArgsSet } from './arguments';
 import { resetConfig } from '@/common/config';
-import { $ } from './shell';
+import { $ } from '@/utils/shell';
 import { _process } from './utilities';
-import { mock } from 'bun:test';
+import { afterEach, beforeEach, it, mock } from 'bun:test';
+import { ncc } from '@lib/Tools';
 
 let testEnvCleared = false;
+
+interface TestSystem {
+   lastTestStatus: 'notrun' | 'passed' | 'failed';
+}
+
+interface TestEnvOptions {
+   autoResetBuffer?: boolean;
+}
 
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
    spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
+   testSystem: TestSystem = {
+      lastTestStatus: 'notrun',
+   };
 
    reset() {
       this.sysClipboard = [];
       this.subprocessStack = [];
+      this.spinnerStatus = 'nottriggered';
+      this.testSystem.lastTestStatus = 'notrun';
    }
 }
 
@@ -28,13 +42,14 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
    } satisfies GdxContext;
 }
 
-export async function createTestEnv() {
+export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) {
    await clearTestEnvs();
 
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));
    const tmpMockProjDir = path.join(tmpDir, 'project');
    await fs.mkdir(tmpMockProjDir, { recursive: true });
+   await fs.mkdir(path.join(tmpDir, 'tmp'), { recursive: true });
 
    let tracker = new TestEnvTracker();
    tracker = overrideModules(tracker, tmpDir);
@@ -53,8 +68,8 @@ export async function createTestEnv() {
    await _$`git init`;
 
    // Set user config
-   await _$`git config user.name "Test User"`;
-   await _$`git config user.email "test@example.com"`;
+   await _$`git config user.name ${'Test User'}`;
+   await _$`git config user.email ${'test@example.com'}`;
 
    // Create initial commit to ensure HEAD exists
    await _$`git commit --allow-empty -m ${'Initial commit'}`;
@@ -77,6 +92,9 @@ export async function createTestEnv() {
    // @ts-expect-error function signature mismatch
    _process.stderr.write = (msg: string) => (buffer.stderr += msg);
 
+   attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
+   const it = defineBunIt(tracker);
+
    return {
       tmpDir: tmpMockProjDir,
       tmpRootDir: tmpDir,
@@ -84,6 +102,7 @@ export async function createTestEnv() {
       buffer,
       tracker,
       cleanup,
+      it,
    };
 }
 
@@ -137,4 +156,42 @@ async function clearTestEnvs() {
    } catch {
       console.error(`Failed to clear test envs in: ${baseTestEnvDir}`);
    }
+}
+
+function defineBunIt(tracker: TestEnvTracker) {
+   return function (name: string, fn: () => Promise<void> | void) {
+      return it(name, async (done) => {
+         try {
+            await fn();
+            done();
+            tracker.testSystem.lastTestStatus = 'passed';
+         } catch (error) {
+            tracker.testSystem.lastTestStatus = 'failed';
+            throw error;
+         }
+      });
+   };
+}
+
+function attachTestLivecycleHook(
+   buffer: { stdout: string; stderr: string },
+   tracker: TestEnvTracker,
+   autoResetBuffer: boolean = true
+) {
+   afterEach((done) => {
+      if (tracker.testSystem.lastTestStatus === 'failed') {
+         console.log(ncc('Dim') + '\nTest failed. Captured stdout:\n' + ncc(), buffer.stdout);
+         if (buffer.stderr) console.log(ncc('Dim') + 'Captured stderr:\n' + ncc(), buffer.stderr);
+      }
+
+      done();
+   });
+
+   beforeEach(() => {
+      if (autoResetBuffer) {
+         buffer.stdout = '';
+         buffer.stderr = '';
+      }
+      tracker.reset();
+   });
 }

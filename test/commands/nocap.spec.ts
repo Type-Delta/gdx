@@ -1,4 +1,4 @@
-import { afterAll, describe, it } from 'bun:test';
+import { afterAll, describe } from 'bun:test';
 import { expect } from 'chai';
 
 import fs from 'fs/promises';
@@ -8,7 +8,7 @@ import nocap from '@/commands/nocap';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx nocap', async () => {
-   const { tmpDir, $, buffer, cleanup } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: false });
    const ctx = createGdxContext(tmpDir);
    afterAll(cleanup);
 

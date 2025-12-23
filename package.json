@@ -20,7 +20,8 @@
     "transpile-esm": "npx tsc -p lib/tsconfig.json && npx babel lib/*.js --out-dir lib/esm",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode",
-    "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\""
+    "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
+    "dummy-editor": "bun ./scripts/dummyEditor.mjs"
   },
   "devDependencies": {
     "@babel/cli": "^7.28.0",
