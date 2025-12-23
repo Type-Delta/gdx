@@ -7,10 +7,6 @@
 > [!WARNING]
 > **⚠️ PRE-ALPHA WARNING:** This project is currently in a "trial phase" (i.e., I'm dogfooding it daily). Expect breaking changes, missing features, and the occasional hiccup.
 
-> [!IMPORTANT]
-> This project is a translation from a prototype which has all the features but is written in PowerShell.
-> The translation to TypeScript/Bun is ongoing and you can expect 50% of the listed features missing until the initial port is complete.
-
 ---
 
 ## What is gdx?
@@ -53,7 +49,7 @@ gdx ps -fl        # -> git push --force-with-lease
 ```
 
 > [!NOTE]
-> This wrapper forwards unrecognized commands directly to `git`, so you can use it as your daily driver.
+> This wrapper forwards unrecognized commands directly to `git`, so you can use it as a full git replacement.
 
 ### 2. The Safety Net: `clear` vs `reset`
 
@@ -70,7 +66,8 @@ Need to work on the **same branch** in multiple isolated environments without ch
 # Manage forked worktrees for the current branch
 gdx parallel fork    # Create a new temp-backed fork
 gdx parallel list    # See where your forks are
-gdx parallel switch  # Jump between forks (auto-cd)
+gdx parallel switch  # Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
+gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
 ```
 
@@ -84,13 +81,13 @@ gdx sta d 2..6      # Drops stashes 2 through 6.
                     # (Smartly drops high->low to prevent index shifting!)
 ```
 
-### 5. Fun & Analytics (Local Only)
+### 5. Fun & Analytics
 
-Tools to help you feel productive without leaving the terminal. None of this data leaves your machine.
+Tools to help you feel productive without leaving the terminal.
 
 - **`gdx stats`**: Shows fun contribution statistics and metrics for your current repo.
 - **`gdx graph`**: Renders a GitHub-style contribution heatmap in your terminal using TrueColor.
-- **`gdx nocap`**: Uses AI to roast your latest commit message. Keeps your repo clean (read-only).
+- **`gdx nocap`**: Uses AI to roast your latest commit message.
 
 ## Command Reference
 
@@ -104,16 +101,16 @@ Tools to help you feel productive without leaving the terminal. None of this dat
 | `res`        | `git reset` (supports `res ~3` expansion)          |
 | `sta`, `st`  | `git stash`                                        |
 
-_Run `gdx help` to see the full list of expansions._
+_Run `gdx ghelp` to see the full list of expansions._
 
 ## Development
 
 This project uses **Bun** for development because it's fast and the developer experience is great.
 
 1. Clone the repo
-2. Install dependencies:
+2. Prepare the development environment:
    ```bash
-   bun install
+   bun prepare-dev
    ```
 3. Run in dev mode:
 
@@ -128,8 +125,19 @@ This project uses **Bun** for development because it's fast and the developer ex
 
 Since this is currently a solo "scratch your own itch" project, the roadmap is fluid, but here is what is on the horizon:
 
-- [ ] **Configurability:** Allow users to define their own shorthands in a `.gdxrc` file.
+- [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file.
 - [ ] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish.
+- [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
+- [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
+- [ ] **Quick linting before push:** `gdx lint` to run following checks before pushing:
+   - commit message format
+   - commit message spelling
+   - env or sensitive content scanning
+   - conflict markers
+   - abnormal file sizes
+     with an option to automatically run lint before every push
+- [ ] **Interactive stash list and log with fzf/tui**
+- [ ] **Undoable stash drop**
 
 ## License
 
