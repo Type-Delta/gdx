@@ -66,7 +66,6 @@ Need to work on the **same branch** in multiple isolated environments without ch
 # Manage forked worktrees for the current branch
 gdx parallel fork    # Create a new temp-backed fork
 gdx parallel list    # See where your forks are
-gdx parallel switch  # Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
 gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
 ```
@@ -126,7 +125,7 @@ This project uses **Bun** for development because it's fast and the developer ex
 Since this is currently a solo "scratch your own itch" project, the roadmap is fluid, but here is what is on the horizon:
 
 - [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file.
-- [ ] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish.
+- [ ] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell.
 - [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
 - [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
 - [ ] **Quick linting before push:** `gdx lint` to run following checks before pushing:
@@ -138,6 +137,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
      with an option to automatically run lint before every push
 - [ ] **Interactive stash list and log with fzf/tui**
 - [ ] **Undoable stash drop**
+- [ ] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
 
 ## License
 
