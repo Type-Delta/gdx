@@ -14,14 +14,15 @@ const MIN_TERM_WIDTH = 12;
 
 export default async function graph(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
-   const email = args.popValue('--email') || (await $`${git$} config user.email`).stdout;
+   let email = args.popValue('--email') || (await $`${git$} config user.email`).stdout;
+   email = email ? email.trim().replace(/^["']|["']$/g, '') : email;
 
    if (!email) {
       // LINK: uwnkd11 string literal in spec
       quickPrint(
          ncc('Red') +
-            'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
-            ncc()
+         'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
+         ncc()
       );
       return 1;
    }
@@ -39,16 +40,23 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    if (graphWidth < MIN_TERM_WIDTH) {
       quickPrint(
          ncc('Red') +
-            `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
-            ncc()
+         `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
+         ncc()
       );
       return 1;
    }
 
+   // Calculate start date (totalWeeks ago, aligned to week start)
+   const today = new Date();
+   const startDate = new Date(today);
+   const dayOfWeek = startDate.getDay(); // 0 (Sun) to 6 (Sat)
+   startDate.setDate(startDate.getDate() - dayOfWeek); // Move to last Sunday
+   startDate.setDate(startDate.getDate() - totalWeeks * 7);
+
    // Fetch commit data
    const strLog = (
       await $`
-      ${git$} --no-pager log --all --author=${email} --since=${totalWeeks + 1 + ' weeks ago'} --date=short --format=%ad
+      ${git$} --no-pager log --all --author=${email} --since=${startDate.toISOString()} --date=short --format=%ad
    `
    ).stdout.trim();
 
@@ -68,18 +76,11 @@ export default async function graph(ctx: GdxContext): Promise<number> {
       }
    }
 
-   // Calculate start date (totalWeeks ago, aligned to week start)
-   const today = new Date();
-   const startDate = new Date(today);
-   const dayOfWeek = startDate.getDay(); // 0 (Sun) to 6 (Sat)
-   startDate.setDate(startDate.getDate() - dayOfWeek); // Move to last Sunday
-   startDate.setDate(startDate.getDate() - totalWeeks * 7);
-
    quickPrint(
       '\n  ' +
-         ncc('Bright') +
-         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-         ` (Max: ${maxCommits} commits/day)\n`
+      ncc('Bright') +
+      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+      ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
