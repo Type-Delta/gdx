@@ -133,7 +133,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - env or sensitive content scanning
    - conflict markers
    - abnormal file sizes
-     with an option to automatically run lint before every push
+     with an option to automatically run lint before every push (bypass with `gdx push --no-lint`)
 - [ ] **Interactive stash list and log with fzf/tui**
 - [ ] **Undoable stash drop**
 - [ ] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)

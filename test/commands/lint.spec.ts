@@ -32,7 +32,8 @@ describe('gdx lint', async () => {
 
       const result = await lint(ctx);
       expect(result).toBe(0); // Warnings don't fail the command
-      expect(buffer.stdout).toContain('[Spelling]');
+      expect(buffer.stdout).toContain('LWARN');
+      expect(buffer.stdout).toContain('Spelling');
       expect(buffer.stdout).toContain('commmit');
    });
 
@@ -43,7 +44,8 @@ describe('gdx lint', async () => {
 
       const result = await lint(ctx);
       expect(result).toBe(1); // Errors fail the command
-      expect(buffer.stdout).toContain('[Sensitive]');
+      expect(buffer.stdout).toContain('LERROR');
+      expect(buffer.stdout).toContain('Sensitive Content');
       expect(buffer.stdout).toContain('secret.txt');
    });
 
@@ -61,8 +63,8 @@ describe('gdx lint', async () => {
 
       const result = await lint(ctx);
       expect(result).toBe(1);
-      expect(buffer.stdout).toContain('[Conflict]');
-      expect(buffer.stdout).toContain('conflict.txt');
+      expect(buffer.stdout).toContain('LERROR');
+      expect(buffer.stdout).toContain('Conflict Markers');
    });
 
    it('should detect large files', async () => {
@@ -77,7 +79,8 @@ describe('gdx lint', async () => {
 
       const result = await lint(ctx);
       expect(result).toBe(0); // Warnings don't fail
-      expect(buffer.stdout).toContain('[Size]');
+      expect(buffer.stdout).toContain('LWARN');
+      expect(buffer.stdout).toContain('Size');
       expect(buffer.stdout).toContain('large.bin');
    });
 });

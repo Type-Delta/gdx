@@ -127,7 +127,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
             if (sizeKb > maxFileSizeKb) {
                printLWarning(
                   'Size',
-                  `File size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB`
+                  `File: ${file}\nFile size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB`
                );
                warnings++;
             }

@@ -22,7 +22,6 @@ export class ArgsSet extends Array<string> {
             value = this[index + 1];
             this.splice(index, 2);
          }
-         // eslint-disable-next-line no-cond-assign
          else if ((value = getValueFromOption(this[index]))) {
             this.splice(index, 1);
          }

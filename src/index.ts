@@ -109,7 +109,7 @@ async function main(): Promise<number> {
             args[0] = 'push';
          case 'push':
             // Check for auto-lint
-            {
+            if (!args.popValue('--no-lint')) {
                const config = await getConfig();
                const behavior = (config.get<string>('lint.onPushBehavior') || 'off');
 
