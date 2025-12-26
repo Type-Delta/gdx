@@ -60,7 +60,7 @@ async function getParallelMetadata(worktreePath: string): Promise<ParallelMetada
 /**
  * Gets the context for parallel worktree operations
  */
-async function getParallelContext(git$: string): Promise<ParallelContext | null> {
+async function getParallelContext(git$: string | string[]): Promise<ParallelContext | null> {
    try {
       const repoRoot = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
       const projectName = path.basename(repoRoot);
@@ -135,7 +135,7 @@ function showUsage(): void {
 /**
  * Removes a parallel worktree
  */
-async function removeWorktree(git$: string, alias: string): Promise<number> {
+async function removeWorktree(git$: string | string[], alias: string): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -193,7 +193,7 @@ async function removeWorktree(git$: string, alias: string): Promise<number> {
 /**
  * Fork command - creates a new parallel worktree
  */
-async function cmdFork(git$: string, args: string[]): Promise<number> {
+async function cmdFork(git$: string | string[], args: string[]): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -332,7 +332,7 @@ async function cmdFork(git$: string, args: string[]): Promise<number> {
 /**
  * Remove command - removes a parallel worktree
  */
-async function cmdRemove(git$: string, args: string[]): Promise<number> {
+async function cmdRemove(git$: string | string[], args: string[]): Promise<number> {
    if (args.length < 1) {
       quickPrint(`${ncc('Red')}Error: Missing worktree alias to remove.${ncc()}`);
       showUsage();
@@ -385,7 +385,7 @@ async function cmdRemove(git$: string, args: string[]): Promise<number> {
 /**
  * Open command - opens a different worktree in the editor
  */
-async function cmdOpen(git$: string, args: string[], changeDir = false): Promise<number> {
+async function cmdOpen(git$: string | string[], args: string[], changeDir = false): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -443,7 +443,7 @@ async function cmdOpen(git$: string, args: string[], changeDir = false): Promise
  * Compares two worktrees and returns commits ahead/behind
  */
 async function getCommitComparison(
-   git$: string,
+   git$: string | string[],
    worktreePath: string,
    originPath: string
 ): Promise<{ ahead: number; behind: number }> {
@@ -489,7 +489,7 @@ async function getCommitComparison(
 /**
  * List command - lists all parallel worktrees
  */
-async function cmdList(git$: string, args: string[]): Promise<number> {
+async function cmdList(git$: string | string[], args: string[]): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -576,7 +576,7 @@ async function cmdList(git$: string, args: string[]): Promise<number> {
 /**
  * Join command - merges a parallel worktree back to origin
  */
-async function cmdJoin(git$: string, args: string[]): Promise<number> {
+async function cmdJoin(git$: string | string[], args: string[]): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 

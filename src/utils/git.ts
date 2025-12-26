@@ -2,7 +2,7 @@ import { ncc } from '@lib/Tools';
 import { quickPrint } from './utilities';
 import { $ } from './shell';
 
-export async function assertInGitWorktree(git$: string): Promise<boolean> {
+export async function assertInGitWorktree(git$: string | string[]): Promise<boolean> {
    try {
       await $`${git$} rev-parse --is-inside-work-tree`;
    } catch {

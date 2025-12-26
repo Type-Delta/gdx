@@ -3,7 +3,7 @@ import { RgbVec } from '@/utils/graphics';
 
 export interface GdxContext {
    args: ArgsSet;
-   git$: string;
+   git$: string | string[];
 }
 
 export interface SpinnerOptions {

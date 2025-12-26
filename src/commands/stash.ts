@@ -6,7 +6,7 @@ import { $inherit } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME } from '@/consts';
 
-async function dropRange(git$: string, args: string[]): Promise<number> {
+async function dropRange(git$: string | string[], args: string[]): Promise<number> {
    const [start, end] = args[2].split('..').map((s) => parseInt(s, 10));
 
    if (isNaN(start) || isNaN(end) || start > end) {
@@ -16,8 +16,8 @@ async function dropRange(git$: string, args: string[]): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-         ncc()
+      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+      ncc()
    );
    for (let i = end; i >= start; i--) {
       await $inherit`${git$} stash drop stash@{${i}}`;

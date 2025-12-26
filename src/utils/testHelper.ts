@@ -37,7 +37,7 @@ class TestEnvTracker {
 
 export function createGdxContext(tempDir: string, args: string[] = []): GdxContext {
    return {
-      git$: `git -C ${tempDir}`,
+      git$: ['git', '-C', tempDir],
       args: new ArgsSet(args),
    } satisfies GdxContext;
 }
