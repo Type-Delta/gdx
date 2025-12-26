@@ -12,6 +12,7 @@ import { help as parallelHelp } from './parallel';
 import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
+import { help as lintHelp } from './lint';
 import { CommandHelpObj } from '@/common/types';
 
 export default function help(name?: string): number {
@@ -95,6 +96,7 @@ stats           -> show user contribution statistics
 graph           -> show contribution graph
 nocap           -> generate a funny Gen-Z style comment for the latest commit by your commit author
 parallel        -> manage forked worktrees (fork/remove/join/switch/list)
+lint            -> lint outgoing commits for format, spelling, sensitive data, and more
 
 ${ncc('Bright') + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
 ${EXECUTABLE_NAME} stash l
@@ -145,6 +147,7 @@ ${ncc('Bright') + _2PointGradient('NOTES & SAFETY', COLOR.Zinc300, COLOR.Zinc100
       gdx_config: gdxConfigHelp,
       commit: commitHelp,
       clear: clearHelp,
+      lint: lintHelp,
    };
 
    if (cmdName === 'help') {

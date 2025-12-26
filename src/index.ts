@@ -1,5 +1,7 @@
 import { execa } from 'execa';
+
 import { Err, ncc, yuString } from '../lib/esm/Tools';
+
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, scheduleChangeDir, whichExec } from './utils/shell';
@@ -8,6 +10,7 @@ import { ArgsSet } from './utils/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';
+import { getConfig } from './common/config';
 
 const _args = process.argv.slice(2);
 
@@ -100,9 +103,30 @@ async function main(): Promise<number> {
                }
             }
             break;
+         case 'lint':
+            return await cmd.lint(ctx);
          case 'ps': // alias for 'push'
             args[0] = 'push';
          case 'push':
+            // Check for auto-lint
+            {
+               const config = await getConfig();
+               const behavior = (config.get<string>('lint.onPushBehavior') || 'off');
+
+               if (behavior === 'error' || behavior === 'warning') {
+                  const lintResult = await cmd.lint(ctx);
+                  if (lintResult !== 0) {
+                     if (behavior === 'error') {
+                        quickPrint(ncc('Red') + 'Lint failed. Push aborted.' + ncc());
+                        return 1;
+                     } else {
+                        quickPrint(
+                           ncc('Yellow') + 'Lint failed, but proceeding with push (warning mode).' + ncc()
+                        );
+                     }
+                  }
+               }
+            }
             // Handle -fl flag (force-with-lease)
             for (let i = 1; i < args.length; i++) {
                if (args[i] === '-fl') {
@@ -179,6 +203,8 @@ async function main(): Promise<number> {
                redirectMode = '>';
             }
             break;
+         case 'sta': // alias for 'stash'
+            args[0] = 'stash';
          case 'stash': {
             const subCmdMatch = progressiveMatch(args[1] || '', [
                'save',
@@ -212,7 +238,16 @@ async function main(): Promise<number> {
          case 'parallel':
             return cmd.parallel(ctx);
          default:
-            if (candidates && candidates.length > 1) break AliasNCustomCmd;
+            if (candidates && candidates.length > 1) {
+               quickPrint(
+                  ncc('Yellow') +
+                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+                     ', '
+                  )}?` +
+                  ncc()
+               );
+               break AliasNCustomCmd;
+            }
       }
    }
 

@@ -7,6 +7,7 @@ import commit from './commit';
 import gdxConfig from './gdx-config';
 import nocap from './nocap';
 import parallel from './parallel';
+import lint from './lint';
 
 export default {
    help: helpCmd,
@@ -18,4 +19,5 @@ export default {
    gdxConfig,
    nocap,
    parallel,
+   lint,
 };

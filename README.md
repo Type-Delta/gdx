@@ -128,8 +128,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
 - [ ] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell.
 - [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
 - [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
-- [ ] **Quick linting before push:** `gdx lint` to run following checks before pushing:
-   - commit message format
+- [x] **Quick linting before push:** `gdx lint` to run following checks before pushing:
    - commit message spelling
    - env or sensitive content scanning
    - conflict markers

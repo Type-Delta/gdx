@@ -60,6 +60,16 @@ export const STATS_EST = {
    AVG_LINES_PER_FILE: 500,
 };
 
+export const SENSITIVE_CONTENTS_REGEXES = [
+   /api[\w_-]?key[\w_-]?\s*=\s*['"].+['"]/i,
+   /access[\w_-]?token[\w_-]?\s*=\s*['"].+['"]/i,
+   /private[\w_-]?key[\w_-]?\s*=\s*['"].+['"]/i,
+   /sk-ant-[\d\w]{32,}/,
+   /sk-[\d\w]{32,}/,
+   /sk-or-v\d-[\d\w]{32,}/,
+   /-----\s*BEGIN PRIVATE KEY\s*-----/i,
+]
+
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';

@@ -7,6 +7,10 @@ export interface GdxConfig {
       temperature?: number;
       maxTokens?: number;
    };
+   lint?: {
+      onPushBehavior?: 'off' | 'error' | 'warning';
+      maxFileSizeKb?: number;
+   };
    defaultEditor: string;
 }
 
@@ -18,6 +22,10 @@ export const DEFAULT_CONFIG: GdxConfig = {
       maxTokens: undefined,
       apiKey: undefined,
       baseUrl: undefined,
+   },
+   lint: {
+      onPushBehavior: 'off',
+      maxFileSizeKb: 1024, // 1MB
    },
    defaultEditor: 'code',
 };
@@ -32,6 +40,8 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'llm.model': 'GDX_LLM_MODEL',
    'llm.temperature': 'GDX_LLM_TEMPERATURE',
    'llm.maxTokens': 'GDX_LLM_MAX_TOKENS',
+   'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
+   'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
 };
 
@@ -43,5 +53,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.model': 'Model to use for LLM requests',
    'llm.temperature': 'Temperature for LLM generation (0-2)',
    'llm.maxTokens': 'Maximum tokens for LLM responses',
+   'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
+   'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
    defaultEditor: 'Default code editor to open files with',
 };
