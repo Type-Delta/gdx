@@ -1,5 +1,5 @@
 import dedent from 'dedent';
-import { ncc, toShortNum } from '@lib/Tools';
+import { ncc, strWrap, toShortNum } from '@lib/Tools';
 import { spellCheckDocument } from 'cspell-lib';
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../utils/shell';
@@ -40,18 +40,28 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    // 1. Commit Message Spelling
    try {
-      const { stdout: logOutput } = await $`${git$} log --pretty=format:"%s\n%b" ${range}`;
+      const { stdout: logOutput } = await $`${git$} log --pretty=format:"%s\n%b$$\$___SEP___\$$$" ${range}`;
 
-      // Check spelling with cspell
-      const result = await spellCheckDocument(
-         { uri: 'commit-message', text: logOutput, languageId: 'plaintext', locale: 'en' },
-         { generateSuggestions: true, noConfigSearch: true },
-         {}
-      );
-      warnings += result.issues.length;
-      quickPrint(
-         '[Spelling] ' + prettyFormatIssues(result, logOutput)
-      );
+      // eslint-disable-next-line no-useless-escape
+      const commits = logOutput.split('$$\$___SEP___\$$$')
+         .filter(c => c.trim());
+
+      for (const [index, commitMsg] of commits.entries()) {
+         // Check spelling with cspell
+         const result = await spellCheckDocument(
+            { uri: 'commit-message', text: commitMsg, languageId: 'plaintext', locale: 'en' },
+            { generateSuggestions: true, noConfigSearch: true },
+            {}
+         );
+         if (result.issues.length === 0) continue;
+
+         warnings += result.issues.length;
+         printLWarning(
+            'Spelling',
+            `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
+            prettyFormatIssues(result, commitMsg)
+         );
+      }
    } catch {
       // Ignore if no commits found or other error
    }
@@ -74,8 +84,9 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          if (
             /\n?\+?<{7}(?:[^\n]*\n)*\+?={7}(?:[^\n]*\n)*\+?>{7}/.test(diffOutput)
          ) {
-            quickPrint(
-               ncc('Red') + `[Conflict] ${currentFile}: Found conflict markers` + ncc()
+            printLError(
+               'Conflict Markers',
+               `File: ${currentFile}\nPlease resolve merge conflict markers.`
             );
             errors++;
          }
@@ -88,10 +99,9 @@ export default async function lint(ctx: GdxContext): Promise<number> {
                // Check sensitive patterns
                for (const regex of SENSITIVE_CONTENTS_REGEXES) {
                   if (regex.test(content)) {
-                     quickPrint(
-                        ncc('Red') +
-                        `[Sensitive] ${currentFile}: Found potential sensitive content matching ${regex}` +
-                        ncc()
+                     printLError(
+                        'Sensitive Content',
+                        `File: ${currentFile}\nMatched Pattern: ${regex}\nContent: ${content}`
                      );
                      errors++;
                   }
@@ -115,10 +125,9 @@ export default async function lint(ctx: GdxContext): Promise<number> {
             const sizeKb = sizeBytes / 1024;
 
             if (sizeKb > maxFileSizeKb) {
-               quickPrint(
-                  ncc('Yellow') +
-                  `[Size] ${file}: File size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB` +
-                  ncc()
+               printLWarning(
+                  'Size',
+                  `File size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB`
                );
                warnings++;
             }
@@ -140,6 +149,28 @@ export default async function lint(ctx: GdxContext): Promise<number> {
       quickPrint(ncc('Green') + '\nNo problems found.' + ncc());
       return 0;
    }
+}
+
+function printLWarning(subject: string, message: string) {
+   message = strWrap(message, 100, {
+      indent: '  ',
+   });
+
+   quickPrint(
+      ncc('BgYellow') + ncc('Bright') + ncc('White') + ' LWARN ' + ncc() +
+      ncc('Invert') + ` ${subject} ${ncc() + ncc('Yellow')} ${message}` + ncc()
+   );
+}
+
+function printLError(subject: string, message: string) {
+   message = strWrap(message, 100, {
+      indent: '  ',
+   });
+
+   quickPrint(
+      ncc('BgRed') + ncc('Bright') + ncc('White') + ' LERROR ' + ncc() +
+      ncc('Invert') + ` ${subject} ${ncc() + ncc('Red')} ${message}` + ncc()
+   );
 }
 
 export const help = {
