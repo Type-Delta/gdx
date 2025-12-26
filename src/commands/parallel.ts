@@ -260,6 +260,7 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
    ).stdout.trim();
    const hasChanges = statusOutput.length > 0;
    let stashRef: string | null = null;
+   let changesOpt: null | string = null;
 
    if (hasChanges && (moveMode || mirrorMode)) {
       const stashMessage = `git-parallel:${alias}`;
@@ -267,8 +268,10 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
          if (mirrorMode) {
             const hash = await $`${git$} stash create --include-untracked`;
             await $`${git$} stash store -m ${stashMessage} ${hash}`;
+            changesOpt = 'mirrored';
          } else if (moveMode) {
             await $`${git$} stash push --include-untracked -m ${stashMessage}`;
+            changesOpt = 'moved';
          }
          stashRef = 'stash@{0}';
       } catch {
@@ -322,8 +325,8 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
    await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
 
    quickPrint(`${ncc('Cyan')}Parallel worktree created:${ncc()} ${targetPath}`);
-   if (hasChanges) {
-      quickPrint(`${ncc('Cyan')}Pending changes moved to fork '${alias}'.${ncc()}`);
+   if (changesOpt) {
+      quickPrint(`${ncc('Cyan')}Pending changes ${changesOpt} to fork '${alias}'.${ncc()}`);
    }
 
    return 0;

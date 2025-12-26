@@ -82,3 +82,8 @@ export function normalizePath(pathStr: string): string {
 
    return pathStr.replace(/[/\\]/g, '_').replace(/[<>:"|?*\x00-\x1f]/g, '_');
 }
+
+/**
+ * No operation.
+ */
+export const noop = (): void => { };

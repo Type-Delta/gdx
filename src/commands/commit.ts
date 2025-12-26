@@ -6,7 +6,7 @@ import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
-import { quickPrint } from '../utils/utilities';
+import { noop, quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import { commitMsgGenerator } from '../templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
@@ -111,9 +111,9 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       const tempFile = path.join(TEMP_DIR, `gdx_commit_msg_${Date.now()}.txt`);
       await fs.writeFile(tempFile, res, 'utf8');
 
-      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`.catch(() => {});
+      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`.catch(noop);
 
-      await fs.unlink(tempFile).catch(() => {});
+      await fs.unlink(tempFile).catch(noop);
       return 0;
    } catch (err) {
       quickPrint(yuString(err, { color: true }));

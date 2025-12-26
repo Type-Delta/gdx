@@ -7,7 +7,7 @@ import { resetConfig } from '@/common/config';
 import { $ } from '@/utils/shell';
 import { _process } from './utilities';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
-import { ncc } from '@lib/Tools';
+import { CheckCache, ncc } from '@lib/Tools';
 
 let testEnvCleared = false;
 
@@ -84,6 +84,9 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
 
    resetConfig();
+
+   // Disable all ANSI formatting for tests
+   CheckCache.supportsColor = 0;
 
    const buffer = { stdout: '', stderr: '' };
    process.env.NODE_ENV = 'test';
