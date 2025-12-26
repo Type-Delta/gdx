@@ -156,7 +156,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 /**
  * Creates an animated spinner that displays in the terminal.
- * Temporarily switches stdout to raw mode to draw animated frames.
  *
  * @param options - Configuration options for the spinner
  * @returns An object with `stop()` method to halt the spinner and restore stdout
@@ -275,7 +274,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  * The calling shell integration should handle the actual directory change
  * based on these global values.
  *
- * @param targetDir - The target directory to change to. If undefined, no change is scheduled.
+ * @param targetDir - The target directory to change to. If undefined, no change is scheduled and will reset the already scheduled change.
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {

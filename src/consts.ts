@@ -46,6 +46,7 @@ export const COLOR = {
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
    Zinc700: [63, 63, 70],
+   Zinc300: [212, 212, 216],
    Zinc100: [244, 244, 245],
    Fuchsia400: [232, 121, 249],
    Teal300: [94, 234, 212],

@@ -89,6 +89,7 @@ async function main(): Promise<number> {
             args[0] = 'merge';
             break;
          case 'pl': // alias for 'pull'
+         case 'pu':
             args[0] = 'pull';
          case 'pull':
             // Handle -au flag (allow-unrelated-histories)
