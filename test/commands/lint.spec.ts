@@ -2,10 +2,10 @@
 import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
+import dedent from 'dedent';
 
 import lint from '@/commands/lint';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
-import dedent from 'dedent';
 import { getConfig } from '@/common/config';
 
 describe('gdx lint', async () => {

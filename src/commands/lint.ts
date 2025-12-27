@@ -38,13 +38,19 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    let errors = 0;
    let warnings = 0;
 
-   // 1. Commit Message Spelling
-   try {
-      const { stdout: logOutput } = await $`${git$} log --pretty=format:"%s\n%b$$\$___SEP___\$$$" ${range}`;
+   // Run git commands in parallel
+   const [logOutput, diffOutput, filesOutput] = await Promise.all([
+      $`${git$} log --pretty=format:"%s\n%b$$\$___SEP___\$$$" ${range}`
+         .then((r) => r.stdout)
+         .catch(() => ''),
+      $`${git$} diff ${range}`.then((r) => r.stdout).catch(() => ''),
+      $`${git$} diff --name-only ${range}`.then((r) => r.stdout).catch(() => ''),
+   ]);
 
+   // 1. Commit Message Spelling
+   if (logOutput) {
       // eslint-disable-next-line no-useless-escape
-      const commits = logOutput.split('$$\$___SEP___\$$$')
-         .filter(c => c.trim());
+      const commits = logOutput.split('$$\$___SEP___\$$$').filter((c) => c.trim());
 
       for (const [index, commitMsg] of commits.entries()) {
          // Check spelling with cspell
@@ -62,28 +68,23 @@ export default async function lint(ctx: GdxContext): Promise<number> {
             prettyFormatIssues(result, commitMsg)
          );
       }
-   } catch {
-      // Ignore if no commits found or other error
    }
 
    // 2. Sensitive Content & Conflict Markers
-   try {
-      // Get the diff content
-      const { stdout: diffOutput } = await $`${git$} diff ${range}`;
+   if (diffOutput) {
       let currentFile = '';
 
       const files = diffOutput.split(/^diff --git a\/.+$/m);
       for (const fileDiff of files) {
          const lines = fileDiff.split('\n').filter((l) => l.trim());
-         currentFile = lines.slice(2, 4)
-            .find(l => l.startsWith('+++ b/'))
-            ?.split(' b/')[1]
-            || 'unknown';
+         currentFile =
+            lines
+               .slice(2, 4)
+               .find((l) => l.startsWith('+++ b/'))
+               ?.split(' b/')[1] || 'unknown';
 
          // Check conflict markers
-         if (
-            /\n?\+?<{7}(?:[^\n]*\n)*\+?={7}(?:[^\n]*\n)*\+?>{7}/.test(diffOutput)
-         ) {
+         if (/\n?\+?<{7}(?:[^\n]*\n)*\+?={7}(?:[^\n]*\n)*\+?>{7}/.test(diffOutput)) {
             printLError(
                'Conflict Markers',
                `File: ${currentFile}\nPlease resolve merge conflict markers.`
@@ -109,34 +110,36 @@ export default async function lint(ctx: GdxContext): Promise<number> {
             }
          }
       }
-   } catch {
-      // Ignore
    }
 
    // 3. Abnormal File Sizes
-   try {
-      const { stdout: filesOutput } = await $`${git$} diff --name-only ${range}`;
+   if (filesOutput) {
       const files = filesOutput.split('\n').filter((f) => f.trim());
-
-      for (const file of files) {
+      const sizePromises = files.map(async (file) => {
          try {
             const { stdout: sizeOutput } = await $`${git$} cat-file -s HEAD:${file}`;
             const sizeBytes = parseInt(sizeOutput.trim(), 10);
-            const sizeKb = sizeBytes / 1024;
-
-            if (sizeKb > maxFileSizeKb) {
-               printLWarning(
-                  'Size',
-                  `File: ${file}\nFile size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB`
-               );
-               warnings++;
-            }
+            return { file, sizeBytes };
          } catch {
-            // File might have been deleted
+            return null;
+         }
+      });
+
+      const sizes = await Promise.all(sizePromises);
+
+      for (const item of sizes) {
+         if (!item) continue;
+         const { file, sizeBytes } = item;
+         const sizeKb = sizeBytes / 1024;
+
+         if (sizeKb > maxFileSizeKb) {
+            printLWarning(
+               'Size',
+               `File: ${file}\nFile size ${toShortNum(sizeBytes)}B exceeds limit of ${maxFileSizeKb}KB`
+            );
+            warnings++;
          }
       }
-   } catch {
-      // Ignore
    }
 
    if (errors > 0) {

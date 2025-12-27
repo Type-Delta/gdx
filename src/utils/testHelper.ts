@@ -43,6 +43,7 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 }
 
 export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) {
+   console.time('createTestEnv');
    await clearTestEnvs();
 
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
@@ -64,24 +65,19 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
       }
    };
 
-   // Initialize a git repository
-   await _$`git init`;
-
-   // Set user config
-   await _$`git config user.name ${'Test User'}`;
-   await _$`git config user.email ${'test@example.com'}`;
-
-   // Create initial commit to ensure HEAD exists
-   await _$`git commit --allow-empty -m ${'Initial commit'}`;
-
    // Set env vars for isolation
    process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdxrc.toml');
    process.env.GDX_TEMP_DIR = tmpDir;
    process.env.GIT_CONFIG_NOSYSTEM = '1';
+
    // Create an empty global config file
    const globalConfigPath = path.join(tmpDir, '.gitconfig');
-   await fs.writeFile(globalConfigPath, '');
    process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
+
+   await Promise.all([
+      initGitRepo(_$), // Initialize a git repository
+      fs.writeFile(globalConfigPath, '') // Empty global git config
+   ]);
 
    resetConfig();
 
@@ -97,6 +93,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 
    attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
    const it = defineBunIt(tracker);
+   console.timeEnd('createTestEnv');
 
    return {
       tmpDir: tmpMockProjDir,
@@ -107,6 +104,19 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
       cleanup,
       it,
    };
+}
+
+async function initGitRepo(_$: typeof $) {
+   await _$`git init`;
+
+   // Set user config
+   await Promise.all([
+      _$`git config user.name ${'Test User'}`,
+      _$`git config user.email ${'test@example.com'}`,
+   ]);
+
+   // Create initial commit to ensure HEAD exists
+   await _$`git commit --allow-empty -m ${'Initial commit'}`;
 }
 
 function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTracker {

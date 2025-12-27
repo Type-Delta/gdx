@@ -8,7 +8,7 @@ await (async (milliseconds) => {
       // eslint-disable-next-line no-undef
       setTimeout(resolve, milliseconds);
    });
-})(1000);
+})(200);
 
 // eslint-disable-next-line no-undef
 process.exit(0);
