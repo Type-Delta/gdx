@@ -14,11 +14,12 @@ async function listConfig(): Promise<number> {
 
    const flatDefaults = flattenConfig(DEFAULT_CONFIG);
    const currentSection: string[] = [];
+   let listStr = '';
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -29,9 +30,10 @@ async function listConfig(): Promise<number> {
       // Print section header if changed
       if (!currentSection.includes(section)) {
          if (currentSection.length > 0) {
-            quickPrint(''); // Empty line between sections
+            listStr += '\n';
          }
-         quickPrint(`${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}`);
+         if (section)
+            listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
          currentSection.push(section);
       }
 
@@ -61,17 +63,17 @@ async function listConfig(): Promise<number> {
          ? ''
          : ` ${ncc() + ncc('Yellow') + ncc('Italic')}[Modified]${ncc() + ncc('Dim')}`;
       const comment = description ? ` ${ncc('Dim')}#${marker} ${description}${ncc()}` : '';
+      const pairStr = isUnset
+         ? `${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}\n`
+         : `${ncc('Cyan') + fieldName + ncc()} = ${displayValue}${comment}\n`;
 
-      if (isUnset) {
-         // Show unset values as comments
-         quickPrint(
-            `${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}`
-         );
-      } else {
-         quickPrint(`${ncc('Dim') + ncc('Cyan') + fieldName + ncc()} = ${displayValue}${comment}`);
-      }
+      if (currentSection[currentSection.length - 1] === '')
+         listStr = pairStr + '\n' + listStr;
+      else
+         listStr += pairStr;
    }
 
+   quickPrint(listStr, '');
    return 0;
 }
 

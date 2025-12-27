@@ -4,7 +4,7 @@ import { Err, ncc, yuString } from '../lib/esm/Tools';
 
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
-import { $, $inherit, scheduleChangeDir, whichExec } from './utils/shell';
+import { $, $inherit, whichExec } from './utils/shell';
 import { arrDelete, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './utils/arguments';
 import { GdxContext } from './common/types';
@@ -25,11 +25,6 @@ async function main(): Promise<number> {
       git$,
    };
    const args = ctx.args;
-
-   if (args[0] === 'test') {
-      await scheduleChangeDir(args[1] || '');
-      return 0;
-   }
 
    if (args[0] === '--init') {
       const shell = args.popValue('--shell');

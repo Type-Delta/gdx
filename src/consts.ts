@@ -66,7 +66,7 @@ export const SENSITIVE_CONTENTS_REGEXES = [
    /private[\w_-]?key[\w_-]?\s*=\s*['"].+['"]/i,
    /sk-ant-[\d\w]{32,}/,
    /sk-[\d\w]{32,}/,
-   /sk-or-v\d-[\d\w]{32,}/,
+   /sk-or-[\d\w]{32,}/,
    /-----\s*BEGIN PRIVATE KEY\s*-----/i,
 ]
 
