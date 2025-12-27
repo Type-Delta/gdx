@@ -21,6 +21,7 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 - **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
 - **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes (`drop 2..6`) without index shifting errors.
 - **📊 Local-First Stats:** Beautiful TrueColor graphs and stats generated from your local history.
+- **🤖 AI Integration:** Generate commit messages and roast your history with local or cloud LLMs.
 
 ## Installation
 
@@ -44,21 +45,42 @@ npm install -g gdx
 ```bash
 gdx s             # -> git status
 gdx lg            # -> git log --oneline --graph --all --decorate
+gdx lg export     # -> Exports git log to a markdown file
 gdx pl -au        # -> git pull --allow-unrelated-histories
 gdx ps -fl        # -> git push --force-with-lease
+gdx reset ~2      # -> git reset HEAD~2
 ```
 
 > [!NOTE]
 > This wrapper forwards unrecognized commands directly to `git`, so you can use it as a full git replacement.
 
-### 2. The Safety Net: `clear` vs `reset`
+### 2. AI-Powered Commits
+
+Struggling to write commit messages? Let `gdx` do it for you.
+
+```bash
+gdx commit auto   # Generates a commit message based on staged changes
+```
+
+### 3. Smart Linting
+
+Catch issues before they reach the remote. `gdx lint` checks for:
+
+- Spelling errors in commit messages
+- Conflict markers left in code
+- Sensitive content (keys, tokens)
+- Large files
+
+You can configure `gdx` to run this automatically before every push.
+
+### 4. The Safety Net: `clear` vs `reset`
 
 We've all accidentally reset files we meant to keep. `gdx clear` is the solution.
 
 - **`gdx clear`**: Creates a timestamped patch backup in a temp folder, then effectively runs `reset --hard` & `clean -fd`.
 - **`gdx clear pardon`**: "Wait, I didn't mean to do that." Applies the backup patch and restores your changes.
 
-### 3. Parallel Worktrees (Experimental)
+### 5. Parallel Worktrees (Experimental)
 
 Need to work on the **same branch** in multiple isolated environments without checking out new branches?
 
@@ -70,7 +92,7 @@ gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
 ```
 
-### 4. Advanced Stash Management
+### 6. Advanced Stash Management
 
 Git stash is great until you need to clean it up.
 
@@ -80,7 +102,7 @@ gdx sta d 2..6      # Drops stashes 2 through 6.
                     # (Smartly drops high->low to prevent index shifting!)
 ```
 
-### 5. Fun & Analytics
+### 7. Fun & Analytics
 
 Tools to help you feel productive without leaving the terminal.
 
@@ -90,15 +112,17 @@ Tools to help you feel productive without leaving the terminal.
 
 ## Command Reference
 
-| Command      | Expansion / Function                               |
-| :----------- | :------------------------------------------------- |
-| `s`, `stat`  | `git status`                                       |
-| `lg`, `lo`   | `git log --oneline --graph --all --decorate`       |
-| `sw`, `swit` | `git switch`                                       |
-| `br`, `bra`  | `git branch`                                       |
-| `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!) |
-| `res`        | `git reset` (supports `res ~3` expansion)          |
-| `sta`, `st`  | `git stash`                                        |
+| Command      | Expansion / Function                                |
+| :----------- | :-------------------------------------------------- |
+| `s`, `stat`  | `git status`                                        |
+| `lg`, `lo`   | `git log --oneline --graph --all --decorate`        |
+| `sw`, `swit` | `git switch`                                        |
+| `br`, `bra`  | `git branch`                                        |
+| `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!)  |
+| `res`        | `git reset` (supports `res ~3`, `res -h` expansion) |
+| `sta`, `st`  | `git stash`                                         |
+| `lint`       | Run pre-push checks (spelling, secrets, etc.)       |
+| `gdx-config` | Manage gdx configuration                            |
 
 _Run `gdx ghelp` to see the full list of expansions._
 
