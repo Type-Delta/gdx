@@ -76,7 +76,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 
    await Promise.all([
       initGitRepo(_$), // Initialize a git repository
-      fs.writeFile(globalConfigPath, '') // Empty global git config
+      fs.writeFile(globalConfigPath, ''), // Empty global git config
    ]);
 
    resetConfig();

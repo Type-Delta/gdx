@@ -5,7 +5,14 @@ import dedent from 'dedent';
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, $prompt, copyToClipboard, openInEditor, scheduleChangeDir } from '../utils/shell';
+import {
+   $,
+   $inherit,
+   $prompt,
+   copyToClipboard,
+   openInEditor,
+   scheduleChangeDir,
+} from '../utils/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
 
@@ -166,7 +173,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    } catch (err) {
       quickPrint(
          `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
-         yuString(err, { color: true })
+            yuString(err, { color: true })
       );
 
       const response = await $prompt(
@@ -388,7 +395,11 @@ async function cmdRemove(git$: string | string[], args: string[]): Promise<numbe
 /**
  * Open command - opens a different worktree in the editor
  */
-async function cmdOpen(git$: string | string[], args: string[], changeDir = false): Promise<number> {
+async function cmdOpen(
+   git$: string | string[],
+   args: string[],
+   changeDir = false
+): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -436,8 +447,7 @@ async function cmdOpen(git$: string | string[], args: string[], changeDir = fals
       return 0;
    }
 
-   if (changeDir)
-      await scheduleChangeDir(destination);
+   if (changeDir) await scheduleChangeDir(destination);
    else await openInEditor(destination);
    return 0;
 }
@@ -724,9 +734,9 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch {
       if (stashRef) {

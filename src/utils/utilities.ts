@@ -86,4 +86,4 @@ export function normalizePath(pathStr: string): string {
 /**
  * No operation.
  */
-export const noop = (): void => { };
+export const noop = (): void => {};

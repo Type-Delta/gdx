@@ -106,7 +106,7 @@ async function main(): Promise<number> {
             // Check for auto-lint
             if (!args.popValue('--no-lint')) {
                const config = await getConfig();
-               const behavior = (config.get<string>('lint.onPushBehavior') || 'off');
+               const behavior = config.get<string>('lint.onPushBehavior') || 'off';
 
                if (behavior === 'error' || behavior === 'warning') {
                   const lintResult = await cmd.lint(ctx);
@@ -116,7 +116,9 @@ async function main(): Promise<number> {
                         return 1;
                      } else {
                         quickPrint(
-                           ncc('Yellow') + 'Lint failed, but proceeding with push (warning mode).' + ncc()
+                           ncc('Yellow') +
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -236,10 +238,10 @@ async function main(): Promise<number> {
             if (candidates && candidates.length > 1) {
                quickPrint(
                   ncc('Yellow') +
-                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
-                     ', '
-                  )}?` +
-                  ncc()
+                     `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+                        ', '
+                     )}?` +
+                     ncc()
                );
                break AliasNCustomCmd;
             }
@@ -286,11 +288,7 @@ async function main(): Promise<number> {
          quickPrint(global.finalStringOutput);
       }
 
-      process.exit(
-         global.exitCodeOverride >= 0
-            ? global.exitCodeOverride
-            : exitCode
-      );
+      process.exit(global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode);
    } catch (err) {
       console.error(yuString(err, { color: true }));
       process.exit(1);

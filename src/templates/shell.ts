@@ -1,4 +1,4 @@
-import { GDX_SIGNAL_CODE } from "@/consts";
+import { GDX_SIGNAL_CODE } from '@/consts';
 
 export const generateBashScript = (cmd: string = 'gdx'): string => {
    return `# gdx shell integration

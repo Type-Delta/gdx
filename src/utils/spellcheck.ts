@@ -6,7 +6,10 @@ export function prettyFormatIssues(result: SpellCheckFileResult, context: string
       return ncc('Green') + '✓ No spelling issues found!' + ncc();
    }
 
-   let output = ncc('Yellow') + `✗ Found ${result.issues.length} spelling issue${result.issues.length === 1 ? '' : 's'}:\n` + ncc();
+   let output =
+      ncc('Yellow') +
+      `✗ Found ${result.issues.length} spelling issue${result.issues.length === 1 ? '' : 's'}:\n` +
+      ncc();
    output += ncc('Dim') + '─'.repeat(60) + '\n\n' + ncc();
 
    const cyan = ncc('Cyan');

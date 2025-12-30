@@ -16,8 +16,9 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
 
       // Get latest commit message from this author
       const latestCommitMessage = (
-         await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`
-            .catch(noop)
+         await $`${git$} log -1 --pretty=format:%s\n\n%b --author=${authorMail} --no-merges`.catch(
+            noop
+         )
       )?.stdout.trim();
 
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
@@ -57,7 +58,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
             spin.stop();
             quickPrint(
                `${ncc('Red')}😭 ill bro, the server rejected u${ncc()}\n\n` +
-               yuString(response.error, { color: true })
+                  yuString(response.error, { color: true })
             );
             return 1;
          }

@@ -19,7 +19,8 @@ export default function help(name?: string): number {
    if (!name) {
       // LINK: dn2jka text literal in spec
       quickPrint(
-         strWrap(`
+         strWrap(
+            `
 ──────────────────────────────
 ${ncc('Bright') + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83)}
 ──────────────────────────────
@@ -27,11 +28,11 @@ ${ncc('Bright') + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanD
 Git, but with better DX. The raw power of Git,
 aligned with human workflows.
 
-${ncc('Bright') + _2PointGradient('NAME', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('NAME', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 ${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for git (executable) with common shortcuts,
 stash-range support, and convenience expansions.
 
-${ncc('Bright') + _2PointGradient('SYNOPSIS', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('SYNOPSIS', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 ${EXECUTABLE_NAME} <command> [<args>]
 Examples:
    ${EXECUTABLE_NAME} st           # shorthand for ${EXECUTABLE_NAME} stash
@@ -40,13 +41,13 @@ Examples:
    ${EXECUTABLE_NAME} clear        # backup changes to a temp patch file and reset working directory (use \`${EXECUTABLE_NAME} clear pardon\` to restore)
    ${EXECUTABLE_NAME} cmi auto     # generate commit message based on staged changes using LLM
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 This wrapper provides short, ergonomic aliases for common ${EXECUTABLE_NAME} commands,
 automatic argument expansion for a few patterns, and utilities for
 manipulating stashes and logs. It forwards unrecognized commands/args to
 ${EXECUTABLE_NAME}.exe unchanged.
 
-${ncc('Bright') + _2PointGradient('KEY FEATURES', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('KEY FEATURES', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 - Many short aliases for common commands (commit, branch, checkout, etc.).
 - Smart expansions:
    - log: ${EXECUTABLE_NAME} lg -> ${EXECUTABLE_NAME} log --oneline --graph --all --decorate
@@ -70,7 +71,7 @@ ${ncc('Bright') + _2PointGradient('KEY FEATURES', COLOR.Zinc300, COLOR.Zinc100, 
    - Parallel worktrees:
       - ${EXECUTABLE_NAME} parallel fork/remove/join/switch/list for temp-backed worktree workflows.
 
-${ncc('Bright') + _2PointGradient('SHORTHAND LIST (common)', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('SHORTHAND LIST (common)', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 ad              -> add
 bra, br         -> branch
 clear           -> clear (backup changes and reset working directory; use \`pardon\` to restore)
@@ -90,7 +91,7 @@ sta, st         -> stash
 s, stat         -> status
 swit, sw        -> switch
 
-${ncc('Bright') + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 clear           -> backup changes to a temp patch file and reset working directory
 stats           -> show user contribution statistics
 graph           -> show contribution graph
@@ -98,7 +99,7 @@ nocap           -> generate a funny Gen-Z style comment for the latest commit by
 parallel        -> manage forked worktrees (fork/remove/join/switch/list)
 lint            -> lint outgoing commits for format, spelling, sensitive data, and more
 
-${ncc('Bright') + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 ${EXECUTABLE_NAME} stash l
    Show stash list (alias for ${EXECUTABLE_NAME} stash list).
 
@@ -114,12 +115,12 @@ ${EXECUTABLE_NAME} stash p 1
 ${EXECUTABLE_NAME} stash c
    Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).
 
-${ncc('Bright') + _2PointGradient('LOG EXPORT EXAMPLE', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('LOG EXPORT EXAMPLE', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 ${EXECUTABLE_NAME} lg export --author="me@example.com"
    Generate a formatted log export file (wrapper will add default
    --author if missing and format the output for export).
 
-${ncc('Bright') + _2PointGradient('NOTES & SAFETY', COLOR.Zinc300, COLOR.Zinc100, .2) + ncc()}
+${ncc('Bright') + _2PointGradient('NOTES & SAFETY', COLOR.Zinc300, COLOR.Zinc100, 0.2) + ncc()}
 - Dropping stashes is destructive. Use -WhatIf or -Confirm with the
    wrapper if available (recommended to enable CmdletBinding(SupportsShouldProcess)).
 - Range notation must be numeric and in the form start..end (e.g. 2..6).
@@ -127,11 +128,13 @@ ${ncc('Bright') + _2PointGradient('NOTES & SAFETY', COLOR.Zinc300, COLOR.Zinc100
 - If you rely on advanced argument parsing or unusual ${EXECUTABLE_NAME} flags, you can
    bypass expansions by using the full command name or quoting/ordering args
    so they are not recognized as shorthand triggers.`,
-            100, {
-            firstIndent: '  ',
-            mode: 'softboundery',
-            indent: '  '
-         })
+            100,
+            {
+               firstIndent: '  ',
+               mode: 'softboundery',
+               indent: '  ',
+            }
+         )
       );
       return 0;
    }

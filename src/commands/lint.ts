@@ -21,7 +21,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    let upstream = '';
    try {
-      const { stdout } = await $`${git$} rev-parse --abbrev-ref --symbolic-full-name @{u}`
+      const { stdout } = await $`${git$} rev-parse --abbrev-ref --symbolic-full-name @{u}`;
       upstream = stdout.trim();
    } catch {
       // No upstream configured
@@ -65,7 +65,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-            prettyFormatIssues(result, commitMsg)
+               prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -143,7 +143,9 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    }
 
    if (errors > 0) {
-      quickPrint(ncc('Red') + `\nLint failed with ${errors} errors and ${warnings} warnings.` + ncc());
+      quickPrint(
+         ncc('Red') + `\nLint failed with ${errors} errors and ${warnings} warnings.` + ncc()
+      );
       return 1;
    } else if (warnings > 0) {
       quickPrint(ncc('Yellow') + `\nLint passed with ${warnings} warnings.` + ncc());
@@ -160,8 +162,14 @@ function printLWarning(subject: string, message: string) {
    });
 
    quickPrint(
-      ncc('BgYellow') + ncc('Bright') + ncc('White') + ' LWARN ' + ncc() +
-      ncc('Invert') + ` ${subject} ${ncc() + ncc('Yellow')} ${message}` + ncc()
+      ncc('BgYellow') +
+         ncc('Bright') +
+         ncc('White') +
+         ' LWARN ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
+         ncc()
    );
 }
 
@@ -171,8 +179,14 @@ function printLError(subject: string, message: string) {
    });
 
    quickPrint(
-      ncc('BgRed') + ncc('Bright') + ncc('White') + ' LERROR ' + ncc() +
-      ncc('Invert') + ` ${subject} ${ncc() + ncc('Red')} ${message}` + ncc()
+      ncc('BgRed') +
+         ncc('Bright') +
+         ncc('White') +
+         ' LERROR ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Red')} ${message}` +
+         ncc()
    );
 }
 

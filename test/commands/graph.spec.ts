@@ -62,10 +62,10 @@ describe('gdx graph', async () => {
 
          // Create commits with specific dates
          // Friday Dec 22, 2023 (Today)
-         await $`git -C ${tmpDir} commit --allow-empty -m ${"Fri commit"} --date=${"2023-12-22T12:00:00"}`;
+         await $`git -C ${tmpDir} commit --allow-empty -m ${'Fri commit'} --date=${'2023-12-22T12:00:00'}`;
 
          // Wednesday Dec 20, 2023
-         await $`git -C ${tmpDir} commit --allow-empty -m ${"Wed commit"} --date=${"2023-12-20T12:00:00"}`;
+         await $`git -C ${tmpDir} commit --allow-empty -m ${'Wed commit'} --date=${'2023-12-20T12:00:00'}`;
 
          buffer.stdout = '';
          const result = await graph(ctx);
@@ -75,35 +75,36 @@ describe('gdx graph', async () => {
 
          // Verify Month Label
          // The header line should contain "Dec" near the end
-         const headerLine = lines.find(l => l.trim().includes('Dec') && !l.includes('Contribution Graph'));
+         const headerLine = lines.find(
+            (l) => l.trim().includes('Dec') && !l.includes('Contribution Graph')
+         );
          expect(headerLine).toBeDefined();
          // "Dec" should be one of the last labels
          expect(headerLine!.trim().endsWith('Dec')).toBe(true);
 
          // Verify Rows
          // Row 5 is Friday. It should end with a commit block (■)
-         const friRow = lines.find(l => l.includes('Fri'));
+         const friRow = lines.find((l) => l.includes('Fri'));
          expect(friRow).toBeDefined();
          // The row ends with a space, so trimEnd()
          // It should end with ■ because we have a commit today
          expect(friRow!.trimEnd().endsWith('■')).toBe(true);
 
          // Row 3 is Wednesday. It should end with a commit block (■)
-         const wedRow = lines.find(l => l.includes('Wed'));
+         const wedRow = lines.find((l) => l.includes('Wed'));
          expect(wedRow).toBeDefined();
          expect(wedRow!.trimEnd().endsWith('■')).toBe(true);
 
          // Row 6 is Saturday (unlabeled, follows Fri).
          // It should be empty at the end (future)
          // We need to find the line after Fri
-         const friIndex = lines.findIndex(l => l.includes('Fri'));
+         const friIndex = lines.findIndex((l) => l.includes('Fri'));
          const satRow = lines[friIndex + 1];
          expect(satRow).toBeDefined();
 
          // The last cell should be empty (spaces), so the line should end with spaces.
          // Note: trimEnd() would remove these spaces and expose the previous week's cell.
          expect(satRow!.endsWith('  ')).toBe(true);
-
       } finally {
          setSystemTime(); // Reset time
       }

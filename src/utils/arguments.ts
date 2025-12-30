@@ -21,8 +21,7 @@ export class ArgsSet extends Array<string> {
          if (index + 1 < this.length) {
             value = this[index + 1];
             this.splice(index, 2);
-         }
-         else if ((value = getValueFromOption(this[index]))) {
+         } else if ((value = getValueFromOption(this[index]))) {
             this.splice(index, 1);
          }
          return value;

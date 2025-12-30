@@ -16,8 +16,8 @@ async function dropRange(git$: string | string[], args: string[]): Promise<numbe
 
    quickPrint(
       ncc('Cyan') +
-      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-      ncc()
+         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+         ncc()
    );
    for (let i = end; i >= start; i--) {
       await $inherit`${git$} stash drop stash@{${i}}`;

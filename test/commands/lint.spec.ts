@@ -1,4 +1,3 @@
-
 import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
@@ -38,7 +37,10 @@ describe('gdx lint', async () => {
    });
 
    it('should detect sensitive content', async () => {
-      await fs.writeFile(path.join(tmpDir, 'secret.txt'), 'api_key = "sk-12345678901234567890123456789012"');
+      await fs.writeFile(
+         path.join(tmpDir, 'secret.txt'),
+         'api_key = "sk-12345678901234567890123456789012"'
+      );
       await $`git add secret.txt`;
       await $`git commit -m ${'feat: add secret'}`;
 

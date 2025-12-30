@@ -18,8 +18,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-      ncc()
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -32,8 +32,7 @@ async function listConfig(): Promise<number> {
          if (currentSection.length > 0) {
             listStr += '\n';
          }
-         if (section)
-            listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
+         if (section) listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
          currentSection.push(section);
       }
 
@@ -67,10 +66,8 @@ async function listConfig(): Promise<number> {
          ? `${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}\n`
          : `${ncc('Cyan') + fieldName + ncc()} = ${displayValue}${comment}\n`;
 
-      if (currentSection[currentSection.length - 1] === '')
-         listStr = pairStr + '\n' + listStr;
-      else
-         listStr += pairStr;
+      if (currentSection[currentSection.length - 1] === '') listStr = pairStr + '\n' + listStr;
+      else listStr += pairStr;
    }
 
    quickPrint(listStr, '');
