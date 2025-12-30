@@ -5,7 +5,7 @@ import { Err, ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './utils/shell';
-import { arrDelete, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
+import { escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './utils/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
@@ -166,39 +166,35 @@ async function main(): Promise<number> {
                }
             }
             break;
+         case 'log':
          case 'lg': // alias for 'log'
-            args[0] = 'log';
-
-            if (args.length === 1) {
+            if (args[0] === 'lg' && args.length === 1) {
                args.push('--oneline', '--graph', '--decorate', '--all');
-            } else if (args.includes('export')) {
-               arrDelete('export', args);
-
+            }
+            else if (args.popOption('export', 0)) {
                // Handle 'lg export' case
-               const rest = args.slice(1);
                let dateFmt: string = '--date=format:"%Y-%m-%d %H:%M"';
-               const hasAuthor = rest.some(
-                  (arg) => arg === '--author' || arg.startsWith('--author=')
-               );
+               const hasAuthor = args.hasOption('--author', 1);
 
                if (!hasAuthor) {
                   args.push('--author=' + (await $`${git$} config user.email`).stdout.trim());
                }
 
-               if (rest.includes('--relative')) {
+               if (args.popValue('--relative', 1)) {
                   dateFmt = '--date=format:"%Y-%m-%d %H:%M" (%ar)';
-                  arrDelete('--relative', rest);
                }
 
                const additionalArgs = [
                   '--all',
                   '--pretty=format:## Commit %h on [%p] - %ad%d\n%s\n\n%b\n---\n',
                   dateFmt,
-               ].filter((arg) => !rest.some((a) => a === arg || a.startsWith(arg.split('=')[0])));
+               ].filter((arg) => !args.hasOption(arg, 1));
                args.push(...additionalArgs);
                redirectTo = 'gitlog_export.md';
                redirectMode = '>';
             }
+
+            args[0] = 'log';
             break;
          case 'sta': // alias for 'stash'
             args[0] = 'stash';
