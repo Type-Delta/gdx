@@ -17,7 +17,8 @@
   "scripts": {
     "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
-    "transpile-esm": "npx tsc -p lib/tsconfig.json && npx babel lib/*.js --out-dir lib/esm",
+    "start:node": "tsx src/index.ts",
+    "transpile-esm": "npx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
@@ -35,7 +36,7 @@
     "bun-types": "latest",
     "chai": "^6.2.1",
     "eslint": "^9.22.0",
-    "jiti": "^2.6.1",
+    "tsx": "^4.21.0",
     "prettier": "^3.6.2",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.50.0"
