@@ -5,17 +5,17 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 describe('gdx stats', async () => {
    const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
-
+   const { git$ } = ctx;
    afterAll(cleanup);
 
    it('should fail if no email configured (and not provided)', async () => {
-      await $`git -C ${tmpDir} config --unset user.email`;
+      await $`${git$} config --unset user.email`;
 
       const result = await stats(ctx);
       expect(result).toBe(1);
       expect(buffer.stdout).toContain('Failed to read git config user.email');
 
-      await $`git -C ${tmpDir} config user.email "test@example.com"`;
+      await $`${git$} config user.email "test@example.com"`;
    });
 
    it('should calculate stats for empty repo', async () => {
@@ -27,7 +27,7 @@ describe('gdx stats', async () => {
    });
 
    it('should calculate stats with commits', async () => {
-      await $`git -C ${tmpDir} commit --allow-empty -m ${'commit 1'}`;
+      await $`${git$} commit --allow-empty -m ${'commit 1'}`;
       const result = await stats(ctx);
 
       expect(result).toBe(0);

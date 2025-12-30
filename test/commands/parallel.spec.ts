@@ -7,6 +7,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
    const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { git$ } = createGdxContext(tmpDir);
    afterAll(cleanup);
 
    it('should list empty worktrees initially', async () => {
@@ -20,7 +21,7 @@ describe('gdx parallel', async () => {
 
    it('should fork a new worktree', async () => {
       // Need a commit to branch off
-      await $`git -C ${tmpDir} commit --allow-empty -m ${'Initial commit'}`;
+      await $`${git$} commit --allow-empty -m ${'Initial commit'}`;
 
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
       const result = await parallel(forkCtx);

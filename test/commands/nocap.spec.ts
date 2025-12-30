@@ -10,6 +10,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 describe('gdx nocap', async () => {
    const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: false });
    const ctx = createGdxContext(tmpDir);
+   const { git$ } = ctx;
    afterAll(cleanup);
 
    let result: number;
@@ -25,7 +26,7 @@ describe('gdx nocap', async () => {
 
    it('should return 0 when a commit exists', async () => {
       // Create a commit
-      await $`git -C ${tmpDir} commit --allow-empty -m ${'My Initial commit'}`;
+      await $`${git$} commit --allow-empty -m ${'My Initial commit'}`;
       buffer.stdout = '';
       buffer.stderr = '';
 

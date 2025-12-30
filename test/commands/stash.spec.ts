@@ -8,16 +8,17 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 describe('gdx stash drop X..Y (stash.dropRange())', async () => {
    const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
+   const { git$ } = ctx;
    afterAll(cleanup);
 
    // create initial commits
-   await $`git -C ${tmpDir} commit --allow-empty -m ${'Initial commit'}`;
+   await $`${git$} commit --allow-empty -m ${'Initial commit'}`;
 
    // create some stashes
    for (let i = 0; i < 5; i++) {
       await fs.writeFile(`${tmpDir}/file${i}.txt`, `Content for file ${i}`);
-      await $`git -C ${tmpDir} add .`;
-      await $`git -C ${tmpDir} stash push -m ${`Stash ${i}`}`;
+      await $`${git$} add .`;
+      await $`${git$} stash push -m ${`Stash ${i}`}`;
    }
 
    it('should drop stashes in the specified range', async () => {
@@ -25,7 +26,7 @@ describe('gdx stash drop X..Y (stash.dropRange())', async () => {
       expect(result).to.equal(0);
 
       // Verify remaining stashes
-      const { stdout } = await $`git -C ${tmpDir} stash list`;
+      const { stdout } = await $`${git$} stash list`;
       const stashes = stdout
          .trim()
          .split('\n')

@@ -4,12 +4,13 @@ import path from 'path';
 import { GdxContext } from '@/common/types';
 import { ArgsSet } from './arguments';
 import { resetConfig } from '@/common/config';
-import { $ } from '@/utils/shell';
+import { $, whichExec } from '@/utils/shell';
 import { _process } from './utilities';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import { CheckCache, ncc } from '@lib/Tools';
 
 let testEnvCleared = false;
+let gitExePath: string | null = null;
 
 interface TestSystem {
    lastTestStatus: 'notrun' | 'passed' | 'failed';
@@ -36,8 +37,12 @@ class TestEnvTracker {
 }
 
 export function createGdxContext(tempDir: string, args: string[] = []): GdxContext {
+   if (!gitExePath) {
+      throw new Error('Git executable path not set. Call createTestEnv() first.');
+   }
+
    return {
-      git$: ['git', '-C', tempDir],
+      git$: [gitExePath, '-C', tempDir],
       args: new ArgsSet(args),
    } satisfies GdxContext;
 }
@@ -45,6 +50,9 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) {
    console.time('createTestEnv');
    await clearTestEnvs();
+
+   if (!gitExePath)
+      await findGitExecutable();
 
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));
@@ -107,16 +115,16 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 }
 
 async function initGitRepo(_$: typeof $) {
-   await _$`git init`;
+   await _$`${gitExePath!} init`;
 
    // Set user config
    await Promise.all([
-      _$`git config user.name ${'Test User'}`,
-      _$`git config user.email ${'test@example.com'}`,
+      _$`${gitExePath!} config user.name ${'Test User'}`,
+      _$`${gitExePath!} config user.email ${'test@example.com'}`,
    ]);
 
    // Create initial commit to ensure HEAD exists
-   await _$`git commit --allow-empty -m ${'Initial commit'}`;
+   await _$`${gitExePath!} commit --allow-empty -m ${'Initial commit'}`;
 }
 
 function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTracker {
@@ -169,6 +177,20 @@ async function clearTestEnvs() {
    } catch {
       console.error(`Failed to clear test envs in: ${baseTestEnvDir}`);
    }
+}
+
+/**
+ * Finds the git executable path and caches it.
+ */
+async function findGitExecutable(): Promise<string> {
+   if (gitExePath) return gitExePath;
+
+   const gitPath = await whichExec('git');
+   if (!gitPath) {
+      throw new Error('Git executable not found in PATH.');
+   }
+   gitExePath = gitPath;
+   return gitExePath;
 }
 
 function defineBunIt(tracker: TestEnvTracker) {

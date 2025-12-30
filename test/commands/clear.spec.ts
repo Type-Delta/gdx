@@ -7,12 +7,13 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx clear', async () => {
    const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { git$ } = createGdxContext(tmpDir);
    afterAll(cleanup);
 
    it('should abort if directory containts untrack file', async () => {
       // Create a file and stage it (dirty state)
       await fs.writeFile(path.join(tmpDir, 'test.txt'), 'content');
-      await $`git -C ${tmpDir} add test.txt`;
+      await $`${git$} add test.txt`;
 
       // Create an unstaged file (this file should prevent clear without --force)
       await fs.writeFile(path.join(tmpDir, 'unstaged.txt'), 'content');
