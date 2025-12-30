@@ -17,7 +17,7 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 **Why gdx?**
 
-- **⚡ Speed:** Type less. `gdx s` is `status`. `gdx sta l` is `stash list`.
+- **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`?, `git reset HEAD~3`? why not `gdx res ~3`?
 - **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
 - **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes (`drop 2..6`) without index shifting errors.
 - **📊 Local-First Stats:** Beautiful TrueColor graphs and stats generated from your local history.
@@ -54,15 +54,7 @@ gdx reset ~2      # -> git reset HEAD~2
 > [!NOTE]
 > This wrapper forwards unrecognized commands directly to `git`, so you can use it as a full git replacement.
 
-### 2. AI-Powered Commits
-
-Struggling to write commit messages? Let `gdx` do it for you.
-
-```bash
-gdx commit auto   # Generates a commit message based on staged changes
-```
-
-### 3. Smart Linting
+### 2. Smart Linting
 
 Catch issues before they reach the remote. `gdx lint` checks for:
 
@@ -73,14 +65,14 @@ Catch issues before they reach the remote. `gdx lint` checks for:
 
 You can configure `gdx` to run this automatically before every push.
 
-### 4. The Safety Net: `clear` vs `reset`
+### 3. The Safety Net: `clear` vs `reset`
 
 We've all accidentally reset files we meant to keep. `gdx clear` is the solution.
 
 - **`gdx clear`**: Creates a timestamped patch backup in a temp folder, then effectively runs `reset --hard` & `clean -fd`.
 - **`gdx clear pardon`**: "Wait, I didn't mean to do that." Applies the backup patch and restores your changes.
 
-### 5. Parallel Worktrees (Experimental)
+### 4. Parallel Worktrees (Experimental)
 
 Need to work on the **same branch** in multiple isolated environments without checking out new branches?
 
@@ -88,11 +80,12 @@ Need to work on the **same branch** in multiple isolated environments without ch
 # Manage forked worktrees for the current branch
 gdx parallel fork    # Create a new temp-backed fork
 gdx parallel list    # See where your forks are
+gdx parallel switch  # Switch between forks (requires shell integration)
 gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
 ```
 
-### 6. Advanced Stash Management
+### 5. Advanced Stash Management
 
 Git stash is great until you need to clean it up.
 
@@ -100,6 +93,14 @@ Git stash is great until you need to clean it up.
 gdx sta l           # git stash list
 gdx sta d 2..6      # Drops stashes 2 through 6.
                     # (Smartly drops high->low to prevent index shifting!)
+```
+
+### 6. AI-Powered Commits
+
+Struggling to write commit messages? Let `gdx` do it for you.
+
+```bash
+gdx commit auto   # Generates a commit message based on staged changes
 ```
 
 ### 7. Fun & Analytics
@@ -159,11 +160,12 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - abnormal file sizes
      with an option to automatically run lint before every push (bypass with `gdx push --no-lint`)
 - [ ] **Undoable stash drop**
-- [ ] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
+- [x] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
 - [ ] **Seamless Integration with fzf and cloc**
       automatically detect and use fzf and/or cloc if installed for:
    - Interactive fuzzy search for branches, commits, stash, log and files instead of `less`
    - Code line statistics in `gdx stats` using `cloc`
+- [ ] **gdx clear Untracked files support**: `gdx clear` currently only saves changes to tracked files. Add an option to back up untracked files as well.
 
 ## License
 
