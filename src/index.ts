@@ -1,4 +1,4 @@
-import { execa } from 'execa';
+import { execa, ExecaError } from 'execa';
 
 import { Err, ncc, yuString } from '../lib/esm/Tools';
 
@@ -117,8 +117,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -238,10 +238,10 @@ async function main(): Promise<number> {
             if (candidates && candidates.length > 1) {
                quickPrint(
                   ncc('Yellow') +
-                     `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
-                        ', '
-                     )}?` +
-                     ncc()
+                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+                     ', '
+                  )}?` +
+                  ncc()
                );
                break AliasNCustomCmd;
             }
@@ -271,7 +271,7 @@ async function main(): Promise<number> {
       }
    } catch (_err) {
       const err = Err.from(_err);
-      if (err.name === 'ExecaError' && err.message.startsWith('Command failed'))
+      if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
          return exitCode || 1; // git command failed, return exit code
 
       console.error('Command failed.\n' + yuString(err, { color: true }));

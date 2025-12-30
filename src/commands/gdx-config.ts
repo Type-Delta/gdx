@@ -7,7 +7,7 @@ import { GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME } from '@/consts';
+import { EXECUTABLE_NAME, SECURE_CONF_KEYS } from '@/consts';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -18,8 +18,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -36,7 +36,11 @@ async function listConfig(): Promise<number> {
          currentSection.push(section);
       }
 
-      const currentValue = config.get(key);
+      let currentValue = config.get(key);
+      if (currentValue === undefined && SECURE_CONF_KEYS.includes(key)) {
+         currentValue = await config.getSecure(key);
+      }
+
       const isDefault = config.isDefault(key);
       const description = CONFIG_DESCRIPTIONS[key] || '';
 
@@ -83,7 +87,10 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   const value = config.get(key);
+   let value = config.get(key);
+   if (value === undefined && SECURE_CONF_KEYS.includes(key)) {
+      value = await config.getSecure(key);
+   }
 
    if (value === undefined) {
       quickPrint(`${ncc('Yellow')}Key '${key}' is not set${ncc()}`);

@@ -14,7 +14,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
    const config = await getConfig();
 
    let providerType = config.get<string>('llm.provider') || 'openai';
-   const apiKey = config.get<string>('llm.apiKey');
+   const apiKey = await config.getSecure<string>('llm.apiKey');
    const model = config.get<string>('llm.model');
 
    if (!apiKey) {

@@ -39,9 +39,6 @@ export class ConfigService {
          this.config = { ...DEFAULT_CONFIG };
       }
 
-      // Load secure keys from keychain
-      await this.loadSecureKeys();
-
       // Override with environment variables
       this.applyEnvOverrides();
       this.loaded = true;
@@ -74,6 +71,45 @@ export class ConfigService {
       }
 
       return value as T;
+   }
+
+   /**
+    * Gets a secure configuration value by path (e.g., 'llm.apiKey').
+    * Loads from keychain if not already loaded.
+    */
+   async getSecure<T = any>(keyPath: string): Promise<T | undefined> {
+      // First check if it's already loaded (e.g. from env vars or previous fetch)
+      const cached = this.get<T>(keyPath);
+      if (cached !== undefined) {
+         return cached;
+      }
+
+      // If it's a secure key, try to load from keychain
+      if (SECURE_CONF_KEYS.includes(keyPath)) {
+         try {
+            const value = await keytar.getPassword(KEYCHAIN_SERVICE, keyPath);
+            if (value) {
+               // Update config cache without triggering save/keychain write
+               const keys = keyPath.split('.');
+               let target: any = this.config;
+
+               for (let i = 0; i < keys.length - 1; i++) {
+                  const key = keys[i];
+                  if (!(key in target) || typeof target[key] !== 'object') {
+                     target[key] = {};
+                  }
+                  target = target[key];
+               }
+
+               target[keys[keys.length - 1]] = value;
+               return value as unknown as T;
+            }
+         } catch (err) {
+            console.warn(`Warning: Failed to load secure key '${keyPath}' from keychain:`, err);
+         }
+      }
+
+      return undefined;
    }
 
    /**
@@ -205,33 +241,6 @@ export class ConfigService {
          override as unknown as Record<string, unknown>
       );
       return result;
-   }
-
-   /**
-    * Loads secure keys from system keychain.
-    */
-   private async loadSecureKeys(): Promise<void> {
-      for (const keyPath of SECURE_CONF_KEYS) {
-         try {
-            const value = await keytar.getPassword(KEYCHAIN_SERVICE, keyPath);
-            if (value) {
-               const keys = keyPath.split('.');
-               let target: any = this.config;
-
-               for (let i = 0; i < keys.length - 1; i++) {
-                  const key = keys[i];
-                  if (!(key in target) || typeof target[key] !== 'object') {
-                     target[key] = {};
-                  }
-                  target = target[key];
-               }
-
-               target[keys[keys.length - 1]] = value;
-            }
-         } catch (err) {
-            console.warn(`Warning: Failed to load secure key '${keyPath}' from keychain:`, err);
-         }
-      }
    }
 
    /**

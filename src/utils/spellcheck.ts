@@ -1,5 +1,7 @@
 import { ncc } from '@lib/Tools';
-import { SpellCheckFileResult } from 'cspell-lib';
+import type { SpellCheckFileResult } from 'cspell-lib';
+
+export { spellCheckDocument } from 'cspell-lib';
 
 export function prettyFormatIssues(result: SpellCheckFileResult, context: string): string {
    if (result.issues.length === 0) {

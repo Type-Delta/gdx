@@ -17,10 +17,11 @@
   "scripts": {
     "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
+    "start:profile": "bun --cpu-prof src/index.ts",
     "start:node": "tsx src/index.ts",
     "transpile-esm": "npx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
-    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode",
+    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode --production --keep-names",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
     "dummy-editor": "bun ./scripts/dummyEditor.mjs"
   },
