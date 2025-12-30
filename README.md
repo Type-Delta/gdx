@@ -19,7 +19,7 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 - **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`?, `git reset HEAD~3`? why not `gdx res ~3`?
 - **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
-- **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes (`drop 2..6`) without index shifting errors.
+- **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes (`drop 2..6`).
 - **📊 Local-First Stats:** Beautiful TrueColor graphs and stats generated from your local history.
 - **🤖 AI Integration:** Generate commit messages and roast your history with local or cloud LLMs.
 
@@ -92,15 +92,20 @@ Git stash is great until you need to clean it up.
 ```bash
 gdx sta l           # git stash list
 gdx sta d 2..6      # Drops stashes 2 through 6.
-                    # (Smartly drops high->low to prevent index shifting!)
+                    # (Drops high->low to prevent index shifting)
 ```
 
 ### 6. AI-Powered Commits
 
-Struggling to write commit messages? Let `gdx` do it for you.
+Struggling to come up with a commit message? Let `gdx` do it for you.
 
 ```bash
-gdx commit auto   # Generates a commit message based on staged changes
+gdx commit auto   # Generates a commit message based on staged changes, then commits them.
+# or
+# Generates a commit message based on staged changes, but does not commit them.
+# `--copy` also copies the message to clipboard.
+gdx commit auto --no-commit --copy
+# You can also configure which LLM to use with `gdx-config`
 ```
 
 ### 7. Fun & Analytics
@@ -134,7 +139,7 @@ This project uses **Bun** for development because it's fast and the developer ex
 1. Clone the repo
 2. Prepare the development environment:
    ```bash
-   bun prepare-dev
+   bun run prepare-dev
    ```
 3. Run in dev mode:
 
@@ -166,6 +171,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - Interactive fuzzy search for branches, commits, stash, log and files instead of `less`
    - Code line statistics in `gdx stats` using `cloc`
 - [ ] **gdx clear Untracked files support**: `gdx clear` currently only saves changes to tracked files. Add an option to back up untracked files as well.
+- [ ] **gdx migrate**: move dirty changes to another branch/worktree without committing.
 
 ## License
 
