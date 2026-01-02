@@ -1,0 +1,38 @@
+name: Release Windows x64
+
+on:
+   push:
+      tags:
+         - 'v*'
+
+permissions:
+   contents: write
+
+jobs:
+   build-and-release:
+      runs-on: windows-latest
+      steps:
+         - name: Checkout
+           uses: actions/checkout@v4
+
+         - name: Setup Bun
+           uses: oven-sh/setup-bun@v2
+           with:
+              bun-version: latest
+
+         - name: Install dependencies
+           run: bun install
+
+         - name: Build native binary
+           run: bun run build -- --outfile ./out/gdx-win32-x64.exe
+
+         - name: Generate SHA256 checksum
+           run: |
+              Get-FileHash ./out/gdx-win32-x64.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash > ./out/gdx-win32-x64.exe.sha256
+
+         - name: Release
+           uses: softprops/action-gh-release@v2
+           with:
+              files: |
+                 ./out/gdx-win32-x64.exe
+                 ./out/gdx-win32-x64.exe.sha256

@@ -8,6 +8,7 @@ import gdxConfig from './gdx-config';
 import nocap from './nocap';
 import parallel from './parallel';
 import lint from './lint';
+import doctor from './doctor';
 
 export default {
    help: helpCmd,
@@ -20,4 +21,5 @@ export default {
    nocap,
    parallel,
    lint,
+   doctor,
 };

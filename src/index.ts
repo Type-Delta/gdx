@@ -230,6 +230,8 @@ async function main(): Promise<number> {
             return cmd.nocap(ctx);
          case 'parallel':
             return cmd.parallel(ctx);
+         case 'doctor':
+            return cmd.doctor();
          default:
             if (candidates && candidates.length > 1) {
                quickPrint(

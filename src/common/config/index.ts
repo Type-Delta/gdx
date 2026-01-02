@@ -141,7 +141,11 @@ export class ConfigService {
 
       // If this is a secure key, store it in keychain
       if (SECURE_CONF_KEYS.includes(keyPath)) {
-         await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
+         try {
+            await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
+         } catch (err) {
+            console.warn(`Warning: Failed to save secure key '${keyPath}' to keychain:`, err);
+         }
       }
 
       target[lastKey] = value;

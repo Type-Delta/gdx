@@ -13,7 +13,17 @@
   "license": "MIT",
   "author": "Type-Delta",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "bin": {
+    "gdx": "scripts/launcher.cjs"
+  },
+  "files": [
+    "dist/",
+    "scripts/postinstall.cjs",
+    "scripts/launcher.cjs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
@@ -22,6 +32,9 @@
     "transpile-esm": "npx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode --production --keep-names",
+    "package:node": "bun build ./src/index.ts --outdir=./dist --target=node --format=esm --production --keep-names",
+    "prepack": "bun run package:node",
+    "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
     "dummy-editor": "bun ./scripts/dummyEditor.mjs"
   },
@@ -41,9 +54,7 @@
     "tsx": "^4.21.0",
     "prettier": "^3.6.2",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.50.0"
-  },
-  "dependencies": {
+    "typescript-eslint": "^8.50.0",
     "cspell-lib": "^9.4.0",
     "dedent": "^1.7.0",
     "execa": "^9.6.1",

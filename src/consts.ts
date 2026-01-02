@@ -3,6 +3,8 @@ import os from 'os';
 
 import { RgbVec } from './utils/graphics';
 
+import pkg from '../package.json';
+
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 
 export const EXECUTABLE_NAME = exeBasename.startsWith('bun') ? 'gdx' : exeBasename;
@@ -13,7 +15,7 @@ export const CONFIG_PATH = path.join(os.homedir(), CONFIG_FILE_NAME);
 export const GIT_DIR_NAME = '.git';
 export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;
-export const VERSION = '0.0.1';
+export const VERSION = pkg.version || 'unknown';
 
 export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];

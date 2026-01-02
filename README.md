@@ -25,16 +25,92 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 ## Installation
 
-> _Installation instructions coming soon!_
+<details expanded>
+<summary><strong>With NPM</strong></summary>
 
-<!-- **Requirements:**
+### Default (Recommended)
 
-- Node.js (LTS recommended)
-- Git
+Uses the bundled JS version. Works everywhere Node.js 18+ is installed.
+This is the easiest way to get started and ensures maximum compatibility.
 
 ```bash
-npm install -g gdx
-``` -->
+npm i -g gdx
+```
+
+### Prebuilt Binary
+
+Downloads a precompiled native binary. No runtime dependency on Node/Bun for execution.
+
+```bash
+GDX_USE_PREBUILT=1 npm i -g gdx # bash / zsh
+# or
+$env:GDX_USE_PREBUILT='1'; npm i -g gdx # powershell / fish
+```
+
+### Build Locally
+
+Compiles a native binary on your machine during install. Requires [Bun](https://bun.sh) to be installed.
+
+```bash
+GDX_BUILD_NATIVE=1 npm i -g gdx # bash / zsh
+# or
+$env:GDX_BUILD_NATIVE='1'; npm i -g gdx # powershell / fish
+```
+
+> [!NOTE] If your environment sets `ignore-scripts=true`, the installation will succeed but default to the Node.js fallback.
+> Run `gdx doctor` to verify your installation status.
+
+</details>
+
+<details>
+<summary><strong>Download Manually</strong></summary>
+
+Prebuilt stand-alone binaries are available on the [Releases](https://github.com/Type-Delta/gdx/releases/download) page.
+
+</details>
+
+<details>
+<summary><strong>Build it yourself</strong></summary>
+
+Requires [Bun](https://bun.sh) to be installed.
+
+```bash
+git clone https://github.com/Type-Delta/gdx.git --depth 1
+cd gdx
+bun install
+bun run build
+```
+
+Your compiled binary will be in `./dist/gdx` (or `./dist/gdx.exe` on Windows).
+
+</details>
+
+### Optional: Shell Integration
+
+To enable features like `gdx parallel switch` (auto-cd into worktrees), you need to add shell integration.
+
+To do this add the following line to the **End** of your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+
+#### For bash and zsh:
+
+```bash
+eval "$(gdx --init --shell bash)"  # for bash
+eval "$(gdx --init --shell zsh)"   # for zsh
+```
+
+#### For fish:
+
+```fish
+gdx --init --shell fish | source
+```
+
+#### For PowerShell:
+
+To find your profile path, run `$PROFILE` in PowerShell.
+
+```powershell
+Invoke-Expression (& { (gdx --init --shell pwsh | Out-String) })
+```
 
 ## Core Features
 

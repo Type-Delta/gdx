@@ -51,6 +51,9 @@ function ${cmd} {
     $env:GDX_RESULT = $tmp
     try {
         $command = Get-Command -Name "gdx" -CommandType Application -ErrorAction SilentlyContinue
+        if ($command.length -gt 1) {
+            $command = $command | Select-Object -First 1
+        }
         if ($command) {
             & $command @args
             if ($LASTEXITCODE -eq ${GDX_SIGNAL_CODE}) {
