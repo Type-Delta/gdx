@@ -2,7 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 
-import { ncc, arrToString, yuString, strWrap } from '@lib/Tools';
+import {
+   ncc,
+   arrToString,
+   yuString,
+   strWrap,
+   remap
+} from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
 
@@ -16,8 +22,7 @@ export default async function doctor(): Promise<number> {
 
    const isNode = process.argv[0].endsWith('node') || process.argv[0].endsWith('node.exe');
    const isBun = process.argv[0].endsWith('bun') || process.argv[0].endsWith('bun.exe');
-   const isNative =
-      process.argv[1].endsWith('gdx') || process.argv[1].endsWith('gdx.exe') || (!isNode && !isBun);
+   const isNative = process.execPath.toLowerCase() !== process.argv[0].toLowerCase();
 
    if (!isNative) {
       const scriptPath = process.argv[1];
@@ -64,7 +69,7 @@ export default async function doctor(): Promise<number> {
    quickPrint(`Platform: ${ncc('Magenta') + process.platform + ncc()}`);
    quickPrint(`Arch: ${ncc('Magenta') + process.arch + ncc()}`);
    quickPrint(
-      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : 'Node.js') + (isNative ? ' (Native)' : '') + ncc()}`
+      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : (isNode ? 'Node' : 'Unknown')) + (isNative ? ' (Native)' : '') + ncc()}`
    );
 
    // Detect runtimes
@@ -85,8 +90,12 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
    );
+
+   quickPrint(
+      `Executable path: ${ncc('Cyan') + process.execPath + ncc()}`
+   )
 
    // Detect git
    try {
@@ -106,7 +115,9 @@ export default async function doctor(): Promise<number> {
    }
 
    // Print argv for debugging
+   const gdxEnvs = remap(process.env, (k) => k.startsWith('GDX_') ? null : undefined);
    quickPrint(`Process argv: ` + arrToString(process.argv, { color: true, indent: 2, maxCol: 80 }));
+   quickPrint(`GDX Environment Variables: ` + yuString(gdxEnvs, { color: true }));
 
    // Native install info
    if (nativeInsInfo) {

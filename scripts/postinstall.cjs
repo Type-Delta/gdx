@@ -221,7 +221,7 @@ function tryBuildNative() {
       '--compile',
       '--bytecode',
       '--production',
-      '--keep-names'
+      '--keep-names',
    ];
 
    ensureBinDir();
