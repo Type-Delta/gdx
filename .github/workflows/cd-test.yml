@@ -1,0 +1,96 @@
+name: CD Test
+
+on:
+   push:
+      branches:
+         - main
+      paths:
+         - 'package.json'
+         - 'scripts/launcher.cjs'
+         - 'scripts/postinstall.cjs'
+         - '.github/workflows/**'
+   workflow_dispatch:
+
+jobs:
+   cd-test:
+      name: Test NPM Install
+      runs-on: ${{ matrix.os }}
+      strategy:
+         matrix:
+            os: [ubuntu-latest, macos-latest, windows-latest]
+
+      steps:
+         - name: Checkout
+           uses: actions/checkout@v4
+
+         # Wait for Lint and Test to succeed (only on push)
+         - name: Wait for Lint
+           if: github.event_name == 'push'
+           uses: lewagon/wait-on-check-action@v1.3.4
+           with:
+              ref: ${{ github.ref }}
+              check-name: 'lint'
+              repo-token: ${{ secrets.GITHUB_TOKEN }}
+              wait-interval: 10
+
+         - name: Wait for Test
+           if: github.event_name == 'push'
+           uses: lewagon/wait-on-check-action@v1.3.4
+           with:
+              ref: ${{ github.ref }}
+              check-name: 'test'
+              repo-token: ${{ secrets.GITHUB_TOKEN }}
+              wait-interval: 10
+
+         - name: Setup Bun
+           uses: oven-sh/setup-bun@v2
+           with:
+              bun-version: latest
+
+         - name: Setup Node
+           uses: actions/setup-node@v4
+           with:
+              node-version: '20'
+
+         - name: Install Dependencies
+           run: bun install
+
+         - name: Pack
+           run: npm pack
+
+         - name: Get Tarball Name
+           id: tarball
+           shell: bash
+           run: echo "filename=$(ls gdx-*.tgz)" >> $GITHUB_OUTPUT
+
+         - name: Test Install (Default/Node Fallback)
+           shell: bash
+           run: |
+              npm install -g ./${{ steps.tarball.outputs.filename }}
+              # Verify it runs (should use node fallback)
+              gdx doctor
+              npm uninstall -g gdx
+
+         - name: Test Install (Native Build)
+           shell: bash
+           run: |
+              # Force native build
+              export GDX_BUILD_NATIVE=1
+              npm install -g ./${{ steps.tarball.outputs.filename }}
+              # Verify it runs (should use native binary)
+              gdx doctor
+
+              # Verify native binary exists
+              NPM_ROOT=$(npm root -g)
+              if [ "${{ runner.os }}" == "Windows" ]; then
+                if [ ! -f "$NPM_ROOT/gdx/dist/native/gdx.exe" ]; then
+                  echo "Native binary not found at $NPM_ROOT/gdx/dist/native/gdx.exe"
+                  exit 1
+                fi
+              else
+                if [ ! -f "$NPM_ROOT/gdx/dist/native/gdx" ]; then
+                  echo "Native binary not found at $NPM_ROOT/gdx/dist/native/gdx"
+                  exit 1
+                fi
+              fi
+              npm uninstall -g gdx

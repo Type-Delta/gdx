@@ -10,6 +10,7 @@ import { EXECUTABLE_NAME, VERSION } from '../consts';
 export default async function doctor(): Promise<number> {
    // Detect native binary info
    let installInfoPath: string | undefined;
+   let hasIssues = false;
 
    const isNode = process.argv[0].endsWith('node') || process.argv[0].endsWith('node.exe');
    const isBun = process.argv[0].endsWith('bun') || process.argv[0].endsWith('bun.exe');
@@ -49,9 +50,11 @@ export default async function doctor(): Promise<number> {
          nativeInsInfo = yuString(info, { color: true });
       } catch (e) {
          quickPrint(ncc('Red') + `Error reading install.json: ${e}` + ncc());
+         hasIssues = true;
       }
    } else if (isNative) {
       quickPrint(ncc('Yellow') + `No native install info found at ${installInfoPath}` + ncc());
+      hasIssues = true;
    }
 
    quickPrint(`Version: ${ncc('Cyan') + VERSION + ncc()}`);
@@ -89,6 +92,7 @@ export default async function doctor(): Promise<number> {
       quickPrint(`Git path: ${gitPaths ? ncc('Green') + '\n - ' + gitPaths + ncc() : 'Not found in PATH'}`);
    } catch {
       quickPrint(ncc('Red') + `Git: Not found or error checking` + ncc());
+      hasIssues = true;
    }
 
    // Print argv for debugging
@@ -111,7 +115,8 @@ export default async function doctor(): Promise<number> {
       quickPrint(`To build locally (requires Bun):`);
       quickPrint(`  GDX_BUILD_NATIVE=1 npm i -g gdx`);
    }
-   return 0;
+
+   return hasIssues ? 1 : 0;
 }
 
 export const help = {
