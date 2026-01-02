@@ -88,13 +88,13 @@ jobs:
               # Verify native binary exists
               NPM_ROOT=$(npm root -g)
               if [ "${{ runner.os }}" == "Windows" ]; then
-                if [ ! -f "$NPM_ROOT/gdx/dist/native/gdx.exe" ]; then
-                  echo "Native binary not found at $NPM_ROOT/gdx/dist/native/gdx.exe"
+                if [ ! -f "$NPM_ROOT/gdx/bin/native/gdx.exe" ]; then
+                  echo "Native binary not found at $NPM_ROOT/gdx/bin/native/gdx.exe"
                   exit 1
                 fi
               else
-                if [ ! -f "$NPM_ROOT/gdx/dist/native/gdx" ]; then
-                  echo "Native binary not found at $NPM_ROOT/gdx/dist/native/gdx"
+                if [ ! -f "$NPM_ROOT/gdx/bin/native/gdx" ]; then
+                  echo "Native binary not found at $NPM_ROOT/gdx/bin/native/gdx"
                   exit 1
                 fi
               fi
