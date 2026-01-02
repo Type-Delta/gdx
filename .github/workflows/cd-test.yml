@@ -8,7 +8,7 @@ on:
          - 'package.json'
          - 'scripts/launcher.cjs'
          - 'scripts/postinstall.cjs'
-         - '.github/workflows/**'
+         - '.github/workflows/cd-test.yml'
    workflow_dispatch:
 
 jobs:
@@ -71,7 +71,7 @@ jobs:
          - name: Test Install (Default/Node Fallback)
            shell: bash
            run: |
-              npm install -g ./${{ steps.tarball.outputs.filename }}
+              npm install --loglevel verbose --foreground-scripts -g ./${{ steps.tarball.outputs.filename }}
               # Verify it runs (should use node fallback)
               gdx doctor
               npm uninstall -g gdx
@@ -81,7 +81,7 @@ jobs:
            run: |
               # Force native build
               export GDX_BUILD_NATIVE=1
-              npm install -g ./${{ steps.tarball.outputs.filename }}
+              npm install --loglevel verbose --foreground-scripts -g ./${{ steps.tarball.outputs.filename }}
               # Verify it runs (should use native binary)
               gdx doctor
 
