@@ -23,19 +23,10 @@ jobs:
          - name: Checkout
            uses: actions/checkout@v4
 
-         # Wait for Lint and Test to succeed (only on push)
-         - name: Wait for Lint
-           if: github.event_name == 'push'
-           uses: lewagon/wait-on-check-action@v1.3.4
-           with:
-              ref: ${{ github.ref }}
-              check-name: 'lint'
-              repo-token: ${{ secrets.GITHUB_TOKEN }}
-              wait-interval: 10
-
+         # Wait for Test to succeed (only on push)
          - name: Wait for Test
            if: github.event_name == 'push'
-           uses: lewagon/wait-on-check-action@v1.3.4
+           uses: lewagon/wait-on-check-action@v1.4.0
            with:
               ref: ${{ github.ref }}
               check-name: 'test'
