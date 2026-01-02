@@ -117,8 +117,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -170,8 +170,7 @@ async function main(): Promise<number> {
          case 'lg': // alias for 'log'
             if (args[0] === 'lg' && args.length === 1) {
                args.push('--oneline', '--graph', '--decorate', '--all');
-            }
-            else if (args.popOption('export', 0)) {
+            } else if (args.popOption('export', 0)) {
                // Handle 'lg export' case
                let dateFmt: string = '--date=format:"%Y-%m-%d %H:%M"';
                const hasAuthor = args.hasOption('--author', 1);
@@ -236,10 +235,10 @@ async function main(): Promise<number> {
             if (candidates && candidates.length > 1) {
                quickPrint(
                   ncc('Yellow') +
-                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
-                     ', '
-                  )}?` +
-                  ncc()
+                     `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+                        ', '
+                     )}?` +
+                     ncc()
                );
                break AliasNCustomCmd;
             }

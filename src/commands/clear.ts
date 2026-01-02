@@ -1,13 +1,15 @@
 import fs from 'fs/promises';
 import path from 'path';
 
-import dedent from 'dedent';
-import { ncc, yuString } from '@lib/Tools';
+import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
+
+import { COLOR } from '../consts';
+import { _2PointGradient } from '../utils/graphics';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -194,30 +196,47 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: dedent(`${ncc('Cyan')}clear - Safely backup and clear local working changes${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('CLEAR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Safely backup and clear local working changes.
 
-      ${ncc('Bright')}What it does:${ncc()} Creates a patch file containing the current unstaged and staged
-      changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via
-      \`git reset --hard\` and \`git clean -fd\`. The latest patch is kept so you can restore it with
-      ${ncc('Dim')}${EXECUTABLE_NAME} clear pardon${ncc()}.
+${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Creates a patch file containing the current unstaged and staged changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`git reset --hard\` and \`git clean -fd\`. The latest patch is kept so you can restore it with ${ncc('Cyan')}${EXECUTABLE_NAME} clear pardon${ncc()}.
 
-      ${ncc('Bright')}Subcommands:${ncc()}
-        - list: Show available backup patch files for this project/branch.
-        - pardon: Restore the most recent backup patch (requires clean or forced conditions).
+${ncc('Bright') + _2PointGradient('SUBCOMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+- list: Show available backup patch files for this project/branch.
+- pardon: Restore the most recent backup patch (requires clean or forced conditions).
 
-      ${ncc('Bright')}Safety:${ncc()} By default the command refuses to run if untracked files would be removed
-      unless forced with \`-f\`/\`--force\`. Use \`-a\`/\`--all\` to stage untracked files before creating a backup.
-   `),
+${ncc('Bright') + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+By default the command refuses to run if untracked files would be removed unless forced with \`-f\`/\`--force\`. Use \`-a\`/\`--all\` to stage untracked files before creating a backup.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Backup and clear local changes, with a restore (pardon) option.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} clear [list|pardon] [-f|--force] [-a|--all]
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} clear ${ncc('Dim')}[list|pardon] [-f|--force] [-a|--all]${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} clear                       # Create backup patch and clear working tree
-        ${EXECUTABLE_NAME} clear list                  # Show recent backup patches
-        ${EXECUTABLE_NAME} clear pardon                # Restore the latest backup patch
-        ${EXECUTABLE_NAME} clear -a                    # Stage untracked files then clear
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} clear ${ncc() + ncc('Dim')}# Create backup patch and clear working tree${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} clear list ${ncc() + ncc('Dim')}# Show recent backup patches${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} clear pardon ${ncc() + ncc('Dim')}# Restore the latest backup patch${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} clear -a ${ncc() + ncc('Dim')}# Stage untracked files then clear${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };
 
 async function getBackupFiles(backupDir: string, prefix: string, suffix: string) {

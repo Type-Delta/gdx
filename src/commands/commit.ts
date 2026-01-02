@@ -1,15 +1,15 @@
 import fs from 'fs/promises';
 import path from 'path';
-import dedent from 'dedent';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
-import { $, $inherit, copyToClipboard, spinner } from '../utils/shell';
-import { noop, quickPrint } from '../utils/utilities';
-import { getLLMProvider } from '../common/adapters/llm';
-import { commitMsgGenerator } from '../templates/prompts';
-import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
+import { GdxContext } from '@/common/types';
+import { $, $inherit, copyToClipboard, spinner } from '@/utils/shell';
+import { noop, quickPrint } from '@/utils/utilities';
+import { getLLMProvider } from '@/common/adapters/llm';
+import { commitMsgGenerator } from '@/templates/prompts';
+import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
+import { _2PointGradient } from '@/utils/graphics';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -126,26 +126,43 @@ export default {
 };
 
 export const help = {
-   long: dedent(`${ncc('Cyan')}commit auto - Generate a commit message from staged changes using an LLM${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('COMMIT AUTO', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Generate a commit message from staged changes using an LLM.
 
-      ${ncc('Bright')}Purpose:${ncc()} Analyze the staged diff and ask the configured LLM provider to produce
-      a well-formed commit message (title and body). The generated text is streamed for interactive
-      feedback; you may choose to commit it automatically or inspect/copy it first.
+${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
-      ${ncc('Bright')}Flags and behavior:${ncc()} Use ${ncc('Dim')}--no-commit (-nc)${ncc()} to prevent creating the
-      commit (message will be printed). Use ${ncc('Dim')}--copy (-cp)${ncc()} in combination with --no-commit to
-      copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
+${ncc('Bright') + _2PointGradient('FLAGS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Use ${ncc('Cyan')}--no-commit (-nc)${ncc()} to prevent creating the commit (message will be printed). Use ${ncc('Cyan')}--copy (-cp)${ncc()} in combination with --no-commit to copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
 
-      ${ncc('Bright')}Requirements:${ncc()} A non-empty staged diff is required; the command will error
-      if there are no staged changes.
-   `),
+${ncc('Bright') + _2PointGradient('REQUIREMENTS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+A non-empty staged diff is required; the command will error if there are no staged changes.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Auto-generate a commit message from staged changes using an LLM.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} commit auto [--no-commit] [--copy]
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} commit auto ${ncc('Dim')}[--no-commit] [--copy]${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} commit auto                  # Generate and commit using LLM-generated message
-        ${EXECUTABLE_NAME} commit auto --no-commit      # Print generated message without committing
-        ${EXECUTABLE_NAME} commit auto --no-commit --copy  # Copy generated message to clipboard
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto                    ${ncc() + ncc('Dim')}# Generate and commit using LLM-generated message${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit        ${ncc() + ncc('Dim')}# Print generated message without committing${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit --copy ${ncc() + ncc('Dim')}# Copy generated message to clipboard${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };

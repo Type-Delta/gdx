@@ -1,4 +1,3 @@
-import dedent from 'dedent';
 import { ncc, strWrap, toShortNum } from '@lib/Tools';
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../utils/shell';
@@ -6,6 +5,9 @@ import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree } from '@/utils/git';
 import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES } from '@/consts';
+
+import { COLOR } from '@/consts';
+import { _2PointGradient } from '@/utils/graphics';
 
 export default async function lint(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -65,7 +67,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-            prettyFormatIssues(result, commitMsg)
+               prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -163,13 +165,13 @@ function printLWarning(subject: string, message: string) {
 
    quickPrint(
       ncc('BgYellow') +
-      ncc('Bright') +
-      ncc('White') +
-      ' LWARN ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
-      ncc()
+         ncc('Bright') +
+         ncc('White') +
+         ' LWARN ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
+         ncc()
    );
 }
 
@@ -180,37 +182,55 @@ function printLError(subject: string, message: string) {
 
    quickPrint(
       ncc('BgRed') +
-      ncc('Bright') +
-      ncc('White') +
-      ' LERROR ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Red')} ${message}` +
-      ncc()
+         ncc('Bright') +
+         ncc('White') +
+         ' LERROR ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Red')} ${message}` +
+         ncc()
    );
 }
 
 export const help = {
-   long: dedent(`
-      Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('LINT', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
 
-      Checks performed:
-      - Spelling: Checks for typos in commit messages using cspell.
-      - Sensitive Content: Scans for API keys, tokens, and private keys.
-      - Conflict Markers: Checks for leftover merge conflict markers.
-      - File Size: Warns if files exceed the configured size limit (default 1MB).
+${ncc('Bright') + _2PointGradient('CHECKS PERFORMED', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+- Spelling: Checks for typos in commit messages using cspell.
+- Sensitive Content: Scans for API keys, tokens, and private keys.
+- Conflict Markers: Checks for leftover merge conflict markers.
+- File Size: Warns if files exceed the configured size limit (default 1MB).
 
-      Configuration:
-      You can configure the behavior in your .gdxrc.toml file or \`${EXECUTABLE_NAME} gdx-config\`:
-      [lint]
-      onPushBehavior = "off" | "error" | "warning"  # Default: "off"
-      maxFileSizeKb = 1024                          # Default: 1024 KB
-   `),
+${ncc('Bright') + _2PointGradient('CONFIGURATION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+You can configure the behavior in your .gdxrc.toml file or \`${EXECUTABLE_NAME} gdx-config\`:
+[lint]
+onPushBehavior = "off" | "error" | "warning"  # Default: "off"
+maxFileSizeKb = 1024                          # Default: 1024 KB
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Lint outgoing commits for format, spelling, sensitive data, and more.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} lint
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} lint${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} lint         # Run lint checks on outgoing commits
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} lint ${ncc() + ncc('Dim')}# Run lint checks on outgoing commits${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };

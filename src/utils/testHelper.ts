@@ -51,8 +51,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    console.time('createTestEnv');
    await clearTestEnvs();
 
-   if (!gitExePath)
-      await findGitExecutable();
+   if (!gitExePath) await findGitExecutable();
 
    await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));

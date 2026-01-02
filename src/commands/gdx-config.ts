@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import dedent from 'dedent';
 
-import { ncc, strClamp } from '@lib/Tools';
+import { ncc, strClamp, strWrap } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS } from '@/consts';
+
+import { COLOR } from '@/consts';
+import { _2PointGradient } from '@/utils/graphics';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -18,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-      ncc()
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -168,29 +171,45 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: dedent(`${ncc('Cyan')}gdx-config - View and modify gdx configuration${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('GDX-CONFIG', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+View and modify gdx configuration.
 
-      ${ncc('Bright')}Overview:${ncc()} Manage gdx settings stored in the configuration file. The command
-      supports listing all config values, getting the path to the currently loaded config file, and
-      getting/setting individual keys. API keys and sensitive values are masked when displayed.
+${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
 
-      ${ncc('Bright')}Commands:${ncc()}
-        - list: Prints flattened configuration with defaults and modified markers.
-        - path: Prints the path to the active config file used by gdx.
-        - <key> [value]: Get or set a config key. When setting, types are coerced based on the
-          existing default value where possible.
-   `),
+${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+- list: Prints flattened configuration with defaults and modified markers.
+- path: Prints the path to the active config file used by gdx.
+- <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Inspect and edit gdx configuration values.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} gdx-config list                # List all config keys and values
-      ${EXECUTABLE_NAME} gdx-config path                # Print config file path
-      ${EXECUTABLE_NAME} gdx-config <key>               # Get value for a key
-      ${EXECUTABLE_NAME} gdx-config <key> <value>       # Set value for a key
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config list${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config path${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config ${ncc('Dim')}<key> [value]${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} gdx-config list
-        ${EXECUTABLE_NAME} gdx-config editor.code true
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config list ${ncc() + ncc('Dim')}# List all config keys and values${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config editor.code true ${ncc() + ncc('Dim')}# Set value for a key${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };
 
 /**

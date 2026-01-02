@@ -24,7 +24,7 @@ export interface SpinnerOptions {
 }
 
 export interface CommandHelpObj {
-   long: string;
+   long: () => string;
    short: string;
-   usage: string;
+   usage: () => string;
 }

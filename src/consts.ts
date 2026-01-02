@@ -16,6 +16,7 @@ export const GIT_DIR_NAME = '.git';
 export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;
 export const VERSION = pkg.version || 'unknown';
+export const REPO_README_URL = pkg.homepage || '';
 
 export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];
@@ -48,7 +49,7 @@ export const COLOR = {
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
    Zinc700: [63, 63, 70],
-   Zinc300: [212, 212, 216],
+   Zinc400: [161, 161, 170],
    Zinc100: [244, 244, 245],
    Fuchsia400: [232, 121, 249],
    Teal300: [94, 234, 212],
@@ -70,7 +71,7 @@ export const SENSITIVE_CONTENTS_REGEXES = [
    /sk-[\d\w]{32,}/,
    /sk-or-[\d\w]{32,}/,
    /-----\s*BEGIN PRIVATE KEY\s*-----/i,
-]
+];
 
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;

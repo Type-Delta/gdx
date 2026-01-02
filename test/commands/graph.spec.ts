@@ -20,8 +20,7 @@ describe('gdx graph', async () => {
          expect(result).toBe(1);
          // LINK: uwnkd11 string literal in spec
          expect(buffer.stdout.toLowerCase()).toContain('user email not configured');
-      }
-      finally {
+      } finally {
          // Restore email for next tests
          await $`${git$} config user.email "test@example.com"`;
       }

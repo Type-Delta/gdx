@@ -1,8 +1,6 @@
-import dedent from 'dedent';
-
 import { $ } from '../utils/shell';
 import { quickPrint } from '../utils/utilities';
-import { ncc } from '@lib/Tools';
+import { ncc, strWrap } from '@lib/Tools';
 import { GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../utils/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
@@ -150,24 +148,42 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: dedent(`${ncc('Cyan')}graph - Render a calendar-style contribution graph for a repository author${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('GRAPH', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Render a calendar-style contribution graph for a repository author.
 
-      ${ncc('Bright')}Purpose:${ncc()} Visualize commit activity as a calendar-like heatmap showing commit
-      density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate
-      relative commit frequency and can be clamped to a maximum of 52 weeks.
+${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
-      ${ncc('Bright')}Options:${ncc()} Supply \`--email <email>\` to override the configured git user email.
-      Use \`--quiet\` to suppress informational headers when embedding the graph in other scripts.
+${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Supply ${ncc('Cyan')}--email <email>${ncc()} to override the configured git user email. Use ${ncc('Cyan')}--quiet${ncc()} to suppress informational headers when embedding the graph in other scripts.
 
-      ${ncc('Bright')}Terminal notes:${ncc()} The graph respects \`process.stdout.columns\`. If the terminal is
-      too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
-   `),
+${ncc('Bright') + _2PointGradient('TERMINAL NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+The graph respects \`process.stdout.columns\`. If the terminal is too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Render a calendar-style contribution graph for an author.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} graph [--email <email>] [--quiet]
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc('Dim')}[--email <email>] [--quiet]${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} graph                         # Graph for configured git user
-        ${EXECUTABLE_NAME} graph --email bob@example.com  # Graph for specified author
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc() + ncc('Dim')}# Graph for configured git user${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} graph --email bob@example.com ${ncc() + ncc('Dim')}# Graph for specified author${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };

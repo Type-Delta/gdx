@@ -1,6 +1,6 @@
 import dedent from 'dedent';
 
-import { maxFraction, ncc, toShortNum, yuString } from '@lib/Tools';
+import { maxFraction, ncc, toShortNum, yuString, strWrap } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../utils/shell';
@@ -8,6 +8,9 @@ import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../utils/arguments';
 import { EXECUTABLE_NAME, STATS_EST } from '../consts';
+
+import { COLOR } from '../consts';
+import { _2PointGradient } from '../utils/graphics';
 import { assertInGitWorktree } from '@/utils/git';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
@@ -183,25 +186,42 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: dedent(`${ncc('Cyan')}stats - Gather detailed contribution statistics for a git author in this repository${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('STATS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Gather detailed contribution statistics for a git author in this repository.
 
-      ${ncc('Bright')}What it computes:${ncc()} Total commits by the author, today's commits, lines added/removed,
-      rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the
-      project, most active branch, and time of the last commit.
+${ncc('Bright') + _2PointGradient('WHAT IT COMPUTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Total commits by the author, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, and time of the last commit.
 
-      ${ncc('Bright')}How it works:${ncc()} The command runs multiple git queries in parallel to collect
-      commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take
-      some time; progress messages are shown while queries run.
+${ncc('Bright') + _2PointGradient('HOW IT WORKS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
-      ${ncc('Bright')}Options:${ncc()} Use \`--author <email>\` to target a different author than the configured
-      git user.email. Output includes a small visual graph invocation via the \`graph\` command by default.
-   `),
+${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Use ${ncc('Cyan')}--author <email>${ncc()} to target a different author than the configured git user.email. Output includes a small visual graph invocation via the \`graph\` command by default.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Show comprehensive commit and line-change statistics for a repository author.',
-   usage: dedent(`
-      ${EXECUTABLE_NAME} stats [--author <email>]
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc('Dim')}[--author <email>]${ncc()}
 
-      Examples:
-        ${EXECUTABLE_NAME} stats                             # Stats for configured git user
-        ${EXECUTABLE_NAME} stats --author alice@example.com  # Stats for specified author
-   `),
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc() + ncc('Dim')}# Stats for configured git user${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} stats --author alice@example.com ${ncc() + ncc('Dim')}# Stats for specified author${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };

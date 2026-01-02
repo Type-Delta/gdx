@@ -1,11 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
-import dedent from 'dedent';
 
-import { ncc, arrToString, yuString } from '@lib/Tools';
+import { ncc, arrToString, yuString, strWrap } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
+
+import { COLOR } from '../consts';
+import { _2PointGradient } from '../utils/graphics';
 
 export default async function doctor(): Promise<number> {
    // Detect native binary info
@@ -14,7 +16,8 @@ export default async function doctor(): Promise<number> {
 
    const isNode = process.argv[0].endsWith('node') || process.argv[0].endsWith('node.exe');
    const isBun = process.argv[0].endsWith('bun') || process.argv[0].endsWith('bun.exe');
-   const isNative = (process.argv[1].endsWith('gdx') || process.argv[1].endsWith('gdx.exe')) || !isNode && !isBun;
+   const isNative =
+      process.argv[1].endsWith('gdx') || process.argv[1].endsWith('gdx.exe') || (!isNode && !isBun);
 
    if (!isNative) {
       const scriptPath = process.argv[1];
@@ -22,9 +25,9 @@ export default async function doctor(): Promise<number> {
 
       // Check common locations relative to script
       const candidates = [
-         path.join(scriptDir, 'native/install.json'),       // dist/index.js -> dist/native/install.json
+         path.join(scriptDir, 'native/install.json'), // dist/index.js -> dist/native/install.json
          path.join(scriptDir, '../dist/native/install.json'), // bin/gdx.cjs -> dist/native/install.json
-         path.join(scriptDir, '../native/install.json'),    // if script is in dist/
+         path.join(scriptDir, '../native/install.json'), // if script is in dist/
       ];
 
       for (const p of candidates) {
@@ -60,7 +63,9 @@ export default async function doctor(): Promise<number> {
    quickPrint(`Version: ${ncc('Cyan') + VERSION + ncc()}`);
    quickPrint(`Platform: ${ncc('Magenta') + process.platform + ncc()}`);
    quickPrint(`Arch: ${ncc('Magenta') + process.arch + ncc()}`);
-   quickPrint(`Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : 'Node.js') + (isNative ? ' (Native)' : '') + ncc()}`);
+   quickPrint(
+      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : 'Node.js') + (isNative ? ' (Native)' : '') + ncc()}`
+   );
 
    // Detect runtimes
    try {
@@ -78,7 +83,10 @@ export default async function doctor(): Promise<number> {
    }
 
    // Installation mode (native vs interpreted)
-   quickPrint(`Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` + (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc()));
+   quickPrint(
+      `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
+         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+   );
 
    // Detect git
    try {
@@ -89,7 +97,9 @@ export default async function doctor(): Promise<number> {
       const whichGit = process.platform === 'win32' ? 'where' : 'which';
       const gitPath = await execa(whichGit, ['git']);
       const gitPaths = gitPath.stdout.trim().replaceAll('\n', '\n - ');
-      quickPrint(`Git path: ${gitPaths ? ncc('Green') + '\n - ' + gitPaths + ncc() : 'Not found in PATH'}`);
+      quickPrint(
+         `Git path: ${gitPaths ? ncc('Green') + '\n - ' + gitPaths + ncc() : 'Not found in PATH'}`
+      );
    } catch {
       quickPrint(ncc('Red') + `Git: Not found or error checking` + ncc());
       hasIssues = true;
@@ -101,8 +111,7 @@ export default async function doctor(): Promise<number> {
    // Native install info
    if (nativeInsInfo) {
       quickPrint(`\nNative Install Info: ${ncc('Green') + nativeInsInfo + ncc()}`);
-   }
-   else {
+   } else {
       quickPrint(ncc('Bright') + `\nActionable next steps:` + ncc());
 
       if (process.platform === 'win32' && process.arch === 'x64') {
@@ -120,11 +129,35 @@ export default async function doctor(): Promise<number> {
 }
 
 export const help = {
-   long: dedent(`
-      ${ncc('Cyan')}gdx doctor - Diagnose installation and environment${ncc()}
+   long: () =>
+      strWrap(
+         `
+${ncc('Bright') + _2PointGradient('DOCTOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Diagnose installation and environment.
 
-      Checks for native binary, runtimes, and provides installation guidance.
-   `),
+${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+Checks for native binary, runtimes, and provides installation guidance.
+`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
    short: 'Diagnose installation and environment.',
-   usage: `${EXECUTABLE_NAME} doctor`,
+   usage: () =>
+      strWrap(
+         `
+${ncc('Cyan')}${EXECUTABLE_NAME} doctor${ncc()}
+
+Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} doctor ${ncc() + ncc('Dim')}# Diagnose installation and environment${ncc()}`,
+         100,
+         {
+            firstIndent: '  ',
+            mode: 'softboundery',
+            indent: '  ',
+         }
+      ),
 };
