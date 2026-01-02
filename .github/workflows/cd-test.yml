@@ -26,7 +26,7 @@ jobs:
          # Wait for Test to succeed (only on push)
          - name: Wait for Test
            if: github.event_name == 'push'
-           uses: lewagon/wait-on-check-action@v1.4.0
+           uses: lewagon/wait-on-check-action@v1.3.4
            with:
               ref: ${{ github.ref }}
               check-name: 'test'
