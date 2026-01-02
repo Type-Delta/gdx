@@ -32,7 +32,7 @@
     "transpile-esm": "npx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./dist/gdx --compile --bytecode --production --keep-names",
-    "package:node": "bun build ./src/index.ts --outdir=./dist --target=node --format=esm --production --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --format=esm --production --keep-names",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
