@@ -10,6 +10,11 @@
     "type": "git",
     "url": "git+https://github.com/Type-Delta/gdx.git"
   },
+  "keywords": [
+    "git",
+    "dx",
+    "cli-wrapper"
+  ],
   "license": "MIT",
   "author": "Type-Delta",
   "type": "module",
@@ -32,7 +37,7 @@
     "transpile-esm": "npx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "lint": "eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --format=esm --production --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --format=esm --production --keep-names",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
@@ -58,8 +63,10 @@
     "cspell-lib": "^9.4.0",
     "dedent": "^1.7.0",
     "execa": "^9.6.1",
-    "keytar": "^7.9.0",
     "openai": "^6.14.0",
     "smol-toml": "^1.5.2"
+  },
+  "dependencies": {
+    "keytar": "^7.9.0"
   }
 }

@@ -12,13 +12,9 @@ on:
    workflow_dispatch:
 
 jobs:
-   cd-test:
-      name: Test NPM Install
-      runs-on: ${{ matrix.os }}
-      strategy:
-         matrix:
-            os: [ubuntu-latest, macos-latest, windows-latest]
-
+   pack:
+      name: Build & Pack
+      runs-on: ubuntu-latest
       steps:
          - name: Checkout
            uses: actions/checkout@v4
@@ -33,20 +29,10 @@ jobs:
               repo-token: ${{ secrets.GITHUB_TOKEN }}
               wait-interval: 10
 
-         # install libsecret on linux
-         - name: Install libsecret
-           if: runner.os == 'Linux'
-           run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
-
          - name: Setup Bun
            uses: oven-sh/setup-bun@v2
            with:
               bun-version: latest
-
-         - name: Setup Node
-           uses: actions/setup-node@v4
-           with:
-              node-version: '20'
 
          - name: Install Dependencies
            run: bun install
@@ -54,15 +40,38 @@ jobs:
          - name: Pack
            run: npm pack
 
-         - name: Get Tarball Name
-           id: tarball
+         - name: Rename & Upload
+           run: |
+              mv gdx-*.tgz gdx-test.tgz
+              curl -T gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
+
+   test-install:
+      name: Test Install
+      needs: pack
+      runs-on: ${{ matrix.os }}
+      strategy:
+         matrix:
+            os: [ubuntu-latest, macos-latest, windows-latest]
+
+      steps:
+         - name: Download Tarball
            shell: bash
-           run: echo "filename=$(ls gdx-*.tgz)" >> $GITHUB_OUTPUT
+           run: curl -o gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
+
+         # install libsecret on linux
+         - name: Install libsecret
+           if: runner.os == 'Linux'
+           run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
+
+         - name: Setup Node
+           uses: actions/setup-node@v4
+           with:
+              node-version: '20'
 
          - name: Test Install (Default/Node Fallback)
            shell: bash
            run: |
-              npm install --loglevel verbose --foreground-scripts -g ./${{ steps.tarball.outputs.filename }}
+              npm install --loglevel verbose --foreground-scripts -g ./gdx-test.tgz
               # Verify it runs (should use node fallback)
               gdx doctor
               npm uninstall -g gdx
@@ -72,7 +81,7 @@ jobs:
            run: |
               # Force native build
               export GDX_BUILD_NATIVE=1
-              npm install --loglevel verbose --foreground-scripts -g ./${{ steps.tarball.outputs.filename }}
+              npm install --loglevel verbose --foreground-scripts -g ./gdx-test.tgz
               # Verify it runs (should use native binary)
               gdx doctor
 
