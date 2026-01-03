@@ -54,19 +54,22 @@ jobs:
             os: [ubuntu-latest, macos-latest, windows-latest]
 
       steps:
-         - name: Download Tarball
-           shell: bash
-           run: curl -o gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
-
          # install libsecret on linux
          - name: Install libsecret
            if: runner.os == 'Linux'
-           run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev
-
-         - name: Setup Node
-           uses: actions/setup-node@v4
+           uses: awalsh128/cache-apt-pkgs-action@latest
            with:
-              node-version: '20'
+              packages: libsecret-1-dev
+              version: 1.0
+
+         - name: Setup Bun
+           uses: oven-sh/setup-bun@v2
+           with:
+              bun-version: latest
+
+         - name: Download Tarball
+           shell: bash
+           run: curl -o gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
 
          - name: Test Install (Default/Node Fallback)
            shell: bash
@@ -75,11 +78,6 @@ jobs:
               # Verify it runs (should use node fallback)
               gdx doctor
               npm uninstall -g gdx
-
-         - name: Setup Bun
-           uses: oven-sh/setup-bun@v2
-           with:
-              bun-version: latest
 
          - name: Test Install (Native Build)
            shell: bash
