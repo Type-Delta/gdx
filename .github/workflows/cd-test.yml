@@ -76,6 +76,11 @@ jobs:
               gdx doctor
               npm uninstall -g gdx
 
+         - name: Setup Bun
+           uses: oven-sh/setup-bun@v2
+           with:
+              bun-version: latest
+
          - name: Test Install (Native Build)
            shell: bash
            run: |
