@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+import * as fs from '@/utils/fs';
 import path from 'path';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
@@ -134,7 +134,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       } catch (err) {
          quickPrint(
             `${ncc('Red')}Failed to apply patch. Pardon aborted.${ncc()}\n` +
-               yuString(err, { color: true })
+            yuString(err, { color: true })
          );
          return 1;
       }

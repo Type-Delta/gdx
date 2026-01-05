@@ -1,7 +1,15 @@
-import fs from 'fs/promises';
+import * as fs from '@/utils/fs';
 import path from 'path';
 
-import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
+import {
+   ncc,
+   yuString,
+   hyperLink,
+   strClamp,
+   padEnd,
+   strJustify,
+   strWrap
+} from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
 import {
@@ -175,7 +183,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    } catch (err) {
       quickPrint(
          `${ncc('Red')}Failed to remove worktree '${alias}'.${ncc()}\n` +
-            yuString(err, { color: true })
+         yuString(err, { color: true })
       );
 
       const response = await $prompt(
@@ -239,7 +247,7 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
    const moveMode = args.includes('--move') || args.includes('-mv');
    const mirrorMode = args.includes('--mirror') || args.includes('-mr');
 
-   if (await fs.exists(targetPath)) {
+   if (fs.existsSync(targetPath)) {
       quickPrint(
          `${ncc('Red')}Error: Worktree alias '${alias}' already exists for this branch.${ncc()}`
       );
@@ -436,7 +444,7 @@ async function cmdOpen(
 
    const destination = path.join(ctx.parallelRoot, target);
 
-   if (!(await fs.exists(destination))) {
+   if (!(fs.existsSync(destination))) {
       quickPrint(
          `${ncc('Red')}Error: Worktree '${target}' not found for branch '${ctx.branchName}'.${ncc()}`
       );
@@ -515,7 +523,7 @@ async function cmdList(git$: string | string[], args: string[]): Promise<number>
    quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel}`);
    quickPrint('');
 
-   if (!(await fs.exists(ctx.parallelRoot))) {
+   if (!(fs.existsSync(ctx.parallelRoot))) {
       // LINK: dkn2ika string literal in spec
       quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
       return 0;
@@ -736,9 +744,9 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch {
       if (stashRef) {

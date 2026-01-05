@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+import * as fs from '@/utils/fs';
 import path from 'path';
 
 import { GdxContext } from '@/common/types';

@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+import * as fs from '@/utils/fs';
 import { constants } from 'fs';
 
 interface ProgressiveMatchResult {
@@ -86,4 +86,4 @@ export function normalizePath(pathStr: string): string {
 /**
  * No operation.
  */
-export const noop = (): void => {};
+export const noop = (): void => { };
