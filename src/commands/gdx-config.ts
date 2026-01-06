@@ -10,7 +10,7 @@ import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS } from '@/consts';
 
 import { COLOR } from '@/consts';
-import { _2PointGradient } from '@/utils/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {

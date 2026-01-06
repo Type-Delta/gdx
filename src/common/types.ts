@@ -1,5 +1,5 @@
-import { ArgsSet } from '@/utils/arguments';
-import { RgbVec } from '@/utils/graphics';
+import { ArgsSet } from '@/modules/arguments';
+import { RgbVec } from '@/modules/graphics';
 
 export interface GdxContext {
    args: ArgsSet;

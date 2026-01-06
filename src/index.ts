@@ -4,9 +4,9 @@ import { Err, ncc, yuString } from '../lib/esm/Tools';
 
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
-import { $, $inherit, whichExec } from './utils/shell';
+import { $, $inherit, whichExec } from './modules/shell';
 import { escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
-import { ArgsSet } from './utils/arguments';
+import { ArgsSet } from './modules/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';

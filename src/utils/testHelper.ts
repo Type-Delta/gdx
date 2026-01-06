@@ -1,10 +1,10 @@
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import path from 'path';
 
 import { GdxContext } from '@/common/types';
-import { ArgsSet } from './arguments';
+import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
-import { $, whichExec } from '@/utils/shell';
+import { $, whichExec } from '@/modules/shell';
 import { _process } from './utilities';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import { CheckCache, ncc } from '@lib/Tools';

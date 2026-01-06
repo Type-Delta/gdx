@@ -1,13 +1,28 @@
 import { Err, ncc, strWrap } from '@lib/Tools';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 
-import { $inherit, $ } from '../utils/shell';
+import { $inherit, $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME } from '@/consts';
+import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
 import { COLOR } from '@/consts';
-import { _2PointGradient } from '@/utils/graphics';
-import { getStashEntry, restoreStash } from '@/utils/git';
-import { saveStashDrop, popLastStashDrop, StashEntry } from '@/utils/stashUndo';
+import { _2PointGradient } from '@/modules/graphics';
+import { getStashEntry, restoreStash } from '@/modules/git';
 import { getConfig } from '@/common/config';
+
+export interface StashEntry {
+   sha: string;
+   message: string;
+   index?: number; // Original index, useful for logging
+}
+
+export interface StashDropOperation {
+   timestamp: number;
+   entries: StashEntry[]; // Ordered list of dropped stashes
+   type: 'single' | 'range';
+}
+
 
 async function dropPardon(git$: string | string[]): Promise<number> {
    try {
@@ -128,6 +143,57 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
       return 1;
    }
 }
+
+
+
+function getHistoryFilePath(repoPath: string): string {
+   const hash = crypto.createHash('sha256').update(repoPath).digest('hex');
+   const undoDir = path.join(TEMP_DIR, 'gdx', 'stash-undo');
+   if (!fs.existsSync(undoDir)) {
+      fs.mkdirSync(undoDir, { recursive: true });
+   }
+   return path.join(undoDir, `${hash}.json`);
+}
+
+function readHistory(repoPath: string): StashDropOperation[] {
+   const file = getHistoryFilePath(repoPath);
+   if (!fs.existsSync(file)) return [];
+   try {
+      const data = fs.readFileSync(file, 'utf-8');
+      return JSON.parse(data);
+   } catch {
+      return [];
+   }
+}
+
+function writeHistory(repoPath: string, history: StashDropOperation[]) {
+   const file = getHistoryFilePath(repoPath);
+   fs.writeFileSync(file, JSON.stringify(history, null, 2));
+}
+
+export function saveStashDrop(repoPath: string, operation: StashDropOperation, limit: number = 10) {
+   const history = readHistory(repoPath);
+   history.push(operation);
+
+   // Cap at configured limit
+   if (history.length > limit) {
+      // Remove oldest entries until we fit the limit
+      history.splice(0, history.length - limit);
+   }
+
+   writeHistory(repoPath, history);
+}
+
+export function popLastStashDrop(repoPath: string): StashDropOperation | null {
+   const history = readHistory(repoPath);
+   if (history.length === 0) return null;
+
+   const operation = history.pop() || null;
+   writeHistory(repoPath, history);
+   return operation;
+}
+
+
 
 export default {
    dropRange,

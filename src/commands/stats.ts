@@ -3,15 +3,15 @@ import dedent from 'dedent';
 import { maxFraction, ncc, toShortNum, yuString, strWrap } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { createAbortableExec } from '../utils/shell';
+import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import graph from './graph';
-import { argsSet } from '../utils/arguments';
+import { argsSet } from '../modules/arguments';
 import { EXECUTABLE_NAME, STATS_EST } from '../consts';
 
 import { COLOR } from '../consts';
-import { _2PointGradient } from '../utils/graphics';
-import { assertInGitWorktree } from '@/utils/git';
+import { _2PointGradient } from '../modules/graphics';
+import { assertInGitWorktree } from '@/modules/git';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -48,12 +48,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-         `Gathering stats for user: ` +
-         ncc('Yellow') +
-         email +
-         ncc('Cyan') +
-         ` this may take a while...` +
-         ncc()
+      `Gathering stats for user: ` +
+      ncc('Yellow') +
+      email +
+      ncc('Cyan') +
+      ` this may take a while...` +
+      ncc()
    );
 
    try {

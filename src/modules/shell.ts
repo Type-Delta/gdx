@@ -4,7 +4,7 @@ import { createInterface } from 'readline';
 
 import { CheckCache, Err, ncc } from '@lib/Tools';
 
-import { isExecutable } from './utilities';
+import { isExecutable } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { COLOR, GDX_RESULT_FILE, GDX_SIGNAL_CODE, SPINNER } from '@/consts';
@@ -278,7 +278,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => {});
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
       global.exitCodeOverride = -1;
       return;
    }

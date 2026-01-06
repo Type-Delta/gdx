@@ -1,4 +1,4 @@
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import { constants } from 'fs';
 
 interface ProgressiveMatchResult {

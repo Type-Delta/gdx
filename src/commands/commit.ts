@@ -1,15 +1,15 @@
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import path from 'path';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
-import { $, $inherit, copyToClipboard, spinner } from '@/utils/shell';
+import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
 import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
 import { commitMsgGenerator } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
-import { _2PointGradient } from '@/utils/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;

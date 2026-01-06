@@ -1,15 +1,15 @@
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import path from 'path';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, $inherit, $prompt } from '../utils/shell';
+import { $, $inherit, $prompt } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 
 import { COLOR } from '../consts';
-import { _2PointGradient } from '../utils/graphics';
+import { _2PointGradient } from '../modules/graphics';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;

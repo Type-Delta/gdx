@@ -1,4 +1,4 @@
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import path from 'path';
 
 import {
@@ -19,12 +19,12 @@ import {
    copyToClipboard,
    openInEditor,
    scheduleChangeDir,
-} from '../utils/shell';
+} from '../modules/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
 
 import { COLOR } from '@/consts';
-import { _2PointGradient } from '@/utils/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 
 interface ParallelMetadata {
    alias: string;

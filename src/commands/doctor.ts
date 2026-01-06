@@ -13,7 +13,7 @@ import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
 
 import { COLOR } from '../consts';
-import { _2PointGradient } from '../utils/graphics';
+import { _2PointGradient } from '../modules/graphics';
 
 export default async function doctor(): Promise<number> {
    // Detect native binary info

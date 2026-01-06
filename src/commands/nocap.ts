@@ -1,13 +1,13 @@
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '../common/types';
-import { $, spinner } from '../utils/shell';
+import { $, spinner } from '../modules/shell';
 import { noop, quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import { nocapPrompt } from '../templates/prompts';
 import { COLOR, EXECUTABLE_NAME } from '@/consts';
 
-import { _2PointGradient } from '@/utils/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
    const { git$ } = ctx;
@@ -59,7 +59,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
             spin.stop();
             quickPrint(
                `${ncc('Red')}😭 ill bro, the server rejected u${ncc()}\n\n` +
-                  yuString(response.error, { color: true })
+               yuString(response.error, { color: true })
             );
             return 1;
          }

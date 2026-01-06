@@ -1,8 +1,8 @@
-import { $ } from '../utils/shell';
+import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { ncc, strWrap } from '@lib/Tools';
 import { GdxContext } from '../common/types';
-import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../utils/graphics';
+import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
@@ -19,8 +19,8 @@ export default async function graph(ctx: GdxContext): Promise<number> {
       // LINK: uwnkd11 string literal in spec
       quickPrint(
          ncc('Red') +
-            'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
-            ncc()
+         'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
+         ncc()
       );
       return 1;
    }
@@ -38,8 +38,8 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    if (graphWidth < MIN_TERM_WIDTH) {
       quickPrint(
          ncc('Red') +
-            `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
-            ncc()
+         `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
+         ncc()
       );
       return 1;
    }
@@ -76,9 +76,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-         ncc('Bright') +
-         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-         ` (Max: ${maxCommits} commits/day)\n`
+      ncc('Bright') +
+      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+      ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)

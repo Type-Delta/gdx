@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as fs from '@/utils/fs';
+import * as fs from '@/modules/fs';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import * as keytar from 'keytar';
 

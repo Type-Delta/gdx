@@ -2,7 +2,7 @@ import { hyperLink, ncc, strWrap } from '@lib/Tools';
 
 import { COLOR, EXECUTABLE_NAME, REPO_README_URL, VERSION } from '@/consts';
 import { quickPrint } from '@/utils/utilities';
-import { _2PointGradient } from '@/utils/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 
 import { help as stashHelp } from './stash';
 import { help as statsHelp } from './stats';

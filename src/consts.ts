@@ -1,7 +1,7 @@
 import path from 'path';
 import os from 'os';
 
-import { RgbVec } from './utils/graphics';
+import { RgbVec } from './modules/graphics';
 
 import pkg from '../package.json';
 
