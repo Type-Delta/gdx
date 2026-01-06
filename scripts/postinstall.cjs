@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawnSync, execFileSync } = require('child_process');
 
 // Configuration
 const PACKAGE_JSON_PATH = path.join(__dirname, '../package.json');
@@ -50,9 +50,9 @@ function getPrefixFromEnvOrNpm() {
    if (!npmExecPath) return null;
 
    const prefix = execFileSync(
-      process.execPath,
-      [npmExecPath, 'config', 'get', 'prefix'],
-      { encoding: 'utf8' }
+      `"${npmExecPath}"`,
+      ['config', 'get', 'prefix'],
+      { encoding: 'utf8', shell: true }
    ).trim();
 
    return prefix || null;
