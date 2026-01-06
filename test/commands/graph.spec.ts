@@ -4,7 +4,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx graph', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
    afterAll(cleanup);
@@ -19,7 +19,7 @@ describe('gdx graph', async () => {
          const result = await graph(ctx);
          expect(result).toBe(1);
          // LINK: uwnkd11 string literal in spec
-         expect(buffer.stdout.toLowerCase()).toContain('user email not configured');
+         expect(buffer.stderr.toLowerCase()).toContain('user email not configured');
       } finally {
          // Restore email for next tests
          await $`${git$} config user.email "test@example.com"`;

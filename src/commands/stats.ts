@@ -12,6 +12,7 @@ import { EXECUTABLE_NAME, STATS_EST } from '../consts';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { assertInGitWorktree } from '@/modules/git';
+import Logger from '../utils/logger';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -36,13 +37,13 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       }
    } catch (err) {
       exec.abort();
-      quickPrint(ncc('Red') + 'Error: Failed to read git config user.email.' + ncc());
-      quickPrint(yuString(err, { color: true }));
+      Logger.error('Failed to read git config user.email.', 'stats');
+      Logger.error(yuString(err, { color: true }), 'stats');
       return 1;
    }
 
    if (!email) {
-      console.error(ncc('Red') + 'Error: No user.email configured in git.' + ncc());
+      Logger.error('No user.email configured in git.', 'stats');
       return 1;
    }
 
@@ -180,7 +181,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       return 0;
    } catch (err) {
       exec.abort();
-      quickPrint(yuString(err, { color: true }));
+      Logger.error(yuString(err, { color: true }));
       return 1;
    }
 }

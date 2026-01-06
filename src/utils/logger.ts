@@ -4,8 +4,7 @@ import os from 'os';
 
 import { ncc, strWrap } from '@lib/Tools';
 
-import { quickPrint } from './utilities';
-import { LOG_FILE_SIZE_LIMIT } from '@/consts';
+import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS } from '@/consts';
 import global from '@/global';
 
 export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug';
@@ -50,10 +49,14 @@ class Logger {
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
+      Logger.ensureInitialized();
+   }
 
-      // Initialize exit handler and log directory on first Logger creation
+   private static ensureInitialized(): void {
       if (!Logger.initialized) {
          Logger.initialized = true;
+
+         if (!SHOULD_WRITE_LOGS) return;
          Logger.initializeLogDirectory();
          process.on('exit', () => Logger.flushLogs());
       }
@@ -70,19 +73,22 @@ class Logger {
       }
    }
 
-   private log(level: LogLevel, message: string): void {
+   private static logInternal(level: LogLevel, message: string, moduleName: string): void {
+      // Check if we should print this message
+      if (LogLevelMap[level] <= LogLevelMap[global.logLevel]) {
+         Logger.printMessage(level, message, moduleName);
+      }
+
+      if (!SHOULD_WRITE_LOGS) return;
+
+      Logger.ensureInitialized();
       const timestamp = new Date().toISOString();
 
       // Always store in allLogs
-      Logger.allLogs.push({ timestamp, level, message, module: this.moduleName });
-
-      // Check if we should print this message
-      if (LogLevelMap[level] <= LogLevelMap[global.logLevel]) {
-         this.printMessage(level, message);
-      }
+      Logger.allLogs.push({ timestamp, level, message, module: moduleName });
    }
 
-   private printMessage(level: LogLevel, message: string): void {
+   private static printMessage(level: LogLevel, message: string, moduleName: string): void {
       const bgColor = LogLevelColors[level];
       const badge = LogLevelBadges[level];
       const messageColor = MessageColors[level];
@@ -98,34 +104,56 @@ class Logger {
          ` ${badge} ` +
          ncc() +
          ncc('Invert') +
-         ` ${this.moduleName} ${ncc() + ncc(messageColor)} ${wrappedMessage}` +
+         ` ${moduleName} ${ncc() + ncc(messageColor)} ${wrappedMessage}` +
          ncc();
 
       if (level === 'fatal' || level === 'error') {
-         console.error(formattedMessage);
+         process.stderr.write(formattedMessage + '\n');
       } else {
-         quickPrint(formattedMessage);
+         process.stdout.write(formattedMessage + '\n');
       }
    }
 
+   // Instance methods
    public fatal(message: string): void {
-      this.log('fatal', message);
+      Logger.logInternal('fatal', message, this.moduleName);
    }
 
    public error(message: string): void {
-      this.log('error', message);
+      Logger.logInternal('error', message, this.moduleName);
    }
 
    public warn(message: string): void {
-      this.log('warn', message);
+      Logger.logInternal('warn', message, this.moduleName);
    }
 
    public info(message: string): void {
-      this.log('info', message);
+      Logger.logInternal('info', message, this.moduleName);
    }
 
    public debug(message: string): void {
-      this.log('debug', message);
+      Logger.logInternal('debug', message, this.moduleName);
+   }
+
+   // Static methods
+   public static fatal(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('fatal', message, moduleName);
+   }
+
+   public static error(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('error', message, moduleName);
+   }
+
+   public static warn(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('warn', message, moduleName);
+   }
+
+   public static info(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('info', message, moduleName);
+   }
+
+   public static debug(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('debug', message, moduleName);
    }
 
    private static flushLogs(): void {

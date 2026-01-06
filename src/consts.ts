@@ -4,6 +4,7 @@ import os from 'os';
 import { RgbVec } from './modules/graphics';
 
 import pkg from '../package.json';
+import { inferBool } from './utils/utilities';
 
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 
@@ -17,6 +18,8 @@ export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;
 export const VERSION = pkg.version || 'unknown';
 export const REPO_README_URL = pkg.homepage || '';
+export const SHOULD_WRITE_LOGS = process.env.GDX_WRITE_LOGS != null
+   ? inferBool(process.env.GDX_WRITE_LOGS) : true;
 
 export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];

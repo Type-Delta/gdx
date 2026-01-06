@@ -6,7 +6,7 @@ import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
    const { git$ } = createGdxContext(tmpDir);
    afterAll(cleanup);
 
@@ -61,7 +61,7 @@ describe('gdx parallel', async () => {
 
       expect(result).toBe(1);
       // LINK: dwmal2m string literal in spec
-      expect(buffer.stdout).toContain('contains invalid characters');
+      expect(buffer.stderr).toContain('contains invalid characters');
    });
 
    it('should remove a worktree', async () => {

@@ -7,6 +7,7 @@ import { GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
+import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS } from '@/consts';
 
 import { COLOR } from '@/consts';
@@ -86,7 +87,7 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
    const key = ctx.args[1];
 
    if (!key) {
-      quickPrint(`${ncc('Red')}Error: Missing configuration key${ncc()}`);
+      Logger.error('Missing configuration key', 'gdx-config');
       return 1;
    }
 
@@ -96,7 +97,7 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
    }
 
    if (value === undefined) {
-      quickPrint(`${ncc('Yellow')}Key '${key}' is not set${ncc()}`);
+      Logger.warn(`Key '${key}' is not set`, 'gdx-config');
       return 1;
    }
 
@@ -110,7 +111,7 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
    const value = ctx.args[2];
 
    if (!key || value === undefined) {
-      quickPrint(`${ncc('Red')}Error: Usage: gdx gdx-config <key> <value>${ncc()}`);
+      Logger.error('Usage: gdx gdx-config <key> <value>', 'gdx-config');
       return 1;
    }
 
@@ -121,7 +122,7 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
    if (typeof defaultValue === 'number') {
       const num = Number(value);
       if (isNaN(num)) {
-         quickPrint(`${ncc('Red')}Error: Expected a number for '${key}', got '${value}'${ncc()}`);
+         Logger.error(`Expected a number for '${key}', got '${value}'`, 'gdx-config');
          return 1;
       }
       parsedValue = num;

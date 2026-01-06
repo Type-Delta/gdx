@@ -7,6 +7,7 @@ import { GdxContext } from '@/common/types';
 import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
 import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
+import Logger from '@/utils/logger';
 import { commitMsgGenerator } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
@@ -50,7 +51,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       for await (const response of connection) {
          if (response.error) {
             spin.stop();
-            quickPrint(`${ncc('Red')}Error: ${response.error.message}${ncc()}`);
+            Logger.error(response.error.message, 'commit');
             return 1;
          }
 
@@ -77,9 +78,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       quickPrint('\n'); // 2 Final newline after message output
 
       if (!res) {
-         quickPrint(
-            `${ncc('Red')}Error: Unable to generate commit message (empty response).${ncc()}`
-         );
+         Logger.error('Unable to generate commit message (empty response).', 'commit');
          return 1;
       }
 
@@ -102,7 +101,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          if (args.includes('--copy') || args.includes('-cp')) {
             const copied = await copyToClipboard(res);
             if (copied) quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
-            else quickPrint(`${ncc('Yellow')}(failed to copy to clipboard)${ncc()}`);
+            else Logger.warn('(failed to copy to clipboard)', 'commit');
          }
          return 0;
       }
@@ -116,7 +115,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       await fs.unlink(tempFile).catch(noop);
       return 0;
    } catch (err) {
-      quickPrint(yuString(err, { color: true }));
+      Logger.error(yuString(err, { color: true }), 'commit');
       return 1;
    }
 }

@@ -7,15 +7,13 @@ interface ProgressiveMatchResult {
    isExact: boolean;
 }
 
-const _process = process;
-export { _process };
 
 /**
  * Quickly prints a message to stdout with a newline.
  * @param msg - The message to print.
  */
 export function quickPrint(msg: string, end: string = '\n'): void {
-   _process.stdout.write(msg + end);
+   process.stdout.write(msg + end);
 }
 
 /**
@@ -87,3 +85,8 @@ export function normalizePath(pathStr: string): string {
  * No operation.
  */
 export const noop = (): void => { };
+
+export function inferBool(value: string): boolean {
+   const trueValues = ['1', 'true', 'yes', 'on'];
+   return trueValues.includes(value.toLowerCase());
+}

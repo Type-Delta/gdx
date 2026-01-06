@@ -3,7 +3,7 @@ import stats from '@/commands/stats';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
    afterAll(cleanup);
@@ -13,7 +13,7 @@ describe('gdx stats', async () => {
 
       const result = await stats(ctx);
       expect(result).toBe(1);
-      expect(buffer.stdout).toContain('Failed to read git config user.email');
+      expect(buffer.stderr).toContain('Failed to read git config user.email');
 
       await $`${git$} config user.email "test@example.com"`;
    });

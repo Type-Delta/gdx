@@ -4,6 +4,7 @@ import { GdxContext } from '../common/types';
 import { $, spinner } from '../modules/shell';
 import { noop, quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
+import Logger from '../utils/logger';
 import { nocapPrompt } from '../templates/prompts';
 import { COLOR, EXECUTABLE_NAME } from '@/consts';
 
@@ -23,7 +24,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       )?.stdout.trim();
 
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
-         quickPrint(`${ncc('Red')}Bro, you haven't committed anything yet. 🤣${ncc()}`);
+         Logger.error('Bro, you haven\'t committed anything yet. 🤣', 'nocap');
          return 1;
       }
 
@@ -57,10 +58,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       for await (const response of connection) {
          if (response.error) {
             spin.stop();
-            quickPrint(
-               `${ncc('Red')}😭 ill bro, the server rejected u${ncc()}\n\n` +
-               yuString(response.error, { color: true })
-            );
+            Logger.error(`😭 ill bro, the server rejected u\n\n${yuString(response.error, { color: true })}`, 'nocap');
             return 1;
          }
 
@@ -77,13 +75,13 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       quickPrint('\n');
 
       if (!res) {
-         quickPrint(`${ncc('Red')}Error: Unable to generate response (empty response).${ncc()}`);
+         Logger.error('Unable to generate response (empty response).', 'nocap');
          return 1;
       }
 
       return 0;
    } catch (err) {
-      quickPrint(yuString(err, { color: true }));
+      Logger.error(yuString(err, { color: true }), 'nocap');
       return 1;
    }
 }

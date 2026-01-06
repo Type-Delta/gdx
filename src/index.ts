@@ -11,6 +11,7 @@ import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';
 import { getConfig } from './common/config';
+import Logger from './utils/logger';
 
 const _args = process.argv.slice(2);
 
@@ -33,10 +34,8 @@ async function main(): Promise<number> {
       if (validLogLevels.includes(logLevelValue)) {
          global.logLevel = logLevelValue as 'fatal' | 'error' | 'warn' | 'info' | 'debug';
       } else {
-         console.error(
-            ncc('Red') +
-            `Error: Invalid log level '${logLevelValue}'. Expected: ${validLogLevels.join(', ')}` +
-            ncc()
+         Logger.error(
+            `Invalid log level '${logLevelValue}'. Expected: ${validLogLevels.join(', ')}`
          );
          return 1;
       }
@@ -52,13 +51,11 @@ async function main(): Promise<number> {
             quickPrint(script);
             return 0;
          } catch (err) {
-            console.error(yuString(err, { color: true }));
+            Logger.error(yuString(err, { color: true }));
             return 1;
          }
       } else {
-         console.error(
-            ncc('Red') + 'Error: --shell <shell-name> is required for initialization.' + ncc()
-         );
+         Logger.error('--shell <shell-name> is required for initialization.');
          return 1;
       }
    }
@@ -128,7 +125,7 @@ async function main(): Promise<number> {
                   const lintResult = await cmd.lint(ctx);
                   if (lintResult !== 0) {
                      if (behavior === 'error') {
-                        quickPrint(ncc('Red') + 'Lint failed. Push aborted.' + ncc());
+                        Logger.error('Lint failed. Push aborted.', 'lint');
                         return 1;
                      } else {
                         quickPrint(
@@ -249,12 +246,10 @@ async function main(): Promise<number> {
             return cmd.doctor();
          default:
             if (candidates && candidates.length > 1) {
-               quickPrint(
-                  ncc('Yellow') +
-                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+               Logger.warn(
+                  `Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
                      ', '
-                  )}?` +
-                  ncc()
+                  )}?`
                );
                break AliasNCustomCmd;
             }
@@ -287,7 +282,7 @@ async function main(): Promise<number> {
       if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
          return exitCode || 1; // git command failed, return exit code
 
-      console.error('Command failed.\n' + yuString(err, { color: true }));
+      Logger.error('Command failed.\n' + yuString(err, { color: true }));
       return 1;
    }
 
@@ -303,7 +298,7 @@ async function main(): Promise<number> {
 
       process.exit(global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode);
    } catch (err) {
-      console.error(yuString(err, { color: true }));
+      Logger.error(yuString(err, { color: true }));
       process.exit(1);
    }
 })();

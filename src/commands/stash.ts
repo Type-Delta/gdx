@@ -10,6 +10,7 @@ import { COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import { getStashEntry, restoreStash } from '@/modules/git';
 import { getConfig } from '@/common/config';
+import Logger from '../utils/logger';
 
 export interface StashEntry {
    sha: string;
@@ -30,7 +31,7 @@ async function dropPardon(git$: string | string[]): Promise<number> {
       const op = popLastStashDrop(root);
 
       if (!op) {
-         quickPrint(ncc('Red') + 'No stash drop to pardon.' + ncc());
+         Logger.error('No stash drop to pardon.', 'stash');
          return 1;
       }
 
@@ -45,7 +46,7 @@ async function dropPardon(git$: string | string[]): Promise<number> {
       return 0;
    } catch (e) {
       // Fallback or error
-      quickPrint(ncc('Red') + 'Error pardoning stash: ' + e + ncc());
+      Logger.error('Error pardoning stash: ' + e, 'stash');
       return 1;
    }
 }
@@ -54,7 +55,7 @@ async function dropRange(git$: string | string[], args: string[], stashBakLimit:
    const [start, end] = args[2].split('..').map((s) => parseInt(s, 10));
 
    if (isNaN(start) || isNaN(end) || start > end) {
-      quickPrint(ncc('Red') + `Invalid stash range: ${args[2]}` + ncc());
+      Logger.error(`Invalid stash range: ${args[2]}`, 'stash');
       return 1;
    }
 
@@ -77,7 +78,9 @@ async function dropRange(git$: string | string[], args: string[], stashBakLimit:
          }, stashBakLimit);
       }
    } catch (err) {
-      quickPrint(ncc('Yellow') + `Warning: Could not capture stash entry for undo. (${Err.from(err).name})` + ncc());
+      const error = Err.from(err);
+      Logger.warn(`Could not capture stash entry for undo. (${error.name})`, 'stash');
+      Logger.debug(error.toString(), 'stash');
    }
 
    quickPrint(
@@ -132,7 +135,7 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
          }, limit);
       }
    } catch (err) {
-      quickPrint(ncc('Yellow') + `Warning: Could not capture stash entry for undo. (${Err.from(err).name})` + ncc());
+      Logger.warn(`Could not capture stash entry for undo. (${Err.from(err).name})`, 'stash');
    }
 
    // Run original command

@@ -7,7 +7,7 @@ import { GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
-
+import Logger from '../utils/logger';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 
@@ -75,7 +75,10 @@ export default async function clear(ctx: GdxContext): Promise<number> {
             await fs.unlink(file.path);
             allBackupFiles.splice(allBackupFiles.indexOf(file), 1);
          } catch (e) {
-            console.error(`Failed to delete old backup file: ${file.path}`, e);
+            Logger.error(
+               `Failed to delete old backup file: ${file.path}\n${yuString(e, { color: true })}`,
+               'clear'
+            );
          }
       }
    }
@@ -86,17 +89,13 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       const hasChanges = hasCachedChanges || (await $`${git$} diff --name-only`).stdout.length > 0;
 
       if (hasChanges) {
-         quickPrint(
-            `${ncc('Red')}Working Directory is dirty, aborting pardon to prevent unintended data loss. Please clear your workspace first.${ncc()}`
-         );
+         Logger.error('Working Directory is dirty, aborting pardon to prevent unintended data loss. Please clear your workspace first.', 'clear');
          await $inherit`${git$} status`;
          return 1;
       }
 
       if (allBackupFiles.length === 0) {
-         quickPrint(
-            `${ncc('Red')}No backup patch file found for branch '${branchName}'. Pardon failed.${ncc()}`
-         );
+         Logger.error(`No backup patch file found for branch '${branchName}'. Pardon failed.`, 'clear');
          return 1;
       }
 
@@ -105,13 +104,11 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
       if (latestBackup.stats.mtime < oneDayAgo) {
-         quickPrint(
-            `${ncc('Yellow')}Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)${ncc()}`
-         );
+         Logger.warn('Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)', 'clear');
 
          const answer = await $prompt("Type 'y' to confirm: ");
          if (answer.toLowerCase() !== 'y') {
-            quickPrint(`${ncc('Red')}Pardon aborted.${ncc()}`);
+            Logger.error('Pardon aborted.', 'clear');
             return 1;
          }
       }
@@ -124,10 +121,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          );
          await $inherit`${git$} status`;
       } catch (err) {
-         quickPrint(
-            `${ncc('Red')}Failed to apply patch. Pardon aborted.${ncc()}\n` +
-            yuString(err, { color: true })
-         );
+         Logger.error(`Failed to apply patch. Pardon aborted.\n${yuString(err, { color: true })}`, 'clear');
          return 1;
       }
       return 0;

@@ -1,13 +1,14 @@
 import * as fs from '@/modules/fs';
 import path from 'path';
 
+import { CheckCache, ncc } from '@lib/Tools';
+
 import { GdxContext } from '@/common/types';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { $, whichExec } from '@/modules/shell';
-import { _process } from './utilities';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
-import { CheckCache, ncc } from '@lib/Tools';
+import global from '../global';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
@@ -76,6 +77,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdxrc.toml');
    process.env.GDX_TEMP_DIR = tmpDir;
    process.env.GIT_CONFIG_NOSYSTEM = '1';
+   global.logLevel = 'warn';
 
    // Create an empty global config file
    const globalConfigPath = path.join(tmpDir, '.gitconfig');
@@ -94,9 +96,9 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const buffer = { stdout: '', stderr: '' };
    process.env.NODE_ENV = 'test';
    // @ts-expect-error function signature mismatch
-   _process.stdout.write = (msg: string) => (buffer.stdout += msg);
+   process.stdout.write = (msg: string) => (buffer.stdout += msg);
    // @ts-expect-error function signature mismatch
-   _process.stderr.write = (msg: string) => (buffer.stderr += msg);
+   process.stderr.write = (msg: string) => (buffer.stderr += msg);
 
    attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
    const it = defineBunIt(tracker);
@@ -160,6 +162,7 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
          TEMP_DIR: path.join(tempDir, 'tmp'),
          CURRENT_DIR: path.join(tempDir, 'project'),
          CONFIG_PATH: path.join(tempDir, '.gdxrc.toml'),
+         SHOULD_WRITE_LOGS: false,
       };
    });
    return tracker;

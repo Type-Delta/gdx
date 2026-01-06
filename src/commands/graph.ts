@@ -4,6 +4,7 @@ import { MathKit, ncc, strWrap } from '@lib/Tools';
 import { GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
+import Logger from '../utils/logger';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "
@@ -17,11 +18,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    if (!email) {
       // LINK: uwnkd11 string literal in spec
-      quickPrint(
-         ncc('Red') +
-         'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.' +
-         ncc()
-      );
+      Logger.error('User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.', 'graph');
       return 1;
    }
 
@@ -36,11 +33,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
 
    if (graphWidth < MIN_TERM_WIDTH) {
-      quickPrint(
-         ncc('Red') +
-         `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.` +
-         ncc()
-      );
+      Logger.error(`Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.`, 'graph');
       return 1;
    }
 

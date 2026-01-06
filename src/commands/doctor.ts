@@ -10,6 +10,7 @@ import {
    remap
 } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
+import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
 
 import { COLOR } from '../consts';
@@ -57,11 +58,11 @@ export default async function doctor(): Promise<number> {
          const info = JSON.parse(fs.readFileSync(installInfoPath, 'utf8'));
          nativeInsInfo = yuString(info, { color: true });
       } catch (e) {
-         quickPrint(ncc('Red') + `Error reading install.json: ${e}` + ncc());
+         Logger.error(`Error reading install.json: ${e}`, 'doctor');
          hasIssues = true;
       }
    } else if (isNative) {
-      quickPrint(ncc('Yellow') + `No native install info found at ${installInfoPath}` + ncc());
+      Logger.warn(`No native install info found at ${installInfoPath}`, 'doctor');
       hasIssues = true;
    }
 

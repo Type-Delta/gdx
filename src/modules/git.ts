@@ -1,12 +1,11 @@
-import { ncc } from '@lib/Tools';
-import { quickPrint } from '../utils/utilities';
 import { $ } from './shell';
+import Logger from '../utils/logger';
 
 export async function assertInGitWorktree(git$: string | string[]): Promise<boolean> {
    try {
       await $`${git$} rev-parse --is-inside-work-tree`;
    } catch {
-      quickPrint(ncc('Red') + 'Error: This command must be run inside a git repository.' + ncc());
+      Logger.error('This command must be run inside a git repository.', 'git');
       return false;
    }
    return true;

@@ -5,6 +5,7 @@ import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree } from '@/modules/git';
 import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES } from '@/consts';
+import Logger from '../utils/logger';
 
 import { COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
@@ -33,7 +34,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    if (upstream) {
       range = `${upstream}..HEAD`;
    } else {
-      quickPrint(ncc('Yellow') + 'No upstream configured. Checking last commit only.' + ncc());
+      Logger.warn('No upstream configured. Checking last commit only.', 'lint');
       range = 'HEAD^..HEAD';
    }
 
@@ -145,9 +146,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    }
 
    if (errors > 0) {
-      quickPrint(
-         ncc('Red') + `\nLint failed with ${errors} errors and ${warnings} warnings.` + ncc()
-      );
+      Logger.error(`Lint failed with ${errors} errors and ${warnings} warnings.`, 'lint');
       return 1;
    } else if (warnings > 0) {
       quickPrint(ncc('Yellow') + `\nLint passed with ${warnings} warnings.` + ncc());
