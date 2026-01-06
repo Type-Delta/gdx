@@ -26,6 +26,22 @@ async function main(): Promise<number> {
    };
    const args = ctx.args;
 
+   // Handle global --loglevel option
+   const logLevelValue = args.popValue('--loglevel');
+   if (logLevelValue) {
+      const validLogLevels = ['fatal', 'error', 'warn', 'info', 'debug'];
+      if (validLogLevels.includes(logLevelValue)) {
+         global.logLevel = logLevelValue as 'fatal' | 'error' | 'warn' | 'info' | 'debug';
+      } else {
+         console.error(
+            ncc('Red') +
+            `Error: Invalid log level '${logLevelValue}'. Expected: ${validLogLevels.join(', ')}` +
+            ncc()
+         );
+         return 1;
+      }
+   }
+
    if (args[0] === '--init') {
       const shell = args.popValue('--shell');
       const cmdAlias = args.popValue('--cmd');

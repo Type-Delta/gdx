@@ -76,3 +76,4 @@ export const SENSITIVE_CONTENTS_REGEXES = [
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
+export const LOG_FILE_SIZE_LIMIT = 500 * 1024; // 500 KB
