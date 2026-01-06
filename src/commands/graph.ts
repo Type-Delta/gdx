@@ -1,6 +1,6 @@
 import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
-import { ncc, strWrap } from '@lib/Tools';
+import { MathKit, ncc, strWrap } from '@lib/Tools';
 import { GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
@@ -128,7 +128,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
             color = ncc('Dim') + ncc(rgbVec2decimal(COLOR.MidnightBlack));
             cellChar = '▨'; // Different char for zero commits
          } else {
-            const intensity = Math.min(commitCount / maxCommits, 1);
+            const intensity = MathKit.clamp(commitCount / maxCommits, 0.15, 1);
             const interpColor = _2PointGradientInterp(
                COLOR.MidnightBlack,
                COLOR.OceanGreen,
