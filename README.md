@@ -112,6 +112,10 @@ To find your profile path, run `$PROFILE` in PowerShell.
 Invoke-Expression (& { (gdx --init --shell pwsh | Out-String) })
 ```
 
+> [!TIP]
+> you can add `--cmd` to the `gdx --init` command to create custom aliases.
+> For example, `gdx --init --shell zsh --cmd g` will create `g` as an alias for `gdx`.
+
 ## Core Features
 
 ### 1. Intelligent Shorthands
@@ -246,7 +250,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
       automatically detect and use fzf and/or cloc if installed for:
    - Interactive fuzzy search for branches, commits, stash, log and files instead of `less`
    - Code line statistics in `gdx stats` using `cloc`
-- [ ] **gdx clear Untracked files support**: `gdx clear` currently only saves changes to tracked files. Add an option to back up untracked files as well.
+- [x] **gdx clear Untracked files support**: `gdx clear` now automatically backs up untracked files in the patch.
 - [ ] **gdx migrate**: move dirty changes to another branch/worktree without committing.
 
 ## License

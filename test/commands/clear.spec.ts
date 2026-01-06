@@ -10,40 +10,26 @@ describe('gdx clear', async () => {
    const { git$ } = createGdxContext(tmpDir);
    afterAll(cleanup);
 
-   it('should abort if directory containts untrack file', async () => {
-      // Create a file and stage it (dirty state)
-      await fs.writeFile(path.join(tmpDir, 'test.txt'), 'content');
-      await $`${git$} add test.txt`;
+   it('should create a backup containing untracked files and clean the directory', async () => {
+      // Create a file and stage it
+      await fs.writeFile(path.join(tmpDir, 'staged.txt'), 'staged content');
+      await $`${git$} add staged.txt`;
 
-      // Create an unstaged file (this file should prevent clear without --force)
-      await fs.writeFile(path.join(tmpDir, 'unstaged.txt'), 'content');
+      // Create an untracked file
+      await fs.writeFile(path.join(tmpDir, 'untracked.txt'), 'untracked content');
 
       const ctx = createGdxContext(tmpDir);
       const result = await clear(ctx);
-      expect(result).toBe(1);
-      // LINK: mmhrb3j string literal in spec
-      expect(buffer.stdout.toLocaleLowerCase()).toContain('clear aborted');
 
-      // Verify files are still there
-      const files = await fs.readdir(tmpDir);
-      expect(files).toContain('test.txt');
-      expect(files).toContain('unstaged.txt');
-   });
-
-   it('should create a backup and clean the directory', async () => {
-      // from previous test, we have staged and unstaged files
-
-      // Run clear
-      const forceCtx = createGdxContext(tmpDir, ['--force']); // we need --force to override abort
-      const result = await clear(forceCtx);
       expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Backup of all changes saved to');
 
-      // Verify files are gone
+      // Verify files are gone form workspace
       const files = await fs.readdir(tmpDir);
-      expect(files).not.toContain('test.txt');
-      expect(files).not.toContain('unstaged.txt');
+      expect(files).not.toContain('staged.txt');
+      expect(files).not.toContain('untracked.txt');
 
-      // Verify backup exists in temp dir (which is tmpDir/tmp because of mock)
+      // Verify backup exists in temp dir
       const backupDir = path.join(tmpRootDir, 'tmp');
       const backupFiles = (await fs.readdir(backupDir)).filter(
          (f) => f.includes('_backup_') && f.endsWith('.patch')
@@ -66,9 +52,17 @@ describe('gdx clear', async () => {
       const result = await clear(pardonCtx);
 
       expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Pardon applied successfully');
 
       // Verify files are back
       const files = await fs.readdir(tmpDir);
-      expect(files).toContain('test.txt');
+
+      // Verify files are restored
+      expect(files).toContain('staged.txt');
+      expect(files).toContain('untracked.txt');
+
+      // Verify content
+      const content = await fs.readFile(path.join(tmpDir, 'untracked.txt'), 'utf-8');
+      expect(content).toBe('untracked content');
    });
 });
