@@ -7,6 +7,10 @@
 - backup and restore of tracked files on `gdx clear` and `gdx clear pardon`
 - `gdx stash drop pardon` to restore last dropped stash
 
+### Changed
+
+- help messages are now dynamically wrapped to terminal width
+
 ### Fixed
 
 - Issue Node.js `fs/promises` missing some required methods and failing `parallel` command run on Node.js runtime

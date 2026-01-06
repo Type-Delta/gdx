@@ -7,7 +7,8 @@ import {
    arrToString,
    yuString,
    strWrap,
-   remap
+   remap,
+   Err
 } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
@@ -58,7 +59,9 @@ export default async function doctor(): Promise<number> {
          const info = JSON.parse(fs.readFileSync(installInfoPath, 'utf8'));
          nativeInsInfo = yuString(info, { color: true });
       } catch (e) {
-         Logger.error(`Error reading install.json: ${e}`, 'doctor');
+         const err = Err.from(e);
+         Logger.error(`Error reading install.json: ${err.message}`, 'doctor');
+         Logger.debug(err.toString(), 'doctor');
          hasIssues = true;
       }
    } else if (isNative) {
@@ -96,7 +99,11 @@ export default async function doctor(): Promise<number> {
 
    quickPrint(
       `Executable path: ${ncc('Cyan') + process.execPath + ncc()}`
-   )
+   );
+
+   quickPrint(
+      `Log file path: ${ncc('Cyan') + Logger.logFile + ncc()}`
+   );
 
    // Detect git
    try {
@@ -150,7 +157,7 @@ Diagnose installation and environment.
 ${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Checks for native binary, runtimes, and provides installation guidance.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -165,7 +172,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} doctor${ncc()}
 
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} doctor ${ncc() + ncc('Dim')}# Diagnose installation and environment${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

@@ -42,8 +42,9 @@ const MessageColors: Record<LogLevel, 'Red' | 'Yellow' | 'Cyan' | 'Magenta'> = {
 };
 
 class Logger {
+   static logFile: string = path.join(os.tmpdir(), 'gdx', 'gdx.log');
+
    private moduleName: string;
-   private static logFile: string = path.join(os.tmpdir(), 'gdx', 'gdx.log');
    private static initialized: boolean = false;
    private static allLogs: Array<{ timestamp: string; level: LogLevel; message: string; module: string }> = [];
 

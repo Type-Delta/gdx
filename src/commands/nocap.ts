@@ -7,7 +7,7 @@ import { getLLMProvider } from '../common/adapters/llm';
 import Logger from '../utils/logger';
 import { nocapPrompt } from '../templates/prompts';
 import { COLOR, EXECUTABLE_NAME } from '@/consts';
-
+import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
@@ -102,7 +102,7 @@ Use when you want a quick, entertaining summary/critique of your most recent com
 ${ncc('Bright') + _2PointGradient('NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -117,7 +117,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} nocap${ncc()}
 
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} nocap ${ncc() + ncc('Dim')}# Roast the latest commit by the configured git user${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

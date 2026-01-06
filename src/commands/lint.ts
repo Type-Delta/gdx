@@ -1,13 +1,13 @@
 import { ncc, strWrap, toShortNum } from '@lib/Tools';
+
 import { GdxContext } from '../common/types';
 import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree } from '@/modules/git';
-import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES } from '@/consts';
+import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, COLOR } from '@/consts';
 import Logger from '../utils/logger';
-
-import { COLOR } from '@/consts';
+import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 
 export default async function lint(ctx: GdxContext): Promise<number> {
@@ -210,7 +210,7 @@ You can configure the behavior in your .gdxrc.toml file or \`${EXECUTABLE_NAME} 
 onPushBehavior = "off" | "error" | "warning"  # Default: "off"
 maxFileSizeKb = 1024                          # Default: 1024 KB
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -225,7 +225,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} lint${ncc()}
 
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} lint ${ncc() + ncc('Dim')}# Run lint checks on outgoing commits${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

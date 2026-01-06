@@ -22,10 +22,10 @@ import {
 } from '../modules/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
-
 import { COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '../utils/logger';
+import global from '@/global';
 
 interface ParallelMetadata {
    alias: string;
@@ -854,7 +854,7 @@ ${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COL
 ${ncc('Bright') + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Joining cherry-picks commits into origin; conflicts during cherry-pick will abort the join and restore stashes when possible. Removing a fork will also delete the worktree directory when forced.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -875,7 +875,7 @@ Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --move ${ncc() + ncc('Dim')}# Create fork and optionally move changes${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list --short ${ncc() + ncc('Dim')}# Show forks for current branch${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

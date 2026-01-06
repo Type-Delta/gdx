@@ -81,7 +81,7 @@ bun install
 bun run build
 ```
 
-Your compiled binary will be in `./dist/gdx` (or `./dist/gdx.exe` on Windows).
+Your compiled binary will be in `./dist/` folder.
 
 </details>
 

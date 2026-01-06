@@ -223,7 +223,7 @@ ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)
 ${ncc('Bright') + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Dropped stashes are backed up temporarily. Use \`pardon\` to bring them back.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -239,7 +239,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} stash drop ${ncc('Dim')}[<stash> | <range> | pa
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} stash drop 0..0 ${ncc() + ncc('Dim')}# Drop the most recent stash${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} stash drop pardon ${ncc() + ncc('Dim')}# Restore last dropped stash${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

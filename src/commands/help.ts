@@ -3,6 +3,7 @@ import { hyperLink, ncc, strWrap } from '@lib/Tools';
 import { COLOR, EXECUTABLE_NAME, REPO_README_URL, VERSION } from '@/consts';
 import { quickPrint } from '@/utils/utilities';
 import { _2PointGradient } from '@/modules/graphics';
+import global from '@/global';
 
 import { help as stashHelp } from './stash';
 import { help as statsHelp } from './stats';
@@ -120,7 +121,7 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    bypass expansions by using the full command name
    so they are not recognized as shorthand triggers.
 - For more infomation, see ${hyperLink('README.md', REPO_README_URL)}.`,
-            100,
+            Math.min(100, global.terminalWidth - 4),
             {
                firstIndent: '  ',
                mode: 'softboundery',

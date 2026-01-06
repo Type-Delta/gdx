@@ -10,6 +10,7 @@ import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 import Logger from '../utils/logger';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
+import global from '@/global';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -181,7 +182,7 @@ ${ncc('Bright') + _2PointGradient('SUBCOMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0
 ${ncc('Bright') + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -198,7 +199,7 @@ Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} clear ${ncc() + ncc('Dim')}# Create backup patch and clear working tree${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} clear list ${ncc() + ncc('Dim')}# Show recent backup patches${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} clear pardon ${ncc() + ncc('Dim')}# Restore the latest backup patch${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

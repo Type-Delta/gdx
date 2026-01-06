@@ -5,6 +5,7 @@ import { GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
+import global from '@/global';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "
@@ -28,7 +29,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
       );
    }
 
-   const termWidth = process.stdout.columns || 80;
+   const termWidth = global.terminalWidth;
    const graphWidth = termWidth - LABEL_WIDTH - RIGHT_MARGIN;
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
 
@@ -154,9 +155,9 @@ ${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Supply ${ncc('Cyan')}--email <email>${ncc()} to override the configured git user email. Use ${ncc('Cyan')}--quiet${ncc()} to suppress informational headers when embedding the graph in other scripts.
 
 ${ncc('Bright') + _2PointGradient('TERMINAL NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-The graph respects \`process.stdout.columns\`. If the terminal is too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
+The graph respects \`global.terminalWidth\`. If the terminal is too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -172,7 +173,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc('Dim')}[--email <email>] [--quiet]$
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc() + ncc('Dim')}# Graph for configured git user${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} graph --email bob@example.com ${ncc() + ncc('Dim')}# Graph for specified author${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

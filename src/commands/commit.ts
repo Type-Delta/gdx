@@ -11,6 +11,7 @@ import Logger from '@/utils/logger';
 import { commitMsgGenerator } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
+import global from '@/global';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -140,7 +141,7 @@ Use ${ncc('Cyan')}--no-commit (-nc)${ncc()} to prevent creating the commit (mess
 ${ncc('Bright') + _2PointGradient('REQUIREMENTS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 A non-empty staged diff is required; the command will error if there are no staged changes.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -157,7 +158,7 @@ Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto                    ${ncc() + ncc('Dim')}# Generate and commit using LLM-generated message${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit        ${ncc() + ncc('Dim')}# Print generated message without committing${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit --copy ${ncc() + ncc('Dim')}# Copy generated message to clipboard${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

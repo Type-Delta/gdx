@@ -202,7 +202,7 @@ The command runs multiple git queries in parallel to collect commit lists, per-c
 ${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Use ${ncc('Cyan')}--author <email>${ncc()} to target a different author than the configured git user.email. Output includes a small visual graph invocation via the \`graph\` command by default.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -218,7 +218,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc('Dim')}[--author <email>]${ncc()}
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc() + ncc('Dim')}# Stats for configured git user${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} stats --author alice@example.com ${ncc() + ncc('Dim')}# Stats for specified author${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',

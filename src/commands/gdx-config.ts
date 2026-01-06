@@ -186,7 +186,7 @@ ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)
 - path: Prints the path to the active config file used by gdx.
 - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
 `,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
@@ -204,7 +204,7 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config ${ncc('Dim')}<key> [value]${ncc()}
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config list ${ncc() + ncc('Dim')}# List all config keys and values${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} gdx-config editor.code true ${ncc() + ncc('Dim')}# Set value for a key${ncc()}`,
-         100,
+         Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundery',
