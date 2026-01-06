@@ -117,8 +117,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -209,8 +209,8 @@ async function main(): Promise<number> {
 
             if (subCmdMatch.match) args[1] = subCmdMatch.match;
 
-            if (args[1] === 'drop' && args.length >= 3 && /\d+\.\.\d+$/.test(args[2])) {
-               return await cmd.stash.dropRange(git$, args);
+            if (args[1] === 'drop') {
+               return await cmd.stash.drop(git$, args);
             }
             break;
          }
@@ -235,10 +235,10 @@ async function main(): Promise<number> {
             if (candidates && candidates.length > 1) {
                quickPrint(
                   ncc('Yellow') +
-                     `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
-                        ', '
-                     )}?` +
-                     ncc()
+                  `Warning: Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
+                     ', '
+                  )}?` +
+                  ncc()
                );
                break AliasNCustomCmd;
             }

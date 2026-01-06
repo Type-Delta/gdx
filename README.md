@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Status](https://img.shields.io/badge/status-experimental-orange.svg)
 
 > [!WARNING]
-> **⚠️ PRE-ALPHA WARNING:** This project is currently in a "trial phase" (i.e., I'm dogfooding it daily). Expect breaking changes, missing features, and the occasional hiccup.
+> **⚠️ ALPHA WARNING:** This project is currently in a "trial phase" (i.e., I'm dogfooding it daily). Expect breaking changes, missing features, and the occasional hiccup.
 
 ---
 
@@ -173,6 +173,7 @@ Git stash is great until you need to clean it up.
 gdx sta l           # git stash list
 gdx sta d 2..6      # Drops stashes 2 through 6.
                     # (Drops high->low to prevent index shifting)
+gdx sta d pardon    # Restores the last dropped stash.
 ```
 
 ### 6. AI-Powered Commits
@@ -244,7 +245,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - conflict markers
    - abnormal file sizes
      with an option to automatically run lint before every push (bypass with `gdx push --no-lint`)
-- [ ] **Undoable stash drop**
+- [x] **Undoable stash drop**
 - [x] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
 - [ ] **Seamless Integration with fzf and cloc**
       automatically detect and use fzf and/or cloc if installed for:

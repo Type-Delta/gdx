@@ -11,6 +11,9 @@ export interface GdxConfig {
       onPushBehavior?: 'off' | 'error' | 'warning';
       maxFileSizeKb?: number;
    };
+   stash?: {
+      undoLimit?: number;
+   };
    defaultEditor: string;
 }
 
@@ -27,6 +30,9 @@ export const DEFAULT_CONFIG: GdxConfig = {
       onPushBehavior: 'off',
       maxFileSizeKb: 1024, // 1MB
    },
+   stash: {
+      undoLimit: 10,
+   },
    defaultEditor: 'code',
 };
 
@@ -42,6 +48,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'llm.maxTokens': 'GDX_LLM_MAX_TOKENS',
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
+   'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
 };
 
@@ -55,5 +62,6 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.maxTokens': 'Maximum tokens for LLM responses',
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
+   'stash.undoLimit': 'Max number of stash drops to keep in history',
    defaultEditor: 'Default code editor to open files with',
 };

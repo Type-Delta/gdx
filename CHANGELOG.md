@@ -5,6 +5,7 @@
 ### Added
 
 - backup and restore of tracked files on `gdx clear` and `gdx clear pardon`
+- `gdx stash drop pardon` to restore last dropped stash
 
 ### Fixed
 
