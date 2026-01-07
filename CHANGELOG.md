@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [Version 0.1.2] - 2026-01-07
 
 ### Added
 
@@ -14,6 +14,7 @@
 ### Fixed
 
 - Issue Node.js `fs/promises` missing some required methods and failing `parallel` command run on Node.js runtime
+- NPM revival command in postinstall script
 
 ## Version 0.1.1 - 2026-01-03
 

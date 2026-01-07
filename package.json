@@ -1,6 +1,6 @@
 {
   "name": "gdx",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Git, but with better DX. The raw power of Git, aligned with human workflows.",
   "homepage": "https://github.com/Type-Delta/gdx#readme",
   "bugs": {
