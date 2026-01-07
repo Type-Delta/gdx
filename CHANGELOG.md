@@ -1,6 +1,6 @@
 # Changelog
 
-## [Version 0.1.2] - 2026-01-07
+## Version 0.1.2 - 2026-01-07
 
 ### Added
 
