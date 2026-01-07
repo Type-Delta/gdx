@@ -54,20 +54,20 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 
    if (!gitExePath) await findGitExecutable();
 
-   await fs.mkdir(path.join(process.cwd(), 'test/env'), { recursive: true });
-   const tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'test/env/'));
+   fs.mkdirSync(path.join(process.cwd(), 'test/env'), { recursive: true });
+   const tmpDir = fs.mkdtempSync(path.join(process.cwd(), 'test/env/'));
    const tmpMockProjDir = path.join(tmpDir, 'project');
-   await fs.mkdir(tmpMockProjDir, { recursive: true });
-   await fs.mkdir(path.join(tmpDir, 'tmp'), { recursive: true });
+   fs.mkdirSync(tmpMockProjDir, { recursive: true });
+   fs.mkdirSync(path.join(tmpDir, 'tmp'), { recursive: true });
 
    let tracker = new TestEnvTracker();
    tracker = overrideModules(tracker, tmpDir);
 
    const _$ = $({ cwd: tmpMockProjDir });
-   const cleanup = async () => {
+   const cleanup = () => {
       try {
          console.log(`Cleaning up temp dir: ${tmpDir}`);
-         await fs.rm(tmpDir, { recursive: true, force: true });
+         fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch {
          console.error(`Failed to remove temp dir: ${tmpDir}`);
       }
@@ -174,7 +174,7 @@ async function clearTestEnvs() {
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
    try {
       console.log(`Clearing all test envs in: ${baseTestEnvDir}`);
-      await fs.rm(baseTestEnvDir, { recursive: true, force: true });
+      fs.rmSync(baseTestEnvDir, { recursive: true, force: true });
       testEnvCleared = true;
    } catch {
       console.error(`Failed to clear test envs in: ${baseTestEnvDir}`);

@@ -11,6 +11,7 @@ import { _2PointGradient } from '@/modules/graphics';
 import { getStashEntry, restoreStash } from '@/modules/git';
 import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
+import global from '@/global';
 
 export interface StashEntry {
    sha: string;

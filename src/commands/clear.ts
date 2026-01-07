@@ -15,10 +15,12 @@ import global from '@/global';
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
-   const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout
-      .trim()
-      .replace(/\//g, '-');
-   const repoRoot = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
+   const [branchName, repoRoot] = await Promise.all([
+      $`${git$} rev-parse --abbrev-ref HEAD`.then(c => c.stdout
+         .trim()
+         .replace(/\//g, '-')),
+      $`${git$} rev-parse --show-toplevel`.then(c => c.stdout.trim()),
+   ])
    const projectName = path.basename(repoRoot);
    const osTemp = TEMP_DIR;
    const backupFileBlob = `${projectName}_${branchName}_backup_*.patch`;
@@ -73,7 +75,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    for (const file of allBackupFiles) {
       if (file.stats.mtime < sevenDaysAgo) {
          try {
-            await fs.unlink(file.path);
+            fs.unlinkSync(file.path);
             allBackupFiles.splice(allBackupFiles.indexOf(file), 1);
          } catch (e) {
             Logger.error(
@@ -116,7 +118,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
       try {
          await $inherit`${git$} apply ${latestBackup.path}`;
-         await fs.unlink(latestBackup.path);
+         fs.unlinkSync(latestBackup.path);
          quickPrint(
             `${ncc('Cyan')}Pardon applied successfully from backup: ${ncc('Bright')}${latestBackup.path}${ncc()}`
          );
@@ -129,10 +131,11 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    }
 
    // CLEAR (Default)
-   const hasCachedChanges = (await $`${git$} diff --cached --name-only`).stdout.length > 0;
-   const hasUnstagedChanges = (await $`${git$} diff --name-only`).stdout.length > 0;
-   const hasUntrackedFiles =
-      (await $`${git$} ls-files --others --exclude-standard`).stdout.length > 0;
+   const [hasCachedChanges, hasUnstagedChanges, hasUntrackedFiles] = await Promise.all([
+      $`${git$} diff --cached --name-only`.then(c => c.stdout.length > 0),
+      $`${git$} diff --name-only`.then(c => c.stdout.length > 0),
+      $`${git$} ls-files --others --exclude-standard`.then(c => c.stdout.length > 0),
+   ]);
 
    if (!hasCachedChanges && !hasUnstagedChanges && !hasUntrackedFiles) {
       quickPrint(`${ncc('Cyan')}No changes to clear. Working directory is clean.${ncc()}`);
@@ -152,7 +155,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    // Create patch file from the staged changes (using binary to support all file types)
    const fullDiff = await $`${git$} diff --cached --binary`;
-   await fs.writeFile(backupFilePath, fullDiff.stdout);
+   fs.writeFileSync(backupFilePath, fullDiff.stdout);
 
    quickPrint(
       `${ncc('Cyan')}Backup of all changes saved to: ${ncc('Bright')}${backupFilePath}${ncc()}\n${ncc('Cyan')}(\`git clear pardon\` to undo)${ncc()}`
@@ -209,7 +212,7 @@ Examples:
 };
 
 async function getBackupFiles(backupDir: string, prefix: string, suffix: string) {
-   const files = await fs.readdir(backupDir);
+   const files = fs.readdirSync(backupDir);
    const matchedFiles = files.filter((f) => f.startsWith(prefix) && f.endsWith(suffix));
 
    const fileStats = await Promise.all(

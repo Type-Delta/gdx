@@ -64,11 +64,11 @@ function testParallelAlias(alias: string): boolean {
 /**
  * Gets metadata from a parallel worktree
  */
-async function getParallelMetadata(worktreePath: string): Promise<ParallelMetadata | null> {
+function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
    const metaPath = path.join(worktreePath, '.git-parallel.json');
 
    try {
-      const content = await fs.readFile(metaPath, 'utf-8');
+      const content = fs.readFileSync(metaPath, 'utf-8');
       return JSON.parse(content);
    } catch {
       return null;
@@ -101,7 +101,7 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
       let originPath = repoRoot;
 
       if (isParallel) {
-         const meta = await getParallelMetadata(repoRoot);
+         const meta = getParallelMetadata(repoRoot);
          if (meta) {
             if (meta.branch) branchName = meta.branch;
             if (meta.originPath) originPath = path.resolve(meta.originPath);
@@ -143,9 +143,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    const targetPath = path.join(ctx.parallelRoot, alias);
 
-   try {
-      await fs.access(targetPath);
-   } catch {
+   if (!fs.existsSync(targetPath)) {
       Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}'.`, 'parallel');
       return 1;
    }
@@ -155,7 +153,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
       // Clean up directory if it still exists
       try {
-         await fs.rm(targetPath, { recursive: true, force: true });
+         fs.rmSync(targetPath, { recursive: true, force: true });
       } catch {
          // Ignore cleanup errors
       }
@@ -171,7 +169,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       );
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
-            await fs.rm(targetPath, { recursive: true, force: true });
+            fs.rmSync(targetPath, { recursive: true, force: true });
             quickPrint(`${ncc('Cyan')}Force removed worktree directory:${ncc()} ${alias}`);
             return 0;
          } catch {
@@ -227,16 +225,16 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
    // Set .git-parallel.json as ignored file
    const excludePath = path.join(ctx.repoRoot, '.git', 'info', 'exclude');
    try {
-      const excludeContent = await fs.readFile(excludePath, 'utf-8');
+      const excludeContent = fs.readFileSync(excludePath, 'utf-8');
       if (!excludeContent.includes('.git-parallel.json')) {
-         await fs.appendFile(excludePath, '\n.git-parallel.json\n');
+         fs.appendFileSync(excludePath, '\n.git-parallel.json\n');
       }
    } catch {
-      await fs.writeFile(excludePath, '.git-parallel.json\n');
+      fs.writeFileSync(excludePath, '.git-parallel.json\n');
    }
 
    // Create parallel root directory
-   await fs.mkdir(ctx.parallelRoot, { recursive: true });
+   fs.mkdirSync(ctx.parallelRoot, { recursive: true });
 
    // Get base commit
    const baseCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
@@ -305,7 +303,7 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
    };
 
    const metaPath = path.join(targetPath, '.git-parallel.json');
-   await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
+   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
 
    quickPrint(`${ncc('Cyan')}Parallel worktree created:${ncc()} ${targetPath}`);
    if (changesOpt) {
@@ -337,7 +335,7 @@ async function cmdRemove(git$: string | string[], args: string[]): Promise<numbe
    const targetPath = path.join(ctx.parallelRoot, alias);
 
    try {
-      await fs.access(targetPath, fs.constants.F_OK | fs.constants.W_OK);
+      fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
    } catch {
       Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}' or is not accessible.`, 'parallel');
       return 1;
@@ -380,9 +378,7 @@ async function cmdOpen(
    const target = args[0];
 
    if (target.toLowerCase() === 'origin') {
-      try {
-         await fs.access(ctx.originPath);
-      } catch {
+      if (!fs.existsSync(ctx.originPath)) {
          Logger.error(`Origin worktree path not found at '${ctx.originPath}'.`, 'parallel');
          return 1;
       }
@@ -480,7 +476,7 @@ async function cmdList(git$: string | string[], args: string[]): Promise<number>
       return 0;
    }
 
-   const entries = await fs.readdir(ctx.parallelRoot, { withFileTypes: true });
+   const entries = fs.readdirSync(ctx.parallelRoot, { withFileTypes: true });
    const worktrees = entries
       .filter((e) => e.isDirectory())
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -493,7 +489,7 @@ async function cmdList(git$: string | string[], args: string[]): Promise<number>
    let hasAnyWt = false;
    for (const wt of worktrees) {
       let wtPath = path.join(ctx.parallelRoot, wt.name);
-      const meta = await getParallelMetadata(wtPath);
+      const meta = getParallelMetadata(wtPath);
       if (!meta) continue; // Skip invalid worktrees
 
       const aliasLabel = meta?.alias || wt.name;
@@ -594,9 +590,7 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       forkPath = path.join(ctx.parallelRoot, targetAlias);
       forkAlias = targetAlias;
 
-      try {
-         await fs.access(forkPath);
-      } catch {
+      if (!fs.existsSync(forkPath)) {
          Logger.error(`Worktree '${targetAlias}' not found for branch '${ctx.branchName}'.`, 'parallel');
          return 1;
       }
@@ -612,7 +606,7 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       forkAlias = ctx.alias!;
    }
 
-   const meta = await getParallelMetadata(forkPath);
+   const meta = getParallelMetadata(forkPath);
    if (!meta) {
       Logger.error(`Missing metadata for worktree '${forkAlias}'. Unable to join automatically.`, 'parallel');
       return 1;
@@ -620,9 +614,7 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
 
    const originPath = path.resolve(meta.originPath);
 
-   try {
-      await fs.access(originPath);
-   } catch {
+   if (!fs.existsSync(originPath)) {
       Logger.error(`Original worktree path not found. Expected at '${meta.originPath}'.`, 'parallel');
       return 1;
    }
@@ -780,7 +772,7 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
             meta.baseCommit = newBase;
             meta.updatedAt = new Date().toISOString();
             const metaPath = path.join(forkPath, '.git-parallel.json');
-            await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+            fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
          }
       } catch {
          // Ignore metadata update errors
