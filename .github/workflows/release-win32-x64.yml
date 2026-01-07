@@ -30,9 +30,13 @@ jobs:
            run: |
               Get-FileHash ./out/gdx-win32-x64.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash > ./out/gdx-win32-x64.exe.sha256
 
+         - name: Extract Release Notes
+           run: ./scripts/extract-release-notes.ps1 -tag "${{ github.ref_name }}"
+
          - name: Release
            uses: softprops/action-gh-release@v2
            with:
+              body_path: release_notes.md
               files: |
                  ./out/gdx-win32-x64.exe
                  ./out/gdx-win32-x64.exe.sha256
