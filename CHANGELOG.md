@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- lint command failing to recognize many correct English words due to the absence of a dictionary file.
+
 ## Version 0.1.2 - 2026-01-07
 
 ### Added
