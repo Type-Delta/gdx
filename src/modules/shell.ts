@@ -177,6 +177,13 @@ export function spinner(options: SpinnerOptions = {}) {
       ...options,
    } satisfies Required<SpinnerOptions>;
 
+   if (!process.stdout.isTTY) {
+      return {
+         stop: () => { /* no-op */ },
+         options,
+      };
+   }
+
    let frameIndex = 0;
    let gradientOffset = 0;
    let isRunning = true;

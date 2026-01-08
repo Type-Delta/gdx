@@ -19,6 +19,7 @@ import {
    copyToClipboard,
    openInEditor,
    scheduleChangeDir,
+   spinner,
 } from '../modules/shell';
 import { normalizePath, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
@@ -148,6 +149,12 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 1;
    }
 
+   const spinnerCtrl = spinner({
+      frames: ['███', '██▇', '██▆', '▇▅▆', '▆▅▆', '▃▅▅', '▄▅▄', '▃▃▁', '▂▂▂', '▁ ▁', '   ', '░  ', '▓░ ', '█▓░', '██▓'],
+      interval: 120,
+      message: `Removing worktree '${alias}'...`,
+   });
+
    try {
       await $inherit`${git$} worktree remove ${targetPath}`;
 
@@ -161,7 +168,9 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       // LINK: dw2al2m string literal in spec
       quickPrint(`${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
       return 0;
-   } catch (err) {
+   }
+   catch (err) {
+      spinnerCtrl.stop();
       Logger.error(`Failed to remove worktree '${alias}'.\n${yuString(err, { color: true })}`, 'parallel');
 
       const response = await $prompt(
@@ -180,6 +189,9 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
          Logger.warn(`Aborted removing worktree '${alias}'.`, 'parallel');
          return 1;
       }
+   }
+   finally {
+      spinnerCtrl.stop();
    }
 }
 
@@ -337,7 +349,7 @@ async function cmdRemove(git$: string | string[], args: string[]): Promise<numbe
    try {
       fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
    } catch {
-      Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}' or is not accessible.`, 'parallel');
+      Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}' or is not writable.`, 'parallel');
       return 1;
    }
 

@@ -48,6 +48,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       let res = '';
       let hasReceivedContent = false;
       let isReasoning = false;
+      let thinkingBuffer = '';
 
       for await (const response of connection) {
          if (response.error) {
@@ -59,9 +60,11 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          if (response.thinkingChunk) {
             if (!isReasoning) {
                isReasoning = true;
-               spin.options.message = 'reasoning...';
                spin.options.animateGradient = true;
             }
+
+            thinkingBuffer = (thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')).slice(-32);
+            spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
             continue;
          }
 
