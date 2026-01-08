@@ -9,8 +9,10 @@ import nocap from './nocap';
 import parallel from './parallel';
 import lint from './lint';
 import doctor from './doctor';
+import __completion from './__completion';
 
 export default {
+   __completion,
    help: helpCmd,
    stash,
    graph,

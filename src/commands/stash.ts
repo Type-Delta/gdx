@@ -12,6 +12,7 @@ import { getStashEntry, restoreStash } from '@/modules/git';
 import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
 import global from '@/global';
+import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export interface StashEntry {
    sha: string;
@@ -247,4 +248,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: ['pardon'],
+} as const satisfies CommandStructure;

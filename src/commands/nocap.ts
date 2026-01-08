@@ -1,6 +1,6 @@
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { $, spinner } from '../modules/shell';
 import { noop, quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
@@ -124,4 +124,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: [],
+} as const satisfies CommandStructure;

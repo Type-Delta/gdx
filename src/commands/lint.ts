@@ -1,6 +1,6 @@
 import { ncc, strWrap, toShortNum } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
@@ -232,4 +232,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: [],
+} as const satisfies CommandStructure;

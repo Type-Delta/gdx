@@ -8,14 +8,16 @@ import {
    yuString,
    strWrap,
    remap,
-   Err
+   Err,
+   hyperLink
 } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
-
+import global from '@/global';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
+import { CommandStructure } from '@/common/types';
 
 export default async function doctor(): Promise<number> {
    // Detect native binary info
@@ -102,7 +104,7 @@ export default async function doctor(): Promise<number> {
    );
 
    quickPrint(
-      `Log file path: ${ncc('Cyan') + Logger.logFile + ncc()}`
+      `Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`
    );
 
    // Detect git
@@ -179,4 +181,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const;
+
+export const structure = {
+   $root: [],
+} as const satisfies CommandStructure;
