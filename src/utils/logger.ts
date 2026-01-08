@@ -7,9 +7,10 @@ import { ncc, strWrap } from '@lib/Tools';
 import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS } from '@/consts';
 import global from '@/global';
 
-export type LogLevel = 'fatal' | 'error' | 'warn' | 'info' | 'debug';
+export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug';
 
 const LogLevelMap: Record<LogLevel, number> = {
+   off: -1,
    fatal: 0,
    error: 1,
    warn: 2,
@@ -18,6 +19,7 @@ const LogLevelMap: Record<LogLevel, number> = {
 };
 
 const LogLevelColors: Record<LogLevel, 'BgRed' | 'BgYellow' | 'BgBlue' | 'BgCyan'> = {
+   off: 'BgBlue',
    fatal: 'BgRed',
    error: 'BgRed',
    warn: 'BgYellow',
@@ -26,6 +28,7 @@ const LogLevelColors: Record<LogLevel, 'BgRed' | 'BgYellow' | 'BgBlue' | 'BgCyan
 };
 
 const LogLevelBadges: Record<LogLevel, string> = {
+   off: '',
    fatal: 'FATAL',
    error: 'ERROR',
    warn: 'WARN',
@@ -34,6 +37,7 @@ const LogLevelBadges: Record<LogLevel, string> = {
 };
 
 const MessageColors: Record<LogLevel, 'Red' | 'Yellow' | 'Cyan' | 'Magenta'> = {
+   off: 'Cyan',
    fatal: 'Red',
    error: 'Red',
    warn: 'Yellow',

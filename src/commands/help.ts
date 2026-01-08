@@ -14,7 +14,7 @@ import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
 import { help as lintHelp } from './lint';
-import { CommandHelpObj } from '@/common/types';
+import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export default function help(name?: string): number {
    const cyan = ncc('Cyan');
@@ -170,3 +170,7 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    quickPrint(`No help found for '${cmdName}'.`);
    return 1;
 }
+
+export const structure = {
+   $root: ['clear', 'commit', 'doctor', 'graph', 'gdx-config', 'lint', 'nocap', 'parallel', 'stash', 'stats'],
+} as const satisfies CommandStructure;

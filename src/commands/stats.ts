@@ -2,14 +2,13 @@ import dedent from 'dedent';
 
 import { maxFraction, ncc, toShortNum, yuString, strWrap } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
-import { EXECUTABLE_NAME, STATS_EST } from '../consts';
-
-import { COLOR } from '../consts';
+import { EXECUTABLE_NAME, STATS_EST, COLOR } from '../consts';
+import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import { assertInGitWorktree } from '@/modules/git';
 import Logger from '../utils/logger';
@@ -225,4 +224,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: ['--author'],
+} as const satisfies CommandStructure;

@@ -11,7 +11,7 @@ import {
    strWrap
 } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import {
    $,
    $inherit,
@@ -860,6 +860,7 @@ Joining cherry-picks commits into origin; conflicts during cherry-pick will abor
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork ${ncc('Dim')}<alias> [--move|--mirror]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel open ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} parallel switch ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel remove ${ncc('Dim')}<alias>${ncc()}
 
@@ -874,7 +875,21 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: {
+      fork: ['--move', '--mirror'],
+      list: {},
+      open: ['-c', '--copy'],
+      switch: ['-c', '--copy'],
+      join: {
+         $allOf: ['--keep', '--all'],
+      },
+      remove: {},
+      help: {},
+   }
+} as const satisfies CommandStructure;
 
 
 function showUsage(): void {

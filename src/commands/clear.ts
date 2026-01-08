@@ -3,7 +3,7 @@ import path from 'path';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
@@ -209,7 +209,11 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: ['list', 'pardon'],
+} as const satisfies CommandStructure;
 
 async function getBackupFiles(backupDir: string, prefix: string, suffix: string) {
    const files = fs.readdirSync(backupDir);

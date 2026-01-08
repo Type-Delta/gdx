@@ -70,6 +70,10 @@ async function main(): Promise<number> {
       return 0;
    }
 
+   if (args[0] === '__completion') {
+      return await cmd.__completion(ctx);
+   }
+
    const originalCmd = args[0];
    let redirectTo: string | null = null;
    let redirectMode: string = '>';

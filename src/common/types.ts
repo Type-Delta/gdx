@@ -28,3 +28,85 @@ export interface CommandHelpObj {
    short: string;
    usage: () => string;
 }
+
+export interface CommandStructure {
+   /**
+    * The root node of the command's argument structure tree.
+    * `$root` itself represents the first level of arguments/commands.
+    */
+   $root: CommandArgNode | string[];
+}
+
+export type CommandArgNode = {
+   /**
+    * All of the sub-commands listed here can be present anywhere starting from this node
+    * to all of its children, where order does not matter.
+    *
+    * @example
+    * {
+    *  foo: {
+    *    $allOf: ['--foo', '--bar'],
+    *    baz: {}
+    *  }
+    * }
+    *
+    * // will match:
+    * // foo --bar --foo baz
+    * // foo --foo baz --bar
+    * // foo --foo baz
+    *
+    * // but not:
+    * // baz --foo # missing `foo` before `baz`
+    * // --bar foo --foo baz # `--bar` cannot appear before `foo`
+    */
+   $allOf?: string[];
+   /**
+    * A choice of sub-commands listed, where either one can present
+    * after this node (only this node).
+    *
+    * @example
+    * {
+    *  foo: {
+    *    $anyOf: ['--foo', '--bar'],
+    *    baz: {}
+    *  }
+    * }
+    *
+    * // will match:
+    * // foo --bar baz
+    * // foo --foo baz
+    *
+    * // but not:
+    * // foo --foo --bar baz # both `--foo` and `--bar` present
+    * // baz --foo # missing `foo` before `baz`
+    *
+    * // $anyOf can be simplified from:
+    * {
+    *  foo: {
+    *    $anyOf: ['a', 'b', 'c']
+    *  }
+    * }
+    *
+    * // to:
+    * {
+    *  foo: ['a', 'b', 'c']
+    * }
+    *
+    * // or
+    * {
+    *  foo: {
+    *    a: {},
+    *    b: {},
+    *    c: {}
+    *  }
+    * }
+    */
+   $anyOf?: string[];
+} & {
+   /**
+    * Sub-commands or flags that can be present after this node.
+    *
+    * if the type is string[], its the same as $anyOf
+    */
+   [key: string]: CommandArgNode | string[];
+}

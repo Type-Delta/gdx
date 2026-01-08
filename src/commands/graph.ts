@@ -1,7 +1,7 @@
 import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { MathKit, ncc, strWrap } from '@lib/Tools';
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
 import { COLOR, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
@@ -180,4 +180,8 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: ['--email', '--quiet'],
+} as const satisfies CommandStructure;

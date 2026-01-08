@@ -3,14 +3,13 @@ import dedent from 'dedent';
 
 import { ncc, strClamp, strWrap } from '@lib/Tools';
 
-import { GdxContext } from '../common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, SECURE_CONF_KEYS } from '@/consts';
-
-import { COLOR } from '@/consts';
+import { EXECUTABLE_NAME, SECURE_CONF_KEYS, COLOR } from '@/consts';
+import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 
 async function listConfig(): Promise<number> {
@@ -211,7 +210,11 @@ Examples:
             indent: '  ',
          }
       ),
-};
+} as const satisfies CommandHelpObj;
+
+export const structure = {
+   $root: ['list', 'path'],
+} as const satisfies CommandStructure;
 
 /**
  * Flatten the config object to get all keys
