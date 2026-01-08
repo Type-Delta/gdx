@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `gdx commit auto` now shows reasoning progress with a spinner and partial thinking output.
+
 ### Fixed
 
 - lint command failing to recognize many correct English words due to the absence of a dictionary file.

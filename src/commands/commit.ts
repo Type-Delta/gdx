@@ -12,6 +12,7 @@ import { commitMsgGenerator } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
+import { getConfig } from '@/common/config';
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -19,6 +20,8 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    // Filter out gdx-specific flags to get pass-through args
    const gdxFlags = ['auto', '--no-commit', '-nc', '--copy', '-cp'];
    const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
+   const config = await getConfig();
+   const showThinking = config.get<boolean>('llm.showThinking', true);
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
 
@@ -61,10 +64,14 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             if (!isReasoning) {
                isReasoning = true;
                spin.options.animateGradient = true;
+               if (!showThinking)
+                  spin.options.message = 'reasoning...';
             }
 
-            thinkingBuffer = (thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')).slice(-32);
-            spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
+            if (showThinking) {
+               thinkingBuffer = (thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')).slice(-32);
+               spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
+            }
             continue;
          }
 

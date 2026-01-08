@@ -6,6 +6,7 @@ export interface GdxConfig {
       model?: string;
       temperature?: number;
       maxTokens?: number;
+      showThinking?: boolean;
    };
    lint?: {
       onPushBehavior?: 'off' | 'error' | 'warning';
@@ -25,6 +26,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       maxTokens: undefined,
       apiKey: undefined,
       baseUrl: undefined,
+      showThinking: true,
    },
    lint: {
       onPushBehavior: 'off',
@@ -46,6 +48,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'llm.model': 'GDX_LLM_MODEL',
    'llm.temperature': 'GDX_LLM_TEMPERATURE',
    'llm.maxTokens': 'GDX_LLM_MAX_TOKENS',
+   'llm.showThinking': 'GDX_LLM_SHOW_THINKING',
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
@@ -60,6 +63,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.model': 'Model to use for LLM requests',
    'llm.temperature': 'Temperature for LLM generation (0-2)',
    'llm.maxTokens': 'Maximum tokens for LLM responses',
+   'llm.showThinking': 'Whether to show part of LLM reasoning messages',
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',

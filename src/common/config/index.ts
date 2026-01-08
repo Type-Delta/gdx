@@ -58,7 +58,9 @@ export class ConfigService {
    /**
     * Gets a configuration value by path (e.g., 'llm.apiKey').
     */
-   get<T = any>(keyPath: string): T | undefined {
+   get<T = unknown>(keyPath: string, defaultValue: T): T;
+   get<T = unknown>(keyPath: string): T | undefined;
+   get<T = unknown>(keyPath: string, defaultValue?: T): T | undefined {
       const keys = keyPath.split('.');
       let value: any = this.config;
 
@@ -66,7 +68,7 @@ export class ConfigService {
          if (value && typeof value === 'object' && key in value) {
             value = value[key];
          } else {
-            return undefined;
+            return defaultValue;
          }
       }
 
@@ -77,7 +79,9 @@ export class ConfigService {
     * Gets a secure configuration value by path (e.g., 'llm.apiKey').
     * Loads from keychain if not already loaded.
     */
-   async getSecure<T = any>(keyPath: string): Promise<T | undefined> {
+   async getSecure<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
+   async getSecure<T = unknown>(keyPath: string): Promise<T | undefined>;
+   async getSecure<T = unknown>(keyPath: string, defaultValue?: T): Promise<T | undefined> {
       // First check if it's already loaded (e.g. from env vars or previous fetch)
       const cached = this.get<T>(keyPath);
       if (cached !== undefined) {
@@ -109,7 +113,7 @@ export class ConfigService {
          }
       }
 
-      return undefined;
+      return defaultValue;
    }
 
    /**
