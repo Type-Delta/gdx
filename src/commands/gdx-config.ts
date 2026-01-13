@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import dedent from 'dedent';
 
-import { ncc, strClamp, strWrap } from '@lib/Tools';
+import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
@@ -35,7 +35,13 @@ async function listConfig(): Promise<number> {
          if (currentSection.length > 0) {
             listStr += '\n';
          }
-         if (section) listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
+         if (section) {
+            const sectionDesc = CONFIG_DESCRIPTIONS[section];
+            listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
+            if (sectionDesc) {
+               listStr += `${ncc('Dim')}# ${sectionDesc.split('\n').join('\n# ')}${ncc()}\n`;
+            }
+         }
          currentSection.push(section);
       }
 
@@ -48,21 +54,33 @@ async function listConfig(): Promise<number> {
       const description = CONFIG_DESCRIPTIONS[key] || '';
 
       // Format the value for display
-      let displayValue: string;
+      let displayValue: string = '';
       let isUnset = false;
 
-      if (currentValue == null) {
-         displayValue = 'null';
-         isUnset = true;
-      } else if (typeof currentValue === 'string') {
-         // Mask API keys
-         if (fieldName.toLowerCase().includes('key')) {
-            displayValue = `"${strClamp(currentValue, 20, 'mid', -1)}"`;
-         } else {
-            displayValue = `"${currentValue}"`;
-         }
-      } else {
-         displayValue = String(currentValue);
+      switch (typeof currentValue) {
+         case 'boolean':
+            displayValue = yuString(currentValue, { color: true });
+            break;
+         case 'number':
+            displayValue = yuString(currentValue, { color: true });
+            break;
+         case 'string':
+            // Mask API keys
+            if (fieldName.toLowerCase().includes('key')) {
+               displayValue = yuString(strClamp(currentValue, 20, 'mid', -1), { color: true });
+            } else {
+               displayValue = yuString(currentValue, { color: true });
+            }
+            break;
+         case 'undefined':
+         case 'object':
+            if (currentValue == null) {
+               isUnset = true;
+               displayValue = yuString(null, { color: true });
+            }
+            break;
+         default:
+            displayValue = String(currentValue);
       }
 
       const marker = isDefault

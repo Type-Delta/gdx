@@ -69,6 +69,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
 
 // Configuration field descriptions
 export const CONFIG_DESCRIPTIONS: Record<string, string> = {
+   'llm': 'Configuration for the Language Model (LLM) integration',
    'llm.provider': 'LLM provider to use (e.g., openai)',
    'llm.apiKey': 'API key for the LLM provider',
    'llm.baseUrl': 'Base URL for the LLM API (optional)',
@@ -76,9 +77,11 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.temperature': 'Temperature for LLM generation (0-2)',
    'llm.maxTokens': 'Maximum tokens for LLM responses',
    'llm.showThinking': 'Whether to show part of LLM reasoning messages',
+   'lint': 'Configuration for post-commit linting',
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',
+   'cache': 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',
    'cache.maxAgeMinutes': 'Maximum age of cache entries in minutes',
    defaultEditor: 'Default code editor to open files with',
