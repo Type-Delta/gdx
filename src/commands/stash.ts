@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-import { $inherit, $ } from '../modules/shell';
+import { $inherit } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
 import { COLOR } from '@/consts';
@@ -13,6 +13,7 @@ import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
+import { getRepoRootCached } from '@/modules/cache-controller';
 
 export interface StashEntry {
    sha: string;
@@ -29,7 +30,7 @@ export interface StashDropOperation {
 
 async function dropPardon(git$: string | string[]): Promise<number> {
    try {
-      const root = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
+      const root = await getRepoRootCached(git$);
       const op = popLastStashDrop(root);
 
       if (!op) {
@@ -64,7 +65,7 @@ async function dropRange(git$: string | string[], args: string[], stashBakLimit:
    // Capture logic
    const entries: StashEntry[] = [];
    try {
-      const root = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
+      const root = await getRepoRootCached(git$);
 
       // Loop high to low
       for (let i = end; i >= start; i--) {
@@ -129,7 +130,7 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
       const entry = await getStashEntry(git$, index);
 
       if (entry) {
-         const root = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
+         const root = await getRepoRootCached(git$);
          saveStashDrop(root, {
             timestamp: Date.now(),
             entries: [entry],

@@ -5,13 +5,14 @@ import { Err, ncc, yuString } from '../lib/esm/Tools';
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
 import { $, $inherit, whichExec } from './modules/shell';
-import { escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
+import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './modules/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';
 import { getConfig } from './common/config';
 import Logger from './utils/logger';
+import { getGitVersionCached } from './modules/cache-controller';
 
 const _args = process.argv.slice(2);
 
@@ -215,16 +216,30 @@ async function main(): Promise<number> {
          case 'sta': // alias for 'stash'
             args[0] = 'stash';
          case 'stash': {
-            const subCmdMatch = progressiveMatch(args[1] || '', [
-               'save',
-               'apply',
-               'pop',
-               'list',
-               'drop',
-               'clear',
-            ]);
+            const subCommands = ['save', 'apply', 'pop', 'list', 'drop', 'clear', 'push', 'show'];
+            const subCmdMatch = progressiveMatch(args[1] || '', subCommands);
 
             if (subCmdMatch.match) args[1] = subCmdMatch.match;
+            else {
+               let argEscIdx = args.indexOf('--');
+               argEscIdx = argEscIdx >= 0 ? argEscIdx : args.length;
+               let hasSubCmd = false;
+               for (let i = 1; i < argEscIdx; i++) {
+                  if (subCommands.includes(args[i])) {
+                     hasSubCmd = true;
+                     break;
+                  }
+               }
+
+               if (!hasSubCmd) {
+                  const suportsPush = compareVersions(
+                     await getGitVersionCached(git$),
+                     '2.15.0'
+                  ) >= 0;
+                  const defaultSubCmd = suportsPush ? 'push' : 'save';
+                  args.splice(1, 0, defaultSubCmd); // Default to 'push' or 'save' if no sub-command
+               }
+            }
 
             if (args[1] === 'drop') {
                return await cmd.stash.drop(git$, args);

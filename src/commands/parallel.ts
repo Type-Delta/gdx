@@ -27,6 +27,7 @@ import { COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '../utils/logger';
 import global from '@/global';
+import { getRepoRootCached } from '@/modules/cache-controller';
 
 interface ParallelMetadata {
    alias: string;
@@ -81,7 +82,7 @@ function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
  */
 async function getParallelContext(git$: string | string[]): Promise<ParallelContext | null> {
    try {
-      const repoRoot = (await $`${git$} rev-parse --show-toplevel`).stdout.trim();
+      const repoRoot = await getRepoRootCached(git$);
       const projectName = path.basename(repoRoot);
 
       let branchName: string;

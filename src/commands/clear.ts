@@ -11,6 +11,7 @@ import Logger from '../utils/logger';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
+import { getRepoRootCached } from '@/modules/cache-controller';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -19,8 +20,8 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       $`${git$} rev-parse --abbrev-ref HEAD`.then(c => c.stdout
          .trim()
          .replace(/\//g, '-')),
-      $`${git$} rev-parse --show-toplevel`.then(c => c.stdout.trim()),
-   ])
+      getRepoRootCached(git$),
+   ]);
    const projectName = path.basename(repoRoot);
    const osTemp = TEMP_DIR;
    const backupFileBlob = `${projectName}_${branchName}_backup_*.patch`;

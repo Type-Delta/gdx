@@ -12,6 +12,7 @@ import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import { assertInGitWorktree } from '@/modules/git';
 import Logger from '../utils/logger';
+import { getRepoRootCached } from '@/modules/cache-controller';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -68,7 +69,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          branchesRes,
          lastCommitTimeRes,
       ] = await Promise.all([
-         $`${git$} rev-parse --show-toplevel`,
+         getRepoRootCached(git$),
          $`${git$} rev-list --all --count --author=${email}`,
          $`${git$} rev-list --all --count`,
          $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
@@ -78,7 +79,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`,
       ]);
 
-      const projectName = repoRootRes.stdout.trim().split(/[\\/]/).pop();
+      const projectName = repoRootRes.split(/[\\/]/).pop();
       const userTotalCmi = userTotalCmiRes.stdout.trim();
       const projectTotalCmi = projectTotalCmiRes.stdout.trim();
       const todayCommits = todayCommitsRes.stdout.trim()

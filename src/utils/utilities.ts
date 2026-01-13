@@ -90,3 +90,22 @@ export function inferBool(value: string): boolean {
    const trueValues = ['1', 'true', 'yes', 'on'];
    return trueValues.includes(value.toLowerCase());
 }
+
+/**
+ * Compares two semantic version strings.
+ * @param v1 - First version string.
+ * @param v2 - Second version string.
+ * @returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
+ */
+export function compareVersions(v1: string, v2: string): number {
+   const parts1 = v1.split('.').map(Number);
+   const parts2 = v2.split('.').map(Number);
+   const len = Math.max(parts1.length, parts2.length);
+   for (let i = 0; i < len; i++) {
+      const num1 = parts1[i] || 0;
+      const num2 = parts2[i] || 0;
+      if (num1 > num2) return 1;
+      if (num1 < num2) return -1;
+   }
+   return 0;
+}

@@ -12,6 +12,7 @@ import { getConfig } from '@/common/config';
 import global from '@/global';
 import { writeFile } from 'fs/promises';
 import { unlink } from 'fs/promises';
+import { getWhichExecCached } from './cache-controller';
 
 export { $ } from 'execa';
 
@@ -73,54 +74,56 @@ export async function $prompt(question: string): Promise<string> {
  * @returns A promise that resolves to the full path of the executable, or `null` if not found.
  */
 export async function whichExec(cmd: string): Promise<string | null> {
-   // If the command contains a path separator, check it directly
-   if (cmd.includes(path.sep)) {
-      const resolved = path.resolve(cmd);
-      return (await isExecutable(resolved)) ? resolved : null;
-   }
+   return await getWhichExecCached(cmd, async () => {
+      // If the command contains a path separator, check it directly
+      if (cmd.includes(path.sep)) {
+         const resolved = path.resolve(cmd);
+         return (await isExecutable(resolved)) ? resolved : null;
+      }
 
-   const isWindows = process.platform === 'win32';
-   let extensions: string[] = [''];
+      const isWindows = process.platform === 'win32';
+      let extensions: string[] = [''];
 
-   if (isWindows) {
-      // On Windows, try extensions from PATHEXT
-      const pathExt = process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH';
-      const systemExts = pathExt.split(';').filter(Boolean);
+      if (isWindows) {
+         // On Windows, try extensions from PATHEXT
+         const pathExt = process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH';
+         const systemExts = pathExt.split(';').filter(Boolean);
 
-      // If cmd has an extension, try it first (empty string), then others if needed
-      // But usually if it has an extension we might just want to check that.
-      // However, to be safe and mimic robust behavior, we can try appending extensions too
-      // unless it matches one of the executable extensions.
-      extensions = ['', ...systemExts];
-   }
+         // If cmd has an extension, try it first (empty string), then others if needed
+         // But usually if it has an extension we might just want to check that.
+         // However, to be safe and mimic robust behavior, we can try appending extensions too
+         // unless it matches one of the executable extensions.
+         extensions = ['', ...systemExts];
+      }
 
-   const searchPaths: string[] = [];
-   searchPaths.push(process.cwd());
+      const searchPaths: string[] = [];
+      searchPaths.push(process.cwd());
 
-   if (process.argv[1]) {
-      searchPaths.push(path.dirname(process.argv[1]));
-   }
+      if (process.argv[1]) {
+         searchPaths.push(path.dirname(process.argv[1]));
+      }
 
-   searchPaths.push(path.dirname(process.execPath));
+      searchPaths.push(path.dirname(process.execPath));
 
-   if (process.env.PATH) {
-      searchPaths.push(...process.env.PATH.split(path.delimiter));
-   }
+      if (process.env.PATH) {
+         searchPaths.push(...process.env.PATH.split(path.delimiter));
+      }
 
-   // Filter unique paths to avoid redundant checks
-   const uniquePaths = [...new Set(searchPaths)];
+      // Filter unique paths to avoid redundant checks
+      const uniquePaths = [...new Set(searchPaths)];
 
-   for (const dir of uniquePaths) {
-      if (!dir) continue;
-      for (const ext of extensions) {
-         const fullPath = path.join(dir, cmd + ext);
-         if (await isExecutable(fullPath)) {
-            return fullPath;
+      for (const dir of uniquePaths) {
+         if (!dir) continue;
+         for (const ext of extensions) {
+            const fullPath = path.join(dir, cmd + ext);
+            if (await isExecutable(fullPath)) {
+               return fullPath;
+            }
          }
       }
-   }
 
-   return null;
+      return null;
+   });
 }
 
 /**

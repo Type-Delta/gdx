@@ -1,3 +1,5 @@
+import { DEFAULT_CACHE_MAX_AGE } from "@/consts";
+
 export interface GdxConfig {
    llm?: {
       provider?: string;
@@ -15,6 +17,10 @@ export interface GdxConfig {
    stash?: {
       undoLimit?: number;
    };
+   cache?: {
+      enabled?: boolean;
+      maxAgeMinutes?: number;
+   }
    defaultEditor: string;
 }
 
@@ -35,6 +41,10 @@ export const DEFAULT_CONFIG: GdxConfig = {
    stash: {
       undoLimit: 10,
    },
+   cache: {
+      enabled: true,
+      maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
+   },
    defaultEditor: 'code',
 };
 
@@ -52,6 +62,8 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
+   'cache.enabled': 'GDX_CACHE_ENABLED',
+   'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
 };
 
@@ -67,5 +79,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',
+   'cache.enabled': 'Whether caching is enabled',
+   'cache.maxAgeMinutes': 'Maximum age of cache entries in minutes',
    defaultEditor: 'Default code editor to open files with',
 };

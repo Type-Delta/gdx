@@ -5,6 +5,8 @@
 ### Added
 
 - `gdx commit auto` now shows reasoning progress with a spinner and partial thinking output.
+- caching mechanism for improved performance on repeated operations.
+- `gdx stash` now automatically adds `push` or `save` when no subcommand is provided. This enables quick file specific stashing `gdx stash -- file1 file2` instead of needing to type `gdx stash push -- file1 file2`.
 
 ### Fixed
 

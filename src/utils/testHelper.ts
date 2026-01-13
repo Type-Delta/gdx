@@ -6,6 +6,7 @@ import { CheckCache, ncc } from '@lib/Tools';
 import { GdxContext } from '@/common/types';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
+import { resetCache } from '@/common/cache';
 import { $, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
@@ -89,6 +90,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    ]);
 
    resetConfig();
+   resetCache();
 
    // Disable all ANSI formatting for tests
    CheckCache.supportsColor = 0;
@@ -157,11 +159,13 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
    mock.module('@/consts', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../consts');
+      const tempTmpDir = path.join(tempDir, 'tmp');
       return {
          ...original,
-         TEMP_DIR: path.join(tempDir, 'tmp'),
+         TEMP_DIR: tempTmpDir,
          CURRENT_DIR: path.join(tempDir, 'project'),
          CONFIG_PATH: path.join(tempDir, '.gdxrc.toml'),
+         CACHE_PATH: path.join(tempTmpDir, 'gdx', 'cache.json'),
          SHOULD_WRITE_LOGS: false,
       };
    });
