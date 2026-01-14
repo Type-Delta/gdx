@@ -35,6 +35,7 @@ export class CacheService {
    private loaded = false;
    private dirty = false;
    private loadingPromise: Promise<void> | null = null;
+   static isDisabled = false;
 
    constructor(cachePath?: string) {
       this.cachePath = cachePath || CACHE_PATH;
@@ -65,6 +66,15 @@ export class CacheService {
     */
    private async load(): Promise<void> {
       if (this.loaded) return;
+      const config = await getConfig();
+
+      if (!config.get<boolean>('cache.enabled')) {
+         this.resetCache(false);
+         this.loaded = true;
+         CacheService.isDisabled = true;
+         Logger.debug('Cache is disabled via configuration', 'cache');
+         return;
+      }
 
       try {
          const fileContent = await fs.readFile(this.cachePath, 'utf-8');
@@ -133,6 +143,7 @@ export class CacheService {
    async get<T = unknown>(keyPath: string): Promise<T | undefined>;
    async get<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
    async get<T = unknown>(keyPath: string, defaultValue?: T): Promise<T | undefined> {
+      if (CacheService.isDisabled) return defaultValue;
       await this.ensureLoaded();
 
       const keys = keyPath.split('.');
@@ -154,6 +165,7 @@ export class CacheService {
     * Marks cache as dirty; actual write is deferred until flush().
     */
    async set(keyPath: string, value: any): Promise<void> {
+      if (CacheService.isDisabled) return;
       const config = await getConfig();
       await this.ensureLoaded();
 
@@ -196,18 +208,18 @@ export class CacheService {
 
    /**
     * Flushes cache to disk if dirty.
-    * Called by the exit hook (best-effort, async, non-blocking).
+    * Called by the exit hook.
     */
-   async flush(): Promise<void> {
+   flush(): void {
       if (!this.dirty) {
          return;
       }
 
       try {
          const dirPath = path.dirname(this.cachePath);
-         await fs.mkdir(dirPath, { recursive: true });
+         fs.mkdirSync(dirPath, { recursive: true });
          const cacheJson = JSON.stringify(this.cache, null, 2);
-         await fs.writeFile(this.cachePath, cacheJson, 'utf-8');
+         fs.writeFileSync(this.cachePath, cacheJson, 'utf-8');
          this.dirty = false;
          Logger.debug(`Cache flushed to ${this.cachePath}`, 'cache');
       } catch (e) {
@@ -236,7 +248,8 @@ export async function getCache(): Promise<CacheService> {
    if (!instance) {
       instance = new CacheService();
       await instance['ensureLoaded']();
-      registerExitHook();
+      if (!CacheService.isDisabled)
+         registerExitHook();
    }
    return instance;
 }
@@ -253,9 +266,10 @@ export function resetCache(): void {
  * Uses best-effort approach: doesn't block process exit, but tries to flush.
  */
 function registerExitHook(): void {
-   beforeExit(async () => {
+   Logger.debug('Registering cache flush hook on exit', 'cache');
+   beforeExit(() => {
       if (instance) {
-         await instance.flush();
+         instance.flush();
       }
-   }, true);
+   });
 }

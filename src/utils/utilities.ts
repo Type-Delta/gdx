@@ -32,8 +32,23 @@ export async function isExecutable(filePath: string): Promise<boolean> {
    }
 }
 
-export function progressiveMatch(input: string, candidates: string[]): ProgressiveMatchResult {
-   const matchedCandidates = [];
+/**
+ * Performs progressive matching of an input string against a list of candidate strings.
+ * @param input - The input string to match.
+ * @param candidates - The list of candidate strings to match against.
+ * @param priorityMatch - If true, prioritizes the first matching candidate when multiple matches are found.
+ * @returns An object containing the matched string (if any), the list of candidates that matched, and a boolean indicating if the match was exact.
+ */
+export function progressiveMatch(input: string, candidates: string[], priorityMatch = false): ProgressiveMatchResult {
+   if (input === '') {
+      return {
+         match: null,
+         candidates: candidates,
+         isExact: false,
+      };
+   }
+
+   let matchedCandidates = [];
    for (const candidate of candidates) {
       if (candidate === input) {
          return {
@@ -46,6 +61,11 @@ export function progressiveMatch(input: string, candidates: string[]): Progressi
       if (candidate.startsWith(input)) {
          matchedCandidates.push(candidate);
       }
+   }
+
+   if (priorityMatch && matchedCandidates.length > 1) {
+      // Prioritize lower-index candidates
+      matchedCandidates = [matchedCandidates[0]];
    }
 
    return {

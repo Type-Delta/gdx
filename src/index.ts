@@ -216,8 +216,9 @@ async function main(): Promise<number> {
          case 'sta': // alias for 'stash'
             args[0] = 'stash';
          case 'stash': {
-            const subCommands = ['save', 'apply', 'pop', 'list', 'drop', 'clear', 'push', 'show'];
-            const subCmdMatch = progressiveMatch(args[1] || '', subCommands);
+            // Sub-command order is important here (higher priority first)
+            const subCommands = ['apply', 'pop', 'list', 'drop', 'clear', 'show', 'push', 'save'];
+            const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
 
             if (subCmdMatch.match) args[1] = subCmdMatch.match;
             else {
