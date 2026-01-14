@@ -87,9 +87,15 @@ Your compiled binary will be in `./dist/` folder.
 
 ### Optional: Shell Integration
 
-To enable features like `gdx parallel switch` (auto-cd into worktrees), you need to add shell integration.
+To enable features like `gdx parallel switch` (auto-cd into worktrees) and **tab completion**, you need to add shell integration.
 
-To do this add the following line to the **End** of your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
+Shell integration provides:
+
+- **Auto-cd support**: Allows `gdx parallel switch` to change directories
+- **Tab completion**: Intelligent completion for gdx commands, shorthands, and git subcommands
+- **Git fallback**: Falls back to native git completion when gdx has no suggestions (git fallback requires you to install git's completion scripts separately)
+
+To add shell integration, add the following line to the **End** of your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 #### For bash and zsh:
 
@@ -113,7 +119,7 @@ Invoke-Expression (& { (gdx --init --shell pwsh | Out-String) })
 ```
 
 > [!TIP]
-> you can add `--cmd` to the `gdx --init` command to create custom aliases.
+> You can add `--cmd` to the `gdx --init` command to create custom aliases.
 > For example, `gdx --init --shell zsh --cmd g` will create `g` as an alias for `gdx`.
 
 ## Core Features
@@ -236,7 +242,7 @@ This project uses **Bun** for development because it's fast and the developer ex
 Since this is currently a solo "scratch your own itch" project, the roadmap is fluid, but here is what is on the horizon:
 
 - [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file.
-- [ ] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell.
+- [x] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell with git fallback.
 - [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
 - [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
 - [x] **Quick linting before push:** `gdx lint` to run following checks before pushing:

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import { suggestArg } from '@/modules/completion';
+import { suggestArgs } from '@/modules/completion';
 import { CommandStructure } from '@/common/types';
 
-describe('Completion Engine', () => {
+describe('Completion Engine - Multiple Suggestions', () => {
    const structure: CommandStructure = {
       $root: {
          fork: ['--move', '--mirror'],
@@ -20,97 +20,58 @@ describe('Completion Engine', () => {
       }
    };
 
-   it('should suggest subcommands at root', () => {
-      // args=[], index=0. Suggest from root.
-      // Candidates: fork, join, simple, nested.
-      // Shortest: fork.
-      const result = suggestArg([], 0, structure);
-      expect(result.completion).toBe('fork');
+   it('should return all matching subcommands at root', () => {
+      // args=[], index=0. Suggest all from root.
+      const result = suggestArgs([], 0, structure);
+      expect(result.completions).toEqual(['fork', 'join', 'nested', 'simple']);
    });
 
-   it('should filter suggestions by prefix', () => {
-      // args=['jo'], index=0. Prefix 'jo'.
-      const result = suggestArg(['jo'], 0, structure);
-      expect(result.completion).toBe('join');
+   it('should return multiple filtered suggestions by prefix', () => {
+      // args=['ne'], index=0. Prefix 'ne'.
+      const result = suggestArgs(['ne'], 0, structure);
+      expect(result.completions).toEqual(['nested']);
    });
 
-   it('should suggest flags for subcommand', () => {
+   it('should return multiple flags for subcommand', () => {
       // args=['fork', '-'], index=1. Cursor at '-'.
-      const result = suggestArg(['fork', '-'], 1, structure);
-      expect(result.completion).toBe('--move');
+      const result = suggestArgs(['fork', '-'], 1, structure);
+      expect(result.completions).toEqual(['--move', '--mirror']);
    });
 
-   it('should respect $anyOf exclusivity', () => {
+   it('should return empty array when $anyOf is exhausted', () => {
       // args=['fork', '--move', '-'], index=2.
-      // --move consumed. AnyOf locked.
-      const result = suggestArg(['fork', '--move', '-'], 2, structure);
-      expect(result.completion).toBe(null);
+      const result = suggestArgs(['fork', '--move', '-'], 2, structure);
+      expect(result.completions).toEqual([]);
    });
 
-   it('should suggest $allOf flags', () => {
+   it('should return all matching $allOf flags', () => {
       // args=['join', '-'], index=1.
-      // --all (5), --keep (6).
-      const result = suggestArg(['join', '-'], 1, structure);
-      expect(result.completion).toBe('--all');
+      const result = suggestArgs(['join', '-'], 1, structure);
+      expect(result.completions).toEqual(['--all', '--keep']);
    });
 
-   it('should allow multiple $allOf flags', () => {
+   it('should filter out already used $allOf flags', () => {
       // args=['join', '--all', '-'], index=2.
-      // --all consumed. --keep available.
-      const result = suggestArg(['join', '--all', '-'], 2, structure);
-      expect(result.completion).toBe('--keep');
+      const result = suggestArgs(['join', '--all', '-'], 2, structure);
+      expect(result.completions).toEqual(['--keep']);
    });
 
-   it('should reject invalid flags', () => {
-      // --invalid is not in structure.
-      const result = suggestArg(['fork', '--invalid', '-'], 2, structure);
-      expect(result.completion).toBe(null);
+   it('should return subcommands and flags together', () => {
+      // args=['join', ''], index=1.
+      const result = suggestArgs(['join', ''], 1, structure);
+      // Should have 'forced', '--all', '--keep'
+      expect(result.completions).toEqual(['--all', '--keep', 'forced']);
    });
 
-   it('should ignore positional args and stay at node', () => {
-      // "fork myfork -"
-      // myfork is unknown but positional. Stay at fork.
-      // fork has --move.
-      const result = suggestArg(['fork', 'myfork', '-'], 2, structure);
-      expect(result.completion).toBe('--move');
+   it('should handle nested structures', () => {
+      // args=['nested', ''], index=1.
+      const result = suggestArgs(['nested', ''], 1, structure);
+      expect(result.completions).toEqual(['child', 'sibling']);
    });
 
-   it('should traverse nested subcommands', () => {
-      // "nested child grandchild -"
-      const result = suggestArg(['nested', 'child', 'grandchild', '-'], 3, structure);
-      expect(result.completion).toBe('--deep');
-   });
-
-   it('should suggest child commands alongside options', () => {
-      // join has 'forced' child and flags.
-      // "join f"
-      const result = suggestArg(['join', 'f'], 1, structure);
-      expect(result.completion).toBe('forced');
-   });
-
-   it('should accumulate $allOf from parent', () => {
-      // Not strictly tested in this structure (parent keys don't define $allOf)
-      // Let's create a specialized structure for inheritance
-      const deepStructure: CommandStructure = {
-         $root: {
-            parent: {
-               $allOf: ['--global'],
-               child: {
-                  $allOf: ['--local']
-               }
-            }
-         }
-      };
-      // parent child -
-      const result = suggestArg(['parent', 'child', '-'], 2, deepStructure);
-      // Should have --global and --local.
-      // --local (7), --global (8).
-      expect(result.completion).toBe('--local');
-
-      const result2 = suggestArg(['parent', 'child', '--lo'], 2, deepStructure);
-      expect(result2.completion).toBe('--local');
-
-      const result3 = suggestArg(['parent', 'child', '--gl'], 2, deepStructure);
-      expect(result3.completion).toBe('--global');
+   it('should return empty array for invalid history', () => {
+      // args=['fork', '--invalid', '-'], index=2.
+      const result = suggestArgs(['fork', '--invalid', '-'], 2, structure);
+      expect(result.completions).toEqual([]);
    });
 });

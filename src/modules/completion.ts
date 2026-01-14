@@ -5,6 +5,11 @@ export interface SuggestionResult {
    completion: string | null;
 }
 
+export interface SuggestionsResult {
+   /** All matching suggestions, sorted by preference */
+   completions: string[];
+}
+
 interface NormalizedNode {
    children: Record<string, CommandArgNode | string[]>;
    anyOf: Set<string>;
@@ -33,18 +38,18 @@ function normalizeNode(node: CommandArgNode | string[]): NormalizedNode {
 }
 
 /**
- * Suggests the next argument based on the current command structure and history.
+ * Suggests all matching arguments based on the current command structure and history.
  *
- * @param args The list of arguments relative to the structure's root (excluding the command name if structure is for the command content).
+ * @param args The list of arguments relative to the structure's root.
  * @param index The index of the argument currently being typed (cursor position).
  * @param structure The command structure definition.
- * @returns A suggestion result containing the best match or null.
+ * @returns A suggestions result containing all matching candidates, sorted by preference.
  */
-export function suggestArg(
+export function suggestArgs(
    args: string[],
    index: number,
    structure: CommandStructure
-): SuggestionResult {
+): SuggestionsResult {
    let currentNode: CommandArgNode | string[] = structure.$root;
    const accumulatedAllOf = new Set<string>();
    const consumedAllOf = new Set<string>();
@@ -72,14 +77,11 @@ export function suggestArg(
          continue;
       }
 
-      // Check key-value pairs in structural children?
-      // The structure defines keys. If token matches a key, we go there.
-
       // Check $anyOf (Exclusive choice at current level)
       if (norm.anyOf.has(token)) {
          if (consumedAnyOfCurrentNode) {
             // Already consumed an exclusive choice at this node
-            return { completion: null };
+            return { completions: [] };
          }
          consumedAnyOfCurrentNode = true;
          // Stay at current node (options are siblings)
@@ -88,14 +90,14 @@ export function suggestArg(
 
       // Check $allOf (Local)
       if (norm.allOf.has(token)) {
-         if (consumedAllOf.has(token)) return { completion: null };
+         if (consumedAllOf.has(token)) return { completions: [] };
          consumedAllOf.add(token);
          continue;
       }
 
       // Check $allOf (Accumulated/Global)
       if (accumulatedAllOf.has(token)) {
-         if (consumedAllOf.has(token)) return { completion: null };
+         if (consumedAllOf.has(token)) return { completions: [] };
          consumedAllOf.add(token);
          continue;
       }
@@ -103,7 +105,7 @@ export function suggestArg(
       // Token not found in structure
       if (token.startsWith('-')) {
          // Unknown flag -> Invalid history
-         return { completion: null };
+         return { completions: [] };
       }
 
       // Positional argument (not in structure) -> Stay at current node, ignore
@@ -114,13 +116,11 @@ export function suggestArg(
    const candidates = new Set<string>();
 
    // Add Subcommands
-   // (Allowed even if $anyOf was used? Structure semantics imply YES: "foo --opt subcommand")
    for (const key of Object.keys(norm.children)) {
       candidates.add(key);
    }
 
-   // Add $anyOf options
-   // Only if we haven't used one yet (they are mutually exclusive)
+   // Add $anyOf options (only if we haven't used one yet)
    if (!consumedAnyOfCurrentNode) {
       for (const opt of norm.anyOf) {
          candidates.add(opt);
@@ -135,16 +135,12 @@ export function suggestArg(
       }
    }
 
-   // 3. Filter and select best match
+   // 3. Filter and return all matches
    const input = args[index] || '';
    const matches = Array.from(candidates)
       .filter(c => c.startsWith(input))
       .sort((a, b) => a.length - b.length || a.localeCompare(b));
    // Prefer shorter matches, then alphabetical
 
-   if (matches.length === 0) {
-      return { completion: null };
-   }
-
-   return { completion: matches[0] };
+   return { completions: matches };
 }
