@@ -17,31 +17,13 @@ import { getGitVersionCached } from './modules/cache-controller';
 const _args = process.argv.slice(2);
 
 async function main(): Promise<number> {
-   const git$ = await whichExec('git');
-   if (!git$) {
-      throw new Err('Git is not installed or not found in PATH.', 'GIT_NOT_FOUND');
-   }
-
    const ctx: GdxContext = {
       args: new ArgsSet(_args),
-      git$,
+      git$: '',
    };
    const args = ctx.args;
 
-   // Handle global --loglevel option
-   const logLevelValue = args.popValue('--loglevel');
-   if (logLevelValue) {
-      const validLogLevels = ['fatal', 'error', 'warn', 'info', 'debug'];
-      if (validLogLevels.includes(logLevelValue)) {
-         global.logLevel = logLevelValue as 'fatal' | 'error' | 'warn' | 'info' | 'debug';
-      } else {
-         Logger.error(
-            `Invalid log level '${logLevelValue}'. Expected: ${validLogLevels.join(', ')}`
-         );
-         return 1;
-      }
-   }
-
+   // Fast-path: no git required
    if (args[0] === '--init') {
       const shell = args.popValue('--shell');
       const cmdAlias = args.popValue('--cmd');
@@ -61,6 +43,32 @@ async function main(): Promise<number> {
       }
    }
 
+   // Completion must be ultra-fast: avoid whichExec('git')
+   if (args[0] === '__completion') {
+      return await cmd.__completion({ ...ctx, git$: 'git' });
+   }
+
+   const git$ = await whichExec('git');
+   if (!git$) {
+      throw new Err('Git is not installed or not found in PATH.', 'GIT_NOT_FOUND');
+   }
+
+   ctx.git$ = git$;
+
+   // Handle global --loglevel option
+   const logLevelValue = args.popValue('--loglevel');
+   if (logLevelValue) {
+      const validLogLevels = ['fatal', 'error', 'warn', 'info', 'debug'];
+      if (validLogLevels.includes(logLevelValue)) {
+         global.logLevel = logLevelValue as 'fatal' | 'error' | 'warn' | 'info' | 'debug';
+      } else {
+         Logger.error(
+            `Invalid log level '${logLevelValue}'. Expected: ${validLogLevels.join(', ')}`
+         );
+         return 1;
+      }
+   }
+
    if (
       args.includes('--ghelp') ||
       args.includes('-gh') ||
@@ -69,10 +77,6 @@ async function main(): Promise<number> {
    ) {
       cmd.help();
       return 0;
-   }
-
-   if (args[0] === '__completion') {
-      return await cmd.__completion(ctx);
    }
 
    const originalCmd = args[0];
@@ -135,8 +139,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -233,10 +237,8 @@ async function main(): Promise<number> {
                }
 
                if (!hasSubCmd) {
-                  const suportsPush = compareVersions(
-                     await getGitVersionCached(git$),
-                     '2.15.0'
-                  ) >= 0;
+                  const suportsPush =
+                     compareVersions(await getGitVersionCached(git$), '2.15.0') >= 0;
                   const defaultSubCmd = suportsPush ? 'push' : 'save';
                   args.splice(1, 0, defaultSubCmd); // Default to 'push' or 'save' if no sub-command
                }
@@ -267,9 +269,7 @@ async function main(): Promise<number> {
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
-                  `Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(
-                     ', '
-                  )}?`
+                  `Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(', ')}?`
                );
                break AliasNCustomCmd;
             }

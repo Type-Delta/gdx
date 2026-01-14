@@ -1,7 +1,17 @@
 import { ncc } from '@lib/Tools';
 import type { SpellCheckFileResult } from 'cspell-lib';
+import type { spellCheckDocument as CSpellSpellCheckDocument } from 'cspell-lib';
 
-export { spellCheckDocument } from 'cspell-lib';
+let cspellModulePromise: Promise<typeof import('cspell-lib')> | null = null;
+async function getCSpell() {
+   cspellModulePromise ??= import('cspell-lib');
+   return await cspellModulePromise;
+}
+
+export async function spellCheckDocument(...args: Parameters<typeof CSpellSpellCheckDocument>) {
+   const cspell = await getCSpell();
+   return await cspell.spellCheckDocument(...args);
+}
 
 export function prettyFormatIssues(result: SpellCheckFileResult, context: string): string {
    if (result.issues.length === 0) {

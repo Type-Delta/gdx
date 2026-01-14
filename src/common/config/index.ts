@@ -1,11 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as fs from '@/modules/fs';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
-import * as keytar from 'keytar';
 
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
 import { CONFIG_PATH, KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
 import { Err } from '@lib/Tools';
+
+let keytarModulePromise: Promise<typeof import('keytar')> | null = null;
+async function getKeytar() {
+   keytarModulePromise ??= import('keytar');
+   return await keytarModulePromise;
+}
 
 export class ConfigService {
    private configPath: string;
@@ -91,7 +96,9 @@ export class ConfigService {
       // If it's a secure key, try to load from keychain
       if (SECURE_CONF_KEYS.includes(keyPath)) {
          try {
+            const keytar = await getKeytar();
             const value = await keytar.getPassword(KEYCHAIN_SERVICE, keyPath);
+
             if (value) {
                // Update config cache without triggering save/keychain write
                const keys = keyPath.split('.');
@@ -146,6 +153,7 @@ export class ConfigService {
       // If this is a secure key, store it in keychain
       if (SECURE_CONF_KEYS.includes(keyPath)) {
          try {
+            const keytar = await getKeytar();
             await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
          } catch (err) {
             console.warn(`Warning: Failed to save secure key '${keyPath}' to keychain:`, err);
@@ -279,6 +287,7 @@ export class ConfigService {
       if (!SECURE_CONF_KEYS.includes(keyPath)) return false;
 
       try {
+         const keytar = await getKeytar();
          return await keytar.deletePassword(KEYCHAIN_SERVICE, keyPath);
       } catch {
          return false;
