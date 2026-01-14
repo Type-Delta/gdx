@@ -19,7 +19,10 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    if (!email) {
       // LINK: uwnkd11 string literal in spec
-      Logger.error('User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.', 'graph');
+      Logger.error(
+         'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.',
+         'graph'
+      );
       return 1;
    }
 
@@ -34,7 +37,10 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
 
    if (graphWidth < MIN_TERM_WIDTH) {
-      Logger.error(`Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.`, 'graph');
+      Logger.error(
+         `Terminal width too small for graph display. Minimum required width is ${MIN_TERM_WIDTH + LABEL_WIDTH + RIGHT_MARGIN} columns.`,
+         'graph'
+      );
       return 1;
    }
 
@@ -70,9 +76,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-      ncc('Bright') +
-      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-      ` (Max: ${maxCommits} commits/day)\n`
+         ncc('Bright') +
+         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+         ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)

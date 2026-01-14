@@ -8,16 +8,16 @@ describe('Completion Engine - Multiple Suggestions', () => {
          fork: ['--move', '--mirror'],
          join: {
             $allOf: ['--keep', '--all'],
-            forced: {}
+            forced: {},
          },
          simple: {},
          nested: {
             child: {
-               grandchild: ['--deep']
+               grandchild: ['--deep'],
             },
-            sibling: {}
-         }
-      }
+            sibling: {},
+         },
+      },
    };
 
    it('should return all matching subcommands at root', () => {

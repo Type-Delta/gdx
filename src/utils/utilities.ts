@@ -7,7 +7,6 @@ interface ProgressiveMatchResult {
    isExact: boolean;
 }
 
-
 /**
  * Quickly prints a message to stdout with a newline.
  * @param msg - The message to print.
@@ -39,7 +38,11 @@ export async function isExecutable(filePath: string): Promise<boolean> {
  * @param priorityMatch - If true, prioritizes the first matching candidate when multiple matches are found.
  * @returns An object containing the matched string (if any), the list of candidates that matched, and a boolean indicating if the match was exact.
  */
-export function progressiveMatch(input: string, candidates: string[], priorityMatch = false): ProgressiveMatchResult {
+export function progressiveMatch(
+   input: string,
+   candidates: string[],
+   priorityMatch = false
+): ProgressiveMatchResult {
    if (input === '') {
       return {
          match: null,
@@ -104,7 +107,7 @@ export function normalizePath(pathStr: string): string {
 /**
  * No operation.
  */
-export const noop = (): void => { };
+export const noop = (): void => {};
 
 export function inferBool(value: string): boolean {
    const trueValues = ['1', 'true', 'yes', 'on'];

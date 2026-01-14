@@ -17,9 +17,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
    const [branchName, repoRoot] = await Promise.all([
-      $`${git$} rev-parse --abbrev-ref HEAD`.then(c => c.stdout
-         .trim()
-         .replace(/\//g, '-')),
+      $`${git$} rev-parse --abbrev-ref HEAD`.then((c) => c.stdout.trim().replace(/\//g, '-')),
       getRepoRootCached(git$),
    ]);
    const projectName = path.basename(repoRoot);
@@ -93,13 +91,19 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       const hasChanges = hasCachedChanges || (await $`${git$} diff --name-only`).stdout.length > 0;
 
       if (hasChanges) {
-         Logger.error('Working Directory is dirty, aborting pardon to prevent unintended data loss. Please clear your workspace first.', 'clear');
+         Logger.error(
+            'Working Directory is dirty, aborting pardon to prevent unintended data loss. Please clear your workspace first.',
+            'clear'
+         );
          await $inherit`${git$} status`;
          return 1;
       }
 
       if (allBackupFiles.length === 0) {
-         Logger.error(`No backup patch file found for branch '${branchName}'. Pardon failed.`, 'clear');
+         Logger.error(
+            `No backup patch file found for branch '${branchName}'. Pardon failed.`,
+            'clear'
+         );
          return 1;
       }
 
@@ -108,7 +112,10 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
       if (latestBackup.stats.mtime < oneDayAgo) {
-         Logger.warn('Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)', 'clear');
+         Logger.warn(
+            'Latest backup patch file is older than 1 day. Do you want to proceed with the pardon? (y/n)',
+            'clear'
+         );
 
          const answer = await $prompt("Type 'y' to confirm: ");
          if (answer.toLowerCase() !== 'y') {
@@ -125,7 +132,10 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          );
          await $inherit`${git$} status`;
       } catch (err) {
-         Logger.error(`Failed to apply patch. Pardon aborted.\n${yuString(err, { color: true })}`, 'clear');
+         Logger.error(
+            `Failed to apply patch. Pardon aborted.\n${yuString(err, { color: true })}`,
+            'clear'
+         );
          return 1;
       }
       return 0;
@@ -133,9 +143,9 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    // CLEAR (Default)
    const [hasCachedChanges, hasUnstagedChanges, hasUntrackedFiles] = await Promise.all([
-      $`${git$} diff --cached --name-only`.then(c => c.stdout.length > 0),
-      $`${git$} diff --name-only`.then(c => c.stdout.length > 0),
-      $`${git$} ls-files --others --exclude-standard`.then(c => c.stdout.length > 0),
+      $`${git$} diff --cached --name-only`.then((c) => c.stdout.length > 0),
+      $`${git$} diff --name-only`.then((c) => c.stdout.length > 0),
+      $`${git$} ls-files --others --exclude-standard`.then((c) => c.stdout.length > 0),
    ]);
 
    if (!hasCachedChanges && !hasUnstagedChanges && !hasUntrackedFiles) {

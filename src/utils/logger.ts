@@ -50,7 +50,12 @@ class Logger {
 
    private moduleName: string;
    private static initialized: boolean = false;
-   private static allLogs: Array<{ timestamp: string; level: LogLevel; message: string; module: string }> = [];
+   private static allLogs: Array<{
+      timestamp: string;
+      level: LogLevel;
+      message: string;
+      module: string;
+   }> = [];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;

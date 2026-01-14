@@ -27,7 +27,6 @@ export interface StashDropOperation {
    type: 'single' | 'range';
 }
 
-
 async function dropPardon(git$: string | string[]): Promise<number> {
    try {
       const root = await getRepoRootCached(git$);
@@ -54,7 +53,11 @@ async function dropPardon(git$: string | string[]): Promise<number> {
    }
 }
 
-async function dropRange(git$: string | string[], args: string[], stashBakLimit: number): Promise<number> {
+async function dropRange(
+   git$: string | string[],
+   args: string[],
+   stashBakLimit: number
+): Promise<number> {
    const [start, end] = args[2].split('..').map((s) => parseInt(s, 10));
 
    if (isNaN(start) || isNaN(end) || start > end) {
@@ -74,11 +77,15 @@ async function dropRange(git$: string | string[], args: string[], stashBakLimit:
       }
 
       if (entries.length > 0) {
-         saveStashDrop(root, {
-            timestamp: Date.now(),
-            entries: entries,
-            type: 'range'
-         }, stashBakLimit);
+         saveStashDrop(
+            root,
+            {
+               timestamp: Date.now(),
+               entries: entries,
+               type: 'range',
+            },
+            stashBakLimit
+         );
       }
    } catch (err) {
       const error = Err.from(err);
@@ -88,8 +95,8 @@ async function dropRange(git$: string | string[], args: string[], stashBakLimit:
 
    quickPrint(
       ncc('Cyan') +
-      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-      ncc()
+         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+         ncc()
    );
 
    for (let i = end; i >= start; i--) {
@@ -115,7 +122,7 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
    // Single drop
    let index = 0;
    // Try to parse index from arguments
-   const nonFlagArgs = args.slice(2).filter(a => !a.startsWith('-'));
+   const nonFlagArgs = args.slice(2).filter((a) => !a.startsWith('-'));
    if (nonFlagArgs.length > 0) {
       if (nonFlagArgs[0].includes('..')) {
          // Should not happen as checked above, but safe guard
@@ -131,11 +138,15 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
 
       if (entry) {
          const root = await getRepoRootCached(git$);
-         saveStashDrop(root, {
-            timestamp: Date.now(),
-            entries: [entry],
-            type: 'single'
-         }, limit);
+         saveStashDrop(
+            root,
+            {
+               timestamp: Date.now(),
+               entries: [entry],
+               type: 'single',
+            },
+            limit
+         );
       }
    } catch (err) {
       Logger.warn(`Could not capture stash entry for undo. (${Err.from(err).name})`, 'stash');
@@ -149,8 +160,6 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
       return 1;
    }
 }
-
-
 
 function getHistoryFilePath(repoPath: string): string {
    const hash = crypto.createHash('sha256').update(repoPath).digest('hex');
@@ -198,8 +207,6 @@ export function popLastStashDrop(repoPath: string): StashDropOperation | null {
    writeHistory(repoPath, history);
    return operation;
 }
-
-
 
 export default {
    dropRange,

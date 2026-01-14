@@ -1,4 +1,4 @@
-import { LogLevel } from "./utils/logger";
+import { LogLevel } from './utils/logger';
 
 export default {
    exitCodeOverride: -1,

@@ -14,7 +14,10 @@ export async function assertInGitWorktree(git$: string | string[]): Promise<bool
 /**
  * Retrieves the SHA and message of a stash entry.
  */
-export async function getStashEntry(git$: string | string[], index: number): Promise<{ sha: string, message: string } | null> {
+export async function getStashEntry(
+   git$: string | string[],
+   index: number
+): Promise<{ sha: string; message: string } | null> {
    try {
       const ref = `stash@{${index}}`;
       const { stdout: sha } = await $`${git$} rev-parse ${ref}`;
@@ -28,6 +31,10 @@ export async function getStashEntry(git$: string | string[], index: number): Pro
 /**
  * Restores a stash entry using `git stash store`.
  */
-export async function restoreStash(git$: string | string[], sha: string, message: string): Promise<void> {
+export async function restoreStash(
+   git$: string | string[],
+   sha: string,
+   message: string
+): Promise<void> {
    await $`${git$} stash store -m ${message} ${sha}`;
 }

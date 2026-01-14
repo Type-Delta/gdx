@@ -9,7 +9,7 @@ export {
    readdirSync,
    appendFileSync,
    unlinkSync,
-   constants
+   constants,
 } from 'fs';
 
 export {

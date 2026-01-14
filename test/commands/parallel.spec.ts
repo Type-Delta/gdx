@@ -6,7 +6,9 @@ import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
+   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv({
+      autoResetBuffer: true,
+   });
    const { git$ } = createGdxContext(tmpDir);
    afterAll(cleanup);
 

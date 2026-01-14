@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-      ncc()
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         ncc()
    );
 
    for (const { key } of flatDefaults) {

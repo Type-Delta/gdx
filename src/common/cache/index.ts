@@ -248,8 +248,7 @@ export async function getCache(): Promise<CacheService> {
    if (!instance) {
       instance = new CacheService();
       await instance['ensureLoaded']();
-      if (!CacheService.isDisabled)
-         registerExitHook();
+      if (!CacheService.isDisabled) registerExitHook();
    }
    return instance;
 }

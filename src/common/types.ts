@@ -109,4 +109,4 @@ export type CommandArgNode = {
     * if the type is string[], its the same as $anyOf
     */
    [key: string]: CommandArgNode | string[];
-}
+};

@@ -2,15 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 
-import {
-   ncc,
-   arrToString,
-   yuString,
-   strWrap,
-   remap,
-   Err,
-   hyperLink
-} from '@lib/Tools';
+import { ncc, arrToString, yuString, strWrap, remap, Err, hyperLink } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
@@ -75,7 +67,7 @@ export default async function doctor(): Promise<number> {
    quickPrint(`Platform: ${ncc('Magenta') + process.platform + ncc()}`);
    quickPrint(`Arch: ${ncc('Magenta') + process.arch + ncc()}`);
    quickPrint(
-      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : (isNode ? 'Node' : 'Unknown')) + (isNative ? ' (Native)' : '') + ncc()}`
+      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + ncc()}`
    );
 
    // Detect runtimes
@@ -96,16 +88,12 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
    );
 
-   quickPrint(
-      `Executable path: ${ncc('Cyan') + process.execPath + ncc()}`
-   );
+   quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
 
-   quickPrint(
-      `Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`
-   );
+   quickPrint(`Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`);
 
    // Detect git
    try {
@@ -125,7 +113,7 @@ export default async function doctor(): Promise<number> {
    }
 
    // Print argv for debugging
-   const gdxEnvs = remap(process.env, (k) => k.startsWith('GDX_') ? null : undefined);
+   const gdxEnvs = remap(process.env, (k) => (k.startsWith('GDX_') ? null : undefined));
    quickPrint(`Process argv: ` + arrToString(process.argv, { color: true, indent: 2, maxCol: 80 }));
    quickPrint(`GDX Environment Variables: ` + yuString(gdxEnvs, { color: true }));
 

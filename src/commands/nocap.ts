@@ -24,7 +24,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       )?.stdout.trim();
 
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
-         Logger.error('Bro, you haven\'t committed anything yet. 🤣', 'nocap');
+         Logger.error("Bro, you haven't committed anything yet. 🤣", 'nocap');
          return 1;
       }
 
@@ -58,7 +58,10 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       for await (const response of connection) {
          if (response.error) {
             spin.stop();
-            Logger.error(`😭 ill bro, the server rejected u\n\n${yuString(response.error, { color: true })}`, 'nocap');
+            Logger.error(
+               `😭 ill bro, the server rejected u\n\n${yuString(response.error, { color: true })}`,
+               'nocap'
+            );
             return 1;
          }
 

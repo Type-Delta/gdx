@@ -30,15 +30,10 @@ export async function getLLMProvider(): Promise<LLMProvider> {
 
    switch (providerType.toLowerCase()) {
       case 'openrouter':
-         return new OpenAIAdapter(
-            apiKey,
-            OPENROUTER_API_BASE,
-            model,
-            {
-               'HTTP-Referer': 'https://github.com/Type-Delta/gdx/tree/main',
-               'X-Title': 'GDX',
-            }
-         );
+         return new OpenAIAdapter(apiKey, OPENROUTER_API_BASE, model, {
+            'HTTP-Referer': 'https://github.com/Type-Delta/gdx/tree/main',
+            'X-Title': 'GDX',
+         });
       case 'openai':
          return new OpenAIAdapter(apiKey, undefined, model);
       default:

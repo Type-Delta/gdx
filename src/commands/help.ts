@@ -172,5 +172,16 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 }
 
 export const structure = {
-   $root: ['clear', 'commit', 'doctor', 'graph', 'gdx-config', 'lint', 'nocap', 'parallel', 'stash', 'stats'],
+   $root: [
+      'clear',
+      'commit',
+      'doctor',
+      'graph',
+      'gdx-config',
+      'lint',
+      'nocap',
+      'parallel',
+      'stash',
+      'stats',
+   ],
 } as const satisfies CommandStructure;

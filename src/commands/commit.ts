@@ -64,12 +64,13 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             if (!isReasoning) {
                isReasoning = true;
                spin.options.animateGradient = true;
-               if (!showThinking)
-                  spin.options.message = 'reasoning...';
+               if (!showThinking) spin.options.message = 'reasoning...';
             }
 
             if (showThinking) {
-               thinkingBuffer = (thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')).slice(-32);
+               thinkingBuffer = (
+                  thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')
+               ).slice(-32);
                spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
             }
             continue;
