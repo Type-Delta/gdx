@@ -99,6 +99,8 @@ ${cyan}graph              ${reset}show contribution graph
 ${cyan}nocap              ${reset}generate a funny Gen-Z style comment for the latest commit by your commit author
 ${cyan}parallel           ${reset}manage forked worktrees (fork/remove/join/switch/list)
 ${cyan}lint               ${reset}lint outgoing commits for format, spelling, sensitive data, and more
+${cyan}gdx-config         ${reset}view or modify gdx configuration settings
+${cyan}doctor             ${reset}run a diagnostic check on gdx installation and environment
 
 ${bright + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    ${cyan}stash l         ${reset}Show stash list (alias for ${EXECUTABLE_NAME} stash list).
