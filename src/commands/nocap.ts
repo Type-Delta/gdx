@@ -9,12 +9,13 @@ import { nocapPrompt } from '../templates/prompts';
 import { COLOR, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
+import { getGitConfigCached } from '@/modules/cache-controller';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
    const { git$ } = ctx;
 
    try {
-      const authorMail = (await $`${git$} config user.email`).stdout.trim();
+      const authorMail = await getGitConfigCached(git$, 'user.email');
 
       // Get latest commit message from this author
       const latestCommitMessage = (

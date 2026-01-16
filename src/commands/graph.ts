@@ -6,6 +6,7 @@ import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modul
 import { COLOR, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
+import { getGitConfigCached } from '@/modules/cache-controller';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "
@@ -14,7 +15,7 @@ const MIN_TERM_WIDTH = 12;
 
 export default async function graph(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
-   let email = args.popValue('--email') || (await $`${git$} config user.email`).stdout;
+   let email = args.popValue('--email') || (await getGitConfigCached(git$, 'user.email'));
    email = email ? email.trim().replace(/^["']|["']$/g, '') : email;
 
    if (!email) {

@@ -12,7 +12,11 @@ import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import { assertInGitWorktree } from '@/modules/git';
 import Logger from '../utils/logger';
-import { getRepoRootCached } from '@/modules/cache-controller';
+import {
+   getRepoRootCached,
+   getGitConfigCached,
+   getGitBranchesCached,
+} from '@/modules/cache-controller';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -32,8 +36,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          email = args[authorArgIndex + 1].trim();
          username = email.split('@')[0] + "'s";
       } else {
-         const { stdout } = await $`${git$} config user.email`;
-         email = stdout.trim();
+         email = await getGitConfigCached(git$, 'user.email');
       }
    } catch (err) {
       exec.abort();
@@ -66,7 +69,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          todayCommitsRes,
          logStatsRes,
          projectLineStatsRes,
-         branchesRes,
+         branches,
          lastCommitTimeRes,
       ] = await Promise.all([
          getRepoRootCached(git$),
@@ -75,7 +78,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
          $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
          $`${git$} log --all --pretty=tformat: --numstat`,
-         $`${git$} for-each-ref --format=%(refname:short) refs/heads/`,
+         getGitBranchesCached(git$),
          $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`,
       ]);
 
@@ -143,7 +146,6 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          projChanged > 0 ? maxFraction((totalChanged / projChanged) * 100, 2, true) : '0.00';
 
       // Most Active Branch
-      const branches = branchesRes.stdout.split('\n').filter((b) => b.trim());
       let maxCommits = 0;
       let topBranch = 'N/A';
 

@@ -10,7 +10,19 @@ const __dirname = path.dirname(__filename);
 const inputFile = path.resolve(__dirname, '../lib/Tools.js');
 const outputFile = path.resolve(__dirname, '../lib/esm/Tools.js');
 
-const plugin = ({ types: t }) => {
+/**
+ * Babel plugin to transform Tools.js to use named exports and default export.
+ *
+ * How it works:
+ * 1. Finds the Tools object and collects its keys, excluding private ones (starting with '_').
+ * 2. Removes the CommonJS export statement.
+ * 3. Injects import statements for createRequire from 'module'.
+ * 4. Injects named exports for each key in Tools.
+ * 5. Injects a default export for Tools.
+ *
+ * @param {object} param0 - Babel types
+ */
+const transformToolsToNamedExport = ({ types: t }) => {
    let toolsKeys = [];
 
    return {
@@ -104,7 +116,7 @@ async function run() {
       const code = await fs.readFile(inputFile, 'utf8');
       const result = await transformAsync(code, {
          plugins: [
-            plugin
+            transformToolsToNamedExport
          ],
          parserOpts: {
             plugins: [

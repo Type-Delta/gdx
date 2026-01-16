@@ -4,7 +4,7 @@ import { Err, ncc, yuString } from '../lib/esm/Tools';
 
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
-import { $, $inherit, whichExec } from './modules/shell';
+import { $inherit, whichExec } from './modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './modules/arguments';
 import { GdxContext } from './common/types';
@@ -12,7 +12,7 @@ import { getShellScript } from './templates/shell';
 import global from './global';
 import { getConfig } from './common/config';
 import Logger from './utils/logger';
-import { getGitVersionCached } from './modules/cache-controller';
+import { getGitVersionCached, getGitConfigCached } from './modules/cache-controller';
 
 const _args = process.argv.slice(2);
 
@@ -203,7 +203,7 @@ async function main(): Promise<number> {
                const hasAuthor = args.hasOption('--author', 1);
 
                if (!hasAuthor) {
-                  args.push('--author=' + (await $`${git$} config user.email`).stdout.trim());
+                  args.push('--author=' + (await getGitConfigCached(git$, 'user.email')));
                }
 
                if (args.popValue('--relative', 1)) {
@@ -227,8 +227,16 @@ async function main(): Promise<number> {
          case 'stash': {
             // Sub-command order is important here (higher priority first)
             const subCommands = [
-               'apply', 'pop', 'list', 'drop', 'clear',
-               'show', 'push', 'save', 'create', 'store'
+               'apply',
+               'pop',
+               'list',
+               'drop',
+               'clear',
+               'show',
+               'push',
+               'save',
+               'create',
+               'store',
             ];
             const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
 
@@ -303,7 +311,12 @@ async function main(): Promise<number> {
  * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
  * @returns Exit code of the git command
  */
-async function execGit(git$: string, args: string[], redirectTo: string | null = null, redirectMode: string = '>'): Promise<number> {
+async function execGit(
+   git$: string,
+   args: string[],
+   redirectTo: string | null = null,
+   redirectMode: string = '>'
+): Promise<number> {
    let exitCode: number | undefined = 0;
    try {
       if (redirectTo) {
@@ -330,7 +343,6 @@ async function execGit(git$: string, args: string[], redirectTo: string | null =
 
    return exitCode ?? 0;
 }
-
 
 (async () => {
    try {

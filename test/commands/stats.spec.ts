@@ -13,7 +13,7 @@ describe('gdx stats', async () => {
 
       const result = await stats(ctx);
       expect(result).toBe(1);
-      expect(buffer.stderr).toContain('Failed to read git config user.email');
+      expect(buffer.stderr.toLowerCase()).toContain('no user.email configured');
 
       await $`${git$} config user.email "test@example.com"`;
    });

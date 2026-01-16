@@ -1,6 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import path from 'path';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as fs from '@/modules/fs';
 import { CACHE_PATH, DEFAULT_CACHE_MAX_AGE, VERSION } from '@/consts';
 import { beforeExit, Err } from '@lib/Tools';
@@ -152,17 +152,18 @@ export class CacheService {
 
       // Check if entry is expired (lazy delete)
       const entry = this.cache.entryMeta[keyPath];
-      if (entry && Date.now() > entry.expiresAt) {
+
+      // Entry not found in metadata (cache miss)
+      if (!entry) {
+         return defaultValue;
+      }
+
+      if (Date.now() > entry.expiresAt) {
          Logger.debug(
             `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`,
             'cache'
          );
          await this.delete(keyPath);
-         return defaultValue;
-      }
-
-      // Entry not found in metadata (cache miss)
-      if (!entry) {
          return defaultValue;
       }
 
