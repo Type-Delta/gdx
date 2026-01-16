@@ -55,6 +55,11 @@ async function main(): Promise<number> {
 
    ctx.git$ = git$;
 
+   if (args[0] === '--bypass') {
+      // Bypass gdx and execute git directly
+      return execGit(git$, args.slice(1));
+   }
+
    // Handle global --loglevel option
    const logLevelValue = args.popValue('--loglevel');
    if (logLevelValue) {
@@ -139,8 +144,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -221,7 +226,10 @@ async function main(): Promise<number> {
             args[0] = 'stash';
          case 'stash': {
             // Sub-command order is important here (higher priority first)
-            const subCommands = ['apply', 'pop', 'list', 'drop', 'clear', 'show', 'push', 'save'];
+            const subCommands = [
+               'apply', 'pop', 'list', 'drop', 'clear',
+               'show', 'push', 'save', 'create', 'store'
+            ];
             const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
 
             if (subCmdMatch.match) args[1] = subCmdMatch.match;
@@ -282,6 +290,20 @@ async function main(): Promise<number> {
       );
    }
 
+   return execGit(git$, args, redirectTo, redirectMode);
+}
+
+/**
+ * Executes a git command with given arguments.
+ *
+ * Handles optional output redirection and error.
+ * @param git$ Git executable path or command
+ * @param args Arguments to pass to git
+ * @param redirectTo Optional file path to redirect stdout
+ * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
+ * @returns Exit code of the git command
+ */
+async function execGit(git$: string, args: string[], redirectTo: string | null = null, redirectMode: string = '>'): Promise<number> {
    let exitCode: number | undefined = 0;
    try {
       if (redirectTo) {
@@ -308,6 +330,7 @@ async function main(): Promise<number> {
 
    return exitCode ?? 0;
 }
+
 
 (async () => {
    try {

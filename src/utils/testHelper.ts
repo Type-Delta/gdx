@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import * as fs from '@/modules/fs';
 import path from 'path';
 

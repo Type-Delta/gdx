@@ -40,3 +40,9 @@ export const GDX_SHORTHANDS = [
    'lg', // log
    'sta', // stash
 ] as const;
+
+export const GDX_GLOBAL_FLAGS = [
+   '--loglevel',
+   '--ghelp',
+   '--bypass',
+] as const;

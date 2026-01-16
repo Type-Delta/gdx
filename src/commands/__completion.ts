@@ -4,7 +4,7 @@ import global from '@/global';
 import { COMMON_GIT_CMDS } from '@/consts';
 import Logger from '@/utils/logger';
 
-import { GDX_SHORTHANDS, STRUCTURE_MAP } from './__completion.structure';
+import { GDX_GLOBAL_FLAGS, GDX_SHORTHANDS, STRUCTURE_MAP } from './__completion.structure';
 
 function parseIndex(totalArgs: number): number {
    const raw = process.env.GDX_CMP_IDX;
@@ -51,6 +51,11 @@ export default async function completion(ctx: GdxContext): Promise<number> {
          // Add shorthand aliases
          for (const alias of GDX_SHORTHANDS) {
             candidates.add(alias);
+         }
+
+         // Add global flags
+         for (const flag of GDX_GLOBAL_FLAGS) {
+            candidates.add(flag);
          }
 
          // Add common git subcommands

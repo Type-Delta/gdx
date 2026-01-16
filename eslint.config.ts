@@ -15,7 +15,7 @@ export default [
          }
       },
       rules: {
-         'no-console': 'off',
+         'no-console': 'warn',
          'no-fallthrough': 'off',
          'no-control-regex': 'off',
          '@typescript-eslint/no-explicit-any': 'warn',
