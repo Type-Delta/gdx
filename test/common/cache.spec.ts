@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterAll, describe, expect } from 'bun:test';
 import path from 'path';
 import fs from 'fs/promises';
@@ -37,6 +38,11 @@ describe('CacheService', async () => {
       const value = await cache.get('git.version');
 
       expect(value).toBe('2.42.0');
+
+      // Verify entryMeta was created
+      const allData = await cache.getAll();
+      expect(allData.entryMeta['git.version']).toBeDefined();
+      expect(allData.entryMeta['git.version'].expiresAt).toBeGreaterThan(Date.now());
    });
 
    it('should support nested key paths', async () => {
@@ -47,6 +53,10 @@ describe('CacheService', async () => {
       const value = await cache.get('deeply.nested.value');
 
       expect(value).toBe('hello');
+
+      // Verify entryMeta uses flattened keyPath
+      const allData = await cache.getAll();
+      expect(allData.entryMeta['deeply.nested.value']).toBeDefined();
    });
 
    it('should return default value if key not found', async () => {
@@ -115,9 +125,9 @@ describe('CacheService', async () => {
             version: 'old-version-1.0.0',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            expiresAt: Date.now() + DEFAULT_CACHE_MAX_AGE * 60 * 1000,
          },
          data: { test: 'should-be-ignored' },
+         entryMeta: {},
       };
 
       await fs.writeFile(cacheFile4, JSON.stringify(oldCacheData));
@@ -134,25 +144,40 @@ describe('CacheService', async () => {
       resetCache();
       const cacheFile5 = path.join(tmpRootDir, 'cache5.json');
 
-      // Write cache with expired timestamp
+      // Write cache with one expired entry and one valid entry
       const expiredCacheData = {
          meta: {
             version: VERSION,
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            expiresAt: Date.now() - 1000, // Already expired
          },
-         data: { test: 'should-be-ignored' },
+         data: { test: 'should-be-deleted', other: 'should-remain' },
+         entryMeta: {
+            test: {
+               createdAt: Date.now(),
+               updatedAt: Date.now(),
+               expiresAt: Date.now() - 1000, // Already expired
+            },
+            other: {
+               createdAt: Date.now(),
+               updatedAt: Date.now(),
+               expiresAt: Date.now() + 10000, // Not expired
+            },
+         },
       };
 
       await fs.writeFile(cacheFile5, JSON.stringify(expiredCacheData));
 
-      // Load cache; should detect expiry
+      // Load cache; should detect expiry for 'test' key only
       const cache = new CacheService(cacheFile5);
       const value = await cache.get('test');
 
       // Data should be gone due to expiry
       expect(value).toBeUndefined();
+
+      // Other key should still be there
+      const otherValue = await cache.get('other');
+      expect(otherValue).toBe('should-remain');
    });
 
    it('should handle invalid JSON gracefully', async () => {
@@ -167,6 +192,11 @@ describe('CacheService', async () => {
       const value = await cache.get('test');
 
       expect(value).toBeUndefined();
+
+      // Verify entryMeta is initialized
+      const allData = await cache.getAll();
+      expect(allData.entryMeta).toBeDefined();
+      expect(Object.keys(allData.entryMeta).length).toBe(0);
    });
 
    it('should update expiresAt on set', async () => {
@@ -178,7 +208,7 @@ describe('CacheService', async () => {
 
       // expiresAt should be approximately now + CACHE_MAX_AGE
       const expectedExpiry = Date.now() + DEFAULT_CACHE_MAX_AGE * 60 * 1000;
-      const expiryDiff = Math.abs(allData.meta.expiresAt - expectedExpiry);
+      const expiryDiff = Math.abs(allData.entryMeta['test.key'].expiresAt - expectedExpiry);
 
       expect(expiryDiff).toBeLessThan(1000); // Within 1 second
    });
@@ -238,5 +268,100 @@ describe('CacheService', async () => {
       const cache = new CacheService(customPath);
 
       expect(cache.getCachePath()).toBe(customPath);
+   });
+
+   it('should not invalidate unrelated keys when one expires', async () => {
+      resetCache();
+      const cacheFile8 = path.join(tmpRootDir, 'cache8.json');
+      const cache = new CacheService(cacheFile8);
+
+      // Set two keys with different expiry times
+      await cache.set('key.a', 'value-a', { maxAgeMinutes: 1 / 600 }); // Expire in ~100ms
+      await cache.set('key.b', 'value-b', { maxAgeMinutes: 60 }); // Expire later
+
+      // Wait for key.a to expire
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Get key.a (should be expired and deleted)
+      const valueA = await cache.get('key.a');
+      expect(valueA).toBeUndefined();
+
+      // Get key.b (should still exist)
+      const valueB = await cache.get('key.b');
+      expect(valueB).toBe('value-b');
+
+      // Verify entryMeta
+      const allData = await cache.getAll();
+      expect(allData.entryMeta['key.a']).toBeUndefined();
+      expect(allData.entryMeta['key.b']).toBeDefined();
+   });
+
+   it('should delete a key explicitly', async () => {
+      resetCache();
+      const cache = new CacheService(cacheFilePath);
+
+      // Set a value
+      await cache.set('to.delete', 'value');
+      let value = await cache.get('to.delete');
+      expect(value).toBe('value');
+
+      // Delete it
+      const deleted = await cache.delete('to.delete');
+      expect(deleted).toBe(true);
+
+      // Should be gone
+      value = await cache.get('to.delete');
+      expect(value).toBeUndefined();
+
+      // Delete again should return false
+      const deletedAgain = await cache.delete('to.delete');
+      expect(deletedAgain).toBe(false);
+   });
+
+   it('should delete key and prune empty parents', async () => {
+      resetCache();
+      const cache = new CacheService(cacheFilePath);
+
+      // Set nested values
+      await cache.set('a.b.c.d', 'value1');
+      await cache.set('a.b.c.e', 'value2');
+      await cache.set('a.f', 'value3');
+
+      // Delete one leaf
+      await cache.delete('a.b.c.d');
+
+      let allData = await cache.getAll();
+      const dataA = allData.data.a as Record<string, any>;
+      expect((dataA.b as Record<string, any>).c.e).toBe('value2'); // sibling still there
+      expect(dataA.f).toBe('value3');
+
+      // Delete other leaf of the parent
+      await cache.delete('a.b.c.e');
+
+      allData = await cache.getAll();
+      const dataA2 = allData.data.a as Record<string, any>;
+      expect(dataA2.b).toBeUndefined(); // parent pruned (now empty)
+      expect(dataA2.f).toBe('value3'); // unrelated sibling still there
+   });
+
+   it('should support custom TTL per key on set', async () => {
+      resetCache();
+      const cache = new CacheService(cacheFilePath);
+
+      const now = Date.now();
+
+      // Set key with 10-minute TTL
+      await cache.set('key.default', 'value1');
+      // Set key with 5-minute TTL
+      await cache.set('key.short', 'value2', { maxAgeMinutes: 5 });
+
+      const allData = await cache.getAll();
+      const defaultExpiry = allData.entryMeta['key.default'].expiresAt;
+      const shortExpiry = allData.entryMeta['key.short'].expiresAt;
+
+      // short expiry should be less than default
+      expect(shortExpiry).toBeLessThan(defaultExpiry);
+      expect(shortExpiry - now).toBeLessThan(5 * 60 * 1000 + 100); // ~5 min + margin
+      expect(defaultExpiry - now).toBeGreaterThan(5 * 60 * 1000); // > 5 min
    });
 });

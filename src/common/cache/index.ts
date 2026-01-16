@@ -11,12 +11,18 @@ interface CacheMetadata {
    version: string;
    createdAt: number;
    updatedAt: number;
+}
+
+interface CacheEntryMetadata {
+   createdAt: number;
+   updatedAt: number;
    expiresAt: number;
 }
 
 interface CacheStructure {
    meta: CacheMetadata;
    data: Record<string, unknown>;
+   entryMeta: Record<string, CacheEntryMetadata>;
 }
 
 const DEFAULT_CACHE: CacheStructure = {
@@ -24,9 +30,9 @@ const DEFAULT_CACHE: CacheStructure = {
       version: VERSION,
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      expiresAt: Date.now() + DEFAULT_CACHE_MAX_AGE * 60 * 1000,
    },
    data: {},
+   entryMeta: {},
 };
 
 export class CacheService {
@@ -98,12 +104,9 @@ export class CacheService {
             return;
          }
 
-         // Check expiry
-         if (Date.now() > parsed.meta.expiresAt) {
-            Logger.debug(
-               `Cache expired. expiresAt=${new Date(parsed.meta.expiresAt).toISOString()}, now=${new Date().toISOString()}`,
-               'cache'
-            );
+         // Ensure entryMeta exists (backward compatibility)
+         if (!parsed.entryMeta) {
+            Logger.debug('Cache file missing entryMeta; resetting to v2 schema', 'cache');
             this.resetCache(false);
             this.loaded = true;
             return;
@@ -139,6 +142,7 @@ export class CacheService {
 
    /**
     * Gets a value by dot-notation key path (e.g., 'git.version').
+    * Checks per-key expiry and lazy-deletes if expired.
     */
    async get<T = unknown>(keyPath: string): Promise<T | undefined>;
    async get<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
@@ -146,6 +150,23 @@ export class CacheService {
       if (CacheService.isDisabled) return defaultValue;
       await this.ensureLoaded();
 
+      // Check if entry is expired (lazy delete)
+      const entry = this.cache.entryMeta[keyPath];
+      if (entry && Date.now() > entry.expiresAt) {
+         Logger.debug(
+            `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`,
+            'cache'
+         );
+         await this.delete(keyPath);
+         return defaultValue;
+      }
+
+      // Entry not found in metadata (cache miss)
+      if (!entry) {
+         return defaultValue;
+      }
+
+      // Retrieve value from nested data structure
       const keys = keyPath.split('.');
       let value: any = this.cache.data;
 
@@ -162,16 +183,20 @@ export class CacheService {
 
    /**
     * Sets a value by dot-notation key path (e.g., 'git.version', '2.42.0').
+    * Stores per-key metadata (TTL, timestamps).
     * Marks cache as dirty; actual write is deferred until flush().
     */
-   async set(keyPath: string, value: any): Promise<void> {
+   async set(keyPath: string, value: any, options?: { maxAgeMinutes?: number }): Promise<void> {
       if (CacheService.isDisabled) return;
       const config = await getConfig();
       await this.ensureLoaded();
 
       const keys = keyPath.split('.');
       let target: any = this.cache.data;
-      const cacheMaxAge = config.get<number>('cache.maxAgeMinutes') ?? DEFAULT_CACHE_MAX_AGE;
+      const cacheMaxAge =
+         options?.maxAgeMinutes ??
+         config.get<number>('cache.maxAgeMinutes') ??
+         DEFAULT_CACHE_MAX_AGE;
 
       // Ensure intermediate objects exist
       for (let i = 0; i < keys.length - 1; i++) {
@@ -185,10 +210,74 @@ export class CacheService {
       const lastKey = keys[keys.length - 1];
       target[lastKey] = value;
 
-      // Update metadata and mark dirty
-      this.cache.meta.updatedAt = Date.now();
-      this.cache.meta.expiresAt = Date.now() + cacheMaxAge * 60 * 1000;
+      // Update per-key metadata
+      const now = Date.now();
+      this.cache.entryMeta[keyPath] = {
+         createdAt: this.cache.entryMeta[keyPath]?.createdAt ?? now,
+         updatedAt: now,
+         expiresAt: now + cacheMaxAge * 60 * 1000,
+      };
+
+      // Update file-level metadata and mark dirty
+      this.cache.meta.updatedAt = now;
       this.dirty = true;
+   }
+
+   /**
+    * Deletes a value by dot-notation key path.
+    * Removes the entry from both data and entryMeta.
+    * Prunes empty parent objects.
+    * @returns true if entry existed and was deleted, false otherwise.
+    */
+   async delete(keyPath: string): Promise<boolean> {
+      if (CacheService.isDisabled) return false;
+      await this.ensureLoaded();
+
+      // Check if entry exists
+      if (!this.cache.entryMeta[keyPath]) {
+         return false;
+      }
+
+      // Remove from entryMeta
+      delete this.cache.entryMeta[keyPath];
+
+      // Remove from nested data structure
+      const keys = keyPath.split('.');
+      const pathToDelete: any[] = [];
+      let current: any = this.cache.data;
+
+      for (const key of keys) {
+         if (current && typeof current === 'object' && key in current) {
+            pathToDelete.push({ obj: current, key });
+            current = current[key];
+         } else {
+            // Path doesn't exist; metadata was stale
+            return false;
+         }
+      }
+
+      // Delete the leaf
+      if (pathToDelete.length > 0) {
+         const last = pathToDelete[pathToDelete.length - 1];
+         delete last.obj[last.key];
+      }
+
+      // Prune empty parent objects (walk back up)
+      for (let i = pathToDelete.length - 2; i >= 0; i--) {
+         const { obj, key } = pathToDelete[i];
+         const child = obj[key];
+         if (child && typeof child === 'object' && Object.keys(child).length === 0) {
+            delete obj[key];
+         } else {
+            break; // Stop pruning if parent is not empty
+         }
+      }
+
+      this.cache.meta.updatedAt = Date.now();
+      this.dirty = true;
+      Logger.debug(`Cache entry deleted: ${keyPath}`, 'cache');
+
+      return true;
    }
 
    /**
