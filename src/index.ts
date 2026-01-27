@@ -1,10 +1,8 @@
-import { execa, ExecaError } from 'execa';
-
 import { Err, ncc, yuString } from '../lib/esm/Tools';
 
 import cmd from './commands';
 import { COMMON_GIT_CMDS } from './consts';
-import { $inherit, whichExec } from './modules/shell';
+import { execGit, whichExec } from './modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from './utils/utilities';
 import { ArgsSet } from './modules/arguments';
 import { GdxContext } from './common/types';
@@ -13,6 +11,7 @@ import global from './global';
 import { getConfig } from './common/config';
 import Logger from './utils/logger';
 import { getGitVersionCached, getGitConfigCached } from './modules/cache-controller';
+import { executeMacro, getMacrosCachedOrFileFallback } from './modules/macro';
 
 const _args = process.argv.slice(2);
 
@@ -83,6 +82,29 @@ async function main(): Promise<number> {
    ) {
       cmd.help();
       return 0;
+   }
+
+   // Check if the command is a macro
+   const macros = await getMacrosCachedOrFileFallback();
+   if (args[0] && args[0] in macros) {
+      const macroName = args[0];
+      const macroScript = macros[macroName];
+      const macroArgs = args.slice(1);
+
+      // Separate macro arguments from flags
+      const macroArgsOnly: string[] = [];
+      const extraFlags: string[] = [];
+
+      for (const arg of macroArgs) {
+         if (arg.startsWith('-')) {
+            extraFlags.push(arg);
+         } else {
+            macroArgsOnly.push(arg);
+         }
+      }
+
+      quickPrint(ncc('Magenta') + `Executing macro '${macroName}'...` + ncc());
+      return await executeMacro(git$, macroScript, macroArgsOnly, extraFlags);
    }
 
    const originalCmd = args[0];
@@ -288,6 +310,8 @@ async function main(): Promise<number> {
             return cmd.parallel(ctx);
          case 'doctor':
             return cmd.doctor();
+         case 'macro':
+            return cmd.macro(ctx);
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
@@ -307,48 +331,6 @@ async function main(): Promise<number> {
    return execGit(git$, args, redirectTo, redirectMode);
 }
 
-/**
- * Executes a git command with given arguments.
- *
- * Handles optional output redirection and error.
- * @param git$ Git executable path or command
- * @param args Arguments to pass to git
- * @param redirectTo Optional file path to redirect stdout
- * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
- * @returns Exit code of the git command
- */
-async function execGit(
-   git$: string,
-   args: string[],
-   redirectTo: string | null = null,
-   redirectMode: string = '>'
-): Promise<number> {
-   let exitCode: number | undefined = 0;
-   try {
-      if (redirectTo) {
-         const { exitCode: eCode } = await execa({
-            stdout: {
-               file: redirectTo,
-               append: redirectMode === '>>',
-            },
-            stderr: 'inherit',
-         })`${git$} ${args}`;
-         exitCode = eCode;
-      } else {
-         const { exitCode: eCode } = await $inherit`${git$} ${args}`;
-         exitCode = eCode;
-      }
-   } catch (_err) {
-      const err = Err.from(_err);
-      if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
-         return exitCode || 1; // git command failed, return exit code
-
-      Logger.error('Command failed.\n' + yuString(err, { color: true }));
-      return 1;
-   }
-
-   return exitCode ?? 0;
-}
 
 (async () => {
    try {

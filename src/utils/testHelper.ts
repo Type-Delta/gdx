@@ -182,6 +182,7 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
          CURRENT_DIR: path.join(tempDir, 'project'),
          CONFIG_PATH: path.join(tempDir, '.gdxrc.toml'),
          CACHE_PATH: path.join(tempTmpDir, 'gdx', 'cache.json'),
+         MACRO_PATH: path.join(tempTmpDir, 'gdx', 'macro.json'),
          SHOULD_WRITE_LOGS: false,
       };
    });

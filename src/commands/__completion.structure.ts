@@ -11,6 +11,7 @@ import { structure as parallelStructure } from './parallel';
 import { structure as stashStructure } from './stash';
 import { structure as statsStructure } from './stats';
 import { structure as statusStructure } from './status';
+import { structure as macroStructure } from './macro';
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    clear: clearStructure,
@@ -24,6 +25,7 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    stash: stashStructure,
    stats: statsStructure,
    status: statusStructure,
+   macro: macroStructure,
 };
 
 export const GDX_SHORTHANDS = [

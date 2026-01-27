@@ -35,6 +35,7 @@
     "start:profile": "bun --cpu-prof src/index.ts",
     "start:node": "tsx src/index.ts",
     "transpile-esm": "bunx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
+    "check": "bun run ts-check && bun run lint && bun run build",
     "lint": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",

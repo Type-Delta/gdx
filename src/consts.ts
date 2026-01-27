@@ -24,6 +24,7 @@ export const SHOULD_WRITE_LOGS =
 export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];
 export const CACHE_FILE_NAME = 'cache.json';
+export const MACRO_FILE_NAME = 'macro.json';
 
 export const COMMON_GIT_CMDS = [
    // For original git commands ONLY
@@ -81,6 +82,7 @@ export const SENSITIVE_CONTENTS_REGEXES = [
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const CACHE_PATH = path.join(TEMP_DIR, 'gdx', CACHE_FILE_NAME);
+export const MACRO_PATH = path.join(TEMP_DIR, 'gdx', MACRO_FILE_NAME);
 export const DEFAULT_CACHE_MAX_AGE = 360; // Expire cache after 6 hours (unit in minutes)
 export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
 export const LOG_FILE_SIZE_LIMIT = 500 * 1024; // 500 KB

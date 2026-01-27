@@ -1,8 +1,8 @@
-import { execa, ExecaMethod, Options, $ } from 'execa';
+import { execa, ExecaMethod, Options, $, ExecaError } from 'execa';
 import path from 'path';
 import { createInterface } from 'readline';
 
-import { CheckCache, Err, ncc } from '@lib/Tools';
+import { CheckCache, Err, ncc, yuString } from '@lib/Tools';
 
 import { isExecutable } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
@@ -13,6 +13,7 @@ import global from '@/global';
 import { writeFile } from 'fs/promises';
 import { unlink } from 'fs/promises';
 import { getWhichExecCached } from './cache-controller';
+import Logger from '@/utils/logger';
 
 export { $ } from 'execa';
 
@@ -290,11 +291,92 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => {});
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
       global.exitCodeOverride = -1;
       return;
    }
 
    if (GDX_RESULT_FILE) await writeFile(GDX_RESULT_FILE, targetDir, 'utf-8');
    global.exitCodeOverride = GDX_SIGNAL_CODE;
+}
+
+
+/**
+ * Tokenizes a command string into an argv array, respecting quotes.
+ * Basic shell-like parsing: single and double quotes preserve spaces.
+ * @param cmd - The command string to tokenize.
+ * @returns Array of tokens.
+ */
+export function tokenizeCommand(cmd: string): string[] {
+   const tokens: string[] = [];
+   let current = '';
+   let inSingleQuote = false;
+   let inDoubleQuote = false;
+
+   for (let i = 0; i < cmd.length; i++) {
+      const char = cmd[i];
+
+      if (char === "'" && !inDoubleQuote) {
+         inSingleQuote = !inSingleQuote;
+      } else if (char === '"' && !inSingleQuote) {
+         inDoubleQuote = !inDoubleQuote;
+      } else if (char === ' ' && !inSingleQuote && !inDoubleQuote) {
+         if (current) {
+            tokens.push(current);
+            current = '';
+         }
+      } else {
+         current += char;
+      }
+   }
+
+   if (current) {
+      tokens.push(current);
+   }
+
+   return tokens;
+}
+
+
+/**
+ * Executes a git command with given arguments.
+ *
+ * Handles optional output redirection and error.
+ * @param git$ Git executable path or command
+ * @param args Arguments to pass to git
+ * @param redirectTo Optional file path to redirect stdout
+ * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
+ * @returns Exit code of the git command
+ */
+export async function execGit(
+   git$: string,
+   args: string[],
+   redirectTo: string | null = null,
+   redirectMode: string = '>'
+): Promise<number> {
+   let exitCode: number | undefined = 0;
+   try {
+      if (redirectTo) {
+         const { exitCode: eCode } = await execa({
+            stdout: {
+               file: redirectTo,
+               append: redirectMode === '>>',
+            },
+            stderr: 'inherit',
+         })`${git$} ${args}`;
+         exitCode = eCode;
+      } else {
+         const { exitCode: eCode } = await $inherit`${git$} ${args}`;
+         exitCode = eCode;
+      }
+   } catch (_err) {
+      const err = Err.from(_err);
+      if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
+         return exitCode || 1; // git command failed, return exit code
+
+      Logger.error('Command failed.\n' + yuString(err, { color: true }));
+      return 1;
+   }
+
+   return exitCode ?? 0;
 }
