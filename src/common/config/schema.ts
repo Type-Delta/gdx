@@ -17,6 +17,10 @@ export interface GdxConfig {
    stash?: {
       undoLimit?: number;
    };
+   commit?: {
+      commitPattern?: 'inherent' | 'comprehensive';
+      guidelineCacheDays?: number;
+   };
    cache?: {
       enabled?: boolean;
       maxAgeMinutes?: number;
@@ -41,6 +45,10 @@ export const DEFAULT_CONFIG: GdxConfig = {
    stash: {
       undoLimit: 10,
    },
+   commit: {
+      commitPattern: 'inherent',
+      guidelineCacheDays: 30,
+   },
    cache: {
       enabled: true,
       maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
@@ -62,6 +70,8 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
+   'commit.commitPattern': 'GDX_COMMIT_PATTERN',
+   'commit.guidelineCacheDays': 'GDX_COMMIT_GUIDELINE_CACHE_DAYS',
    'cache.enabled': 'GDX_CACHE_ENABLED',
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
@@ -81,6 +91,10 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',
+   commit: 'Configuration for commit message generation',
+   'commit.commitPattern':
+      'Commit message pattern (inherent: learn from repo, comprehensive: fixed format)',
+   'commit.guidelineCacheDays': 'Days to cache learned commit guidelines per repository',
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',
    'cache.maxAgeMinutes': 'Maximum age of cache entries in minutes',

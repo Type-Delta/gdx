@@ -35,6 +35,57 @@ export function commitMsgGenerator(changesSummary: string) {
    Your commit message:`;
 }
 
+export function commitMsgGeneratorInherent(changesSummary: string, guideline: string) {
+   return dedent`<instructions>You are an expert Git commit message generator. Analyze the provided git diff and generate a commit message that follows the project-specific conventions documented below. Focus on clarity and consistency with the existing commit history. Output ONLY the commit message.</instructions>
+
+   <project-commit-guidelines>
+   ${guideline}
+   </project-commit-guidelines>
+
+   <rules>
+   - Follow the project-specific conventions above strictly
+   - Use the imperative mood in commit titles
+   - Total commit message length must not exceed 800 characters
+   - Do not use Markdown or any other formatting in the output
+   - Output ONLY the commit message without any labels or prefixes
+   </rules>
+
+   <git-diff>
+   ${changesSummary}
+   </git-diff>
+
+   Your commit message:`;
+}
+
+export function guidelineLearningPrompt(commitMessages: string[]) {
+   const examplesText = commitMessages
+      .map((msg, i) => `Example ${i + 1}:\n${msg}`)
+      .join('\n\n---\n\n');
+
+   return dedent`<instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
+
+   <commit-message-examples>
+   ${examplesText}
+   </commit-message-examples>
+
+   <task>
+   Analyze the commit messages above and produce a concise "Commit Message Guideline" document (max 500 words) that captures:
+   1. Overall structure (header/body/footer format, line length limits)
+   2. Header conventions (prefixes, types, scopes, title style)
+   3. Body conventions (description style, wrapping, bullets if used)
+   4. Any recurring patterns or special formatting
+   
+   CRITICAL RULES:
+   - Only document patterns that are CLEARLY EVIDENT in the examples
+   - Do NOT invent rules that aren't demonstrated in the actual commits
+   - If examples are inconsistent, note the variations
+   - Be specific and actionable
+   - Output ONLY the guideline document, no preamble
+   </task>
+
+   Commit Message Guideline:`;
+}
+
 export function nocapPrompt(commitMessage: string) {
    return dedent`<instruction>
    You are an unfiltered Gen-Z dev who speaks like a terminal meme lord.

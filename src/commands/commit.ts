@@ -1,5 +1,6 @@
 import * as fs from '@/modules/fs';
 import path from 'path';
+import crypto from 'crypto';
 
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
@@ -8,11 +9,115 @@ import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
 import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
 import Logger from '@/utils/logger';
-import { commitMsgGenerator } from '@/templates/prompts';
+import {
+   commitMsgGenerator,
+   commitMsgGeneratorInherent,
+   guidelineLearningPrompt,
+} from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
+import { getRepoRootCached } from '@/modules/cache-controller';
+import { getCache } from '@/common/cache';
+
+/**
+ * Generates a hash for the repository path to use as a cache key.
+ */
+function getRepoHash(repoRoot: string): string {
+   return crypto.createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
+}
+
+/**
+ * Learns commit message guidelines from repository history.
+ * Returns the guideline text or null if learning failed/not enough history.
+ */
+async function learnCommitGuidelines(
+   git$: string | string[]
+): Promise<{ guideline: string | null; historyCount: number }> {
+   const spin = spinner({
+      message: "learning this repo's commit style...",
+      animateGradient: true,
+   });
+
+   try {
+      // Fetch recent commit messages (full body)
+      const result = await $`${git$} log --no-merges -n 10 --format=%B%x00`;
+      const commitMessages = result.stdout
+         .split('\x00')
+         .map((msg) => msg.trim())
+         .filter((msg) => msg.length > 0);
+
+      if (commitMessages.length === 0) {
+         spin.stop();
+         return { guideline: null, historyCount: 0 };
+      }
+
+      // Take 5-10 messages
+      const samplesToUse = commitMessages.slice(0, Math.min(10, commitMessages.length));
+
+      // Ask LLM to learn the pattern
+      const llm = await getLLMProvider();
+      const guideline = await llm.generate({
+         prompt: guidelineLearningPrompt(samplesToUse),
+         temperature: 0.2,
+      });
+
+      spin.stop();
+      return { guideline: guideline.trim(), historyCount: samplesToUse.length };
+   } catch (err) {
+      spin.stop();
+      Logger.warn(`Failed to learn commit guidelines: ${yuString(err)}`, 'commit');
+      return { guideline: null, historyCount: 0 };
+   }
+}
+
+/**
+ * Gets commit message guidelines for the current repository.
+ * Uses cache if available, otherwise learns from history.
+ */
+async function getCommitGuidelines(
+   git$: string | string[],
+   config: Awaited<ReturnType<typeof getConfig>>
+): Promise<string | null> {
+   const repoRoot = await getRepoRootCached(git$);
+   const repoHash = getRepoHash(repoRoot);
+   const cache = await getCache();
+   const cacheKey = `commit.repoGuidelines.${repoHash}`;
+
+   // Check cache first
+   const cached = await cache.get<string>(cacheKey);
+   if (cached) {
+      Logger.debug(`Using cached commit guidelines for ${repoRoot}`, 'commit');
+      return cached;
+   }
+
+   // Learn from repository history
+   const { guideline, historyCount } = await learnCommitGuidelines(git$);
+
+   if (!guideline || historyCount === 0) {
+      Logger.warn(
+         'No commit history found in this repository. Falling back to comprehensive format.',
+         'commit'
+      );
+      return null;
+   }
+
+   if (historyCount < 5) {
+      Logger.warn(
+         `Only ${historyCount} commit(s) found in history. The learned guidelines may be less accurate.`,
+         'commit'
+      );
+   }
+
+   // Cache the learned guideline
+   const cacheDays = config.get<number>('commit.guidelineCacheDays', 30);
+   const cacheMinutes = cacheDays * 24 * 60;
+   await cache.set(cacheKey, guideline, { maxAgeMinutes: cacheMinutes });
+   Logger.debug(`Cached commit guidelines for ${repoRoot} (${cacheDays} days)`, 'commit');
+
+   return guideline;
+}
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -22,6 +127,10 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
    const config = await getConfig();
    const showThinking = config.get<boolean>('llm.showThinking', true);
+   const commitPattern = config.get<'inherent' | 'comprehensive'>(
+      'commit.commitPattern',
+      'inherent'
+   );
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
 
@@ -30,6 +139,20 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          `${ncc('Red')}No staged changes found. Please stage your changes before generating a commit message.${ncc()}`
       );
       return 1;
+   }
+
+   // Determine which prompt to use based on pattern setting
+   let prompt: string;
+   if (commitPattern === 'inherent') {
+      const guidelines = await getCommitGuidelines(git$, config);
+      if (guidelines) {
+         prompt = commitMsgGeneratorInherent(cachedChanges, guidelines);
+      } else {
+         // Fallback to comprehensive if learning failed
+         prompt = commitMsgGenerator(cachedChanges);
+      }
+   } else {
+      prompt = commitMsgGenerator(cachedChanges);
    }
 
    quickPrint(`${ncc('Cyan')}Generating commit message based on staged changes...${ncc()}\n`);
@@ -43,7 +166,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       });
 
       const connection = llm.streamGenerate({
-         prompt: commitMsgGenerator(cachedChanges),
+         prompt,
          temperature: 0.14,
          reasoning: 'low',
       });

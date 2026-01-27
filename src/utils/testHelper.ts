@@ -99,9 +99,9 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const buffer = { stdout: '', stderr: '' };
    process.env.NODE_ENV = 'test';
    // @ts-expect-error function signature mismatch
-   process.stdout.write = (msg: string) => (buffer.stdout += msg);
+   process.stdout.write = (msg: string) => !(void (buffer.stdout += msg));
    // @ts-expect-error function signature mismatch
-   process.stderr.write = (msg: string) => (buffer.stderr += msg);
+   process.stderr.write = (msg: string) => !(void (buffer.stderr += msg));
 
    attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
    const it = defineBunIt(tracker);
