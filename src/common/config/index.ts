@@ -5,6 +5,7 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
 import { CONFIG_PATH, KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
 import { Err } from '@lib/Tools';
+import Logger from '@/utils/logger';
 
 let keytarModulePromise: Promise<typeof import('keytar')> | null = null;
 async function getKeytar() {
@@ -16,6 +17,7 @@ export class ConfigService {
    private configPath: string;
    private config: GdxConfig = { ...DEFAULT_CONFIG };
    private loaded = false;
+   private readonly logger = new Logger('ConfigService');
 
    constructor(configPath?: string) {
       this.configPath = configPath || CONFIG_PATH;
@@ -36,8 +38,8 @@ export class ConfigService {
          const err = new Err(e);
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not a fatal error
-            console.warn(
-               `Warning: Failed to parse config file at ${this.configPath}: ${err.message}`
+            this.logger.warn(
+               `Failed to parse config file at ${this.configPath}: ${err.message}`
             );
          }
          // Use defaults if file doesn't exist or can't be parsed
@@ -116,7 +118,9 @@ export class ConfigService {
                return value as unknown as T;
             }
          } catch (err) {
-            console.warn(`Warning: Failed to load secure key '${keyPath}' from keychain:`, err);
+            this.logger.warn(
+               `Failed to load secure key '${keyPath}' from keychain:\n` + Err.from(err).toString({ color: true })
+            );
          }
       }
 
@@ -144,8 +148,8 @@ export class ConfigService {
       // Validate type against default config
       const defaultValue = this.get(keyPath);
       if (defaultValue !== undefined && typeof value !== typeof defaultValue) {
-         console.warn(
-            `Warning: Type mismatch for '${keyPath}'. Expected ${typeof defaultValue}, got ${typeof value}. Ignoring value.`
+         this.logger.warn(
+            `Type mismatch for '${keyPath}'. Expected ${typeof defaultValue}, got ${typeof value}. Ignoring value.`
          );
          return;
       }
@@ -156,7 +160,9 @@ export class ConfigService {
             const keytar = await getKeytar();
             await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
          } catch (err) {
-            console.warn(`Warning: Failed to save secure key '${keyPath}' to keychain:`, err);
+            this.logger.warn(
+               `Failed to save secure key '${keyPath}' to keychain:\n` + Err.from(err).toString({ color: true })
+            );
          }
       }
 
@@ -236,14 +242,14 @@ export class ConfigService {
                      currentPath
                   );
                } else {
-                  console.warn(
-                     `Warning: Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got object. Ignoring value.`
+                  this.logger.warn(
+                     `Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got object. Ignoring value.`
                   );
                }
             } else {
                if (typeof sourceValue !== typeof targetValue) {
-                  console.warn(
-                     `Warning: Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got ${typeof sourceValue}. Ignoring value.`
+                  this.logger.warn(
+                     `Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got ${typeof sourceValue}. Ignoring value.`
                   );
                } else {
                   target[key] = sourceValue;
@@ -310,8 +316,8 @@ export class ConfigService {
                if (!isNaN(num)) {
                   parsedValue = num;
                } else {
-                  console.warn(
-                     `Warning: Environment variable ${envVar} has invalid number value '${envValue}'. Ignoring.`
+                  this.logger.warn(
+                     `Environment variable ${envVar} has invalid number value '${envValue}'. Ignoring.`
                   );
                   continue;
                }

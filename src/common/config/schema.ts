@@ -18,7 +18,7 @@ export interface GdxConfig {
       undoLimit?: number;
    };
    commit?: {
-      commitPattern?: 'inherent' | 'comprehensive';
+      commitPattern?: 'inherit' | 'comprehensive';
       guidelineCacheDays?: number;
    };
    cache?: {
@@ -46,7 +46,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       undoLimit: 10,
    },
    commit: {
-      commitPattern: 'inherent',
+      commitPattern: 'inherit',
       guidelineCacheDays: 30,
    },
    cache: {
@@ -93,7 +93,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'stash.undoLimit': 'Max number of stash drops to keep in history',
    commit: 'Configuration for commit message generation',
    'commit.commitPattern':
-      'Commit message pattern (inherent: learn from repo, comprehensive: fixed format)',
+      'Commit message pattern (inherit: learn from repo, comprehensive: fixed format)',
    'commit.guidelineCacheDays': 'Days to cache learned commit guidelines per repository',
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',

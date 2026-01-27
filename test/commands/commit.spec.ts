@@ -56,9 +56,9 @@ describe('gdx commit auto', async () => {
    });
 });
 
-describe('gdx commit auto - inherent mode', async () => {
-   // Use inherent mode for these tests
-   process.env.GDX_COMMIT_PATTERN = 'inherent';
+describe('gdx commit auto - inherit mode', async () => {
+   // Use inherit mode for these tests
+   process.env.GDX_COMMIT_PATTERN = 'inherit';
 
    const { tmpDir, $, cleanup, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);

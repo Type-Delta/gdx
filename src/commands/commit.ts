@@ -127,9 +127,9 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
    const config = await getConfig();
    const showThinking = config.get<boolean>('llm.showThinking', true);
-   const commitPattern = config.get<'inherent' | 'comprehensive'>(
+   const commitPattern = config.get<'inherit' | 'comprehensive'>(
       'commit.commitPattern',
-      'inherent'
+      'inherit'
    );
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
@@ -143,7 +143,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
    // Determine which prompt to use based on pattern setting
    let prompt: string;
-   if (commitPattern === 'inherent') {
+   if (commitPattern === 'inherit') {
       const guidelines = await getCommitGuidelines(git$, config);
       if (guidelines) {
          prompt = commitMsgGeneratorInherent(cachedChanges, guidelines);
