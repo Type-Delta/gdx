@@ -84,5 +84,6 @@ export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const CACHE_PATH = path.join(TEMP_DIR, 'gdx', CACHE_FILE_NAME);
 export const MACRO_PATH = path.join(TEMP_DIR, 'gdx', MACRO_FILE_NAME);
 export const DEFAULT_CACHE_MAX_AGE = 360; // Expire cache after 6 hours (unit in minutes)
+export const CACHE_PRUNE_INTERVAL_DAYS = 7; // Prune expired keys every 7 days
 export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
 export const LOG_FILE_SIZE_LIMIT = 500 * 1024; // 500 KB

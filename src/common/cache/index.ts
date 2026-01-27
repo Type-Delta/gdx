@@ -2,7 +2,13 @@
 import path from 'path';
 
 import * as fs from '@/modules/fs';
-import { CACHE_PATH, DEFAULT_CACHE_MAX_AGE, VERSION } from '@/consts';
+import {
+   CACHE_PATH,
+   CACHE_PRUNE_INTERVAL_DAYS,
+   DEFAULT_CACHE_MAX_AGE,
+   ONE_DAY_MS,
+   VERSION,
+} from '@/consts';
 import { beforeExit, Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
 import { getConfig } from '../config';
@@ -11,6 +17,7 @@ interface CacheMetadata {
    version: string;
    createdAt: number;
    updatedAt: number;
+   lastPruneAt: number;
 }
 
 interface CacheEntryMetadata {
@@ -30,6 +37,7 @@ const DEFAULT_CACHE: CacheStructure = {
       version: VERSION,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      lastPruneAt: Date.now(),
    },
    data: {},
    entryMeta: {},
@@ -69,6 +77,72 @@ export class CacheService {
    }
 
    /**
+    * Prunes all expired cache entries.
+    * This is called periodically (every CACHE_PRUNE_INTERVAL_DAYS) to clean up stale data.
+    * @returns The number of keys pruned.
+    */
+   private pruneExpiredKeys(): number {
+      const now = Date.now();
+      let prunedCount = 0;
+
+      // Find all expired entries
+      const expiredKeys: string[] = [];
+      for (const [keyPath, meta] of Object.entries(this.cache.entryMeta)) {
+         if (now > meta.expiresAt) {
+            expiredKeys.push(keyPath);
+         }
+      }
+
+      // Delete each expired entry
+      for (const keyPath of expiredKeys) {
+         // Remove from entryMeta
+         delete this.cache.entryMeta[keyPath];
+
+         // Remove from nested data structure
+         const keys = keyPath.split('.');
+         const pathToDelete: any[] = [];
+         let current: any = this.cache.data;
+
+         for (const key of keys) {
+            if (current && typeof current === 'object' && key in current) {
+               pathToDelete.push({ obj: current, key });
+               current = current[key];
+            } else {
+               // Path doesn't exist; metadata was stale
+               break;
+            }
+         }
+
+         // Delete the leaf
+         if (pathToDelete.length > 0) {
+            const last = pathToDelete[pathToDelete.length - 1];
+            delete last.obj[last.key];
+            prunedCount++;
+         }
+
+         // Prune empty parent objects (walk back up)
+         for (let i = pathToDelete.length - 2; i >= 0; i--) {
+            const { obj, key } = pathToDelete[i];
+            const child = obj[key];
+            if (child && typeof child === 'object' && Object.keys(child).length === 0) {
+               delete obj[key];
+            } else {
+               break; // Stop pruning if parent is not empty
+            }
+         }
+      }
+
+      // Update lastPruneAt timestamp
+      this.cache.meta.lastPruneAt = now;
+      if (prunedCount > 0) {
+         this.cache.meta.updatedAt = now;
+         this.dirty = true;
+      }
+
+      return prunedCount;
+   }
+
+   /**
     * Loads cache from file. Validates metadata and expiry.
     */
    private async load(): Promise<void> {
@@ -105,15 +179,32 @@ export class CacheService {
             return;
          }
 
-         // Ensure entryMeta exists (backward compatibility)
-         if (!parsed.entryMeta) {
-            Logger.debug('Cache file missing entryMeta; resetting to v2 schema', 'cache');
+         // Ensure required fields exist
+         if (!parsed.entryMeta || !parsed.meta.lastPruneAt) {
+            Logger.debug('Existing cache file\' schema mismatch; resetting cache to newer version', 'cache');
             this.resetCache(false);
             this.loaded = true;
             return;
          }
 
          this.cache = parsed;
+
+         // Check if it's time to prune expired keys
+         const now = Date.now();
+         const daysSinceLastPrune = (now - this.cache.meta.lastPruneAt) / ONE_DAY_MS;
+
+         if (daysSinceLastPrune >= CACHE_PRUNE_INTERVAL_DAYS) {
+            Logger.debug(
+               `Last prune was ${daysSinceLastPrune.toFixed(1)} days ago. Running cache pruning...`,
+               'cache'
+            );
+            const prunedCount = this.pruneExpiredKeys();
+            if (prunedCount > 0) {
+               Logger.debug(`Pruned ${prunedCount} expired cache entries`, 'cache');
+            } else {
+               Logger.debug('No expired entries found during pruning', 'cache');
+            }
+         }
       } catch (e) {
          const err = new Err(e);
          if (err.code !== 'ENOENT') {

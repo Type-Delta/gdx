@@ -1,4 +1,4 @@
-import path from 'path';
+import crypto from 'crypto';
 
 import { $, whichExec } from './shell';
 import { getCache } from '@/common/cache';
@@ -45,27 +45,24 @@ export async function getGitVersionCached(git$: string | string[]): Promise<stri
  */
 export async function getRepoRootCached(git$: string | string[]): Promise<string> {
    const cache = await getCache();
-   const cacheKey = 'git.repoRoot';
+   const cwd = process.cwd();
+   const cwdHash = crypto.createHash('sha1').update(cwd).digest('hex');
+   const cacheKey = 'git.repoRoot.' + cwdHash;
 
-   const cached = await cache.get<string>(cacheKey);
-   if (cached) {
-      const [lastDir, cacheDir] = cached.split(path.delimiter);
-
-      if (
-         cacheDir && // Make sure cache is valid (<lastRunDir>:<cacheDir>)
-         path.resolve(cacheDir) === path.resolve(lastDir) && // Still in the same directory
-         fs.existsSync(cacheDir) // Cache dir still exists
-      ) {
-         Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
-         return cached;
-      }
+   const cachedDir = await cache.get<string>(cacheKey);
+   if (
+      cachedDir &&
+      fs.existsSync(cachedDir) // Cache dir still exists
+   ) {
+      Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
+      return cachedDir;
    }
 
    try {
       const { stdout } = await $`${git$} rev-parse --show-toplevel`;
       const repoRoot = stdout.trim();
 
-      await cache.set(cacheKey, `${process.cwd()}${path.delimiter}${repoRoot}`);
+      await cache.set(cacheKey, repoRoot);
       Logger.debug(`Cache store for ${cacheKey}: ${repoRoot}`, 'cache-ctrl');
 
       return repoRoot;

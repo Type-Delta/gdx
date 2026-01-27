@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 
 import { getCache, resetCache, CacheService } from '@/common/cache';
 import { createTestEnv } from '@/utils/testHelper';
-import { DEFAULT_CACHE_MAX_AGE, VERSION } from '@/consts';
+import { CACHE_PRUNE_INTERVAL_DAYS, DEFAULT_CACHE_MAX_AGE, ONE_DAY_MS, VERSION } from '@/consts';
 
 describe('CacheService', async () => {
    const { tmpRootDir, cleanup, it } = await createTestEnv();
@@ -125,6 +125,7 @@ describe('CacheService', async () => {
             version: 'old-version-1.0.0',
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            lastPruneAt: Date.now(),
          },
          data: { test: 'should-be-ignored' },
          entryMeta: {},
@@ -150,6 +151,7 @@ describe('CacheService', async () => {
             version: VERSION,
             createdAt: Date.now(),
             updatedAt: Date.now(),
+            lastPruneAt: Date.now(),
          },
          data: { test: 'should-be-deleted', other: 'should-remain' },
          entryMeta: {
@@ -363,5 +365,151 @@ describe('CacheService', async () => {
       expect(shortExpiry).toBeLessThan(defaultExpiry);
       expect(shortExpiry - now).toBeLessThan(5 * 60 * 1000 + 100); // ~5 min + margin
       expect(defaultExpiry - now).toBeGreaterThan(5 * 60 * 1000); // > 5 min
+   });
+
+   it('should initialize lastPruneAt on new cache', async () => {
+      resetCache();
+      const cacheFile9 = path.join(tmpRootDir, 'cache9.json');
+      const cache = new CacheService(cacheFile9);
+
+      await cache.set('test.key', 'value');
+      await cache.flush();
+
+      // Read the file and verify lastPruneAt exists
+      const content = await fs.readFile(cacheFile9, 'utf-8');
+      const parsed = JSON.parse(content);
+      expect(parsed.meta.lastPruneAt).toBeDefined();
+      expect(parsed.meta.lastPruneAt).toBeGreaterThan(0);
+   });
+
+   it(`should prune expired keys when last prune is older than ${CACHE_PRUNE_INTERVAL_DAYS} days`, async () => {
+      resetCache();
+      const cacheFile10 = path.join(tmpRootDir, 'cache10.json');
+
+      // Create cache with old lastPruneAt and some expired entries
+      const oldTimestamp = Date.now() - (CACHE_PRUNE_INTERVAL_DAYS + 1) * ONE_DAY_MS;
+      const cacheData = {
+         meta: {
+            version: VERSION,
+            createdAt: oldTimestamp,
+            updatedAt: oldTimestamp,
+            lastPruneAt: oldTimestamp,
+         },
+         data: {
+            expired1: 'should-be-deleted',
+            expired2: 'also-deleted',
+            valid: 'should-remain',
+         },
+         entryMeta: {
+            expired1: {
+               createdAt: oldTimestamp,
+               updatedAt: oldTimestamp,
+               expiresAt: Date.now() - 1000, // Already expired
+            },
+            expired2: {
+               createdAt: oldTimestamp,
+               updatedAt: oldTimestamp,
+               expiresAt: Date.now() - 2000, // Already expired
+            },
+            valid: {
+               createdAt: Date.now(),
+               updatedAt: Date.now(),
+               expiresAt: Date.now() + 10000, // Not expired
+            },
+         },
+      };
+
+      await fs.writeFile(cacheFile10, JSON.stringify(cacheData));
+
+      // Load cache; should trigger pruning
+      const cache = new CacheService(cacheFile10);
+      await cache.get('test'); // Trigger load
+
+      // Verify expired entries are gone
+      const val1 = await cache.get('expired1');
+      const val2 = await cache.get('expired2');
+      expect(val1).toBeUndefined();
+      expect(val2).toBeUndefined();
+
+      // Verify valid entry still exists
+      const validVal = await cache.get('valid');
+      expect(validVal).toBe('should-remain');
+
+      // Verify lastPruneAt was updated
+      const allData = await cache.getAll();
+      expect(allData.meta.lastPruneAt).toBeGreaterThan(oldTimestamp);
+   });
+
+   it('should not prune when last prune is within 7 days', async () => {
+      resetCache();
+      const cacheFile11 = path.join(tmpRootDir, 'cache11.json');
+
+      // Create cache with recent lastPruneAt and expired entry
+      const recentTimestamp = Date.now() - 2 * ONE_DAY_MS; // 2 days ago
+      const cacheData = {
+         meta: {
+            version: VERSION,
+            createdAt: recentTimestamp,
+            updatedAt: recentTimestamp,
+            lastPruneAt: recentTimestamp,
+         },
+         data: {
+            expired: 'should-still-be-here',
+         },
+         entryMeta: {
+            expired: {
+               createdAt: recentTimestamp,
+               updatedAt: recentTimestamp,
+               expiresAt: Date.now() - 1000, // Already expired
+            },
+         },
+      };
+
+      await fs.writeFile(cacheFile11, JSON.stringify(cacheData));
+
+      // Load cache; should NOT trigger pruning (lastPruneAt is too recent)
+      const cache = new CacheService(cacheFile11);
+      await cache.get('test'); // Trigger load
+
+      // Verify expired entry is still there (not pruned, but will be lazily deleted on access)
+      const allData = await cache.getAll();
+      expect(allData.entryMeta['expired']).toBeDefined();
+
+      // But accessing it should trigger lazy deletion
+      const val = await cache.get('expired');
+      expect(val).toBeUndefined();
+   });
+
+   it('should add lastPruneAt to old cache files without it', async () => {
+      resetCache();
+      const cacheFile12 = path.join(tmpRootDir, 'cache12.json');
+
+      // Create cache without lastPruneAt (old format)
+      const cacheData = {
+         meta: {
+            version: VERSION,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            // lastPruneAt is missing
+         },
+         data: { test: 'value' },
+         entryMeta: {
+            test: {
+               createdAt: Date.now(),
+               updatedAt: Date.now(),
+               expiresAt: Date.now() + 10000,
+            },
+         },
+      };
+
+      await fs.writeFile(cacheFile12, JSON.stringify(cacheData));
+
+      // Load cache; should add lastPruneAt
+      const cache = new CacheService(cacheFile12);
+      await cache.get('test'); // Trigger load
+
+      const allData = await cache.getAll();
+      expect(allData.meta.lastPruneAt).toBeDefined();
+      expect(allData.meta.lastPruneAt).toBeGreaterThan(0);
    });
 });
