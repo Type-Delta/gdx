@@ -36,7 +36,8 @@ const DEFAULT_CACHE: CacheStructure = {
 };
 
 export class CacheService {
-   private cachePath: string;
+   cachePath: string;
+
    private cache: CacheStructure = { ...DEFAULT_CACHE };
    private loaded = false;
    private dirty = false;

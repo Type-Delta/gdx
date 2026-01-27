@@ -22,7 +22,7 @@ export function commitMsgGenerator(changesSummary: string) {
 
    Additional rules:
    - Use the imperative mood in the title (e.g., "Fix bug" not "Fixed bug" or "Fixes bug")
-   - Total commit message length must not exceed 800 characters
+   - IMPORTANT! Total commit message length MUST NOT EXCEED 170 WORDS, keep it concise
    - Do not use Markdown or any other formatting in the output
    - Do not use bullet points outside of the recap section
    - DO NOT PREFIX SECTIONS with labels like "Description:" or "Recap:"
@@ -45,7 +45,7 @@ export function commitMsgGeneratorInherent(changesSummary: string, guideline: st
    <rules>
    - Follow the project-specific conventions above strictly
    - Use the imperative mood in commit titles
-   - Total commit message length must not exceed 800 characters
+   - IMPORTANT! Total commit message length MUST NOT EXCEED 170 WORDS, keep it concise
    - Do not use Markdown or any other formatting in the output
    - Output ONLY the commit message without any labels or prefixes
    </rules>
@@ -74,7 +74,7 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
    2. Header conventions (prefixes, types, scopes, title style)
    3. Body conventions (description style, wrapping, bullets if used)
    4. Any recurring patterns or special formatting
-   
+
    CRITICAL RULES:
    - Only document patterns that are CLEARLY EVIDENT in the examples
    - Do NOT invent rules that aren't demonstrated in the actual commits

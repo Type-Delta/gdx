@@ -35,6 +35,8 @@ function getRepoHash(repoRoot: string): string {
 async function learnCommitGuidelines(
    git$: string | string[]
 ): Promise<{ guideline: string | null; historyCount: number }> {
+   quickPrint('');
+
    const spin = spinner({
       message: "learning this repo's commit style...",
       animateGradient: true,
@@ -61,6 +63,7 @@ async function learnCommitGuidelines(
       const guideline = await llm.generate({
          prompt: guidelineLearningPrompt(samplesToUse),
          temperature: 0.2,
+         reasoning: 'medium',
       });
 
       spin.stop();

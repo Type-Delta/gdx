@@ -10,6 +10,7 @@ import global from '@/global';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
+import { getCache } from '@/common/cache';
 
 export default async function doctor(): Promise<number> {
    // Detect native binary info
@@ -88,12 +89,15 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
    );
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
 
    quickPrint(`Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`);
+
+   const cache = await getCache();
+   quickPrint(`Cache file path: ${ncc('Cyan') + hyperLink(cache.cachePath, cache.cachePath) + ncc()}`);
 
    // Detect git
    try {

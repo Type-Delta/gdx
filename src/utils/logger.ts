@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import { ncc, strWrap } from '@lib/Tools';
+import { cleanString, ncc, strWrap } from '@lib/Tools';
 
 import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS } from '@/consts';
 import global from '@/global';
@@ -212,6 +212,12 @@ class Logger {
          const newLogs = Logger.allLogs
             .map(({ timestamp, level, message, module }) => {
                const paddedLevel = level.toUpperCase().padEnd(5);
+               message = strWrap(cleanString(message), 120, {
+                  indent: 33,
+                  redundancyLv: -1,
+                  mode: 'strict'
+               });
+
                return `${timestamp} [${paddedLevel}] ${module}: ${message}`;
             })
             .join('\n');

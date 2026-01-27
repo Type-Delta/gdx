@@ -24,7 +24,7 @@ async function main(): Promise<number> {
    const args = ctx.args;
 
    if (args[0] === '--init') {
-      const shell = args.popValue('--init') || args.popValue('--shell');
+      const shell = args.popValue('--shell') || args.popValue('--init');
       const cmdAlias = args.popValue('--cmd');
 
       if (shell) {
@@ -150,8 +150,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
