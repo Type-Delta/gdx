@@ -23,9 +23,8 @@ async function main(): Promise<number> {
    };
    const args = ctx.args;
 
-   // Fast-path: no git required
    if (args[0] === '--init') {
-      const shell = args.popValue('--shell');
+      const shell = args.popValue('--init') || args.popValue('--shell');
       const cmdAlias = args.popValue('--cmd');
 
       if (shell) {
@@ -38,7 +37,7 @@ async function main(): Promise<number> {
             return 1;
          }
       } else {
-         Logger.error('--shell <shell-name> is required for initialization.');
+         Logger.error('<shell-name> is not specified. --init <shell-name> is required for initialization.');
          return 1;
       }
    }

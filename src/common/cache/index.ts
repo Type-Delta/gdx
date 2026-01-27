@@ -308,7 +308,7 @@ export class CacheService {
       try {
          const dirPath = path.dirname(this.cachePath);
          fs.mkdirSync(dirPath, { recursive: true });
-         const cacheJson = JSON.stringify(this.cache, null, 2);
+         const cacheJson = JSON.stringify(this.cache);
          fs.writeFileSync(this.cachePath, cacheJson, 'utf-8');
          this.dirty = false;
          Logger.debug(`Cache flushed to ${this.cachePath}`, 'cache');

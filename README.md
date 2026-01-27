@@ -100,14 +100,14 @@ To add shell integration, add the following line to the **End** of your shell pr
 #### For bash and zsh:
 
 ```bash
-eval "$(gdx --init --shell bash)"  # for bash
-eval "$(gdx --init --shell zsh)"   # for zsh
+eval "$(gdx --init bash)"  # for bash
+eval "$(gdx --init zsh)"   # for zsh
 ```
 
 #### For fish:
 
 ```fish
-gdx --init --shell fish | source
+gdx --init fish | source
 ```
 
 #### For PowerShell:
@@ -115,12 +115,12 @@ gdx --init --shell fish | source
 To find your profile path, run `$PROFILE` in PowerShell.
 
 ```powershell
-Invoke-Expression (& { (gdx --init --shell pwsh | Out-String) })
+Invoke-Expression (& { (gdx --init pwsh | Out-String) })
 ```
 
 > [!TIP]
 > You can add `--cmd` to the `gdx --init` command to create custom aliases.
-> For example, `gdx --init --shell zsh --cmd g` will create `g` as an alias for `gdx`.
+> For example, `gdx --init zsh --cmd g` will create `g` as an alias for `gdx`.
 
 ## Core Features
 
@@ -139,6 +139,8 @@ gdx reset ~2      # -> git reset HEAD~2
 
 > [!NOTE]
 > This wrapper forwards unrecognized commands directly to `git`, so you can use it as a full git replacement.
+>
+> If GDX still gets in your way, just run `gdx --bypass <git-commands>` to skip gdx intervention altogether.
 
 ### 2. Smart Linting
 
@@ -252,13 +254,14 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - abnormal file sizes
      with an option to automatically run lint before every push (bypass with `gdx push --no-lint`)
 - [x] **Undoable stash drop**
-- [x] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init --shell`)
+- [x] **Parallel worktree switching** `gdx parallel switch` Jump between forks (auto-cd) (requires shell integration with `gdx --init`)
 - [ ] **Seamless Integration with fzf and cloc**
       automatically detect and use fzf and/or cloc if installed for:
    - Interactive fuzzy search for branches, commits, stash, log and files instead of `less`
    - Code line statistics in `gdx stats` using `cloc`
 - [x] **gdx clear Untracked files support**: `gdx clear` now automatically backs up untracked files in the patch.
 - [ ] **gdx migrate**: move dirty changes to another branch/worktree without committing.
+- [ ] **Recursive status for submodules** with `gdx submodule status --recursive` or `gdx s -r`
 
 ## License
 
