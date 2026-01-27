@@ -9,6 +9,21 @@ import global from '@/global';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug';
 
+export interface LogRecord {
+   timestamp: string;
+   level: LogLevel;
+   message: string;
+   module: string;
+}
+
+type LoggerSink = (record: LogRecord) => void;
+
+let loggerSink: LoggerSink | null = null;
+
+export function setLoggerSink(sink: LoggerSink | null): void {
+   loggerSink = sink;
+}
+
 const LogLevelMap: Record<LogLevel, number> = {
    off: -1,
    fatal: 0,
@@ -84,6 +99,16 @@ class Logger {
    }
 
    private static logInternal(level: LogLevel, message: string, moduleName: string): void {
+      const timestamp = new Date().toISOString();
+
+      // Create log record (for sink and file)
+      const record: LogRecord = { timestamp, level, message, module: moduleName };
+
+      // Call sink unconditionally (for test buffer.logs, even when SHOULD_WRITE_LOGS is false)
+      if (loggerSink) {
+         loggerSink(record);
+      }
+
       // Check if we should print this message
       if (LogLevelMap[level] <= LogLevelMap[global.logLevel]) {
          Logger.printMessage(level, message, moduleName);
@@ -92,10 +117,9 @@ class Logger {
       if (!SHOULD_WRITE_LOGS) return;
 
       Logger.ensureInitialized();
-      const timestamp = new Date().toISOString();
 
-      // Always store in allLogs
-      Logger.allLogs.push({ timestamp, level, message, module: moduleName });
+      // Always store in allLogs (for file flush)
+      Logger.allLogs.push(record);
    }
 
    private static printMessage(level: LogLevel, message: string, moduleName: string): void {

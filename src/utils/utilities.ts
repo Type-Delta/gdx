@@ -11,7 +11,19 @@ interface ProgressiveMatchResult {
  * Quickly prints a message to stdout with a newline.
  * @param msg - The message to print.
  */
+type QuickPrintWriter = (msg: string) => void;
+
+let quickPrintWriter: QuickPrintWriter | null = null;
+
+export function setQuickPrintWriter(writer: QuickPrintWriter | null): void {
+   quickPrintWriter = writer;
+}
+
 export function quickPrint(msg: string, end: string = '\n'): void {
+   if (quickPrintWriter) {
+      quickPrintWriter(msg + end);
+      return;
+   }
    process.stdout.write(msg + end);
 }
 

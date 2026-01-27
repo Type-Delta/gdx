@@ -105,6 +105,7 @@ async function getCommitGuidelines(
 
    if (historyCount < 5) {
       Logger.warn(
+         // LINK: dii2ndk text literal in spec
          `Only ${historyCount} commit(s) found in history. The learned guidelines may be less accurate.`,
          'commit'
       );

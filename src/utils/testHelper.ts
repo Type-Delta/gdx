@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import * as fs from '@/modules/fs';
 import path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
 
 import { CheckCache, ncc } from '@lib/Tools';
 
@@ -11,12 +12,21 @@ import { resetCache } from '@/common/cache';
 import { $, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
+import { setQuickPrintWriter } from '@/utils/utilities';
+import { setLoggerSink, type LogRecord } from '@/utils/logger';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
+const stdioStore = new AsyncLocalStorage<{
+   buffer: { stdout: string; stderr: string; logs: string };
+}>();
+let stdioHookInstalled = false;
+let originalStdoutWrite: typeof process.stdout.write | null = null;
+let originalStderrWrite: typeof process.stderr.write | null = null;
 
 interface TestSystem {
    lastTestStatus: 'notrun' | 'passed' | 'failed';
+   buffer?: { stdout: string; stderr: string; logs: string };
 }
 
 interface TestEnvOptions {
@@ -85,7 +95,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const globalConfigPath = path.join(tmpDir, '.gitconfig');
    process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
 
-   await Promise.all([
+   const [resetRepo] = await Promise.all([
       initGitRepo(_$), // Initialize a git repository
       fs.writeFile(globalConfigPath, ''), // Empty global git config
    ]);
@@ -96,25 +106,23 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    // Disable all ANSI formatting for tests
    CheckCache.supportsColor = 0;
 
-   const buffer = { stdout: '', stderr: '' };
+   const buffer = { stdout: '', stderr: '', logs: '' };
    process.env.NODE_ENV = 'test';
-   // @ts-expect-error function signature mismatch
-   process.stdout.write = (msg: string) => !(void (buffer.stdout += msg));
-   // @ts-expect-error function signature mismatch
-   process.stderr.write = (msg: string) => !(void (buffer.stderr += msg));
+   ensureStdIoHooked();
 
    attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
    const it = defineBunIt(tracker);
    console.timeEnd('createTestEnv');
 
    return {
-      tmpDir: tmpMockProjDir,
-      tmpRootDir: tmpDir,
-      $: _$,
-      buffer,
-      tracker,
-      cleanup,
-      it,
+      tmpDir: tmpMockProjDir, // Project directory
+      tmpRootDir: tmpDir, // Temp root directory that contains project dir
+      $: _$, // Shell function with cwd set to project dir
+      buffer, // Captured stdout, stderr, and logs
+      tracker, // Test environment status tracker
+      cleanup, // Cleanup function to remove temp dirs
+      it, // Custom it function with stdio capture
+      resetRepo, // Function to reset git repo to initial state
    };
 }
 
@@ -122,13 +130,20 @@ async function initGitRepo(_$: typeof $) {
    await _$`${gitExePath!} init`;
 
    // Set user config
-   await Promise.all([
-      _$`${gitExePath!} config user.name ${'Test User'}`,
-      _$`${gitExePath!} config user.email ${'test@example.com'}`,
-   ]);
+   await _$`${gitExePath!} config user.name ${'Test User'}`;
+   await _$`${gitExePath!} config user.email ${'test@example.com'}`;
 
    // Create initial commit to ensure HEAD exists
-   await _$`${gitExePath!} commit --allow-empty -m ${'Initial commit'}`;
+   const cmiOutput = (await _$`${gitExePath!} commit --allow-empty -m ${'Initial commit'}`).stdout;
+   const hash = cmiOutput.match(/^\[.* ([a-f0-9]{7,40})\]/m)?.[1];
+   if (!hash) {
+      throw new Error('Failed to create initial commit in test git repo.');
+   }
+
+   return async () => {
+      // Reset repo to initial commit
+      await _$`${gitExePath!} reset --hard ${hash}`;
+   };
 }
 
 function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTracker {
@@ -203,23 +218,29 @@ async function findGitExecutable(): Promise<string> {
 function defineBunIt(tracker: TestEnvTracker) {
    return function (name: string, fn: () => Promise<void> | void) {
       return it(name, async (done) => {
-         try {
-            await fn();
-            done();
-            tracker.testSystem.lastTestStatus = 'passed';
-         } catch (error) {
-            tracker.testSystem.lastTestStatus = 'failed';
-            throw error;
-         }
+         await stdioStore.run(
+            { buffer: tracker.testSystem.buffer ?? { stdout: '', stderr: '', logs: '' } },
+            async () => {
+               try {
+                  await fn();
+                  done();
+                  tracker.testSystem.lastTestStatus = 'passed';
+               } catch (error) {
+                  tracker.testSystem.lastTestStatus = 'failed';
+                  throw error;
+               }
+            }
+         );
       });
    };
 }
 
 function attachTestLivecycleHook(
-   buffer: { stdout: string; stderr: string },
+   buffer: { stdout: string; stderr: string; logs: string },
    tracker: TestEnvTracker,
    autoResetBuffer: boolean = true
 ) {
+   tracker.testSystem.buffer = buffer;
    afterEach((done) => {
       if (tracker.testSystem.lastTestStatus === 'failed') {
          console.log(ncc('Dim') + '\nTest failed. Captured stdout:\n' + ncc(), buffer.stdout);
@@ -233,7 +254,52 @@ function attachTestLivecycleHook(
       if (autoResetBuffer) {
          buffer.stdout = '';
          buffer.stderr = '';
+         buffer.logs = '';
       }
       tracker.reset();
+   });
+}
+
+function ensureStdIoHooked() {
+   if (stdioHookInstalled) return;
+   stdioHookInstalled = true;
+   originalStdoutWrite = process.stdout.write.bind(process.stdout);
+   originalStderrWrite = process.stderr.write.bind(process.stderr);
+
+   process.stdout.write = (msg: string) => {
+      const store = stdioStore.getStore();
+      if (store) {
+         store.buffer.stdout += msg;
+         return true;
+      }
+      return originalStdoutWrite ? originalStdoutWrite(msg) : true;
+   };
+
+   process.stderr.write = (msg: string) => {
+      const store = stdioStore.getStore();
+      if (store) {
+         store.buffer.stderr += msg;
+         return true;
+      }
+      return originalStderrWrite ? originalStderrWrite(msg) : true;
+   };
+
+   setQuickPrintWriter((msg) => {
+      const store = stdioStore.getStore();
+      if (store) {
+         store.buffer.stdout += msg;
+         return;
+      }
+      if (originalStdoutWrite) originalStdoutWrite(msg);
+   });
+
+   setLoggerSink((record: LogRecord) => {
+      const store = stdioStore.getStore();
+      if (!store) return;
+
+      // Format log entry same as Logger.flushLogs()
+      const paddedLevel = record.level.toUpperCase().padEnd(5);
+      const logLine = `${record.timestamp} [${paddedLevel}] ${record.module}: ${record.message}\n`;
+      store.buffer.logs += logLine;
    });
 }

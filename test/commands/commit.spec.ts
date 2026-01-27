@@ -19,8 +19,7 @@ describe('gdx commit auto', async () => {
    it('should fail if no staged changes', async () => {
       const result = await commit.auto(ctx);
       expect(result).toBe(1);
-      // Note: buffer checking is broken due to module loading order, but return code is correct
-      // expect(buffer.stdout).toContain('No staged changes found');
+      expect(buffer.stdout).toContain('No staged changes found');
    });
 
    it('should generate commit message and commit', async () => {
@@ -60,7 +59,7 @@ describe('gdx commit auto - inherit mode', async () => {
    // Use inherit mode for these tests
    process.env.GDX_COMMIT_PATTERN = 'inherit';
 
-   const { tmpDir, $, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, cleanup, it, resetRepo } = await createTestEnv();
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
 
@@ -100,6 +99,11 @@ describe('gdx commit auto - inherit mode', async () => {
    it('should fallback to comprehensive when history is insufficient', async () => {
       // The repo starts with 1 initial commit from createTestEnv
       // This is < 5, so it should warn and continue (not fallback to comprehensive)
+      // Reset repo to initial state
+      await resetRepo();
+
+      // Clear all cache
+      resetCache();
 
       // Stage a file
       await fs.writeFile(path.join(tmpDir, 'file.txt'), 'content');
@@ -112,7 +116,8 @@ describe('gdx commit auto - inherit mode', async () => {
       expect(result).toBe(0);
 
       // Should have warned about insufficient history
-      // Note: buffer checking is broken due to module loading order, but we trust the code path
+      // LINK: dii2ndk text literal in spec
+      expect(buffer.stdout).toContain('less accurate');
 
       // Verify commit was made even with fallback
       const log = (await $`${git$} log -1 --pretty=%B`).stdout;
