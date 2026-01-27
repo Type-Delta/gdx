@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- recursive status for submodules with `gdx status --recursive` or `gdx s -r`.
+
 ## Version 0.2.0 - 2026-01-14
 
 ### Added

@@ -37,7 +37,9 @@ async function main(): Promise<number> {
             return 1;
          }
       } else {
-         Logger.error('<shell-name> is not specified. --init <shell-name> is required for initialization.');
+         Logger.error(
+            '<shell-name> is not specified. --init <shell-name> is required for initialization.'
+         );
          return 1;
       }
    }
@@ -95,6 +97,11 @@ async function main(): Promise<number> {
       switch (args[0]) {
          case 's': // alias for 'status'
             args[0] = 'status';
+         case 'status':
+            // Handle recursive flag
+            if (args.includes('-r') || args.includes('--recursive')) {
+               return await cmd.status(ctx);
+            }
             break;
          case 'co': // alias for 'checkout'
             args[0] = 'checkout';
@@ -143,8 +150,8 @@ async function main(): Promise<number> {
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }

@@ -9,6 +9,7 @@ import nocap from './nocap';
 import parallel from './parallel';
 import lint from './lint';
 import doctor from './doctor';
+import status from './status';
 import __completion from './__completion';
 
 export default {
@@ -24,4 +25,5 @@ export default {
    parallel,
    lint,
    doctor,
+   status,
 };

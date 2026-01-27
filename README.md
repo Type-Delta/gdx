@@ -261,7 +261,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - Code line statistics in `gdx stats` using `cloc`
 - [x] **gdx clear Untracked files support**: `gdx clear` now automatically backs up untracked files in the patch.
 - [ ] **gdx migrate**: move dirty changes to another branch/worktree without committing.
-- [ ] **Recursive status for submodules** with `gdx submodule status --recursive` or `gdx s -r`
+- [x] **Recursive status for submodules** with `gdx status --recursive` or `gdx s -r`
 
 ## License
 

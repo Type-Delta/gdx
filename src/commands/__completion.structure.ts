@@ -10,6 +10,7 @@ import { structure as nocapStructure } from './nocap';
 import { structure as parallelStructure } from './parallel';
 import { structure as stashStructure } from './stash';
 import { structure as statsStructure } from './stats';
+import { structure as statusStructure } from './status';
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    clear: clearStructure,
@@ -22,6 +23,7 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    parallel: parallelStructure,
    stash: stashStructure,
    stats: statsStructure,
+   status: statusStructure,
 };
 
 export const GDX_SHORTHANDS = [
@@ -41,8 +43,4 @@ export const GDX_SHORTHANDS = [
    'sta', // stash
 ] as const;
 
-export const GDX_GLOBAL_FLAGS = [
-   '--loglevel',
-   '--ghelp',
-   '--bypass',
-] as const;
+export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass'] as const;

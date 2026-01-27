@@ -14,6 +14,7 @@ import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
 import { help as lintHelp } from './lint';
+import { help as statusHelp } from './status';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export default function help(name?: string): number {
@@ -146,6 +147,7 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
       commit: commitHelp,
       clear: clearHelp,
       lint: lintHelp,
+      status: statusHelp,
    };
 
    if (cmdName === 'help') {
@@ -185,5 +187,6 @@ export const structure = {
       'parallel',
       'stash',
       'stats',
+      'status',
    ],
 } as const satisfies CommandStructure;
