@@ -6,8 +6,10 @@ import { getCache } from '@/common/cache';
 import { CacheService } from '@/common/cache';
 import { Err, ncc } from '@lib/Tools';
 import Logger from '@/utils/logger';
-import { execGit, tokenizeCommand } from './shell';
+import { tokenizeCommand } from './shell';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
+import { GdxContext } from '@/common/types';
+import { ArgsSet } from './arguments';
 
 export interface MacroMap {
    [name: string]: string;
@@ -80,7 +82,7 @@ export async function syncMacrosToCache(): Promise<void> {
  * Always updates cache after reading from file (if cache is enabled).
  * @returns MacroMap
  */
-export async function getMacrosCachedOrFileFallback(): Promise<MacroMap> {
+export async function getMacrosCachedOrLoad(): Promise<MacroMap> {
    if (CacheService.isDisabled) {
       return await readMacrosFromFile();
    }
@@ -101,18 +103,17 @@ export async function getMacrosCachedOrFileFallback(): Promise<MacroMap> {
    return macros;
 }
 
-
-
 /**
- * Executes a macro by expanding and running its commands sequentially.
- * @param git$ - Git executable path.
+ * Executes a macro by running its commands sequentially through the gdx dispatcher.
+ * This allows macros to invoke any gdx command, not just git commands.
+ * @param git$ - Git executable path (can be array for test contexts with -C flag).
  * @param macroScript - The macro script string.
  * @param macroArgs - Arguments passed to the macro invocation.
  * @param extraFlags - Extra flags to append to the last command.
  * @returns Exit code (0 = success, non-zero = failure).
  */
 export async function executeMacro(
-   git$: string,
+   git$: string | string[],
    macroScript: string,
    macroArgs: string[],
    extraFlags: string[]
@@ -128,15 +129,15 @@ export async function executeMacro(
       return 1;
    }
 
+   // Import dispatch lazily to avoid circular dependency
+   const { dispatch } = await import('@/cli/dispatch');
+
    for (let i = 0; i < commands.length; i++) {
       const isLastCommand = i === commands.length - 1;
       let argv = tokenizeCommand(commands[i]);
 
       // Substitute placeholders
       argv = substitutePlaceholders(argv, macroArgs);
-
-      // Expand shorthands
-      argv = expandShorthands(argv);
 
       // Append extra flags to the last command
       if (isLastCommand && extraFlags.length > 0) {
@@ -145,9 +146,16 @@ export async function executeMacro(
 
       if (argv.length === 0) continue;
 
-      quickPrint(ncc('Cyan') + `Executing: git ${escapeCmdArgs(argv).join(' ')}` + ncc());
+      quickPrint(ncc('Cyan') + `Executing: gdx ${escapeCmdArgs(argv).join(' ')}` + ncc());
 
-      const exitCode = await execGit(git$, argv);
+      // Create a context for this command
+      const ctx: GdxContext = {
+         git$,
+         args: new ArgsSet(argv),
+      };
+
+      // Dispatch through gdx routing (which handles custom commands, aliases, etc.)
+      const exitCode = await dispatch(ctx, { inMacro: true });
       if (exitCode !== 0) {
          Logger.error(`Macro command failed with exit code ${exitCode}`, 'macro');
          return exitCode;
@@ -178,40 +186,6 @@ export function isFilePath(arg: string): boolean {
    }
 
    return false;
-}
-
-
-/**
- * Expands gdx shorthands in a command argv array.
- * Maps shorthands like 'cmi' → 'commit', 'ad' → 'add', etc.
- * @param argv - The command argv array.
- * @returns Expanded argv array.
- */
-export function expandShorthands(argv: string[]): string[] {
-   if (argv.length === 0) return argv;
-
-   const shorthandMap: Record<string, string> = {
-      s: 'status',
-      co: 'checkout',
-      br: 'branch',
-      cmi: 'commit',
-      mg: 'merge',
-      pl: 'pull',
-      pu: 'pull',
-      ps: 'push',
-      ad: 'add',
-      rv: 'revert',
-      rb: 'rebase',
-      lg: 'log',
-      sta: 'stash',
-   };
-
-   const expanded = [...argv];
-   if (expanded[0] in shorthandMap) {
-      expanded[0] = shorthandMap[expanded[0]];
-   }
-
-   return expanded;
 }
 
 /**

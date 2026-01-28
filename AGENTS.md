@@ -367,6 +367,23 @@ const _$ = $({ cwd: tmpDir });
 await _$`${git$} init`;
 ```
 
+### Command Arguments
+
+When handleing command-line arguments, always use the `ArgsSet` utility from `ctx.args` when possible:
+
+```typescript
+// You can manupulate ArgsSet like you do with arrays
+const args = new ArgsSet(['--flag', 'value', '--option=abc']);
+// But it includes helper methods:
+// Pops and returns the value for --flag
+const flagValue = args.popValue('--flag'); // 'value'
+// Checks if --option is present
+// instead of:
+args.some((arg) => arg === '--option' || arg.startsWith('--option='));
+// use:
+const hasOption = args.hasOption('--option'); // true
+```
+
 ### Context Usage
 
 ```typescript

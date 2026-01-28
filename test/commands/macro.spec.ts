@@ -286,3 +286,116 @@ describe('gdx macro storage', async () => {
       expect(macros['quoted']).toBe('cmi -m "test message with spaces"');
    });
 });
+
+describe('gdx macro custom command execution', async () => {
+   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
+   afterAll(cleanup);
+
+   it('should route gdx commands through dispatch', async () => {
+      // Create a macro that calls a gdx custom command
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'testcmd', 'clear']);
+      await macro(ctx1);
+
+      buffer.stdout = '';
+
+      // Execute the macro - it should route through dispatch to cmd.clear
+      const ctx2 = createGdxContext(tmpDir, ['testcmd']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx2);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Executing macro');
+      // The 'clear' command should have executed
+      expect(buffer.stdout).toContain('No changes to clear');
+   });
+
+   it('should execute git commands from macro', async () => {
+      // Create a macro with a git command
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'gitstatus', 'status']);
+      await macro(ctx1);
+
+      buffer.stdout = '';
+
+      // Execute the macro
+      const ctx2 = createGdxContext(tmpDir, ['gitstatus']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx2);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Executing macro');
+   });
+
+   it('should execute shorthand commands from macro', async () => {
+      // Create a macro with a shorthand
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'shortcmd', 's']);
+      await macro(ctx1);
+
+      buffer.stdout = '';
+
+      // Execute the macro - 's' should expand to 'status'
+      const ctx2 = createGdxContext(tmpDir, ['shortcmd']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx2);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Executing macro');
+   });
+});
+
+describe('gdx macro recursion prevention', async () => {
+   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
+   afterAll(cleanup);
+
+   it('should prevent macro-in-macro invocation', async () => {
+      // Create two macros: a calls b
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'inner', 'status']);
+      await macro(ctx1);
+
+      const ctx2 = createGdxContext(tmpDir, ['macro', 'set', 'outer', 'inner']);
+      await macro(ctx2);
+
+      buffer.stdout = '';
+      buffer.logs = '';
+
+      // Try to execute outer macro (which tries to call inner macro)
+      const ctx3 = createGdxContext(tmpDir, ['outer']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx3);
+
+      expect(result).toBe(1);
+      expect(buffer.logs).toContain('cannot be invoked from inside a macro');
+   });
+
+   it('should prevent self-referencing macro', async () => {
+      // Create a macro that calls itself
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'loop', 'loop']);
+      await macro(ctx1);
+
+      buffer.stdout = '';
+      buffer.logs = '';
+
+      // Try to execute the macro
+      const ctx2 = createGdxContext(tmpDir, ['loop']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx2);
+
+      expect(result).toBe(1);
+      expect(buffer.logs).toContain('cannot be invoked from inside a macro');
+   });
+
+   it('should allow macro with regular commands', async () => {
+      // Create a normal macro
+      const ctx1 = createGdxContext(tmpDir, ['macro', 'set', 'normal', 'status']);
+      await macro(ctx1);
+
+      buffer.stdout = '';
+
+      // Execute it - should work fine
+      const ctx2 = createGdxContext(tmpDir, ['normal']);
+      const { dispatch } = await import('@/cli/dispatch');
+      const result = await dispatch(ctx2);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Executing macro');
+   });
+});

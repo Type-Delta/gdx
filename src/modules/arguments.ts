@@ -57,6 +57,22 @@ export class ArgsSet extends Array<string> {
    }
 
    /**
+    * Splices the specified argument with the provided insert array.
+    * @param arg The argument to splice.
+    * @param insert The array of strings to insert in place of the argument.
+    * @param from The index after which to search for the argument.
+    * @returns True if the argument was found and spliced, false otherwise.
+    */
+   spliceOption(arg: string, insert: string[], from: number = 0): boolean {
+      const index = this.indexOf(arg, from);
+      if (index !== -1) {
+         this.splice(index, 1, ...insert);
+         return true;
+      }
+      return false;
+   }
+
+   /**
     * Checks if the specified argument exists in the array after the given index.
     * @param arg The argument to check for.
     * @param from The index after which to search for the argument.

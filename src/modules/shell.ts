@@ -291,7 +291,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => {});
       global.exitCodeOverride = -1;
       return;
    }
@@ -299,7 +299,6 @@ export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (GDX_RESULT_FILE) await writeFile(GDX_RESULT_FILE, targetDir, 'utf-8');
    global.exitCodeOverride = GDX_SIGNAL_CODE;
 }
-
 
 /**
  * Tokenizes a command string into an argv array, respecting quotes.
@@ -337,19 +336,18 @@ export function tokenizeCommand(cmd: string): string[] {
    return tokens;
 }
 
-
 /**
  * Executes a git command with given arguments.
  *
  * Handles optional output redirection and error.
- * @param git$ Git executable path or command
+ * @param git$ Git executable path or command (can be array for test contexts with -C flag)
  * @param args Arguments to pass to git
  * @param redirectTo Optional file path to redirect stdout
  * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
  * @returns Exit code of the git command
  */
 export async function execGit(
-   git$: string,
+   git$: string | string[],
    args: string[],
    redirectTo: string | null = null,
    redirectMode: string = '>'

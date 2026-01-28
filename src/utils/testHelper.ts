@@ -157,7 +157,7 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
             return true;
          },
          openInEditor: async () => {
-            tracker.subprocessStack.push('openInEditor called');
+            tracker.subprocessStack.push('openInEditor');
          },
          $prompt: async () => 'y', // Auto-confirm prompts
          spinner: () => {

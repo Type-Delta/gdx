@@ -1,0 +1,301 @@
+import { ncc } from '@lib/Tools';
+
+import cmd from '@/commands';
+import { COMMON_GIT_CMDS } from '@/consts';
+import { execGit } from '@/modules/shell';
+import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
+import { GdxContext } from '@/common/types';
+import { getConfig } from '@/common/config';
+import Logger from '@/utils/logger';
+import { getGitVersionCached, getGitConfigCached } from '@/modules/cache-controller';
+import { getMacrosCachedOrLoad } from '@/modules/macro';
+
+/**
+ * State passed through dispatch calls to track execution context.
+ */
+export interface DispatchState {
+   /**
+    * Whether we're currently inside a macro execution.
+    * When true, macro expansion is disabled to prevent recursion.
+    */
+   inMacro: boolean;
+}
+
+/**
+ * Main command router for gdx.
+ * Handles aliases, custom commands, macro expansion, and fallback to git.
+ * @param ctx - The GdxContext with git$ and args.
+ * @param argv - The command arguments to route.
+ * @param state - The dispatch state tracking execution context.
+ * @returns Exit code (0 = success, non-zero = failure).
+ */
+export async function dispatch(
+   ctx: GdxContext,
+   state: DispatchState = { inMacro: false }
+): Promise<number> {
+   const args = ctx.args;
+   const originalCmd = args[0];
+
+   // Check if the command is a macro (only if not already in a macro)
+   if (!state.inMacro) {
+      const macros = await getMacrosCachedOrLoad();
+      if (args[0] && args[0] in macros) {
+         const macroName = args[0];
+         const macroScript = macros[macroName];
+         const macroArgs = args.slice(1);
+
+         // Separate macro arguments from flags
+         const macroArgsOnly: string[] = [];
+         const extraFlags: string[] = [];
+
+         for (const arg of macroArgs) {
+            if (arg.startsWith('-')) {
+               extraFlags.push(arg);
+            } else {
+               macroArgsOnly.push(arg);
+            }
+         }
+
+         quickPrint(ncc('Magenta') + `Executing macro '${macroName}'...` + ncc());
+
+         // Import executeMacro lazily to avoid circular dependency
+         const { executeMacro } = await import('@/modules/macro');
+         return await executeMacro(ctx.git$, macroScript, macroArgsOnly, extraFlags);
+      }
+   } else {
+      // Inside a macro - check if trying to invoke another macro
+      const macros = await getMacrosCachedOrLoad();
+      if (args[0] && args[0] in macros) {
+         Logger.error(
+            `Macro '${args[0]}' cannot be invoked from inside a macro. Macro composition is not allowed.`,
+            'macro'
+         );
+         return 1;
+      }
+   }
+
+   let redirectTo: string | null = null;
+   let redirectMode: string = '>';
+
+   AliasNCustomCmd: if (args[0]) {
+      const { match, candidates } = progressiveMatch(args[0], COMMON_GIT_CMDS);
+
+      if (match) args[0] = match;
+
+      switch (args[0]) {
+         case 's': // alias for 'status'
+            args[0] = 'status';
+         case 'status':
+            // Handle recursive flag
+            if (args.includes('-r') || args.includes('--recursive')) {
+               return await cmd.status(ctx);
+            }
+            break;
+         case 'co': // alias for 'checkout'
+            args[0] = 'checkout';
+            break;
+         case 'br': // alias for 'branch'
+            args[0] = 'branch';
+            break;
+         case 'cmi': // alias for 'commit'
+            args[0] = 'commit';
+         case 'commit':
+            if (args[1] === 'auto') {
+               return await cmd.commit.auto(ctx);
+            }
+            break;
+         case 'mg': // alias for 'merge'
+            args[0] = 'merge';
+            break;
+         case 'pl': // alias for 'pull'
+         case 'pu':
+            args[0] = 'pull';
+         case 'pull':
+            // Handle -au flag (allow-unrelated-histories)
+            for (let i = 1; i < args.length; i++) {
+               if (args[i] === '-au') {
+                  args[i] = '--allow-unrelated-histories';
+                  break;
+               }
+            }
+            break;
+         case 'lint':
+            return await cmd.lint(ctx);
+         case 'ps': // alias for 'push'
+            args[0] = 'push';
+         case 'push': {
+            // Check for auto-lint
+            if (!args.popOption('--no-lint')) {
+               const config = await getConfig();
+               const behavior = config.get<string>('lint.onPushBehavior') || 'off';
+
+               if (behavior === 'error' || behavior === 'warning') {
+                  const lintResult = await cmd.lint(ctx);
+                  if (lintResult !== 0) {
+                     if (behavior === 'error') {
+                        Logger.error('Lint failed. Push aborted.', 'lint');
+                        return 1;
+                     } else {
+                        quickPrint(
+                           ncc('Yellow') +
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
+                        );
+                     }
+                  }
+               }
+            }
+
+            // Replace -fl with --force-with-lease
+            args.spliceOption('-fl', ['--force-with-lease'], 1);
+            break;
+         }
+         case 'ad': // alias for 'add'
+            args[0] = 'add';
+            break;
+         case 'rv': // alias for 'revert'
+            args[0] = 'revert';
+            break;
+         case 'rb': // alias for 'rebase'
+            args[0] = 'rebase';
+            break;
+         case 'reset':
+            args[0] = 'reset';
+            // Handle special reset flags
+            for (let i = 1; i < args.length; i++) {
+               if (args[i] === '-h') {
+                  args[i] = '--hard';
+                  break;
+               }
+               if (args[i] === '-s') {
+                  args[i] = '--soft';
+                  break;
+               }
+               // Handle '~' notation
+               if (args[i] === '~') {
+                  args[i] = 'HEAD';
+                  break;
+               }
+               // Handle ~N notation (e.g., ~1, ~2)
+               if (/^~\d+$/.test(args[i])) {
+                  const num = args[i].substring(1);
+                  args[i] = `HEAD~${num}`;
+                  break;
+               }
+            }
+            break;
+         case 'log':
+         case 'lg': // alias for 'log'
+            if (args[0] === 'lg' && args.length === 1) {
+               args.push('--oneline', '--graph', '--decorate', '--all');
+            }
+            else if (args.popOption('export')) {
+               // Handle 'lg export' case
+               let dateFmt: string = '--date=format:"%Y-%m-%d %H:%M"';
+               const hasAuthor = args.hasOption('--author', 1);
+
+               if (!hasAuthor) {
+                  const git$ = Array.isArray(ctx.git$) ? ctx.git$[0] : ctx.git$;
+                  args.push('--author=' + (await getGitConfigCached(git$, 'user.email')));
+               }
+
+               const relativeIdx = args.indexOf('--relative');
+               if (relativeIdx >= 0) {
+                  args.splice(relativeIdx, 1);
+                  dateFmt = '--date=format:"%Y-%m-%d %H:%M" (%ar)';
+               }
+
+               const additionalArgs = [
+                  '--all',
+                  '--pretty=format:## Commit %h on [%p] - %ad%d\n%s\n\n%b\n---\n',
+                  dateFmt,
+               ].filter((arg) => !args.hasOption(arg, 1));
+               args.push(...additionalArgs);
+               redirectTo = 'gitlog_export.md';
+               redirectMode = '>';
+            }
+
+            args[0] = 'log';
+            break;
+         case 'sta': // alias for 'stash'
+            args[0] = 'stash';
+         case 'stash': {
+            // Sub-command order is important here (higher priority first)
+            const subCommands = [
+               'apply',
+               'pop',
+               'list',
+               'drop',
+               'clear',
+               'show',
+               'push',
+               'save',
+               'create',
+               'store',
+            ];
+            const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
+
+            if (subCmdMatch.match) args[1] = subCmdMatch.match;
+            else {
+               let argEscIdx = args.indexOf('--');
+               argEscIdx = argEscIdx >= 0 ? argEscIdx : args.length;
+               let hasSubCmd = false;
+               for (let i = 1; i < argEscIdx; i++) {
+                  if (subCommands.includes(args[i])) {
+                     hasSubCmd = true;
+                     break;
+                  }
+               }
+
+               if (!hasSubCmd) {
+                  const git$ = Array.isArray(ctx.git$) ? ctx.git$[0] : ctx.git$;
+                  const suportsPush =
+                     compareVersions(await getGitVersionCached(git$), '2.15.0') >= 0;
+                  const defaultSubCmd = suportsPush ? 'push' : 'save';
+                  args.splice(1, 0, defaultSubCmd); // Default to 'push' or 'save' if no sub-command
+               }
+            }
+
+            if (args[1] === 'drop') {
+               const git$ = Array.isArray(ctx.git$) ? ctx.git$[0] : ctx.git$;
+               return await cmd.stash.drop(git$, args);
+            }
+            break;
+         }
+         case 'graph':
+            return cmd.graph(ctx);
+         case 'stats':
+            return cmd.stats(ctx);
+         case 'clear':
+            return cmd.clear(ctx);
+         case 'gdx-config':
+            return cmd.gdxConfig(ctx);
+         case 'gdx-help':
+         case 'ghelp':
+            return cmd.help(args[1]);
+         case 'nocap':
+            return cmd.nocap(ctx);
+         case 'parallel':
+            return cmd.parallel(ctx);
+         case 'doctor':
+            return cmd.doctor();
+         case 'macro':
+            return cmd.macro(ctx);
+         default:
+            if (candidates && candidates.length > 1) {
+               Logger.warn(
+                  `Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(', ')}?`
+               );
+               break AliasNCustomCmd;
+            }
+      }
+   }
+
+   if (args[0] !== originalCmd) {
+      quickPrint(
+         ncc('Cyan') + `Command auto expanded to: git ${escapeCmdArgs(args).join(' ')}` + ncc()
+      );
+   }
+
+   return execGit(ctx.git$, args, redirectTo, redirectMode);
+}
