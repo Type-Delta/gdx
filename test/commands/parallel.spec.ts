@@ -6,7 +6,7 @@ import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env } = await createTestEnv({
       autoResetBuffer: true,
    });
    const { git$ } = createGdxContext(tmpDir);
@@ -149,5 +149,34 @@ describe('gdx parallel', async () => {
 
       expect(joinResult).toBe(1);
       expect(buffer.stderr).toContain('Recursive join does not support --all');
+   });
+
+   it('should stop on cherry-pick conflicts and print manual steps', async () => {
+      env.isTTY = false;
+      await $`${git$} commit --allow-empty -m ${'Base commit'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-conflict']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+      const forkPath = path.join(worktreeRoot, 'feature-conflict');
+
+      await fs.writeFile(path.join(tmpDir, 'conflict.txt'), 'origin-change');
+      await $`${git$} -C ${tmpDir} add conflict.txt`;
+      await $`${git$} -C ${tmpDir} commit -m ${'Origin change'}`;
+
+      await fs.writeFile(path.join(forkPath, 'conflict.txt'), 'fork-change');
+      await $`${git$} -C ${forkPath} add conflict.txt`;
+      await $`${git$} -C ${forkPath} commit -m ${'Fork change'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', 'feature-conflict']);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(1);
+      expect(buffer.stdout).toContain('cherry-pick --continue');
+
+      const cherryPickHead = await $`${git$} -C ${tmpDir} rev-parse -q --verify CHERRY_PICK_HEAD`;
+      expect(cherryPickHead.exitCode).toBe(0);
+      env.isTTY = true;
    });
 });

@@ -456,6 +456,7 @@ const value = config.get<boolean>('llm.showThinking', true); // with default
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
+- **Quality Assurance:** Always run lint, typecheck, and tests after code changes. (you can do this mid development process so that you won't end up with a large number of errors at the end)
 
 ### Working In Temporary Worktrees
 
@@ -476,4 +477,4 @@ These worktrees are often in a detached HEAD state.
 ---
 
 **Version:** 0.2.0
-**Last Updated:** 2026-01-16
+**Last Updated:** 2026-02-02

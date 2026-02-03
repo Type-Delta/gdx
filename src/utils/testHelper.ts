@@ -33,6 +33,10 @@ interface TestEnvOptions {
    autoResetBuffer?: boolean;
 }
 
+interface EnvController {
+   isTTY: boolean;
+}
+
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
@@ -73,7 +77,11 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    fs.mkdirSync(path.join(tmpDir, 'tmp'), { recursive: true });
 
    let tracker = new TestEnvTracker();
-   tracker = overrideModules(tracker, tmpDir);
+   const envController = {
+      isTTY: true
+   };
+
+   tracker = overrideModules(tracker, tmpDir, envController);
 
    const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = () => {
@@ -123,6 +131,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
       cleanup, // Cleanup function to remove temp dirs
       it, // Custom it function with stdio capture
       resetRepo, // Function to reset git repo to initial state
+      env: envController, // Environment controller
    };
 }
 
@@ -146,10 +155,10 @@ async function initGitRepo(_$: typeof $) {
    };
 }
 
-function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTracker {
-   mock.module('@/utils/shell', () => {
+function overrideModules(tracker: TestEnvTracker, tempDir: string, envController: EnvController): TestEnvTracker {
+   mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const original = require('./shell');
+      const original = require('../modules/shell');
       return {
          ...original,
          copyToClipboard: async (content: string) => {
@@ -169,6 +178,7 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string): TestEnvTrack
                options: {},
             };
          },
+         isTTY: () => envController.isTTY
       };
    });
 

@@ -18,6 +18,11 @@ import Logger from '@/utils/logger';
 export { $ } from 'execa';
 
 /**
+ * Indicates if the current process is running in a TTY (interactive terminal).
+ */
+export const isTTY = () => process.stdout.isTTY && process.stdin.isTTY;
+
+/**
  * Creates an execa tag template that shares a single AbortController.
  * Calling `abort()` cancels all in-flight commands started from the returned `$`.
  */
@@ -291,7 +296,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => {});
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
       global.exitCodeOverride = -1;
       return;
    }

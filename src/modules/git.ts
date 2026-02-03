@@ -181,6 +181,24 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
 }
 
 /**
+ * Checks if a cherry-pick operation is currently in progress.
+ * @param git$ - Git executable path or command array.
+ * @param originPath - The path to the Git repository.
+ * @returns True if a cherry-pick is in progress, false otherwise.
+ */
+export async function hasCherryPickInProgress(
+   git$: string | string[],
+   originPath: string
+): Promise<boolean> {
+   try {
+      await $`${git$} -C ${originPath} rev-parse -q --verify CHERRY_PICK_HEAD`;
+      return true;
+   } catch {
+      return false;
+   }
+}
+
+/**
  * Helper function to normalize a remote URL's host and path components.
  * Removes leading slashes/colons, .git suffix, and trailing slashes from the path.
  * @param host - The hostname (e.g., "github.com").

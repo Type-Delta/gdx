@@ -9,6 +9,7 @@ import {
    $inherit,
    $prompt,
    copyToClipboard,
+   isTTY,
    openInEditor,
    scheduleChangeDir,
    spinner,
@@ -23,6 +24,7 @@ import { getRepoRootCached } from '@/modules/cache-controller';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
 import type { CommandArgThunk } from '@/common/types';
 import { ExecaError } from 'execa';
+import { hasCherryPickInProgress } from '@/modules/git';
 
 interface ParallelMetadata {
    alias: string;
@@ -195,12 +197,8 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    try {
       fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
-   }
-   catch {
-      Logger.error(
-         `Worktree '${alias}' is not accessible or writable. Cannot remove.`,
-         'parallel'
-      );
+   } catch {
+      Logger.error(`Worktree '${alias}' is not accessible or writable. Cannot remove.`, 'parallel');
       return 1;
    }
 
@@ -242,22 +240,19 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
-      if ((err instanceof ExecaError) && err.exitCode === 255) {
+      if (err instanceof ExecaError && err.exitCode === 255) {
          Logger.error(
             `Folder '${targetPath}' is currently in use or GDX does not have permission to remove it. Please close any applications using it and force remove. (git already removed the connection to the origin worktree, retry may not work)`,
             'parallel'
          );
-      }
-      else {
+      } else {
          Logger.error(
             `Failed to remove worktree '${alias}'.\n${yuString(err, { color: true })}`,
             'parallel'
          );
       }
 
-      const response = await $prompt(
-         'Do you want to force remove the worktree directory? (y/n): '
-      );
+      const response = await $prompt('Do you want to force remove the worktree directory? (y/n): ');
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
             fs.rmSync(targetPath, { recursive: true, force: true });
@@ -651,6 +646,75 @@ async function cmdList(git$: string | string[], args: string[]): Promise<number>
    return 0;
 }
 
+async function restoreJoinStash(
+   git$: string | string[],
+   forkPath: string,
+   forkAlias: string,
+   stashRef: string
+): Promise<void> {
+   try {
+      await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
+      quickPrint(
+         `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${ncc()}`
+      );
+   } catch (err) {
+      quickPrint(
+         `${ncc('Yellow')}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${ncc()}`
+      );
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+   }
+}
+
+async function getUnmergedPaths(git$: string | string[], originPath: string): Promise<string[]> {
+   try {
+      const output = (await $`${git$} -C ${originPath} diff --name-only --diff-filter=U`).stdout;
+      return output
+         .split('\n')
+         .map((line) => line.trim())
+         .filter((line) => line.length > 0);
+   } catch {
+      return [];
+   }
+}
+
+async function stageResolvedConflicts(git$: string | string[], originPath: string): Promise<void> {
+   const unmergedPaths = await getUnmergedPaths(git$, originPath);
+   if (unmergedPaths.length === 0) return;
+
+   const addArgs = ['-C', originPath, 'add', '-A', '--', ...unmergedPaths];
+   await $inherit`${git$} ${addArgs}`;
+}
+
+function printCherryPickSteps(
+   originPath: string,
+   forkAlias: string,
+   commit: string,
+   stashRef: string | null,
+   unmergedPaths: string[]
+): void {
+   quickPrint(
+      `${ncc('Yellow')}Cherry-pick stopped at commit ${commit}. To resolve conflicts run:${ncc()}`
+   );
+   quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" cherry-pick ${commit}`}${ncc()}`);
+   if (unmergedPaths.length > 0) {
+      const quotedPaths = unmergedPaths.map((filePath) =>
+         filePath.includes(' ') ? `"${filePath}"` : filePath
+      );
+      const joinedPaths = quotedPaths.join(' ');
+      quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" add -- ${joinedPaths}`}${ncc()}`);
+   } else {
+      quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" add -A`}${ncc()}`);
+   }
+   quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" cherry-pick --continue`}${ncc()}`);
+   quickPrint(`${ncc('Cyan')}${`  ${EXECUTABLE_NAME} parallel join ${forkAlias}`}${ncc()}`);
+
+   if (stashRef) {
+      quickPrint(
+         `${ncc('Dim')}Stashed changes from fork '${forkAlias}' can be applied after join.${ncc()}`
+      );
+   }
+}
+
 async function joinWorktree(
    git$: string | string[],
    forkPath: string,
@@ -756,16 +820,81 @@ async function joinWorktree(
          await $inherit`${git$} -C ${originPath} cherry-pick ${commit}`;
          appliedCommits.push(commit);
       } catch (err) {
-         await $`${git$} -C ${originPath} cherry-pick --abort`;
-         if (stashRef) {
-            await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
-            quickPrint(
-               `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${ncc()}`
-            );
+         const hasInProgress = await hasCherryPickInProgress(git$, originPath);
+         if (!hasInProgress) {
+            if (stashRef) {
+               await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+            }
+            Logger.error(`Cherry-pick failed while applying commit ${commit}.`, 'parallel');
+            Logger.debug(yuString(err, { color: true }), 'parallel');
+            return 1;
          }
-         Logger.error(`Cherry-pick failed while applying commit ${commit}.`, 'parallel');
-         Logger.debug(yuString(err, { color: true }), 'parallel');
-         return 1;
+
+         if (!isTTY()) {
+            const unmergedPaths = await getUnmergedPaths(git$, originPath);
+            printCherryPickSteps(originPath, forkAlias, commit, stashRef, unmergedPaths);
+            Logger.debug(yuString(err, { color: true }), 'parallel');
+            return 1;
+         }
+
+         quickPrint(
+            `${ncc('Yellow')}Cherry-pick paused due to conflicts while applying commit ${commit}.${ncc()}`
+         );
+         quickPrint(
+            `${ncc('Dim')}Resolve conflicts in the origin worktree, then choose to continue or abort.${ncc()}`
+         );
+
+         while (true) {
+            const response = (
+               await $prompt('Type c to continue, a to abort (c|a): ')
+            ).toLowerCase();
+
+            if (
+               response === 'c' ||
+               response === 'continue' ||
+               response === 'y' ||
+               response === 'yes'
+            ) {
+               try {
+                  await stageResolvedConflicts(git$, originPath);
+                  await $inherit`${git$} -C ${originPath} cherry-pick --continue`;
+                  appliedCommits.push(commit);
+                  break;
+               } catch (continueErr) {
+                  const stillInProgress = await hasCherryPickInProgress(git$, originPath);
+                  if (stillInProgress) {
+                     quickPrint(
+                        `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
+                     );
+                     Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+                     continue;
+                  }
+
+                  Logger.error(
+                     'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
+                     'parallel'
+                  );
+                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+                  return 1;
+               }
+            }
+
+            if (response === 'a' || response === 'abort' || response === 'n' || response === 'no') {
+               try {
+                  await $inherit`${git$} -C ${originPath} cherry-pick --abort`;
+               } catch (abortErr) {
+                  Logger.error('Failed to abort cherry-pick.', 'parallel');
+                  Logger.debug(yuString(abortErr, { color: true }), 'parallel');
+                  return 1;
+               }
+
+               if (stashRef) {
+                  await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+               }
+               Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
+               return 1;
+            }
+         }
       }
    }
 
@@ -1036,7 +1165,7 @@ ${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COL
 - ${ncc('Cyan')}remove <alias>${ncc()}: Removes the forked worktree and cleans up the directory.
 
 ${ncc('Bright') + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-Joining cherry-picks commits into origin; conflicts during cherry-pick will abort the join and restore stashes when possible. Removing a fork will also delete the worktree directory when forced.
+Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
 `,
          Math.min(100, global.terminalWidth - 4),
          {
