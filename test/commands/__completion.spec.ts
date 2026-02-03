@@ -132,6 +132,13 @@ describe('gdx __completion', async () => {
       expect(buffer.stdout).toContain('feature-two');
       expect(buffer.stdout).not.toContain('origin');
 
+      buffer.stdout = '';
+      process.env.GDX_CMP_IDX = '2';
+      const joinFlagCtx = createGdxContext(tmpDir, ['__completion', 'parallel', 'join', '-']);
+      const joinFlagExit = await completion(joinFlagCtx);
+      expect(joinFlagExit).toBe(0);
+      expect(buffer.stdout).toContain('--recursive');
+
       delete process.env.GDX_CMP_IDX;
    });
 

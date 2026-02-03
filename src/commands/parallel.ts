@@ -84,6 +84,8 @@ const parallelJoinStructure: CommandArgThunk = async ({ git$ }) => {
    const aliases = await listParallelAliases(git$);
    return {
       $allOf: ['--keep', '--all'],
+      '-r': { $allOf: ['--keep'] },
+      '--recursive': { $allOf: ['--keep'] },
       ...createOptionChildrenWithFlags(aliases, ['--keep', '--all']),
    };
 };
@@ -628,78 +630,13 @@ async function cmdList(git$: string | string[], args: string[]): Promise<number>
    return 0;
 }
 
-/**
- * Join command - merges a parallel worktree back to origin
- */
-async function cmdJoin(git$: string | string[], args: string[]): Promise<number> {
-   const ctx = await getParallelContext(git$);
-   if (!ctx) return 1;
-
-   // Parse arguments to separate alias from flags
-   const validFlags = ['--keep', '--all'];
-   const flags: Set<string> = new Set();
-   let targetAlias: string | null = null;
-
-   for (const arg of args) {
-      const flag = arg.toLowerCase();
-      if (validFlags.includes(flag)) {
-         flags.add(flag);
-      } else if (!targetAlias && !arg.startsWith('-')) {
-         targetAlias = arg;
-      } else {
-         Logger.error(`Unknown option '${arg}'.`, 'parallel');
-         showUsage();
-         return 1;
-      }
-   }
-
-   const keep = flags.has('--keep');
-   const bringAll = flags.has('--all');
-
-   // Determine which worktree to join
-   let forkPath: string;
-   let forkAlias: string;
-
-   if (targetAlias) {
-      // Join specified alias from current location
-      if (ctx.isParallelWorktree && ctx.alias === targetAlias) {
-         Logger.error(
-            'Cannot join the fork you are currently in. Switch to origin or another fork first.',
-            'parallel'
-         );
-         return 1;
-      }
-
-      if (!testParallelAlias(targetAlias)) {
-         Logger.error(`Alias '${targetAlias}' contains invalid characters or spaces.`, 'parallel');
-         return 1;
-      }
-
-      forkPath = path.join(ctx.parallelRoot, targetAlias);
-      forkAlias = targetAlias;
-
-      if (!fs.existsSync(forkPath)) {
-         Logger.error(
-            `Worktree '${targetAlias}' not found for branch '${ctx.branchName}'.`,
-            'parallel'
-         );
-         return 1;
-      }
-   } else {
-      // No alias specified - must be run from within a fork
-      if (!ctx.isParallelWorktree) {
-         Logger.error(
-            'Either run join from inside a forked worktree, or specify which fork to join.',
-            'parallel'
-         );
-         Logger.info('Usage: git parallel join [<alias>] [--keep] [--all]', 'parallel');
-         return 1;
-      }
-
-      forkPath = ctx.repoRoot;
-      forkAlias = ctx.alias!;
-   }
-
+async function joinWorktree(
+   git$: string | string[],
+   forkPath: string,
+   forkAlias: string,
+   options: { keep: boolean; bringAll: boolean }
+): Promise<number> {
+   const { keep, bringAll } = options;
    const meta = getParallelMetadata(forkPath);
    if (!meta) {
       Logger.error(
@@ -776,9 +713,9 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -879,6 +816,145 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
    return 0;
 }
 
+async function cmdJoinRecursive(
+   git$: string | string[],
+   ctx: ParallelContext,
+   keep: boolean
+): Promise<number> {
+   if (!fs.existsSync(ctx.parallelRoot)) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      return 0;
+   }
+
+   const entries = fs.readdirSync(ctx.parallelRoot, { withFileTypes: true });
+   const worktrees = entries
+      .filter((e) => e.isDirectory())
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+   if (worktrees.length === 0) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      return 0;
+   }
+
+   let hasAnyWt = false;
+   for (const wt of worktrees) {
+      const forkPath = path.join(ctx.parallelRoot, wt.name);
+      const meta = getParallelMetadata(forkPath);
+      if (!meta) continue;
+      const forkAlias = meta.alias || wt.name;
+      hasAnyWt = true;
+
+      const result = await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll: false });
+      if (result !== 0) return result;
+   }
+
+   if (!hasAnyWt) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+   }
+
+   return 0;
+}
+
+/**
+ * Join command - merges a parallel worktree back to origin
+ */
+async function cmdJoin(git$: string | string[], args: string[]): Promise<number> {
+   const ctx = await getParallelContext(git$);
+   if (!ctx) return 1;
+
+   // Parse arguments to separate alias from flags
+   const validFlags = ['--keep', '--all', '-r', '--recursive'];
+   const flags: Set<string> = new Set();
+   let targetAlias: string | null = null;
+
+   for (const arg of args) {
+      const flag = arg.toLowerCase();
+      if (validFlags.includes(flag)) {
+         flags.add(flag);
+      } else if (!targetAlias && !arg.startsWith('-')) {
+         targetAlias = arg;
+      } else {
+         Logger.error(`Unknown option '${arg}'.`, 'parallel');
+         showUsage();
+         return 1;
+      }
+   }
+
+   const keep = flags.has('--keep');
+   const bringAll = flags.has('--all');
+   const recursive = flags.has('-r') || flags.has('--recursive');
+
+   if (recursive && bringAll) {
+      Logger.error('Recursive join does not support --all. Join forks individually.', 'parallel');
+      showUsage();
+      return 1;
+   }
+
+   if (recursive && targetAlias) {
+      Logger.error('Recursive join does not accept an alias. Omit <alias> with -r.', 'parallel');
+      showUsage();
+      return 1;
+   }
+
+   if (recursive && ctx.isParallelWorktree) {
+      Logger.error('Run recursive join from the origin worktree, not from a fork.', 'parallel');
+      return 1;
+   }
+
+   if (recursive) {
+      return await cmdJoinRecursive(git$, ctx, keep);
+   }
+
+   // Determine which worktree to join
+   let forkPath: string;
+   let forkAlias: string;
+
+   if (targetAlias) {
+      // Join specified alias from current location
+      if (ctx.isParallelWorktree && ctx.alias === targetAlias) {
+         Logger.error(
+            'Cannot join the fork you are currently in. Switch to origin or another fork first.',
+            'parallel'
+         );
+         return 1;
+      }
+
+      if (!testParallelAlias(targetAlias)) {
+         Logger.error(`Alias '${targetAlias}' contains invalid characters or spaces.`, 'parallel');
+         return 1;
+      }
+
+      forkPath = path.join(ctx.parallelRoot, targetAlias);
+      forkAlias = targetAlias;
+
+      if (!fs.existsSync(forkPath)) {
+         Logger.error(
+            `Worktree '${targetAlias}' not found for branch '${ctx.branchName}'.`,
+            'parallel'
+         );
+         return 1;
+      }
+   } else {
+      // No alias specified - must be run from within a fork
+      if (!ctx.isParallelWorktree) {
+         Logger.error(
+            'Either run join from inside a forked worktree, or specify which fork to join.',
+            'parallel'
+         );
+         Logger.info(
+            'Usage: git parallel join [<alias>] [--keep|--all] | git parallel join -r [--keep]',
+            'parallel'
+         );
+         return 1;
+      }
+
+      forkPath = ctx.repoRoot;
+      forkAlias = ctx.alias!;
+   }
+
+   return await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll });
+}
+
 /**
  * Main entry point for the parallel command
  */
@@ -933,7 +1009,8 @@ ${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2)
 
 ${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 - ${ncc('Cyan')}fork <alias>${ncc()}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`--move\` or \`--mirror\`, changes will be moved/applied to the fork.
-- ${ncc('Cyan')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the origin worktree. \`--keep\` retains the fork and updates its base; \`--all\` also includes uncommitted changes.
+ - ${ncc('Cyan')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the origin worktree. \`--keep\` retains the fork and updates its base; \`--all\` also includes uncommitted changes.
+ - ${ncc('Cyan')}join -r|--recursive [--keep]${ncc()}: Joins every fork for the current branch back into origin. Recursive join does not allow \`--all\`.
 - ${ncc('Cyan')}list${ncc()}: Lists forks for the current branch with status (clean/dirty), commit divergence and optional path hyperlinks.
 - ${ncc('Cyan')}remove <alias>${ncc()}: Removes the forked worktree and cleans up the directory.
 
@@ -955,13 +1032,15 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork ${ncc('Dim')}<alias> [--move|--mi
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel open ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel switch ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
+ ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
+ ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}-r|--recursive [--keep]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel remove ${ncc('Dim')}<alias>${ncc()}
 
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --move ${ncc() + ncc('Dim')}# Create fork and optionally move changes${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list --short ${ncc() + ncc('Dim')}# Show forks for current branch${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}`,
+    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}
+    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join -r ${ncc() + ncc('Dim')}# Merge all forks back into origin${ncc()}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

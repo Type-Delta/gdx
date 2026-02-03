@@ -82,4 +82,72 @@ describe('gdx parallel', async () => {
          .catch(() => false);
       expect(exists).toBe(false);
    });
+
+   it('should join all worktrees recursively', async () => {
+      const forkOneCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
+      const forkTwoCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-2']);
+      expect(await parallel(forkOneCtx)).toBe(0);
+      expect(await parallel(forkTwoCtx)).toBe(0);
+
+      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+      const forkOnePath = path.join(worktreeRoot, 'feature-1');
+      const forkTwoPath = path.join(worktreeRoot, 'feature-2');
+
+      await fs.writeFile(path.join(forkOnePath, 'feature-one.txt'), 'one');
+      await $`${git$} -C ${forkOnePath} add feature-one.txt`;
+      await $`${git$} -C ${forkOnePath} commit -m ${'Add feature one'}`;
+
+      await fs.writeFile(path.join(forkTwoPath, 'feature-two.txt'), 'two');
+      await $`${git$} -C ${forkTwoPath} add feature-two.txt`;
+      await $`${git$} -C ${forkTwoPath} commit -m ${'Add feature two'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', '-r']);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(0);
+
+      const featureOneExists = await fs
+         .stat(path.join(tmpDir, 'feature-one.txt'))
+         .then(() => true)
+         .catch(() => false);
+      const featureTwoExists = await fs
+         .stat(path.join(tmpDir, 'feature-two.txt'))
+         .then(() => true)
+         .catch(() => false);
+      expect(featureOneExists).toBe(true);
+      expect(featureTwoExists).toBe(true);
+
+      const forkOneExists = await fs
+         .stat(forkOnePath)
+         .then(() => true)
+         .catch(() => false);
+      const forkTwoExists = await fs
+         .stat(forkTwoPath)
+         .then(() => true)
+         .catch(() => false);
+      expect(forkOneExists).toBe(false);
+      expect(forkTwoExists).toBe(false);
+   });
+
+   it('should reject recursive join with alias', async () => {
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', '-r', 'feature-1']);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(1);
+      expect(buffer.stderr).toContain('Recursive join does not accept an alias');
+   });
+
+   it('should reject recursive join with --all', async () => {
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-3']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', '-r', '--all']);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(1);
+      expect(buffer.stderr).toContain('Recursive join does not support --all');
+   });
 });
