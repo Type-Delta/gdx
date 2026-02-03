@@ -138,8 +138,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -188,8 +188,7 @@ export async function dispatch(
          case 'lg': // alias for 'log'
             if (args[0] === 'lg' && args.length === 1) {
                args.push('--oneline', '--graph', '--decorate', '--all');
-            }
-            else if (args.popOption('export')) {
+            } else if (args.popOption('export')) {
                // Handle 'lg export' case
                let dateFmt: string = '--date=format:"%Y-%m-%d %H:%M"';
                const hasAuthor = args.hasOption('--author', 1);
@@ -268,6 +267,8 @@ export async function dispatch(
             return cmd.stats(ctx);
          case 'clear':
             return cmd.clear(ctx);
+         case 'cache':
+            return cmd.cache(ctx);
          case 'gdx-config':
             return cmd.gdxConfig(ctx);
          case 'gdx-help':

@@ -231,7 +231,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             cmiTitle +
             '\n\n' +
             strWrap(cmiBody, 72, {
-               mode: 'softboundery',
+               mode: 'softboundary',
                redundancyLv: -1,
             }); // Wrap at 72 chars
       }
@@ -282,7 +282,7 @@ A non-empty staged diff is required; the command will error if there are no stag
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -299,7 +299,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

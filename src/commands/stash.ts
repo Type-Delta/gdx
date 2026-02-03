@@ -95,8 +95,8 @@ async function dropRange(
 
    quickPrint(
       ncc('Cyan') +
-         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-         ncc()
+      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+      ncc()
    );
 
    for (let i = end; i >= start; i--) {
@@ -236,7 +236,7 @@ Dropped stashes are backed up temporarily. Use \`pardon\` to bring them back.
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -252,7 +252,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

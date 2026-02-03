@@ -109,7 +109,7 @@ The command requires a valid git user.email in repo config and a configured LLM 
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -124,7 +124,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

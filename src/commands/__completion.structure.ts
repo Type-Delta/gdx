@@ -1,5 +1,6 @@
 import type { CommandStructure } from '@/common/types';
 
+import { structure as cacheStructure } from './cache';
 import { structure as clearStructure } from './clear';
 import { structure as doctorStructure } from './doctor';
 import { structure as gdxConfigStructure } from './gdx-config';
@@ -14,6 +15,7 @@ import { structure as statusStructure } from './status';
 import { structure as macroStructure } from './macro';
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
+   cache: cacheStructure,
    clear: clearStructure,
    doctor: doctorStructure,
    'gdx-config': gdxConfigStructure,

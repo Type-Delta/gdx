@@ -154,11 +154,11 @@ Checks for native binary, runtimes, and provides installation guidance.
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
-   short: 'Diagnose installation and environment.',
+   short: 'Run a diagnostic check on gdx installation and environment.',
    usage: () =>
       strWrap(
          `
@@ -169,7 +169,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

@@ -728,9 +728,9 @@ async function cmdJoin(git$: string | string[], args: string[]): Promise<number>
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -895,7 +895,7 @@ Joining cherry-picks commits into origin; conflicts during cherry-pick will abor
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -917,7 +917,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

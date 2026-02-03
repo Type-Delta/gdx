@@ -52,12 +52,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-         `Gathering stats for user: ` +
-         ncc('Yellow') +
-         email +
-         ncc('Cyan') +
-         ` this may take a while...` +
-         ncc()
+      `Gathering stats for user: ` +
+      ncc('Yellow') +
+      email +
+      ncc('Cyan') +
+      ` this may take a while...` +
+      ncc()
    );
 
    try {
@@ -207,11 +207,11 @@ Use ${ncc('Cyan')}--author <email>${ncc()} to target a different author than the
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
-   short: 'Show comprehensive commit and line-change statistics for a repository author.',
+   short: 'Show (local) contribution statistics for a repository author.',
    usage: () =>
       strWrap(
          `
@@ -223,7 +223,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

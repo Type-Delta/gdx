@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -206,11 +206,11 @@ ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
-   short: 'Inspect and edit gdx configuration values.',
+   short: 'View or modify gdx configuration settings.',
    usage: () =>
       strWrap(
          `
@@ -224,7 +224,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

@@ -6,6 +6,17 @@
 
 - recursive status for submodules with `gdx status --recursive` or `gdx s -r`.
 - improved commit auto with "inherit" mode, which learns commit message patterns from repository history.
+- `gdx macro` command that allows users to define and run custom macros for repetitive git tasks.
+- `--bypass` flag to completely skip gdx intervention for advanced users who want to run raw git commands.
+- `gdx cache` command to manage cached data, including clearing and viewing cache status.
+- command suggestions for available parallel aliases.
+
+### Fixed
+
+- improved `gdx doctor` output & bug fixes for better diagnostics.
+- minor performance improvements and bug fixes.
+- improved caching mechanism with per-key TTLs.
+- move default config location to `~/.gdx/*`.
 
 ## Version 0.2.0 - 2026-01-14
 

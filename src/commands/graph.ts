@@ -77,9 +77,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-         ncc('Bright') +
-         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-         ` (Max: ${maxCommits} commits/day)\n`
+      ncc('Bright') +
+      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+      ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
@@ -167,7 +167,7 @@ The graph respects \`global.terminalWidth\`. If the terminal is too narrow the c
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -183,7 +183,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

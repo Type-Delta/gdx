@@ -68,7 +68,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-               prettyFormatIssues(result, commitMsg)
+            prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -164,13 +164,13 @@ function printLWarning(subject: string, message: string) {
 
    quickPrint(
       ncc('BgYellow') +
-         ncc('Bright') +
-         ncc('White') +
-         ' LWARN ' +
-         ncc() +
-         ncc('Invert') +
-         ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
-         ncc()
+      ncc('Bright') +
+      ncc('White') +
+      ' LWARN ' +
+      ncc() +
+      ncc('Invert') +
+      ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
+      ncc()
    );
 }
 
@@ -181,13 +181,13 @@ function printLError(subject: string, message: string) {
 
    quickPrint(
       ncc('BgRed') +
-         ncc('Bright') +
-         ncc('White') +
-         ' LERROR ' +
-         ncc() +
-         ncc('Invert') +
-         ` ${subject} ${ncc() + ncc('Red')} ${message}` +
-         ncc()
+      ncc('Bright') +
+      ncc('White') +
+      ' LERROR ' +
+      ncc() +
+      ncc('Invert') +
+      ` ${subject} ${ncc() + ncc('Red')} ${message}` +
+      ncc()
    );
 }
 
@@ -213,7 +213,7 @@ maxFileSizeKb = 1024                          # Default: 1024 KB
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),
@@ -228,7 +228,7 @@ Examples:
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
-            mode: 'softboundery',
+            mode: 'softboundary',
             indent: '  ',
          }
       ),

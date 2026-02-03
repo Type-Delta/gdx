@@ -3,6 +3,7 @@ import stash from './stash';
 import graph from './graph';
 import stats from './stats';
 import clear from './clear';
+import cache from './cache';
 import commit from './commit';
 import gdxConfig from './gdx-config';
 import nocap from './nocap';
@@ -20,6 +21,7 @@ export default {
    graph,
    stats,
    clear,
+   cache,
    commit,
    gdxConfig,
    nocap,

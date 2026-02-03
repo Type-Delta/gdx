@@ -1,4 +1,4 @@
-import { hyperLink, ncc, strWrap } from '@lib/Tools';
+import { hyperLink, ncc, strJustify, strWrap } from '@lib/Tools';
 
 import { COLOR, EXECUTABLE_NAME, REPO_README_URL, VERSION } from '@/consts';
 import { quickPrint } from '@/utils/utilities';
@@ -13,6 +13,7 @@ import { help as parallelHelp } from './parallel';
 import { help as gdxConfigHelp } from './gdx-config';
 import { help as commitHelp } from './commit';
 import { help as clearHelp } from './clear';
+import { help as cacheHelp } from './cache';
 import { help as lintHelp } from './lint';
 import { help as statusHelp } from './status';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
@@ -22,6 +23,20 @@ export default function help(name?: string): number {
    const bright = ncc('Bright');
    const dim = ncc('Dim');
    const reset = ncc('Reset');
+
+   const HELP_MAP: Record<string, CommandHelpObj> = {
+      cache: cacheHelp,
+      stash: stashHelp,
+      stats: statsHelp,
+      graph: graphHelp,
+      nocap: nocapHelp,
+      parallel: parallelHelp,
+      'gdx-config': gdxConfigHelp,
+      commit: commitHelp,
+      clear: clearHelp,
+      lint: lintHelp,
+      status: statusHelp,
+   };
 
    if (!name) {
       // LINK: dn2jka text literal in spec
@@ -94,14 +109,7 @@ ${cyan}s, stat            ${reset + dim}-> ${reset}status
 ${cyan}swit, sw           ${reset + dim}-> ${reset}switch
 
 ${bright + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-${cyan}clear              ${reset}backup changes to a temp patch file and reset working directory
-${cyan}stats              ${reset}show user contribution statistics
-${cyan}graph              ${reset}show contribution graph
-${cyan}nocap              ${reset}generate a funny Gen-Z style comment for the latest commit by your commit author
-${cyan}parallel           ${reset}manage forked worktrees (fork/remove/join/switch/list)
-${cyan}lint               ${reset}lint outgoing commits for format, spelling, sensitive data, and more
-${cyan}gdx-config         ${reset}view or modify gdx configuration settings
-${cyan}doctor             ${reset}run a diagnostic check on gdx installation and environment
+${formatShortCmdList(HELP_MAP, { cyan, reset })}
 
 ${bright + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    ${cyan}stash l         ${reset}Show stash list (alias for ${EXECUTABLE_NAME} stash list).
@@ -127,7 +135,7 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
             Math.min(100, global.terminalWidth - 4),
             {
                firstIndent: '  ',
-               mode: 'softboundery',
+               mode: 'softboundary',
                indent: '  ',
             }
          )
@@ -136,20 +144,6 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    }
 
    const cmdName = name.replace(/^\/+/, '');
-   const HELP_MAP: Record<string, CommandHelpObj> = {
-      stash: stashHelp,
-      stats: statsHelp,
-      graph: graphHelp,
-      nocap: nocapHelp,
-      parallel: parallelHelp,
-      'gdx-config': gdxConfigHelp,
-      gdx_config: gdxConfigHelp,
-      commit: commitHelp,
-      clear: clearHelp,
-      lint: lintHelp,
-      status: statusHelp,
-   };
-
    if (cmdName === 'help') {
       // Show the full built-in help when requesting help for 'help'
       return help();
@@ -175,8 +169,26 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    return 1;
 }
 
+function formatShortCmdList(helpObj: Record<string, CommandHelpObj>, colors: { cyan: string; reset: string }): string {
+   const res = [];
+   for (const [cmd, h] of Object.entries(helpObj)) {
+      res.push(`${colors.cyan}${strJustify(cmd, 19, {
+         overflow: 'visible',
+         align: 'left',
+         redundancyLv: 0
+      })}${colors.reset}${strWrap(h.short, 60, {
+         indent: 19,
+         firstIndent: 0,
+         redundancyLv: 0,
+         mode: 'strict'
+      })}`);
+   }
+   return res.join('\n');
+}
+
 export const structure = {
    $root: [
+      'cache',
       'clear',
       'commit',
       'doctor',
