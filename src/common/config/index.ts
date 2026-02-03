@@ -15,7 +15,7 @@ async function getKeytar() {
 
 export class ConfigService {
    private configPath: string;
-   private config: GdxConfig = { ...DEFAULT_CONFIG };
+   private config: GdxConfig = structuredClone(DEFAULT_CONFIG);
    private loaded = false;
    private readonly logger = new Logger('ConfigService');
 
@@ -38,12 +38,10 @@ export class ConfigService {
          const err = new Err(e);
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not a fatal error
-            this.logger.warn(
-               `Failed to parse config file at ${this.configPath}: ${err.message}`
-            );
+            this.logger.warn(`Failed to parse config file at ${this.configPath}: ${err.message}`);
          }
          // Use defaults if file doesn't exist or can't be parsed
-         this.config = { ...DEFAULT_CONFIG };
+         this.config = structuredClone(DEFAULT_CONFIG);
       }
 
       // Override with environment variables
@@ -119,7 +117,8 @@ export class ConfigService {
             }
          } catch (err) {
             this.logger.warn(
-               `Failed to load secure key '${keyPath}' from keychain:\n` + Err.from(err).toString({ color: true })
+               `Failed to load secure key '${keyPath}' from keychain:\n` +
+               Err.from(err).toString({ color: true })
             );
          }
       }
@@ -161,7 +160,8 @@ export class ConfigService {
             await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
          } catch (err) {
             this.logger.warn(
-               `Failed to save secure key '${keyPath}' to keychain:\n` + Err.from(err).toString({ color: true })
+               `Failed to save secure key '${keyPath}' to keychain:\n` +
+               Err.from(err).toString({ color: true })
             );
          }
       }

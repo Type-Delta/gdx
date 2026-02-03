@@ -97,15 +97,13 @@ describe('gdx cache', async () => {
       expect(resultDisable).toBe(0);
 
       resetConfig();
-      const configAfterDisable = await getConfig();
-      expect(configAfterDisable.get<boolean>('cache.enabled', true)).toBe(false);
+      const config = await getConfig();
+      expect(config.get<boolean>('cache.enabled', true)).toBe(false);
 
       const ctxEnable = createGdxContext(tmpDir, ['cache', 'enable']);
       const resultEnable = await cache(ctxEnable);
       expect(resultEnable).toBe(0);
 
-      resetConfig();
-      const configAfterEnable = await getConfig();
-      expect(configAfterEnable.get<boolean>('cache.enabled', false)).toBe(true);
+      expect(config.get<boolean>('cache.enabled', false)).toBe(true);
    });
 });

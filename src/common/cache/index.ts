@@ -45,12 +45,12 @@ const DEFAULT_CACHE: CacheStructure = {
 
 export class CacheService {
    cachePath: string;
+   isDisabled = false;
 
    private cache: CacheStructure = { ...DEFAULT_CACHE };
    private loaded = false;
    private dirty = false;
    private loadingPromise: Promise<void> | null = null;
-   static isDisabled = false;
 
    constructor(cachePath?: string) {
       this.cachePath = cachePath || CACHE_PATH;
@@ -152,7 +152,7 @@ export class CacheService {
       if (!config.get<boolean>('cache.enabled')) {
          this.resetCache(false);
          this.loaded = true;
-         CacheService.isDisabled = true;
+         this.isDisabled = true;
          Logger.debug('Cache is disabled via configuration', 'cache');
          return;
       }
@@ -239,7 +239,7 @@ export class CacheService {
    async get<T = unknown>(keyPath: string): Promise<T | undefined>;
    async get<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
    async get<T = unknown>(keyPath: string, defaultValue?: T): Promise<T | undefined> {
-      if (CacheService.isDisabled) return defaultValue;
+      if (this.isDisabled) return defaultValue;
       await this.ensureLoaded();
 
       // Check if entry is expired (lazy delete)
@@ -280,7 +280,7 @@ export class CacheService {
     * Marks cache as dirty; actual write is deferred until flush().
     */
    async set(keyPath: string, value: any, options?: { maxAgeMinutes?: number }): Promise<void> {
-      if (CacheService.isDisabled) return;
+      if (this.isDisabled) return;
       const config = await getConfig();
       await this.ensureLoaded();
 
@@ -323,7 +323,7 @@ export class CacheService {
     * @returns true if entry existed and was deleted, false otherwise.
     */
    async delete(keyPath: string): Promise<boolean> {
-      if (CacheService.isDisabled) return false;
+      if (this.isDisabled) return false;
       await this.ensureLoaded();
 
       // Check if entry exists
@@ -430,7 +430,7 @@ export async function getCache(): Promise<CacheService> {
    if (!instance) {
       instance = new CacheService();
       await instance['ensureLoaded']();
-      if (!CacheService.isDisabled) registerExitHook();
+      if (!instance.isDisabled) registerExitHook();
    }
    return instance;
 }
@@ -440,6 +440,7 @@ export async function getCache(): Promise<CacheService> {
  */
 export function resetCache(): void {
    instance = null;
+   // TODO: unsubscribe exit hook
 }
 
 /**
