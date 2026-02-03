@@ -18,14 +18,14 @@ import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
-import { getRepoRootCached } from '@/modules/cache-controller';
 import { getCache } from '@/common/cache';
+import { getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
 
 /**
- * Generates a hash for the repository path to use as a cache key.
+ * Generates a hash for the given value.
  */
-function getRepoHash(repoRoot: string): string {
-   return crypto.createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
+function createHash(value: string): string {
+   return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
 /**
@@ -83,16 +83,34 @@ async function getCommitGuidelines(
    git$: string | string[],
    config: Awaited<ReturnType<typeof getConfig>>
 ): Promise<string | null> {
-   const repoRoot = await getRepoRootCached(git$);
-   const repoHash = getRepoHash(repoRoot);
    const cache = await getCache();
-   const cacheKey = `commit.repoGuidelines.${repoHash}`;
+   const mainRepoRoot = await getMainWorktreeRoot(git$);
+   const remoteUrl = await getNormalizedRemoteUrl(git$);
+   const cacheDays = config.get<number>('commit.guidelineCacheDays', 30);
+   const cacheMinutes = cacheDays * 24 * 60;
 
-   // Check cache first
-   const cached = await cache.get<string>(cacheKey);
-   if (cached) {
-      Logger.debug(`Using cached commit guidelines for ${repoRoot}`, 'commit');
-      return cached;
+   const remoteHash = remoteUrl ? createHash(`remote:${remoteUrl}`) : '';
+   const pathHash = createHash(`path:${mainRepoRoot}`);
+   const remoteKey = remoteHash ? `commit.repoGuidelines.${remoteHash}` : '';
+   const pathKey = `commit.repoGuidelines.${pathHash}`;
+
+   if (remoteKey) {
+      const cachedRemote = await cache.get<string>(remoteKey);
+      if (cachedRemote) {
+         Logger.debug(`Using cached commit guidelines for remote ${remoteUrl}`, 'commit');
+         return cachedRemote;
+      }
+   }
+
+   const cachedPath = await cache.get<string>(pathKey);
+   if (cachedPath) {
+      if (remoteKey) {
+         await cache.set(remoteKey, cachedPath, { maxAgeMinutes: cacheMinutes });
+         Logger.debug(`Promoted commit guidelines cache to remote ${remoteUrl}`, 'commit');
+      } else {
+         Logger.debug(`Using cached commit guidelines for ${mainRepoRoot}`, 'commit');
+      }
+      return cachedPath;
    }
 
    // Learn from repository history
@@ -115,10 +133,10 @@ async function getCommitGuidelines(
    }
 
    // Cache the learned guideline
-   const cacheDays = config.get<number>('commit.guidelineCacheDays', 30);
-   const cacheMinutes = cacheDays * 24 * 60;
-   await cache.set(cacheKey, guideline, { maxAgeMinutes: cacheMinutes });
-   Logger.debug(`Cached commit guidelines for ${repoRoot} (${cacheDays} days)`, 'commit');
+   const targetKey = remoteKey || pathKey;
+   await cache.set(targetKey, guideline, { maxAgeMinutes: cacheMinutes });
+   const cacheLabel = remoteKey ? `remote ${remoteUrl}` : mainRepoRoot;
+   Logger.debug(`Cached commit guidelines for ${cacheLabel} (${cacheDays} days)`, 'commit');
 
    return guideline;
 }
@@ -131,10 +149,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
    const config = await getConfig();
    const showThinking = config.get<boolean>('llm.showThinking', true);
-   const commitPattern = config.get<'inherit' | 'comprehensive'>(
-      'commit.commitPattern',
-      'inherit'
-   );
+   const commitPattern = config.get<'inherit' | 'comprehensive'>('commit.commitPattern', 'inherit');
 
    const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
 
