@@ -86,7 +86,9 @@ export default async function completion(ctx: GdxContext): Promise<number> {
       if (structure) {
          const argIndex = cmpIndex - 1;
          if (argIndex >= 0 && argIndex < commandArgs.length) {
-            const { completions } = suggestArgs(commandArgs, argIndex, structure);
+            const { completions } = await suggestArgs(commandArgs, argIndex, structure, {
+               git$: ctx.git$,
+            });
 
             Logger.debug(
                `Completion matches for command '${commandName}': ${completions.join(', ')}`,

@@ -1,4 +1,10 @@
-import { CommandStructure, CommandArgNode } from '../common/types';
+import {
+   CommandStructure,
+   CommandArgNode,
+   CommandArgThunk,
+   CommandArgListThunk,
+   CompletionThunkContext,
+} from '../common/types';
 
 export interface SuggestionResult {
    /** The suggested word, or null if no valid suggestion */
@@ -11,12 +17,56 @@ export interface SuggestionsResult {
 }
 
 interface NormalizedNode {
-   children: Record<string, CommandArgNode | string[]>;
+   children: Record<string, CommandArgNode | string[] | CommandArgThunk>;
    anyOf: Set<string>;
    allOf: Set<string>;
 }
 
-function normalizeNode(node: CommandArgNode | string[]): NormalizedNode {
+function isCommandArgNode(value: unknown): value is CommandArgNode {
+   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+   return true;
+}
+
+async function resolveNode(
+   node: CommandArgNode | string[] | CommandArgThunk,
+   ctx: CompletionThunkContext
+): Promise<CommandArgNode | string[]> {
+   let current: CommandArgNode | string[] | CommandArgThunk = node;
+   let depth = 0;
+   while (typeof current === 'function' && depth < 3) {
+      try {
+         current = await current(ctx);
+      } catch {
+         return {};
+      }
+      depth += 1;
+   }
+   if (Array.isArray(current) || isCommandArgNode(current)) return current;
+   return {};
+}
+
+async function resolveList(
+   value: string[] | CommandArgListThunk | undefined,
+   ctx: CompletionThunkContext
+): Promise<string[]> {
+   if (!value) return [];
+   let current: string[] | CommandArgListThunk = value;
+   let depth = 0;
+   while (typeof current === 'function' && depth < 3) {
+      try {
+         current = await current(ctx);
+      } catch {
+         return [];
+      }
+      depth += 1;
+   }
+   return Array.isArray(current) ? current : [];
+}
+
+async function normalizeNode(
+   node: CommandArgNode | string[],
+   ctx: CompletionThunkContext
+): Promise<NormalizedNode> {
    if (Array.isArray(node)) {
       return {
          children: {},
@@ -25,12 +75,12 @@ function normalizeNode(node: CommandArgNode | string[]): NormalizedNode {
       };
    }
 
-   const children: Record<string, CommandArgNode | string[]> = {};
-   const anyOf = new Set(node.$anyOf || []);
-   const allOf = new Set(node.$allOf || []);
+   const children: Record<string, CommandArgNode | string[] | CommandArgThunk> = {};
+   const anyOf = new Set(await resolveList(node.$anyOf, ctx));
+   const allOf = new Set(await resolveList(node.$allOf, ctx));
 
    for (const [key, value] of Object.entries(node)) {
-      if (key === '$allOf' || key === '$anyOf') continue;
+      if (key === '$allOf' || key === '$anyOf' || !value) continue;
       children[key] = value;
    }
 
@@ -45,11 +95,12 @@ function normalizeNode(node: CommandArgNode | string[]): NormalizedNode {
  * @param structure The command structure definition.
  * @returns A suggestions result containing all matching candidates, sorted by preference.
  */
-export function suggestArgs(
+export async function suggestArgs(
    args: string[],
    index: number,
-   structure: CommandStructure
-): SuggestionsResult {
+   structure: CommandStructure,
+   ctx: Pick<CompletionThunkContext, 'git$'>
+): Promise<SuggestionsResult> {
    let currentNode: CommandArgNode | string[] = structure.$root;
    const accumulatedAllOf = new Set<string>();
    const consumedAllOf = new Set<string>();
@@ -58,12 +109,25 @@ export function suggestArgs(
    // This resets when we descend into a child subcommand.
    let consumedAnyOfCurrentNode = false;
 
+   const cursorIndex = index;
+   const buildCtx = (
+      argIndex: number,
+      mode: CompletionThunkContext['mode']
+   ): CompletionThunkContext => ({
+      git$: ctx.git$,
+      args,
+      index: argIndex,
+      cursorIndex,
+      mode,
+   });
+
    // 1. Traverse history up to the current index
    for (let i = 0; i < index; i++) {
       const token = args[i];
       if (!token) continue;
 
-      const norm = normalizeNode(currentNode);
+      currentNode = await resolveNode(currentNode, buildCtx(i, 'history'));
+      const norm = await normalizeNode(currentNode, buildCtx(i, 'history'));
 
       // Check for Child Transition
       if (token in norm.children) {
@@ -72,7 +136,8 @@ export function suggestArgs(
             accumulatedAllOf.add(flag);
          }
 
-         currentNode = norm.children[token];
+         const childNode = await resolveNode(norm.children[token], buildCtx(i, 'history'));
+         currentNode = childNode;
          consumedAnyOfCurrentNode = false; // Reset for new node
          continue;
       }
@@ -112,7 +177,8 @@ export function suggestArgs(
    }
 
    // 2. Generate candidates at the final node
-   const norm = normalizeNode(currentNode);
+   currentNode = await resolveNode(currentNode, buildCtx(index, 'suggest'));
+   const norm = await normalizeNode(currentNode, buildCtx(index, 'suggest'));
    const candidates = new Set<string>();
 
    // Add Subcommands

@@ -20,6 +20,8 @@ import { _2PointGradient } from '@/modules/graphics';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { getRepoRootCached } from '@/modules/cache-controller';
+import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
+import type { CommandArgThunk } from '@/common/types';
 
 interface ParallelMetadata {
    alias: string;
@@ -44,6 +46,52 @@ interface ParallelContext {
    alias: string | null;
    isParallelWorktree: boolean;
 }
+
+async function listParallelAliases(git$: string | string[]): Promise<string[]> {
+   const ctx = await getParallelContext(git$);
+   if (!ctx) return [];
+
+   if (!fs.existsSync(ctx.parallelRoot)) {
+      return [];
+   }
+
+   const entries = fs.readdirSync(ctx.parallelRoot, { withFileTypes: true });
+   const aliases: string[] = [];
+
+   for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const wtPath = path.join(ctx.parallelRoot, entry.name);
+      const meta = getParallelMetadata(wtPath);
+      if (!meta) continue;
+      const aliasLabel = meta.alias || entry.name;
+      aliases.push(aliasLabel);
+   }
+
+   return aliases.sort((a, b) => a.localeCompare(b));
+}
+
+const parallelOpenStructure: CommandArgThunk = async ({ git$ }) => {
+   const aliases = await listParallelAliases(git$);
+   return createOptionChildrenWithFlags(['origin', ...aliases], ['-c', '--copy']);
+};
+
+const parallelSwitchStructure: CommandArgThunk = async ({ git$ }) => {
+   const aliases = await listParallelAliases(git$);
+   return createOptionChildrenWithFlags(['origin', ...aliases], ['-c', '--copy']);
+};
+
+const parallelJoinStructure: CommandArgThunk = async ({ git$ }) => {
+   const aliases = await listParallelAliases(git$);
+   return {
+      $allOf: ['--keep', '--all'],
+      ...createOptionChildrenWithFlags(aliases, ['--keep', '--all']),
+   };
+};
+
+const parallelRemoveStructure: CommandArgThunk = async ({ git$ }) => {
+   const aliases = await listParallelAliases(git$);
+   return createOptionChildren(aliases);
+};
 
 /**
  * Tests if an alias is valid for use as a worktree name
@@ -927,12 +975,10 @@ export const structure = {
    $root: {
       fork: ['--move', '--mirror'],
       list: {},
-      open: ['-c', '--copy'],
-      switch: ['-c', '--copy'],
-      join: {
-         $allOf: ['--keep', '--all'],
-      },
-      remove: {},
+      open: parallelOpenStructure,
+      switch: parallelSwitchStructure,
+      join: parallelJoinStructure,
+      remove: parallelRemoveStructure,
       help: {},
    },
 } as const satisfies CommandStructure;

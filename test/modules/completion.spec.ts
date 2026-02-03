@@ -20,58 +20,58 @@ describe('Completion Engine - Multiple Suggestions', () => {
       },
    };
 
-   it('should return all matching subcommands at root', () => {
+   it('should return all matching subcommands at root', async () => {
       // args=[], index=0. Suggest all from root.
-      const result = suggestArgs([], 0, structure);
+      const result = await suggestArgs([], 0, structure, { git$: 'git' });
       expect(result.completions).toEqual(['fork', 'join', 'nested', 'simple']);
    });
 
-   it('should return multiple filtered suggestions by prefix', () => {
+   it('should return multiple filtered suggestions by prefix', async () => {
       // args=['ne'], index=0. Prefix 'ne'.
-      const result = suggestArgs(['ne'], 0, structure);
+      const result = await suggestArgs(['ne'], 0, structure, { git$: 'git' });
       expect(result.completions).toEqual(['nested']);
    });
 
-   it('should return multiple flags for subcommand', () => {
+   it('should return multiple flags for subcommand', async () => {
       // args=['fork', '-'], index=1. Cursor at '-'.
-      const result = suggestArgs(['fork', '-'], 1, structure);
+      const result = await suggestArgs(['fork', '-'], 1, structure, { git$: 'git' });
       expect(result.completions).toEqual(['--move', '--mirror']);
    });
 
-   it('should return empty array when $anyOf is exhausted', () => {
+   it('should return empty array when $anyOf is exhausted', async () => {
       // args=['fork', '--move', '-'], index=2.
-      const result = suggestArgs(['fork', '--move', '-'], 2, structure);
+      const result = await suggestArgs(['fork', '--move', '-'], 2, structure, { git$: 'git' });
       expect(result.completions).toEqual([]);
    });
 
-   it('should return all matching $allOf flags', () => {
+   it('should return all matching $allOf flags', async () => {
       // args=['join', '-'], index=1.
-      const result = suggestArgs(['join', '-'], 1, structure);
+      const result = await suggestArgs(['join', '-'], 1, structure, { git$: 'git' });
       expect(result.completions).toEqual(['--all', '--keep']);
    });
 
-   it('should filter out already used $allOf flags', () => {
+   it('should filter out already used $allOf flags', async () => {
       // args=['join', '--all', '-'], index=2.
-      const result = suggestArgs(['join', '--all', '-'], 2, structure);
+      const result = await suggestArgs(['join', '--all', '-'], 2, structure, { git$: 'git' });
       expect(result.completions).toEqual(['--keep']);
    });
 
-   it('should return subcommands and flags together', () => {
+   it('should return subcommands and flags together', async () => {
       // args=['join', ''], index=1.
-      const result = suggestArgs(['join', ''], 1, structure);
+      const result = await suggestArgs(['join', ''], 1, structure, { git$: 'git' });
       // Should have 'forced', '--all', '--keep'
       expect(result.completions).toEqual(['--all', '--keep', 'forced']);
    });
 
-   it('should handle nested structures', () => {
+   it('should handle nested structures', async () => {
       // args=['nested', ''], index=1.
-      const result = suggestArgs(['nested', ''], 1, structure);
+      const result = await suggestArgs(['nested', ''], 1, structure, { git$: 'git' });
       expect(result.completions).toEqual(['child', 'sibling']);
    });
 
-   it('should return empty array for invalid history', () => {
+   it('should return empty array for invalid history', async () => {
       // args=['fork', '--invalid', '-'], index=2.
-      const result = suggestArgs(['fork', '--invalid', '-'], 2, structure);
+      const result = await suggestArgs(['fork', '--invalid', '-'], 2, structure, { git$: 'git' });
       expect(result.completions).toEqual([]);
    });
 });

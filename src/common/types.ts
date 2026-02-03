@@ -29,6 +29,46 @@ export interface CommandHelpObj {
    usage: () => string;
 }
 
+/**
+ * Context passed to completion thunks during resolution.
+ * @property git$ - The git executable path/command array.
+ * @property args - Full argument list relative to the command root.
+ * @property index - The index of the token currently being processed.
+ * @property cursorIndex - The target index where completion is requested.
+ * @property mode - 'history' when verifying past tokens, 'suggest' when resolving the active token.
+ */
+export interface CompletionThunkContext {
+   git$: string | string[];
+   args: string[];
+   index: number;
+   cursorIndex: number;
+   mode: 'history' | 'suggest';
+}
+
+/**
+ * A function that returns a structure node or list of strings dynamically.
+ * Can be async. Used for lazy loading suggestions (e.g. from git forks or branches).
+ *
+ * @returns A CommandArgNode (structure), string[] (aliases), or another thunk.
+ */
+export type CommandArgThunk = (
+   ctx: CompletionThunkContext
+) =>
+   | CommandArgNode
+   | string[]
+   | CommandArgThunk
+   | Promise<CommandArgNode | string[] | CommandArgThunk>;
+
+/**
+ * A function that returns a list of string suggestions dynamically.
+ * Can be async. Used for dynamic lists in $anyOf or $allOf.
+ *
+ * @returns string[] or another list thunk.
+ */
+export type CommandArgListThunk = (
+   ctx: CompletionThunkContext
+) => string[] | CommandArgListThunk | Promise<string[] | CommandArgListThunk>;
+
 export interface CommandStructure {
    /**
     * The root node of the command's argument structure tree.
@@ -37,7 +77,7 @@ export interface CommandStructure {
    $root: CommandArgNode | string[];
 }
 
-export type CommandArgNode = {
+export interface CommandArgNode {
    /**
     * All of the sub-commands listed here can be present anywhere starting from this node
     * to all of its children, where order does not matter.
@@ -59,7 +99,7 @@ export type CommandArgNode = {
     * // baz --foo # missing `foo` before `baz`
     * // --bar foo --foo baz # `--bar` cannot appear before `foo`
     */
-   $allOf?: string[];
+   $allOf?: string[] | CommandArgListThunk;
    /**
     * A choice of sub-commands listed, where either one can present
     * after this node (only this node).
@@ -101,12 +141,11 @@ export type CommandArgNode = {
     *  }
     * }
     */
-   $anyOf?: string[];
-} & {
+   $anyOf?: string[] | CommandArgListThunk;
    /**
     * Sub-commands or flags that can be present after this node.
     *
     * if the type is string[], its the same as $anyOf
     */
-   [key: string]: CommandArgNode | string[];
-};
+   [key: string]: CommandArgNode | string[] | CommandArgThunk | CommandArgListThunk | undefined;
+}
