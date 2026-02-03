@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { Err, ncc, strWrap, yuString } from '@lib/Tools';
+import { Err, jsTime, ncc, strJustify, strLimit, strWrap, yuString } from '@lib/Tools';
 
 import { resetCache } from '@/common/cache';
 import { getConfig } from '@/common/config';
@@ -35,6 +35,8 @@ export default async function cache(ctx: GdxContext): Promise<number> {
    const subcommand = ctx.args[1];
 
    switch (subcommand) {
+      case 'list':
+         return await listCache();
       case 'prune':
          return await pruneCache();
       case 'reset':
@@ -88,6 +90,56 @@ async function pruneCache(): Promise<number> {
       quickPrint(`${ncc('Green')}Pruned ${prunedCount} expired cache entries.${ncc()}`);
    } else {
       quickPrint(`${ncc('Cyan')}No expired cache entries found.${ncc()}`);
+   }
+
+   return 0;
+}
+
+async function listCache(): Promise<number> {
+   let cacheData: CacheStructure | null = null;
+   try {
+      cacheData = await loadCacheFile();
+   } catch (err) {
+      Logger.error(yuString(err, { color: true }), 'cache');
+      return 1;
+   }
+
+   if (!cacheData) {
+      quickPrint(`${ncc('Yellow')}No cache file found. Nothing to list.${ncc()}`);
+      return 0;
+   }
+
+   const keys = Object.keys(cacheData.entryMeta).sort((a, b) => {
+      const aMeta = cacheData.entryMeta[a];
+      const bMeta = cacheData.entryMeta[b];
+      return (aMeta?.expiresAt ?? 0) - (bMeta?.expiresAt ?? 0) || a.localeCompare(b);
+   });
+
+   if (keys.length === 0) {
+      quickPrint(`${ncc('Yellow')}No cache keys found.${ncc()}`);
+      return 0;
+   }
+
+   quickPrint(
+      `${ncc('Cyan')}Cache:${ncc()} ${CACHE_PATH} ${ncc('Dim')}(${keys.length} keys)${ncc()}\n`
+   );
+
+   for (const keyPath of keys) {
+      const entry = cacheData.entryMeta[keyPath];
+      if (!entry) continue;
+
+      const ttlMs = entry.expiresAt - Date.now();
+      const ttlLabel = ttlMs <= 0 ? 'expired' : jsTime.getTimeFromMS(ttlMs).modern();
+      let ttlColor = ncc('Green');
+      if (ttlMs < 12 * 60 * 60 * 1000) ttlColor = ncc('Yellow');
+      if (ttlMs < 60 * 60 * 1000) ttlColor = ncc('Red');
+
+      const value = getValueAtPath(cacheData.data, keyPath);
+      const preview = formatPreview(value);
+
+      quickPrint(
+         `${ncc('Cyan')}${strJustify(keyPath, 24, { align: 'left', redundancyLv: -1, overflow: 'collapse' })}${ncc()}  ttl=${ttlColor}${strJustify(ttlLabel, 12, { align: 'left', redundancyLv: -1, overflow: 'visible' })}${ncc()}  ${ncc('Dim')}preview=${preview}${ncc()}`
+      );
    }
 
    return 0;
@@ -234,6 +286,7 @@ function deleteCachePath(cache: CacheStructure, keyPath: string): boolean {
 
    const keys = keyPath.split('.');
    const pathToDelete: Array<{ obj: Record<string, unknown>; key: string }> = [];
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
    let current: any = cache.data;
 
    for (const key of keys) {
@@ -263,6 +316,42 @@ function deleteCachePath(cache: CacheStructure, keyPath: string): boolean {
    return true;
 }
 
+function getValueAtPath(data: Record<string, unknown>, keyPath: string): unknown {
+   const keys = keyPath.split('.');
+   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   let value: any = data;
+   for (const key of keys) {
+      if (value && typeof value === 'object' && key in value) {
+         value = value[key];
+      } else {
+         return undefined;
+      }
+   }
+   return value;
+}
+
+function formatPreview(value: unknown): string {
+   if (typeof value === 'string') {
+      return `'${strLimit(value.replace(/\s+/g, ' '), 60, 'mid', -1)}'`;
+   }
+
+   if (typeof value === 'number' || typeof value === 'boolean' || value == null) {
+      return String(value);
+   }
+
+   if (Array.isArray(value)) {
+      const inner = strLimit(yuString(value, { color: false }), 60, 'mid', -1);
+      return `[${value.length}] ${inner}`;
+   }
+
+   if (typeof value === 'object') {
+      const inner = strLimit(yuString(value, { color: false }), 60, 'mid', -1);
+      return `{...} ${inner}`;
+   }
+
+   return strLimit(String(value), 60, 'mid', -1);
+}
+
 export const help = {
    long: () =>
       strWrap(
@@ -271,6 +360,7 @@ ${ncc('Bright') + _2PointGradient('CACHE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 Manually manage gdx cache entries and settings.
 
 ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+- list: Show cache keys, TTL, and a short value preview.
 - prune: Remove expired entries from the cache file.
 - reset: Delete the entire cache file.
 - delete: Mark cache entries as expired by key or prefix.
@@ -289,11 +379,13 @@ ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)
          `
 ${ncc('Cyan')}${EXECUTABLE_NAME} cache prune${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} cache reset${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} cache list${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} cache delete ${ncc('Dim')}<key|prefix> [more...]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} cache enable${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} cache disable${ncc()}
 
 Examples:
+   ${ncc('Cyan')}${EXECUTABLE_NAME} cache list ${ncc() + ncc('Dim')}# List cached keys with TTL${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} cache prune ${ncc() + ncc('Dim')}# Remove expired cache entries${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} cache reset ${ncc() + ncc('Dim')}# Delete cache file entirely${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} cache delete git git.config ${ncc() + ncc('Dim')}# Expire by key/prefix${ncc()}
@@ -309,5 +401,5 @@ Examples:
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['prune', 'reset', 'delete', 'enable', 'disable'],
+   $root: ['list', 'prune', 'reset', 'delete', 'enable', 'disable'],
 } as const satisfies CommandStructure;

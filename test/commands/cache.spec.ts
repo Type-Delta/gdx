@@ -73,6 +73,23 @@ describe('gdx cache', async () => {
       expect(parsed.data.key.b).toBe('value-b');
    });
 
+   it('should list cache keys with ttl and preview', async () => {
+      resetCache();
+      const cacheService = await getCache();
+      await cacheService.set('list.string', 'hello world');
+      await cacheService.set('list.obj', { a: 1, b: true });
+      cacheService.flush();
+
+      const ctx = createGdxContext(tmpDir, ['cache', 'list']);
+      const result = await cache(ctx);
+      expect(result).toBe(0);
+
+      expect(buffer.stdout).toContain('list.string');
+      expect(buffer.stdout).toContain('list.obj');
+      expect(buffer.stdout).toContain('ttl=');
+      expect(buffer.stdout).toContain('preview=');
+   });
+
    it('should enable and disable cache in config', async () => {
       resetConfig();
       const ctxDisable = createGdxContext(tmpDir, ['cache', 'disable']);
