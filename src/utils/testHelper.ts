@@ -119,7 +119,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
       setupTasks.push(fs.writeFile(gdxConfigPath, '', 'utf-8'));
    }
 
-   const [resetRepo] = await Promise.all(setupTasks);
+   const [resetRepo] = await Promise.all(setupTasks as Promise<() => Promise<void>>[]);
 
    resetConfig();
    resetCache();

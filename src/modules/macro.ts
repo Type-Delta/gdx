@@ -3,7 +3,6 @@ import path from 'path';
 import * as fs from './fs';
 import { MACRO_PATH } from '@/consts';
 import { getCache } from '@/common/cache';
-import { CacheService } from '@/common/cache';
 import { Err, ncc } from '@lib/Tools';
 import Logger from '@/utils/logger';
 import { tokenizeCommand } from './shell';
@@ -67,12 +66,12 @@ export async function writeMacrosToFile(macros: MacroMap): Promise<void> {
  * Throws if cache is disabled.
  */
 export async function syncMacrosToCache(): Promise<void> {
-   if (CacheService.isDisabled) {
+   const macros = await readMacrosFromFile();
+   const cache = await getCache();
+   if (cache.isDisabled) {
       throw new Err('Cache is disabled. Cannot sync macros to cache.', 'CACHE_DISABLED');
    }
 
-   const macros = await readMacrosFromFile();
-   const cache = await getCache();
    await cache.set(MACRO_CACHE_KEY, macros, { maxAgeMinutes: MACRO_CACHE_TTL });
    Logger.debug(`Synced ${Object.keys(macros).length} macros to cache`, 'macro');
 }
@@ -83,11 +82,11 @@ export async function syncMacrosToCache(): Promise<void> {
  * @returns MacroMap
  */
 export async function getMacrosCachedOrLoad(): Promise<MacroMap> {
-   if (CacheService.isDisabled) {
+   const cache = await getCache();
+   if (cache.isDisabled) {
       return await readMacrosFromFile();
    }
 
-   const cache = await getCache();
    const cached = await cache.get<MacroMap>(MACRO_CACHE_KEY);
 
    if (cached) {
