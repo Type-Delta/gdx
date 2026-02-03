@@ -1,6 +1,9 @@
-import { $ } from './shell';
-import Logger from '../utils/logger';
 import path from 'path';
+
+import * as fs from '@/modules/fs';
+
+import Logger from '../utils/logger';
+import { $ } from './shell';
 
 /**
  * Checks if the current directory is inside a Git worktree.
@@ -171,6 +174,30 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
          const gitDir = path.dirname(path.dirname(commonDirAbs));
          const mainRoot = path.dirname(gitDir);
          return mainRoot || repoRoot;
+      }
+
+      try {
+         const gitFile = fs.readFileSync(commonDirAbs, 'utf-8');
+         const gitDirLine = gitFile
+            .split('\n')
+            .map((line) => line.trim())
+            .find((line) => line.toLowerCase().startsWith('gitdir:'));
+
+         if (gitDirLine) {
+            const gitDirRaw = gitDirLine.split(':').slice(1).join(':').trim();
+            const gitDirAbs = path.isAbsolute(gitDirRaw)
+               ? gitDirRaw
+               : path.resolve(repoRoot, gitDirRaw);
+            const normalizedGitDir = gitDirAbs.replace(/\\/g, '/');
+
+            if (normalizedGitDir.includes('/.git/worktrees/')) {
+               const gitDir = path.dirname(path.dirname(gitDirAbs));
+               const mainRoot = path.dirname(gitDir);
+               return mainRoot || repoRoot;
+            }
+         }
+      } catch {
+         // ignore: commonDirAbs may be a directory, not a .git file
       }
 
       const mainRoot = path.dirname(commonDirAbs);

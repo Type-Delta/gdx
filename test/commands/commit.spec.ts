@@ -143,7 +143,7 @@ describe('gdx commit auto - inherit mode', async () => {
       const guidelineKeys = Object.keys(allCache.entryMeta).filter((key) =>
          key.startsWith('commit.repoGuidelines.')
       );
-      expect(guidelineKeys.length).toBe(2);
+      expect(guidelineKeys.length).toBe(1);
    });
 
    it('should share guidelines cache across ssh and https remotes', async () => {

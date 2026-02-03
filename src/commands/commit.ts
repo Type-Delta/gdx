@@ -86,11 +86,12 @@ async function getCommitGuidelines(
    const cache = await getCache();
    const mainRepoRoot = await getMainWorktreeRoot(git$);
    const remoteUrl = await getNormalizedRemoteUrl(git$);
+   const normalizedRepoRoot = mainRepoRoot.replace(/\\/g, '/');
    const cacheDays = config.get<number>('commit.guidelineCacheDays', 30);
    const cacheMinutes = cacheDays * 24 * 60;
 
    const remoteHash = remoteUrl ? createHash(`remote:${remoteUrl}`) : '';
-   const pathHash = createHash(`path:${mainRepoRoot}`);
+   const pathHash = createHash(`path:${normalizedRepoRoot}`);
    const remoteKey = remoteHash ? `commit.repoGuidelines.${remoteHash}` : '';
    const pathKey = `commit.repoGuidelines.${pathHash}`;
 
@@ -108,7 +109,7 @@ async function getCommitGuidelines(
          await cache.set(remoteKey, cachedPath, { maxAgeMinutes: cacheMinutes });
          Logger.debug(`Promoted commit guidelines cache to remote ${remoteUrl}`, 'commit');
       } else {
-         Logger.debug(`Using cached commit guidelines for ${mainRepoRoot}`, 'commit');
+         Logger.debug(`Using cached commit guidelines for ${normalizedRepoRoot}`, 'commit');
       }
       return cachedPath;
    }
@@ -135,7 +136,7 @@ async function getCommitGuidelines(
    // Cache the learned guideline
    const targetKey = remoteKey || pathKey;
    await cache.set(targetKey, guideline, { maxAgeMinutes: cacheMinutes });
-   const cacheLabel = remoteKey ? `remote ${remoteUrl}` : mainRepoRoot;
+   const cacheLabel = remoteKey ? `remote ${remoteUrl}` : normalizedRepoRoot;
    Logger.debug(`Cached commit guidelines for ${cacheLabel} (${cacheDays} days)`, 'commit');
 
    return guideline;
