@@ -1,5 +1,5 @@
-import path from 'path';
 import os from 'os';
+import path from 'path';
 
 import { RgbVec } from './modules/graphics';
 
@@ -12,7 +12,9 @@ export const EXECUTABLE_NAME = exeBasename.startsWith('bun') ? 'gdx' : exeBasena
 export const TEMP_DIR = process.env.GDX_TEMP_DIR || os.tmpdir();
 export const CURRENT_DIR = process.env.GDX_CURRENT_DIR || process.cwd();
 export const CONFIG_FILE_NAME = '.gdxrc.toml';
-export const CONFIG_PATH = path.join(os.homedir(), CONFIG_FILE_NAME);
+export const CONFIG_DIR = path.join(os.homedir(), '.gdx');
+export const CONFIG_PATH = path.join(CONFIG_DIR, CONFIG_FILE_NAME);
+export const LEGACY_CONFIG_PATH = path.join(os.homedir(), CONFIG_FILE_NAME);
 export const GIT_DIR_NAME = '.git';
 export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;
@@ -82,7 +84,7 @@ export const SENSITIVE_CONTENTS_REGEXES = [
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const CACHE_PATH = path.join(TEMP_DIR, 'gdx', CACHE_FILE_NAME);
-export const MACRO_PATH = path.join(TEMP_DIR, 'gdx', MACRO_FILE_NAME);
+export const MACRO_PATH = path.join(CONFIG_DIR, MACRO_FILE_NAME);
 export const DEFAULT_CACHE_MAX_AGE = 360; // Expire cache after 6 hours (unit in minutes)
 export const CACHE_PRUNE_INTERVAL_DAYS = 7; // Prune expired keys every 7 days
 export const OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';

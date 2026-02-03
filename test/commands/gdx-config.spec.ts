@@ -23,7 +23,7 @@ describe('gdx gdx-config', async () => {
       const result = await gdxConfig(ctx);
 
       expect(result).toBe(0);
-      expect(buffer.stdout).toContain(path.join(tmpRootDir, '.gdxrc.toml')); // Should contain temp dir path
+      expect(buffer.stdout).toContain(path.join(tmpRootDir, '.gdx', '.gdxrc.toml')); // Should contain temp dir path
    });
 
    it('should set a config value', async () => {

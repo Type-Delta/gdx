@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import * as fs from '@/modules/fs';
+import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
+import * as fs from '@/modules/fs';
 import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
-import { CONFIG_PATH, KEYCHAIN_SERVICE, SECURE_CONF_KEYS } from '@/consts';
+import { CONFIG_PATH, KEYCHAIN_SERVICE, LEGACY_CONFIG_PATH, SECURE_CONF_KEYS } from '@/consts';
 import { Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
 
@@ -57,6 +58,10 @@ export class ConfigService {
       // Create a copy without secure keys
       const configToSave = this.removeSecureKeys(this.config);
       const tomlString = stringifyToml(configToSave);
+      const dirPath = path.dirname(this.configPath);
+      if (!fs.existsSync(dirPath)) {
+         fs.mkdirSync(dirPath, { recursive: true });
+      }
       await fs.writeFile(this.configPath, tomlString, 'utf-8');
    }
 
@@ -334,12 +339,29 @@ export class ConfigService {
 // Singleton instance
 let instance: ConfigService | null = null;
 
+function resolveConfigPath(): string {
+   const envPath = process.env.GDX_CONFIG_PATH;
+   if (envPath) {
+      return envPath;
+   }
+
+   if (fs.existsSync(CONFIG_PATH)) {
+      return CONFIG_PATH;
+   }
+
+   if (fs.existsSync(LEGACY_CONFIG_PATH)) {
+      return LEGACY_CONFIG_PATH;
+   }
+
+   return CONFIG_PATH;
+}
+
 /**
  * Gets the singleton ConfigService instance.
  */
 export async function getConfig(): Promise<ConfigService> {
    if (!instance) {
-      instance = new ConfigService();
+      instance = new ConfigService(resolveConfigPath());
       await instance.load();
    }
    return instance;

@@ -94,7 +94,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    };
 
    // Set env vars for isolation
-   process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdxrc.toml');
+   process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdx', '.gdxrc.toml');
    process.env.GDX_TEMP_DIR = tmpDir;
    process.env.GIT_CONFIG_NOSYSTEM = '1';
    global.logLevel = 'warn';
@@ -103,10 +103,23 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const globalConfigPath = path.join(tmpDir, '.gitconfig');
    process.env.GIT_CONFIG_GLOBAL = globalConfigPath;
 
-   const [resetRepo] = await Promise.all([
+   const gdxConfigPath = process.env.GDX_CONFIG_PATH;
+   const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
+
+   const setupTasks = [
       initGitRepo(_$), // Initialize a git repository
       fs.writeFile(globalConfigPath, ''), // Empty global git config
-   ]);
+   ];
+
+   if (gdxConfigDir) {
+      fs.mkdirSync(gdxConfigDir, { recursive: true });
+   }
+
+   if (gdxConfigPath) {
+      setupTasks.push(fs.writeFile(gdxConfigPath, '', 'utf-8'));
+   }
+
+   const [resetRepo] = await Promise.all(setupTasks);
 
    resetConfig();
    resetCache();
@@ -190,9 +203,9 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string, envController
          ...original,
          TEMP_DIR: tempTmpDir,
          CURRENT_DIR: path.join(tempDir, 'project'),
-         CONFIG_PATH: path.join(tempDir, '.gdxrc.toml'),
+         CONFIG_PATH: path.join(tempDir, '.gdx', '.gdxrc.toml'),
          CACHE_PATH: path.join(tempTmpDir, 'gdx', 'cache.json'),
-         MACRO_PATH: path.join(tempTmpDir, 'gdx', 'macro.json'),
+         MACRO_PATH: path.join(tempDir, '.gdx', 'macro.json'),
          SHOULD_WRITE_LOGS: false,
       };
    });

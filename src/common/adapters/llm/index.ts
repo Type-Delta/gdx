@@ -19,7 +19,7 @@ export async function getLLMProvider(): Promise<LLMProvider> {
 
    if (!apiKey) {
       throw new Err(
-         'No API key found. Please set llm.apiKey in ~/.gdxrc.toml or GDX_LLM_API_KEY env var.',
+         'No API key found. Please set llm.apiKey in ~/.gdx/.gdxrc.toml or GDX_LLM_API_KEY env var.',
          'NO_API_KEY'
       );
    }

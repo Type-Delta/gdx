@@ -205,7 +205,7 @@ ${ncc('Bright') + _2PointGradient('CHECKS PERFORMED', COLOR.Zinc400, COLOR.Zinc1
 - File Size: Warns if files exceed the configured size limit (default 1MB).
 
 ${ncc('Bright') + _2PointGradient('CONFIGURATION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-You can configure the behavior in your .gdxrc.toml file or \`${EXECUTABLE_NAME} gdx-config\`:
+You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${EXECUTABLE_NAME} gdx-config\`:
 [lint]
 onPushBehavior = "off" | "error" | "warning"  # Default: "off"
 maxFileSizeKb = 1024                          # Default: 1024 KB

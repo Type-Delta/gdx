@@ -243,7 +243,7 @@ This project uses **Bun** for development because it's fast and the developer ex
 
 Since this is currently a solo "scratch your own itch" project, the roadmap is fluid, but here is what is on the horizon:
 
-- [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file.
+- [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file (default: `~/.gdx/.gdxrc.toml`).
 - [x] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell with git fallback.
 - [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
 - [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
