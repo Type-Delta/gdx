@@ -8,6 +8,33 @@ Guide for agentic coding agents working in the `gdx` repository.
 
 ---
 
+## Commit Message Conventions
+
+This repo commonly uses an emoji + Conventional Commits-style subject line, plus a short explanatory body.
+
+**Subject format:**
+
+```text
+<emoji> <type>(<scope>): <short imperative summary>
+```
+
+**Common emojis/types used in this repo:**
+
+- `💫 feat(<scope>): ...`
+- `🛠️ refactor(<scope>): ...`
+- `🔧 fix(<scope>): ...`
+- `🧹 chore(<scope>): ...`
+- `🛠️ ci(<scope>): ...`
+
+**Body guidelines:**
+
+- Start with 1-3 sentences describing intent/why (not just what).
+- Optionally follow with a short bullet list of key changes.
+- Keep lines reasonably wrapped (project uses Prettier print width 100).
+- Prefer consistent bullets (no trailing periods is common in this repo).
+
+---
+
 ## Build, Lint, and Test Commands
 
 ### Development Setup
@@ -429,6 +456,14 @@ const value = config.get<boolean>('llm.showThinking', true); // with default
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
+
+### Working In Temporary Worktrees
+
+Agents may be running inside a temporary worktree under `TEMP_DIR` (used for parallel edits).
+These worktrees are often in a detached HEAD state.
+
+- Avoid `git push` from temporary worktrees,
+  let humans handle pushing changes unless explicitly instructed otherwise.
 
 **Environment Variables (Testing):**
 
