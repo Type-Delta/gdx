@@ -22,6 +22,7 @@ import global from '@/global';
 import { getRepoRootCached } from '@/modules/cache-controller';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
 import type { CommandArgThunk } from '@/common/types';
+import { ExecaError } from 'execa';
 
 interface ParallelMetadata {
    alias: string;
@@ -192,6 +193,18 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 1;
    }
 
+   try {
+      fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
+   }
+   catch {
+      Logger.error(
+         `Worktree '${alias}' is not accessible or writable. Cannot remove.`,
+         'parallel'
+      );
+      return 1;
+   }
+
+   quickPrint('');
    const spinnerCtrl = spinner({
       frames: [
          '███',
@@ -229,13 +242,21 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
-      Logger.error(
-         `Failed to remove worktree '${alias}'.\n${yuString(err, { color: true })}`,
-         'parallel'
-      );
+      if ((err instanceof ExecaError) && err.exitCode === 255) {
+         Logger.error(
+            `Folder '${targetPath}' is currently in use or GDX does not have permission to remove it. Please close any applications using it and force remove. (git already removed the connection to the origin worktree, retry may not work)`,
+            'parallel'
+         );
+      }
+      else {
+         Logger.error(
+            `Failed to remove worktree '${alias}'.\n${yuString(err, { color: true })}`,
+            'parallel'
+         );
+      }
 
       const response = await $prompt(
-         'Do you want to force remove the worktree directory? This will delete all files in it. (y/n): '
+         'Do you want to force remove the worktree directory? (y/n): '
       );
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
@@ -713,9 +734,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
