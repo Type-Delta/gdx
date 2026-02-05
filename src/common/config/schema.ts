@@ -25,6 +25,9 @@ export interface GdxConfig {
       enabled?: boolean;
       maxAgeMinutes?: number;
    };
+   parallel?: {
+      init?: string;
+   };
    defaultEditor: string;
 }
 
@@ -53,6 +56,9 @@ export const DEFAULT_CONFIG: GdxConfig = {
       enabled: true,
       maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
    },
+   parallel: {
+      init: 'submodule',
+   },
    defaultEditor: 'code',
 };
 
@@ -74,6 +80,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'commit.guidelineCacheDays': 'GDX_COMMIT_GUIDELINE_CACHE_DAYS',
    'cache.enabled': 'GDX_CACHE_ENABLED',
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
+   'parallel.init': 'GDX_PARALLEL_INIT',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
 };
 
@@ -98,5 +105,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',
    'cache.maxAgeMinutes': 'Maximum age of cache entries in minutes',
+   parallel: 'Configuration for parallel worktree automation',
+   'parallel.init': 'Comma-separated init behaviors for new forks (submodule, pkg)',
    defaultEditor: 'Default code editor to open files with',
 };

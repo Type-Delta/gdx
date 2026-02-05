@@ -541,6 +541,17 @@ export async function deinitSubmodules(
 }
 
 /**
+ * Initializes all submodules in a worktree.
+ * @param git$ - Git executable path or command array.
+ * @param worktreePath - The worktree root path.
+ */
+export async function initSubmodules(git$: string | string[], worktreePath: string): Promise<void> {
+   const submodules = await getSubmodules(git$, worktreePath);
+   if (submodules.length === 0) return;
+   await $`${git$} -c protocol.file.allow=always -C ${worktreePath} submodule update --init --recursive`;
+}
+
+/**
  * Helper function to normalize a remote URL's host and path components.
  * Removes leading slashes/colons, .git suffix, and trailing slashes from the path.
  * @param host - The hostname (e.g., "github.com").

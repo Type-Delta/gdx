@@ -241,21 +241,30 @@ Dropped stashes are backed up temporarily. Use \`pardon\` to bring them back.
          }
       ),
    short: 'Drop stash entries with undo support (e.g. 0..3, pardon).',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      const dim = ncc('Dim');
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} stash drop ${ncc('Dim')}[<stash> | <range> | pardon]${ncc()}
+${cyan}${EXECUTABLE_NAME} stash drop ${dim}[<stash> | <range> | pardon]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} stash drop 0..0 ${ncc() + ncc('Dim')}# Drop the most recent stash${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} stash drop pardon ${ncc() + ncc('Dim')}# Restore last dropped stash${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} stash drop 0..0 ${dim}# Drop the most recent stash${reset}
+   ${cyan}${EXECUTABLE_NAME} stash drop pardon ${dim}# Restore last dropped stash${reset}
+   ${cyan}${EXECUTABLE_NAME} stash l         ${dim}# Show stash list (alias for ${EXECUTABLE_NAME} stash list).${reset}
+   ${cyan}${EXECUTABLE_NAME} stash d 3       ${dim}# Drop stash@{3}.${reset}
+   ${cyan}${EXECUTABLE_NAME} stash d 2..5    ${dim}# Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).${reset}
+   ${cyan}${EXECUTABLE_NAME} stash p 1       ${dim}# Pop stash@{1}.${reset}
+   ${cyan}${EXECUTABLE_NAME} stash c         ${dim}# Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   }
 } as const satisfies CommandHelpObj;
 
 export const structure = {

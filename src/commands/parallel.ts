@@ -31,8 +31,9 @@ import {
    normalizeStatusPath,
    pruneWorktrees,
 } from '@/modules/git';
+import { runWorktreeInit } from '@/modules/worktree-init';
+import { ArgsSet } from '@/modules/arguments';
 import { CommandHelpObj, CommandStructure, GdxContext, CommandArgThunk } from '../common/types';
-
 
 interface ParallelMetadata {
    alias: string;
@@ -390,7 +391,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 /**
  * Fork command - creates a new parallel worktree
  */
-async function cmdFork(git$: string | string[], args: string[]): Promise<number> {
+async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -420,9 +421,29 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
       return 1;
    }
 
+   const parsedArgs = args.slice(1);
+   let noInitAll = false;
+   let noInitList: string | null = null;
+
+   if (parsedArgs.hasOption('--no-init')) {
+      noInitList = parsedArgs.popValue('--no-init', 0, true);
+      if (noInitList === null) {
+         noInitAll = true;
+      }
+   }
+
    const targetPath = path.join(ctx.parallelRoot, alias);
-   const moveMode = args.includes('--move') || args.includes('-mv');
-   const mirrorMode = args.includes('--mirror') || args.includes('-mr');
+   const moveMode = parsedArgs.includes('--move') || parsedArgs.includes('-mv');
+   const mirrorMode = parsedArgs.includes('--mirror') || parsedArgs.includes('-mr');
+
+   const unknownArgs = parsedArgs.filter(
+      (arg) => !['--move', '--mirror', '-mv', '-mr'].includes(arg)
+   );
+   if (unknownArgs.length > 0) {
+      Logger.error(`Unknown option '${unknownArgs[0]}'.`, 'parallel');
+      showUsage();
+      return 1;
+   }
 
    if (fs.existsSync(targetPath)) {
       Logger.error(`Worktree alias '${alias}' already exists for this branch.`, 'parallel');
@@ -520,13 +541,20 @@ async function cmdFork(git$: string | string[], args: string[]): Promise<number>
       quickPrint(`${ncc('Cyan')}Pending changes ${changesOpt} to fork '${alias}'.${ncc()}`);
    }
 
+   await runWorktreeInit({
+      git$,
+      worktreePath: targetPath,
+      noInitAll,
+      noInitList,
+   });
+
    return 0;
 }
 
 /**
  * Remove command - removes a parallel worktree
  */
-async function cmdRemove(git$: string | string[], args: string[]): Promise<number> {
+async function cmdRemove(git$: string | string[], args: ArgsSet): Promise<number> {
    if (args.length < 1) {
       Logger.error('Missing worktree alias to remove.', 'parallel');
       showUsage();
@@ -558,11 +586,7 @@ async function cmdRemove(git$: string | string[], args: string[]): Promise<numbe
 /**
  * Open command - opens a different worktree in the editor
  */
-async function cmdOpen(
-   git$: string | string[],
-   args: string[],
-   changeDir = false
-): Promise<number> {
+async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -657,7 +681,7 @@ async function getCommitComparison(
 /**
  * List command - lists all parallel worktrees
  */
-async function cmdList(git$: string | string[], args: string[]): Promise<number> {
+async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -1102,7 +1126,7 @@ async function cmdJoinRecursive(
 /**
  * Join command - merges a parallel worktree back to origin
  */
-async function cmdJoin(git$: string | string[], args: string[]): Promise<number> {
+async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
@@ -1245,20 +1269,25 @@ export const help = {
    long: () =>
       strWrap(
          `
-${ncc('Bright') + _2PointGradient('PARALLEL', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${ncc('Bright') + _2PointGradient('PARALLEL', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
 Manage parallel (forked) worktrees for iterative development.
 
-${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-\`${EXECUTABLE_NAME} parallel\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
+${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
+\`${ncc('Cyan')}${EXECUTABLE_NAME} parallel${ncc()}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
-${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-- ${ncc('Cyan')}fork <alias>${ncc()}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`--move\` or \`--mirror\`, changes will be moved/applied to the fork.
- - ${ncc('Cyan')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the origin worktree. \`--keep\` retains the fork and updates its base; \`--all\` also includes uncommitted changes.
- - ${ncc('Cyan')}join -r|--recursive [--keep]${ncc()}: Joins every fork for the current branch back into origin. Recursive join does not allow \`--all\`.
+Additionally, \`${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork${ncc()}\` can auto-initialize submodules and
+install dependencies using detected package managers (currently supports npm, pnpm, bun, and uv)
+if configured (see \`${ncc('Cyan')}parallel.init${ncc()}\` config for options),
+getting the fork ready for work in no time.
+
+${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
+- ${ncc('Cyan')}fork <alias>${ncc()}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${ncc('Cyan')}--move${ncc()}\` or \`${ncc('Cyan')}--mirror${ncc()}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${ncc('Cyan')}--no-init${ncc()}\`.
+ - ${ncc('Cyan')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the origin worktree. \`${ncc('Cyan')}--keep${ncc()}\` retains the fork and updates its base; \`${ncc('Cyan')}--all\` also includes uncommitted changes.
+ - ${ncc('Cyan')}join -r|--recursive [--keep]${ncc()}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${ncc('Cyan')}--all${ncc()}\`.
 - ${ncc('Cyan')}list${ncc()}: Lists forks for the current branch with status (clean/dirty), commit divergence and optional path hyperlinks.
 - ${ncc('Cyan')}remove <alias>${ncc()}: Removes the forked worktree and cleans up the directory.
 
-${ncc('Bright') + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${ncc('Bright') + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
 Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -1272,19 +1301,21 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
    usage: () =>
       strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork ${ncc('Dim')}<alias> [--move|--mirror]${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork ${ncc('Dim')}<alias> [--move|--mirror] [--no-init[=submodule,pkg]]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel open ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel switch ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
- ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
- ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}-r|--recursive [--keep]${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
+${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}-r|--recursive [--keep]${ncc()}
 ${ncc('Cyan')}${EXECUTABLE_NAME} parallel remove ${ncc('Dim')}<alias>${ncc()}
 
 Examples:
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --move ${ncc() + ncc('Dim')}# Create fork and optionally move changes${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${ncc() + ncc('Dim')}# Skip all init behaviors${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${ncc() + ncc('Dim')}# Skip package installs only${ncc()}
    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list --short ${ncc() + ncc('Dim')}# Show forks for current branch${ncc()}
-    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}
-    ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join -r ${ncc() + ncc('Dim')}# Merge all forks back into origin${ncc()}`,
+   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}
+   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join -r ${ncc() + ncc('Dim')}# Merge all forks back into origin${ncc()}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -1296,7 +1327,7 @@ Examples:
 
 export const structure = {
    $root: {
-      fork: ['--move', '--mirror'],
+      fork: ['--move', '--mirror', '--no-init'],
       list: {},
       open: parallelOpenStructure,
       switch: parallelSwitchStructure,

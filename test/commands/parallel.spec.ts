@@ -106,9 +106,16 @@ describe('gdx parallel', async () => {
 
       const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
       const forkPath = path.join(worktreeRoot, 'feature-submodule');
-      await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
-      await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
-      await fs.writeFile(path.join(forkPath, 'deps', 'submodule', 'dirty.txt'), 'dirty');
+      const submodulePath = path.join(forkPath, 'deps', 'submodule');
+      const submoduleExists = await fs
+         .stat(submodulePath)
+         .then(() => true)
+         .catch(() => false);
+      if (!submoduleExists) {
+         await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
+         await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
+      }
+      await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
       const removeResult = await parallel(removeCtx);

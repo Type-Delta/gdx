@@ -10,6 +10,7 @@
 - `--bypass` flag to completely skip gdx intervention for advanced users who want to run raw git commands.
 - `gdx cache` command to manage cached data, including clearing and viewing cache status.
 - command suggestions for available parallel aliases.
+- `gdx parallel fork` worktree initialization automation, auto-initialize submodules and install dependencies using detected package managers.
 
 ### Fixed
 

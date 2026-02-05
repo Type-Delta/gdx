@@ -173,6 +173,11 @@ gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
 ```
 
+Additionally, `gdx parallel fork` can auto-initialize submodules and
+install dependencies using detected package managers (currently supports npm, pnpm, bun, and uv)
+if configured (see `parallel.init` config for options),
+getting the fork ready for work in no time.
+
 ### 5. Advanced Stash Management
 
 Git stash is great until you need to clean it up.
@@ -207,17 +212,17 @@ Tools to help you feel productive without leaving the terminal.
 
 ## Command Reference
 
-| Command      | Expansion / Function                                |
-| :----------- | :-------------------------------------------------- |
-| `s`, `stat`  | `git status`                                        |
-| `lg`, `lo`   | `git log --oneline --graph --all --decorate`        |
-| `sw`, `swit` | `git switch`                                        |
-| `br`, `bra`  | `git branch`                                        |
-| `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!)  |
-| `res`        | `git reset` (supports `res ~3`, `res -h` expansion) |
-| `sta`, `st`  | `git stash`                                         |
-| `lint`       | Run pre-push checks (spelling, secrets, etc.)       |
-| `gdx-config` | Manage gdx configuration                            |
+| Command      | Expansion / Function                                               |
+| :----------- | :----------------------------------------------------------------- |
+| `s`, `stat`  | `git status` (use `-r` recursively run "status" on all submodules) |
+| `lg`, `lo`   | `git log --oneline --graph --all --decorate`                       |
+| `sw`, `swit` | `git switch`                                                       |
+| `br`, `bra`  | `git branch`                                                       |
+| `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!)                 |
+| `res`        | `git reset` (supports `res ~3`, `res -h` expansion)                |
+| `sta`, `st`  | `git stash`                                                        |
+| `lint`       | Run pre-push checks (spelling, secrets, etc.)                      |
+| `gdx-config` | Manage gdx configuration                                           |
 
 _Run `gdx ghelp` to see the full list of expansions._
 
@@ -245,8 +250,6 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
 
 - [x] **Configurability:** Allow users to define their own shorthands in a `.gdxrc.toml` file (default: `~/.gdx/.gdxrc.toml`).
 - [x] **Shell Integration:** Auto-completion scripts for Zsh/Bash/Fish/Powershell with git fallback.
-- [ ] **Commit with specified editor:** like, `gdx commit --vim` to open Vim for commit messages.
-- [ ] **Quick commit:** `add`, `commit`, and `push` in one command like `gdx qc -pa` (`git add . && gdx commit auto && git push`)
 - [x] **Quick linting before push:** `gdx lint` to run following checks before pushing:
    - commit message spelling
    - env or sensitive content scanning

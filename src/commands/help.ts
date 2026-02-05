@@ -20,6 +20,7 @@ import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export default function help(name?: string): number {
    const cyan = ncc('Cyan');
+   const yellow = ncc('Yellow');
    const bright = ncc('Bright');
    const dim = ncc('Dim');
    const reset = ncc('Reset');
@@ -111,12 +112,18 @@ ${cyan}swit, sw           ${reset + dim}-> ${reset}switch
 ${bright + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 ${formatShortCmdList(HELP_MAP, { cyan, reset })}
 
-${bright + _2PointGradient('STASH USAGE EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-   ${cyan}stash l         ${reset}Show stash list (alias for ${EXECUTABLE_NAME} stash list).
-   ${cyan}stash d 3       ${reset}Drop stash@{3}.
-   ${cyan}stash d 2..5    ${reset}Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).
-   ${cyan}stash p 1       ${reset}Pop stash@{1}.
-   ${cyan}stash c         ${reset}Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).
+${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${cyan}--init <shell>         ${reset}Output shell initialization script for given shell.
+${cyan}--bypass               ${reset}Bypass gdx and execute git directly with the provided arguments.
+${cyan}--loglevel <level>     ${reset}Set log level (error, warning, info, debug).
+${cyan}--ghelp,               ${reset}Show GDX help message. ${dim}(use \`ghelp <command>\`
+${cyan}  --gdx-help, -gh      ${reset + dim}for command-specific help)${reset}
+${cyan}-r, --recursive        ${yellow}[For '${EXECUTABLE_NAME} status']${reset} Recursively show git status of submodules.
+${cyan}-au                    ${yellow}[For '${EXECUTABLE_NAME} pull']${reset} Shorthand for ${cyan}--allow-unrelated-histories${reset}.
+${cyan}--on-lint              ${yellow}[For '${EXECUTABLE_NAME} push']${reset} Skip linting for this push${reset}.
+${cyan}-fl                    ${yellow}[For '${EXECUTABLE_NAME} push']${reset} Shorthand for ${cyan}--force-with-lease${reset}.
+${cyan}-h                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--hard${reset}.
+${cyan}-s                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--soft${reset}.
 
 ${bright + _2PointGradient('LOG EXPORT EXAMPLE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 ${cyan}${EXECUTABLE_NAME} lg export --author="me@example.com"${reset}
@@ -154,9 +161,10 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    if (h && h.long) message = h.long();
    if (message && h.usage)
       message +=
-         '  ' +
+         '\n  ' +
          ncc('Bright') +
          _2PointGradient('USAGE', COLOR.Zinc400, COLOR.Zinc100, 0.2) +
+         ncc() +
          h.usage();
 
    if (message) {
