@@ -1,9 +1,9 @@
 import * as fs from '@/modules/fs';
 import path from 'path';
+import { ExecaError } from 'execa';
 
 import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
 
-import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import {
    $,
    $inherit,
@@ -13,18 +13,26 @@ import {
    openInEditor,
    scheduleChangeDir,
    spinner,
-} from '../modules/shell';
-import { normalizePath, quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR } from '@/consts';
-import { COLOR } from '@/consts';
+} from '@/modules/shell';
+import { normalizePath, quickPrint } from '@/utils/utilities';
+import Logger from '@/utils/logger';
+import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
-import Logger from '../utils/logger';
 import global from '@/global';
 import { getRepoRootCached } from '@/modules/cache-controller';
-import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
-import type { CommandArgThunk } from '@/common/types';
-import { ExecaError } from 'execa';
-import { hasCherryPickInProgress } from '@/modules/git';
+import {
+   deinitSubmodules,
+   getDirtySubmodules,
+   getSubmodules,
+   getWorktreeEntry,
+   getWorktreeOperations,
+   hasCherryPickInProgress,
+   normalizeStatusPath,
+   pruneWorktrees,
+} from '@/modules/git';
+import { CommandHelpObj, CommandStructure, GdxContext, CommandArgThunk } from '../common/types';
+
 
 interface ParallelMetadata {
    alias: string;
@@ -190,8 +198,30 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    const targetPath = path.join(ctx.parallelRoot, alias);
 
-   if (!fs.existsSync(targetPath)) {
+   const worktreeEntry = await getWorktreeEntry(git$, targetPath);
+   if (!worktreeEntry && !fs.existsSync(targetPath)) {
       Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}'.`, 'parallel');
+      return 1;
+   }
+
+   if (worktreeEntry?.locked) {
+      const reason = worktreeEntry.lockReason ? ` (${worktreeEntry.lockReason})` : '';
+      Logger.error(
+         `Worktree '${alias}' is locked${reason}. Unlock it before removing.`,
+         'parallel'
+      );
+      return 1;
+   }
+
+   if (!fs.existsSync(targetPath)) {
+      await pruneWorktrees(git$);
+      const afterPrune = await getWorktreeEntry(git$, targetPath);
+      if (!afterPrune) {
+         quickPrint(`${ncc('Cyan')}Removed worktree metadata:${ncc()} ${alias}`);
+         return 0;
+      }
+
+      Logger.error(`Worktree '${alias}' is missing on disk and could not be pruned.`, 'parallel');
       return 1;
    }
 
@@ -199,6 +229,78 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
    } catch {
       Logger.error(`Worktree '${alias}' is not accessible or writable. Cannot remove.`, 'parallel');
+      return 1;
+   }
+
+   const activeOps = await getWorktreeOperations(git$, targetPath);
+   if (activeOps.length > 0) {
+      Logger.error(
+         `Worktree '${alias}' has in-progress operations (${activeOps.join(', ')}). Complete or abort them before removing.`,
+         'parallel'
+      );
+      return 1;
+   }
+
+   const submodules = await getSubmodules(git$, targetPath);
+   if (submodules.length > 0) {
+      const dirtySubmodules = await getDirtySubmodules(git$, targetPath, submodules);
+      if (dirtySubmodules.length > 0) {
+         const detail = dirtySubmodules.join(', ');
+         Logger.error(
+            `Worktree '${alias}' has dirty submodules (${detail}). Commit, stash, or clean them before removing.`,
+            'parallel'
+         );
+         return 1;
+      }
+
+      try {
+         await deinitSubmodules(git$, targetPath);
+      } catch (err) {
+         const fallbackStatus = (
+            await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
+         ).stdout.trim();
+         if (fallbackStatus.length === 0) {
+            await pruneWorktrees(git$);
+         }
+
+         Logger.error(
+            `Failed to deinit submodules for '${alias}'.\n${yuString(err, { color: true })}`,
+            'parallel'
+         );
+         return 1;
+      }
+   }
+
+   const statusOutput = (
+      await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
+   if (statusOutput.length > 0) {
+      if (submodules.length > 0) {
+         const submodulePaths = new Set(
+            submodules.map((submodule) => normalizeStatusPath(submodule.path))
+         );
+         const statusPaths = statusOutput
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+            .map((line) => line.slice(3))
+            .map((rawPath) => rawPath.split(' -> ').pop() ?? rawPath)
+            .map((rawPath) => normalizeStatusPath(rawPath));
+
+         const dirtySubmodules = statusPaths.filter((statusPath) => submodulePaths.has(statusPath));
+         if (dirtySubmodules.length > 0) {
+            Logger.error(
+               `Worktree '${alias}' has dirty submodules (${dirtySubmodules.join(', ')}). Commit, stash, or clean them before removing.`,
+               'parallel'
+            );
+            return 1;
+         }
+      }
+
+      Logger.error(
+         `Worktree '${alias}' has uncommitted changes. Join or clean it before removing.`,
+         'parallel'
+      );
       return 1;
    }
 
@@ -240,6 +342,19 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
+      const errText = err instanceof ExecaError ? `${err.stderr || ''} ${err.message || ''}` : '';
+      if (
+         errText
+            .toLowerCase()
+            .includes('working trees containing submodules cannot be moved or removed')
+      ) {
+         Logger.error(
+            `Worktree '${alias}' contains submodules that must be deinitialized before removal.`,
+            'parallel'
+         );
+         return 1;
+      }
+
       if (err instanceof ExecaError && err.exitCode === 255) {
          Logger.error(
             `Folder '${targetPath}' is currently in use or GDX does not have permission to remove it. Please close any applications using it and force remove. (git already removed the connection to the origin worktree, retry may not work)`,
@@ -256,6 +371,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
             fs.rmSync(targetPath, { recursive: true, force: true });
+            await pruneWorktrees(git$);
             quickPrint(`${ncc('Cyan')}Force removed worktree directory:${ncc()} ${alias}`);
             return 0;
          } catch {
@@ -428,31 +544,9 @@ async function cmdRemove(git$: string | string[], args: string[]): Promise<numbe
 
    const targetPath = path.join(ctx.parallelRoot, alias);
 
-   try {
-      fs.accessSync(targetPath, fs.constants.F_OK | fs.constants.W_OK);
-   } catch {
-      Logger.error(
-         `Worktree '${alias}' not found for branch '${ctx.branchName}' or is not writable.`,
-         'parallel'
-      );
-      return 1;
-   }
-
    if (path.resolve(ctx.repoRoot) === path.resolve(targetPath)) {
       Logger.error(
          'Cannot remove the worktree you are currently in. Switch to origin first.',
-         'parallel'
-      );
-      return 1;
-   }
-
-   // Check for uncommitted changes
-   const statusOutput = (
-      await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
-   ).stdout.trim();
-   if (statusOutput.length > 0) {
-      Logger.error(
-         `Worktree '${alias}' has uncommitted changes. Join or clean it before removing.`,
          'parallel'
       );
       return 1;

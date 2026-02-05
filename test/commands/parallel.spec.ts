@@ -6,7 +6,7 @@ import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx parallel', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env, resetRepo } = await createTestEnv({
       autoResetBuffer: true,
    });
    const { git$ } = createGdxContext(tmpDir);
@@ -81,6 +81,63 @@ describe('gdx parallel', async () => {
          .then(() => true)
          .catch(() => false);
       expect(exists).toBe(false);
+   });
+
+   it('should block removal when submodules are dirty', async () => {
+      const submoduleRoot = path.join(tmpRootDir, 'submodule');
+      await fs.mkdir(submoduleRoot, { recursive: true });
+      await $`${git$} -C ${submoduleRoot} init`;
+      await $`${git$} -C ${submoduleRoot} config user.name ${'Test User'}`;
+      await $`${git$} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+      await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+      await $`${git$} -C ${submoduleRoot} add README.md`;
+      await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+      const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
+      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+      const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
+      await fs.writeFile(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
+      await $`${git$} -C ${tmpDir} add .gitmodules`;
+      await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
+      await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+      const forkPath = path.join(worktreeRoot, 'feature-submodule');
+      await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
+      await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
+      await fs.writeFile(path.join(forkPath, 'deps', 'submodule', 'dirty.txt'), 'dirty');
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
+      const removeResult = await parallel(removeCtx);
+
+      expect(removeResult).toBe(1);
+      expect(buffer.stderr).toContain('dirty submodules');
+
+      await $`${git$} worktree prune --expire now`;
+      await fs.rm(forkPath, { recursive: true, force: true });
+      await resetRepo();
+      await $`${git$} -C ${tmpDir} clean -fd`;
+   });
+
+   it('should prune missing worktree metadata on remove', async () => {
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-prune']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+      const forkPath = path.join(worktreeRoot, 'feature-prune');
+      await fs.rm(forkPath, { recursive: true, force: true });
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-prune']);
+      const removeResult = await parallel(removeCtx);
+
+      expect(removeResult).toBe(0);
+      expect(buffer.stdout.toLowerCase()).toContain('removed worktree metadata');
+
+      const listOutput = (await $`${git$} worktree list --porcelain`).stdout;
+      expect(listOutput).not.toContain(forkPath);
    });
 
    it('should join all worktrees recursively', async () => {

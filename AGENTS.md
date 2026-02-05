@@ -289,6 +289,9 @@ function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) { ..
 
 **JSDoc for public APIs:**
 
+Always document functions, classes, and complex types,
+this includes helpers even if they are not exported.
+
 ```typescript
 /**
  * Performs progressive matching of an input string against a list of candidates.
@@ -305,6 +308,8 @@ export function progressiveMatch(
 ```
 
 **Inline comments for complex logic:**
+
+Use this only for confusing or non-obvious code sections.
 
 ```typescript
 // Filter out gdx-specific flags to get pass-through args
@@ -456,7 +461,7 @@ const value = config.get<boolean>('llm.showThinking', true); // with default
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
-- **Quality Assurance:** Always run lint, typecheck, and tests after code changes. (you can do this mid development process so that you won't end up with a large number of errors at the end)
+- **Quality Assurance:** Always run lint, typecheck, and tests after code changes. (you can do this mid development process so that you won't end up with a large number of errors at the end) Once you are done with all features run full test again to ensure everything is working as expected.
 
 ### Working In Temporary Worktrees
 
