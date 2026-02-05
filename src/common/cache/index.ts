@@ -48,6 +48,8 @@ export class CacheService {
    isDisabled = false;
 
    private cache: CacheStructure = { ...DEFAULT_CACHE };
+   private memoryData: Record<string, unknown> = {};
+   private memoryEntryMeta: Record<string, Omit<CacheEntryMetadata, 'expiresAt'>> = {};
    private loaded = false;
    private dirty = false;
    private loadingPromise: Promise<void> | null = null;
@@ -236,6 +238,14 @@ export class CacheService {
    }
 
    /**
+    * Resets the in-memory (one-off) cache store.
+    */
+   private resetMemoryCache(): void {
+      this.memoryData = {};
+      this.memoryEntryMeta = {};
+   }
+
+   /**
     * Gets a value by dot-notation key path (e.g., 'git.version').
     * Checks per-key expiry and lazy-deletes if expired.
     */
@@ -265,6 +275,35 @@ export class CacheService {
       // Retrieve value from nested data structure
       const keys = keyPath.split('.');
       let value: any = this.cache.data;
+
+      for (const key of keys) {
+         if (value && typeof value === 'object' && key in value) {
+            value = value[key];
+         } else {
+            return defaultValue;
+         }
+      }
+
+      return value as T;
+   }
+
+   /**
+    * Gets a value from the in-memory (one-off) cache only.
+    * This does not touch disk and expires when the process exits.
+    */
+   async getOneOff<T = unknown>(keyPath: string): Promise<T | undefined>;
+   async getOneOff<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
+   async getOneOff<T = unknown>(keyPath: string, defaultValue?: T): Promise<T | undefined> {
+      await this.ensureLoaded();
+      if (this.isDisabled) return defaultValue;
+
+      const entry = this.memoryEntryMeta[keyPath];
+      if (!entry) {
+         return defaultValue;
+      }
+
+      const keys = keyPath.split('.');
+      let value: any = this.memoryData;
 
       for (const key of keys) {
          if (value && typeof value === 'object' && key in value) {
@@ -317,6 +356,35 @@ export class CacheService {
       // Update file-level metadata and mark dirty
       this.cache.meta.updatedAt = now;
       this.dirty = true;
+   }
+
+   /**
+    * Sets a value in the in-memory (one-off) cache only.
+    * This never writes to disk and expires when the process exits.
+    */
+   async setOneOff(keyPath: string, value: any): Promise<void> {
+      await this.ensureLoaded();
+      if (this.isDisabled) return;
+
+      const keys = keyPath.split('.');
+      let target: any = this.memoryData;
+
+      for (let i = 0; i < keys.length - 1; i++) {
+         const key = keys[i];
+         if (!(key in target) || typeof target[key] !== 'object') {
+            target[key] = {};
+         }
+         target = target[key];
+      }
+
+      const lastKey = keys[keys.length - 1];
+      target[lastKey] = value;
+
+      const now = Date.now();
+      this.memoryEntryMeta[keyPath] = {
+         createdAt: this.memoryEntryMeta[keyPath]?.createdAt ?? now,
+         updatedAt: now,
+      };
    }
 
    /**
@@ -377,6 +445,51 @@ export class CacheService {
    }
 
    /**
+    * Deletes a value from the in-memory (one-off) cache.
+    * @returns true if entry existed and was deleted, false otherwise.
+    */
+   async deleteOneOff(keyPath: string): Promise<boolean> {
+      await this.ensureLoaded();
+      if (this.isDisabled) return false;
+
+      if (!this.memoryEntryMeta[keyPath]) {
+         return false;
+      }
+
+      delete this.memoryEntryMeta[keyPath];
+
+      const keys = keyPath.split('.');
+      const pathToDelete: any[] = [];
+      let current: any = this.memoryData;
+
+      for (const key of keys) {
+         if (current && typeof current === 'object' && key in current) {
+            pathToDelete.push({ obj: current, key });
+            current = current[key];
+         } else {
+            return false;
+         }
+      }
+
+      if (pathToDelete.length > 0) {
+         const last = pathToDelete[pathToDelete.length - 1];
+         delete last.obj[last.key];
+      }
+
+      for (let i = pathToDelete.length - 2; i >= 0; i--) {
+         const { obj, key } = pathToDelete[i];
+         const child = obj[key];
+         if (child && typeof child === 'object' && Object.keys(child).length === 0) {
+            delete obj[key];
+         } else {
+            break;
+         }
+      }
+
+      return true;
+   }
+
+   /**
     * Gets the entire cache data object.
     */
    async getAll(): Promise<Readonly<CacheStructure>> {
@@ -419,6 +532,7 @@ export class CacheService {
    async clear(): Promise<void> {
       await this.ensureLoaded();
       this.resetCache();
+      this.resetMemoryCache();
    }
 }
 

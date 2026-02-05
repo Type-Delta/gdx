@@ -59,6 +59,13 @@ interface ParallelContext {
    isParallelWorktree: boolean;
 }
 
+const PARALLEL_CONTEXT_TTL_MS = 1000;
+let parallelContextCache: {
+   cacheKey: string;
+   context: ParallelContext | null;
+   expiresAt: number;
+} | null = null;
+
 async function listParallelAliases(git$: string | string[]): Promise<string[]> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return [];
@@ -135,6 +142,15 @@ function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
  * Gets the context for parallel worktree operations
  */
 async function getParallelContext(git$: string | string[]): Promise<ParallelContext | null> {
+   const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
+   const cacheKey = `${gitKey}|${path.resolve(process.cwd())}`;
+   if (parallelContextCache && parallelContextCache.cacheKey === cacheKey) {
+      if (Date.now() <= parallelContextCache.expiresAt) {
+         return parallelContextCache.context;
+      }
+      parallelContextCache = null;
+   }
+
    try {
       const repoRoot = await getRepoRootCached(git$);
       const projectName = path.basename(repoRoot);
@@ -173,7 +189,7 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
       safeBranch = normalizePath(safeBranch);
       const parallelRoot = path.join(worktreeRoot, safeProject, safeBranch);
 
-      return {
+      const context: ParallelContext = {
          repoRoot,
          projectName,
          branchName,
@@ -184,8 +200,21 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
          alias,
          isParallelWorktree: isParallel,
       };
+
+      parallelContextCache = {
+         cacheKey,
+         context,
+         expiresAt: Date.now() + PARALLEL_CONTEXT_TTL_MS,
+      };
+
+      return context;
    } catch (err) {
       Logger.error(yuString(err, { color: true }), 'parallel');
+      parallelContextCache = {
+         cacheKey,
+         context: null,
+         expiresAt: Date.now() + PARALLEL_CONTEXT_TTL_MS,
+      };
       return null;
    }
 }
@@ -685,6 +714,9 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
+   const statusCache = new Map<string, { isDirty: boolean; shortHead: string }>();
+   const comparisonCache = new Map<string, { ahead: number; behind: number }>();
+
    quickPrint(`${ncc('Cyan')}Project:${ncc()} ${ctx.projectName}`);
    quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${ctx.branchName}`);
    quickPrint(`${ncc('Cyan')}Origin:${ncc()} ${ctx.originPath}`);
@@ -716,34 +748,47 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const aliasLabel = meta?.alias || wt.name;
       hasAnyWt = true;
 
-      const statusOutput = (
-         await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
-      ).stdout.trim();
-      const isDirty = statusOutput.length > 0;
+      const statusKey = path.resolve(wtPath);
+      let statusInfo = statusCache.get(statusKey);
+      if (!statusInfo) {
+         const statusOutput = (
+            await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
+         ).stdout.trim();
+         const isDirty = statusOutput.length > 0;
 
-      let shortHead = 'unknown';
-      try {
-         shortHead = (await $`${git$} -C ${wtPath} rev-parse --short HEAD`).stdout.trim();
-      } catch {
-         // Keep 'unknown'
+         let shortHead = 'unknown';
+         try {
+            shortHead = (await $`${git$} -C ${wtPath} rev-parse --short HEAD`).stdout.trim();
+         } catch {
+            // Keep 'unknown'
+         }
+         statusInfo = { isDirty, shortHead };
+         statusCache.set(statusKey, statusInfo);
       }
 
       // Get commit comparison with origin
-      const { ahead, behind } = await getCommitComparison(git$, wtPath, ctx.originPath);
+      const comparisonKey = `${statusKey}::${path.resolve(ctx.originPath)}`;
+      let comparison = comparisonCache.get(comparisonKey);
+      if (!comparison) {
+         comparison = await getCommitComparison(git$, wtPath, ctx.originPath);
+         comparisonCache.set(comparisonKey, comparison);
+      }
 
       let commitInfo = '';
-      if (ahead > 0 && behind > 0) {
-         commitInfo = `${ncc('Yellow')}↑${ahead} ↓${behind}${ncc()}`;
-      } else if (ahead > 0) {
-         commitInfo = `${ncc('Green')}↑${ahead}${ncc()}`;
-      } else if (behind > 0) {
-         commitInfo = `${ncc('Red')}↓${behind}${ncc()}`;
+      if (comparison.ahead > 0 && comparison.behind > 0) {
+         commitInfo = `${ncc('Yellow')}↑${comparison.ahead} ↓${comparison.behind}${ncc()}`;
+      } else if (comparison.ahead > 0) {
+         commitInfo = `${ncc('Green')}↑${comparison.ahead}${ncc()}`;
+      } else if (comparison.behind > 0) {
+         commitInfo = `${ncc('Red')}↓${comparison.behind}${ncc()}`;
       } else {
          commitInfo = `${ncc('Dim')}up-to-date${ncc()}`;
       }
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
-      const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
+      const statusLabel = statusInfo.isDirty
+         ? `${ncc('Red')}dirty${ncc()}`
+         : `${ncc('Green')}clean${ncc()}`;
 
       if (args.includes('--short') || args.includes('-s')) {
          // Format path with hyperlink and clamp it to reasonable length
@@ -752,7 +797,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       }
 
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${shortHead}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${statusInfo.shortHead}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
       );
    }
 

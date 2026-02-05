@@ -1,9 +1,12 @@
+import crypto from 'crypto';
 import path from 'path';
 
+import { yuString } from '@lib/Tools';
+
+import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
 
 import Logger from '../utils/logger';
-import { yuString } from '@lib/Tools';
 import { $ } from './shell';
 
 export interface WorktreeEntry {
@@ -17,6 +20,17 @@ export interface SubmoduleEntry {
    path: string;
    status: string;
    initialized: boolean;
+}
+
+function createOneOffKey(prefix: string, scope: string): string {
+   const hash = crypto.createHash('sha1').update(scope).digest('hex');
+   return `${prefix}.${hash}`;
+}
+
+function getGitScope(git$: string | string[], worktreePath?: string): string {
+   const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
+   const basePath = worktreePath ? path.resolve(worktreePath) : process.cwd();
+   return `${gitKey}|${basePath}`;
 }
 
 /**
@@ -45,12 +59,20 @@ export async function getStashEntry(
    git$: string | string[],
    index: number
 ): Promise<{ sha: string; message: string } | null> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.stashEntry', `${getGitScope(git$)}|${index}`);
+   const cached = await cache.getOneOff<{ sha: string; message: string } | null>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       const ref = `stash@{${index}}`;
       const { stdout: sha } = await $`${git$} rev-parse ${ref}`;
       const { stdout: message } = await $`${git$} log -1 --format=%s ${ref}`;
-      return { sha: sha.trim(), message: message.trim() };
+      const result = { sha: sha.trim(), message: message.trim() };
+      await cache.setOneOff(cacheKey, result);
+      return result;
    } catch {
+      await cache.setOneOff(cacheKey, null);
       return null;
    }
 }
@@ -107,6 +129,12 @@ export function normalizeRemoteUrl(rawUrl: string): string {
  * @returns The name of the default remote, or null if no remotes exist.
  */
 export async function getDefaultRemoteName(git$: string | string[]): Promise<string | null> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.defaultRemoteName', getGitScope(git$));
+   const cached = await cache.getOneOff<string | null>(cacheKey);
+   if (cached !== undefined) return cached;
+
+   let result: string | null = null;
    try {
       const { stdout: remoteStdout } = await $`${git$} remote`;
       const remotes = remoteStdout
@@ -115,26 +143,31 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
          .map((remote) => remote.trim())
          .filter(Boolean);
 
-      if (remotes.length === 0) return null;
-
-      let branchRemote = '';
-      try {
-         const { stdout: branchStdout } = await $`${git$} rev-parse --abbrev-ref HEAD`;
-         const branchName = branchStdout.trim();
-         if (branchName && branchName !== 'HEAD') {
-            const { stdout: configStdout } = await $`${git$} config branch.${branchName}.remote`;
-            branchRemote = configStdout.trim();
+      if (remotes.length === 0) {
+         result = null;
+      } else {
+         let branchRemote = '';
+         try {
+            const { stdout: branchStdout } = await $`${git$} rev-parse --abbrev-ref HEAD`;
+            const branchName = branchStdout.trim();
+            if (branchName && branchName !== 'HEAD') {
+               const { stdout: configStdout } = await $`${git$} config branch.${branchName}.remote`;
+               branchRemote = configStdout.trim();
+            }
+         } catch {
+            branchRemote = '';
          }
-      } catch {
-         branchRemote = '';
-      }
 
-      if (branchRemote && remotes.includes(branchRemote)) return branchRemote;
-      if (remotes.includes('origin')) return 'origin';
-      return remotes[0];
+         if (branchRemote && remotes.includes(branchRemote)) result = branchRemote;
+         else if (remotes.includes('origin')) result = 'origin';
+         else result = remotes[0];
+      }
    } catch {
-      return null;
+      result = null;
    }
+
+   await cache.setOneOff(cacheKey, result);
+   return result;
 }
 
 /**
@@ -144,16 +177,30 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
  * @returns The normalized remote URL, or null if no remote is found.
  */
 export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<string | null> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.normalizedRemoteUrl', getGitScope(git$));
+   const cached = await cache.getOneOff<string | null>(cacheKey);
+   if (cached !== undefined) return cached;
+
    const remoteName = await getDefaultRemoteName(git$);
-   if (!remoteName) return null;
+   if (!remoteName) {
+      await cache.setOneOff(cacheKey, null);
+      return null;
+   }
 
    try {
       const { stdout } = await $`${git$} remote get-url ${remoteName}`;
       const remoteUrl = stdout.trim();
-      if (!remoteUrl) return null;
+      if (!remoteUrl) {
+         await cache.setOneOff(cacheKey, null);
+         return null;
+      }
       const normalized = normalizeRemoteUrl(remoteUrl);
-      return normalized || null;
+      const result = normalized || null;
+      await cache.setOneOff(cacheKey, result);
+      return result;
    } catch {
+      await cache.setOneOff(cacheKey, null);
       return null;
    }
 }
@@ -165,6 +212,11 @@ export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<s
  * @returns The absolute path to the main worktree root directory.
  */
 export async function getMainWorktreeRoot(git$: string | string[]): Promise<string> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.mainWorktreeRoot', getGitScope(git$));
+   const cached = await cache.getOneOff<string>(cacheKey);
+   if (cached !== undefined) return cached;
+
    let repoRoot = '';
 
    try {
@@ -177,7 +229,10 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
    try {
       const { stdout } = await $`${git$} rev-parse --git-common-dir`;
       const commonDir = stdout.trim();
-      if (!commonDir) return repoRoot;
+      if (!commonDir) {
+         await cache.setOneOff(cacheKey, repoRoot);
+         return repoRoot;
+      }
 
       const commonDirAbs = path.isAbsolute(commonDir)
          ? commonDir
@@ -187,7 +242,9 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
       if (normalizedCommonDir.includes('/.git/worktrees/')) {
          const gitDir = path.dirname(path.dirname(commonDirAbs));
          const mainRoot = path.dirname(gitDir);
-         return mainRoot || repoRoot;
+         const result = mainRoot || repoRoot;
+         await cache.setOneOff(cacheKey, result);
+         return result;
       }
 
       try {
@@ -207,7 +264,9 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
             if (normalizedGitDir.includes('/.git/worktrees/')) {
                const gitDir = path.dirname(path.dirname(gitDirAbs));
                const mainRoot = path.dirname(gitDir);
-               return mainRoot || repoRoot;
+               const result = mainRoot || repoRoot;
+               await cache.setOneOff(cacheKey, result);
+               return result;
             }
          }
       } catch {
@@ -215,8 +274,11 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
       }
 
       const mainRoot = path.dirname(commonDirAbs);
-      return mainRoot || repoRoot;
+      const result = mainRoot || repoRoot;
+      await cache.setOneOff(cacheKey, result);
+      return result;
    } catch {
+      await cache.setOneOff(cacheKey, repoRoot);
       return repoRoot;
    }
 }
@@ -231,10 +293,20 @@ export async function hasCherryPickInProgress(
    git$: string | string[],
    originPath: string
 ): Promise<boolean> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey(
+      'git.cherryPickInProgress',
+      `${getGitScope(git$, originPath)}|${path.resolve(originPath)}`
+   );
+   const cached = await cache.getOneOff<boolean>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       await $`${git$} -C ${originPath} rev-parse -q --verify CHERRY_PICK_HEAD`;
+      await cache.setOneOff(cacheKey, true);
       return true;
    } catch {
+      await cache.setOneOff(cacheKey, false);
       return false;
    }
 }
@@ -265,9 +337,17 @@ export function normalizeStatusPath(rawPath: string): string {
  * @returns A list of parsed worktree entries.
  */
 export async function getWorktreeList(git$: string | string[]): Promise<WorktreeEntry[]> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.worktreeList', getGitScope(git$));
+   const cached = await cache.getOneOff<WorktreeEntry[]>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       const output = (await $`${git$} worktree list --porcelain`).stdout.trim();
-      if (!output) return [];
+      if (!output) {
+         await cache.setOneOff(cacheKey, []);
+         return [];
+      }
 
       const entries: WorktreeEntry[] = [];
       let current: WorktreeEntry | null = null;
@@ -298,9 +378,11 @@ export async function getWorktreeList(git$: string | string[]): Promise<Worktree
       }
 
       if (current) entries.push(current);
+      await cache.setOneOff(cacheKey, entries);
       return entries;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
+      await cache.setOneOff(cacheKey, []);
       return [];
    }
 }
@@ -344,13 +426,25 @@ export async function getGitPath(
    worktreePath: string,
    gitPath: string
 ): Promise<string | null> {
+   const cache = await getCache();
+   const scope = `${getGitScope(git$, worktreePath)}|${gitPath}`;
+   const cacheKey = createOneOffKey('git.path', scope);
+   const cached = await cache.getOneOff<string | null>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       const output = (
          await $`${git$} -C ${worktreePath} rev-parse --git-path ${gitPath}`
       ).stdout.trim();
-      if (!output) return null;
-      return path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
+      if (!output) {
+         await cache.setOneOff(cacheKey, null);
+         return null;
+      }
+      const resolved = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
+      await cache.setOneOff(cacheKey, resolved);
+      return resolved;
    } catch {
+      await cache.setOneOff(cacheKey, null);
       return null;
    }
 }
@@ -395,6 +489,11 @@ export async function getSubmodules(
    git$: string | string[],
    worktreePath: string
 ): Promise<SubmoduleEntry[]> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.submodules', getGitScope(git$, worktreePath));
+   const cached = await cache.getOneOff<SubmoduleEntry[]>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       let configOutput = '';
       try {
@@ -444,7 +543,10 @@ export async function getSubmodules(
       }
 
       const configPathSet = new Set([...configPaths, ...filePaths, ...gitlinkPaths]);
-      if (configPathSet.size === 0) return [];
+      if (configPathSet.size === 0) {
+         await cache.setOneOff(cacheKey, []);
+         return [];
+      }
       const resolvedPaths = Array.from(configPathSet);
 
       let statusMap = new Map<string, string>();
@@ -465,7 +567,7 @@ export async function getSubmodules(
          statusMap = new Map<string, string>();
       }
 
-      return resolvedPaths.map((submodulePath) => {
+      const result = resolvedPaths.map((submodulePath) => {
          const status = statusMap.get(submodulePath) ?? '-';
          return {
             path: submodulePath,
@@ -473,8 +575,11 @@ export async function getSubmodules(
             initialized: status !== '-',
          } satisfies SubmoduleEntry;
       });
+      await cache.setOneOff(cacheKey, result);
+      return result;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
+      await cache.setOneOff(cacheKey, []);
       return [];
    }
 }
