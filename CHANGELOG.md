@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.3.0 - 2026-02-5
 
 ### Added
 
@@ -18,6 +18,7 @@
 - minor performance improvements and bug fixes.
 - improved caching mechanism with per-key TTLs.
 - move default config location to `~/.gdx/*`.
+- cspell not using default dictionary.
 
 ## Version 0.2.0 - 2026-01-14
 
