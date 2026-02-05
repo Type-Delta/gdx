@@ -28,6 +28,7 @@ import {
    getWorktreeEntry,
    getWorktreeOperations,
    hasCherryPickInProgress,
+   invalidateWorktreeListCache,
    normalizeStatusPath,
    pruneWorktrees,
 } from '@/modules/git';
@@ -228,6 +229,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    const targetPath = path.join(ctx.parallelRoot, alias);
 
+   await invalidateWorktreeListCache(git$);
    const worktreeEntry = await getWorktreeEntry(git$, targetPath);
    if (!worktreeEntry && !fs.existsSync(targetPath)) {
       Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}'.`, 'parallel');

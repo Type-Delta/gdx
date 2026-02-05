@@ -388,6 +388,17 @@ export async function getWorktreeList(git$: string | string[]): Promise<Worktree
 }
 
 /**
+ * Clears the cached worktree list for the current repository scope.
+ * Useful after worktree add/remove operations.
+ * @param git$ - Git executable path or command array.
+ */
+export async function invalidateWorktreeListCache(git$: string | string[]): Promise<void> {
+   const cache = await getCache();
+   const cacheKey = createOneOffKey('git.worktreeList', getGitScope(git$));
+   await cache.deleteOneOff(cacheKey);
+}
+
+/**
  * Finds a worktree entry for a given path.
  * @param git$ - Git executable path or command array.
  * @param worktreePath - The worktree path to locate.
@@ -411,6 +422,8 @@ export async function pruneWorktrees(git$: string | string[]): Promise<void> {
       await $`${git$} worktree prune --expire now`;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
+   } finally {
+      await invalidateWorktreeListCache(git$);
    }
 }
 

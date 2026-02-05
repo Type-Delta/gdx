@@ -4,6 +4,7 @@ import path from 'path';
 
 import parallel from '@/commands/parallel';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { resetCache } from '@/common/cache';
 
 describe('gdx parallel', async () => {
    const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env, resetRepo } = await createTestEnv({
@@ -84,6 +85,7 @@ describe('gdx parallel', async () => {
    });
 
    it('should block removal when submodules are dirty', async () => {
+      resetCache();
       const submoduleRoot = path.join(tmpRootDir, 'submodule');
       await fs.mkdir(submoduleRoot, { recursive: true });
       await $`${git$} -C ${submoduleRoot} init`;
@@ -117,6 +119,7 @@ describe('gdx parallel', async () => {
       }
       await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
 
+      resetCache();
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
       const removeResult = await parallel(removeCtx);
 
@@ -130,6 +133,7 @@ describe('gdx parallel', async () => {
    });
 
    it('should prune missing worktree metadata on remove', async () => {
+      resetCache();
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-prune']);
       expect(await parallel(forkCtx)).toBe(0);
 
@@ -137,6 +141,7 @@ describe('gdx parallel', async () => {
       const forkPath = path.join(worktreeRoot, 'feature-prune');
       await fs.rm(forkPath, { recursive: true, force: true });
 
+      resetCache();
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-prune']);
       const removeResult = await parallel(removeCtx);
 
