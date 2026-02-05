@@ -3,6 +3,7 @@ import type { SpellCheckFileResult } from 'cspell-lib';
 import type { spellCheckDocument as CSpellSpellCheckDocument } from 'cspell-lib';
 
 let cspellModulePromise: Promise<typeof import('cspell-lib')> | null = null;
+let bundledDictionaryNamesPromise: Promise<string[]> | null = null;
 async function getCSpell() {
    cspellModulePromise ??= import('cspell-lib');
    return await cspellModulePromise;
@@ -11,6 +12,30 @@ async function getCSpell() {
 export async function spellCheckDocument(...args: Parameters<typeof CSpellSpellCheckDocument>) {
    const cspell = await getCSpell();
    return await cspell.spellCheckDocument(...args);
+}
+
+/**
+ * Gets the names of all dictionaries bundled with the current cspell-lib version.
+ */
+export async function getBundledDictionaryNames(): Promise<string[]> {
+   bundledDictionaryNamesPromise ??= (async () => {
+      const cspell = await getCSpell();
+      const settings = await cspell.getDefaultBundledSettingsAsync();
+      const names = new Set<string>();
+      const ordered: string[] = [];
+      const addName = (name?: string) => {
+         if (!name || names.has(name)) return;
+         names.add(name);
+         ordered.push(name);
+      };
+
+      settings.dictionaryDefinitions?.forEach((def) => addName(def.name));
+      settings.dictionaries?.forEach((name) => addName(name));
+
+      return ordered;
+   })();
+
+   return bundledDictionaryNamesPromise;
 }
 
 export function prettyFormatIssues(result: SpellCheckFileResult, context: string): string {

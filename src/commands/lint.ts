@@ -17,7 +17,8 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    if (!(await assertInGitWorktree(git$))) return 1;
 
-   const { spellCheckDocument, prettyFormatIssues } = await import('@/modules/spellcheck');
+   const { spellCheckDocument, prettyFormatIssues, getBundledDictionaryNames } =
+      await import('@/modules/spellcheck');
 
    const config = await getConfig();
    const maxFileSizeKb = config.get<number>('lint.maxFileSizeKb') || 1024;
@@ -52,6 +53,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    // 1. Commit Message Spelling
    if (logOutput) {
+      const bundledDictionaries = await getBundledDictionaryNames();
       // eslint-disable-next-line no-useless-escape
       const commits = logOutput.split('$$\$___SEP___\$$$').filter((c) => c.trim());
 
@@ -59,8 +61,14 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          // Check spelling with cspell
          const result = await spellCheckDocument(
             { uri: 'commit-message', text: commitMsg, languageId: 'plaintext', locale: 'en' },
-            { generateSuggestions: true, noConfigSearch: true },
-            {}
+            {
+               generateSuggestions: true,
+               noConfigSearch: true,
+               unknownWords: 'report-common-typos',
+            },
+            {
+               dictionaries: bundledDictionaries,
+            }
          );
          if (result.issues.length === 0) continue;
 
