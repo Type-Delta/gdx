@@ -68,7 +68,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-            prettyFormatIssues(result, commitMsg)
+               prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -164,13 +164,13 @@ function printLWarning(subject: string, message: string) {
 
    quickPrint(
       ncc('BgYellow') +
-      ncc('Bright') +
-      ncc('White') +
-      ' LWARN ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
-      ncc()
+         ncc('Bright') +
+         ncc('White') +
+         ' LWARN ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
+         ncc()
    );
 }
 
@@ -181,57 +181,65 @@ function printLError(subject: string, message: string) {
 
    quickPrint(
       ncc('BgRed') +
-      ncc('Bright') +
-      ncc('White') +
-      ' LERROR ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Red')} ${message}` +
-      ncc()
+         ncc('Bright') +
+         ncc('White') +
+         ' LERROR ' +
+         ncc() +
+         ncc('Invert') +
+         ` ${subject} ${ncc() + ncc('Red')} ${message}` +
+         ncc()
    );
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('LINT', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('LINT', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
 
-${ncc('Bright') + _2PointGradient('CHECKS PERFORMED', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('CHECKS PERFORMED', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 - Spelling: Checks for typos in commit messages using cspell.
 - Sensitive Content: Scans for API keys, tokens, and private keys.
 - Conflict Markers: Checks for leftover merge conflict markers.
 - File Size: Warns if files exceed the configured size limit (default 1MB).
 
-${ncc('Bright') + _2PointGradient('CONFIGURATION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${EXECUTABLE_NAME} gdx-config\`:
+${bright + _2PointGradient('CONFIGURATION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${cyan}${EXECUTABLE_NAME} gdx-config${reset}\`:
 [lint]
 onPushBehavior = "off" | "error" | "warning"  # Default: "off"
 maxFileSizeKb = 1024                          # Default: 1024 KB
-`,
+ `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Lint outgoing commits for format, spelling, sensitive data, and more.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} lint${ncc()}
+${cyan}${EXECUTABLE_NAME} lint${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} lint ${ncc() + ncc('Dim')}# Run lint checks on outgoing commits${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} lint ${reset + dim}# Run lint checks on outgoing commits${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

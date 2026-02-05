@@ -181,7 +181,10 @@ export class CacheService {
 
          // Ensure required fields exist
          if (!parsed.entryMeta || !parsed.meta.lastPruneAt) {
-            Logger.debug('Existing cache file\' schema mismatch; resetting cache to newer version', 'cache');
+            Logger.debug(
+               "Existing cache file' schema mismatch; resetting cache to newer version",
+               'cache'
+            );
             this.resetCache(false);
             this.loaded = true;
             return;

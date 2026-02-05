@@ -77,9 +77,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-      ncc('Bright') +
-      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-      ` (Max: ${maxCommits} commits/day)\n`
+         ncc('Bright') +
+         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+         ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
@@ -149,20 +149,23 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('GRAPH', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('GRAPH', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Render a calendar-style contribution graph for a repository author.
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
-${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-Supply ${ncc('Cyan')}--email <email>${ncc()} to override the configured git user email. Use ${ncc('Cyan')}--quiet${ncc()} to suppress informational headers when embedding the graph in other scripts.
+${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
 
-${ncc('Bright') + _2PointGradient('TERMINAL NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-The graph respects \`global.terminalWidth\`. If the terminal is too narrow the command will bail with an error message. Colors are rendered via the \`ncc()\` helper.
+${bright + _2PointGradient('TERMINAL NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
 `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -170,23 +173,28 @@ The graph respects \`global.terminalWidth\`. If the terminal is too narrow the c
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Render a calendar-style contribution graph for an author.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc('Dim')}[--email <email>] [--quiet]${ncc()}
+ ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--quiet]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} graph ${ncc() + ncc('Dim')}# Graph for configured git user${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} graph --email bob@example.com ${ncc() + ncc('Dim')}# Graph for specified author${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} graph ${reset + dim}# Graph for configured git user${reset}
+   ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

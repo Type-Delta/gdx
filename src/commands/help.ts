@@ -16,6 +16,7 @@ import { help as clearHelp } from './clear';
 import { help as cacheHelp } from './cache';
 import { help as lintHelp } from './lint';
 import { help as statusHelp } from './status';
+import { help as doctorHelp } from './doctor';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export default function help(name?: string): number {
@@ -37,6 +38,7 @@ export default function help(name?: string): number {
       clear: clearHelp,
       lint: lintHelp,
       status: statusHelp,
+      doctor: doctorHelp,
    };
 
    if (!name) {
@@ -45,28 +47,28 @@ export default function help(name?: string): number {
          strWrap(
             `
 ──────────────────────────────
-${bright + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.32, 1)}
+${bright + _2PointGradient('GDX (Git Developer eXperience)', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.32, 1) + reset}
 Version: ${cyan + VERSION + reset}
 ──────────────────────────────
 
 Git, but with better DX. The raw power of Git,
 aligned with human workflows.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for git (executable) with common shortcuts,
 stash-range support, and convenience expansions.
 It forwards unrecognized commands/args to git (executable) unchanged.
 
-${bright + _2PointGradient('SYNOPSIS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('SYNOPSIS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${EXECUTABLE_NAME} <command> [<args>]
 Examples:
    ${cyan}${EXECUTABLE_NAME} st           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} stash${reset}
    ${cyan}${EXECUTABLE_NAME} lg           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} log --oneline --graph --all --decorate${reset}
    ${cyan}${EXECUTABLE_NAME} stash d 2..6 ${reset + dim}# drop stashes 2 through 6 (safe: drops high->low)${reset}
-   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory (use \`${EXECUTABLE_NAME} clear pardon\` to restore)${reset}
+   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory (use \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\` to restore)${reset}
    ${cyan}${EXECUTABLE_NAME} cmi auto     ${reset + dim}# generate commit message based on staged changes using LLM${reset}
 
-${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 - Many short aliases for common commands (commit, branch, checkout, etc.).
 - Smart expansions:
    - log: ${cyan}${EXECUTABLE_NAME} lg ${reset + dim}-> ${reset + cyan}${EXECUTABLE_NAME} log --oneline --graph --all --decorate${reset}
@@ -79,8 +81,8 @@ ${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
       - ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}->${reset} creates a timestamped patch backup
         in the system temp folder, then resets the working directory
         (${cyan}${EXECUTABLE_NAME} reset --hard ${reset + dim}+ ${reset + cyan}${EXECUTABLE_NAME} clean -fd${reset}).
-      - Use \`${reset + cyan}${EXECUTABLE_NAME} clear pardon${reset}\` to apply the latest backup patch
-        and restore changes. Add \`-f\`/\`--force\` to bypass dirty-working-directory prompts.
+      - Use \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\` to apply the latest backup patch
+        and restore changes. Add \`${cyan}-f${reset}\`/\`${cyan}--force${reset}\` to bypass dirty-working-directory prompts.
 - Stash convenience:
       - Short forms: ${cyan}${EXECUTABLE_NAME} sta / ${EXECUTABLE_NAME} st${reset} for stash; ${cyan}${EXECUTABLE_NAME} sta l${reset} -> stash list.
       - ${cyan}${EXECUTABLE_NAME} stash d 2..6${reset} — drops stash@{6}..stash@{2} (drops high→low to
@@ -89,10 +91,10 @@ ${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
 - Quick worktrees:
    - ${cyan}${EXECUTABLE_NAME} parallel fork/remove/join/switch/open/list${reset} for temp-backed worktree workflows.
 
-${bright + _2PointGradient('SHORTHAND LIST (common)', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('SHORTHAND LIST (common)', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${cyan}ad                 ${reset + dim}-> ${reset}add
 ${cyan}bra, br            ${reset + dim}-> ${reset}branch
-${cyan}clear              ${reset + dim}-> ${reset}clear (backup changes and reset working directory; use \`pardon\` to restore)
+${cyan}clear              ${reset + dim}-> ${reset}clear (backup changes and reset working directory; use \`${cyan}pardon${reset}\` to restore)
 ${cyan}cl, clo            ${reset + dim}-> ${reset}clone
 ${cyan}com, comm, cmi     ${reset + dim}-> ${reset}commit
 ${cyan}che, checko, co    ${reset + dim}-> ${reset}checkout
@@ -109,14 +111,14 @@ ${cyan}sta, st            ${reset + dim}-> ${reset}stash
 ${cyan}s, stat            ${reset + dim}-> ${reset}status
 ${cyan}swit, sw           ${reset + dim}-> ${reset}switch
 
-${bright + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('CUSTOM COMMAND LIST', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${formatShortCmdList(HELP_MAP, { cyan, reset })}
 
-${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${cyan}--init <shell>         ${reset}Output shell initialization script for given shell.
 ${cyan}--bypass               ${reset}Bypass gdx and execute git directly with the provided arguments.
 ${cyan}--loglevel <level>     ${reset}Set log level (error, warning, info, debug).
-${cyan}--ghelp,               ${reset}Show GDX help message. ${dim}(use \`ghelp <command>\`
+${cyan}--ghelp,               ${reset}Show GDX help message. ${dim}(use \`${cyan}ghelp <command>${reset}\`
 ${cyan}  --gdx-help, -gh      ${reset + dim}for command-specific help)${reset}
 ${cyan}-r, --recursive        ${yellow}[For '${EXECUTABLE_NAME} status']${reset} Recursively show git status of submodules.
 ${cyan}-au                    ${yellow}[For '${EXECUTABLE_NAME} pull']${reset} Shorthand for ${cyan}--allow-unrelated-histories${reset}.
@@ -125,12 +127,12 @@ ${cyan}-fl                    ${yellow}[For '${EXECUTABLE_NAME} push']${reset} S
 ${cyan}-h                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--hard${reset}.
 ${cyan}-s                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--soft${reset}.
 
-${bright + _2PointGradient('LOG EXPORT EXAMPLE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('LOG EXPORT EXAMPLE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 ${cyan}${EXECUTABLE_NAME} lg export --author="me@example.com"${reset}
    Generate a formatted log export file (wrapper will add default
    --author if missing and format the output for export).
 
-${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 - Help message for individual custom commands is available via
    ${cyan}${EXECUTABLE_NAME} ghelp <command>${reset} (e.g. ${cyan}${EXECUTABLE_NAME} ghelp stash${reset}).
 - Range notation must be numeric and in the form start..end (e.g. 2..6).
@@ -162,9 +164,9 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    if (message && h.usage)
       message +=
          '\n  ' +
-         ncc('Bright') +
+         bright +
          _2PointGradient('USAGE', COLOR.Zinc400, COLOR.Zinc100, 0.2) +
-         ncc() +
+         reset +
          h.usage();
 
    if (message) {
@@ -177,19 +179,24 @@ ${bright + _2PointGradient('NOTES & SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
    return 1;
 }
 
-function formatShortCmdList(helpObj: Record<string, CommandHelpObj>, colors: { cyan: string; reset: string }): string {
+function formatShortCmdList(
+   helpObj: Record<string, CommandHelpObj>,
+   colors: { cyan: string; reset: string }
+): string {
    const res = [];
    for (const [cmd, h] of Object.entries(helpObj)) {
-      res.push(`${colors.cyan}${strJustify(cmd, 19, {
-         overflow: 'visible',
-         align: 'left',
-         redundancyLv: 0
-      })}${colors.reset}${strWrap(h.short, 60, {
-         indent: 19,
-         firstIndent: 0,
-         redundancyLv: 0,
-         mode: 'strict'
-      })}`);
+      res.push(
+         `${colors.cyan}${strJustify(cmd, 19, {
+            overflow: 'visible',
+            align: 'left',
+            redundancyLv: 0,
+         })}${colors.reset}${strWrap(h.short, 60, {
+            indent: 19,
+            firstIndent: 0,
+            redundancyLv: 0,
+            mode: 'strict',
+         })}`
+      );
    }
    return res.join('\n');
 }

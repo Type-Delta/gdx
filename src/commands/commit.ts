@@ -280,19 +280,22 @@ export default {
 };
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('COMMIT AUTO', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('COMMIT AUTO', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Generate a commit message from staged changes using an LLM.
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
-${ncc('Bright') + _2PointGradient('FLAGS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-Use ${ncc('Cyan')}--no-commit (-nc)${ncc()} to prevent creating the commit (message will be printed). Use ${ncc('Cyan')}--copy (-cp)${ncc()} in combination with --no-commit to copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
+${bright + _2PointGradient('FLAGS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
 
-${ncc('Bright') + _2PointGradient('REQUIREMENTS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('REQUIREMENTS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 A non-empty staged diff is required; the command will error if there are no staged changes.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -301,22 +304,27 @@ A non-empty staged diff is required; the command will error if there are no stag
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Auto-generate a commit message from staged changes using an LLM.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} commit auto ${ncc('Dim')}[--no-commit] [--copy]${ncc()}
+${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit] [--copy]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto                    ${ncc() + ncc('Dim')}# Generate and commit using LLM-generated message${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit        ${ncc() + ncc('Dim')}# Print generated message without committing${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} commit auto --no-commit --copy ${ncc() + ncc('Dim')}# Copy generated message to clipboard${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} commit auto                    ${reset + dim}# Generate and commit using LLM-generated message${reset}
+   ${cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${reset + dim}# Print generated message without committing${reset}
+   ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 };

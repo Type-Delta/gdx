@@ -123,7 +123,7 @@ export class ConfigService {
          } catch (err) {
             this.logger.warn(
                `Failed to load secure key '${keyPath}' from keychain:\n` +
-               Err.from(err).toString({ color: true })
+                  Err.from(err).toString({ color: true })
             );
          }
       }
@@ -166,7 +166,7 @@ export class ConfigService {
          } catch (err) {
             this.logger.warn(
                `Failed to save secure key '${keyPath}' to keychain:\n` +
-               Err.from(err).toString({ color: true })
+                  Err.from(err).toString({ color: true })
             );
          }
       }

@@ -69,8 +69,14 @@ async function getSubmoduleStatus(
       return result.stdout;
    } catch (error) {
       const err = Err.from(error);
-      Logger.warn(`Failed to get status for submodule ${submodulePath}.\nError: ${err.message}`, 'status');
-      Logger.debug(`Failed to get status for submodule ${submodulePath}. \n${err.toString({ color: true })}`, 'status');
+      Logger.warn(
+         `Failed to get status for submodule ${submodulePath}.\nError: ${err.message}`,
+         'status'
+      );
+      Logger.debug(
+         `Failed to get status for submodule ${submodulePath}. \n${err.toString({ color: true })}`,
+         'status'
+      );
       return '';
    }
 }
@@ -139,33 +145,36 @@ export default async function status(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('STATUS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('STATUS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Show the working tree status for the repository and optionally all submodules.
 
-${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-\`${EXECUTABLE_NAME} status\` is a wrapper around \`git status\` with added support for recursive submodule status checking. When the \`--recursive\` or \`-r\` flag is used, it will show the status of the main repository followed by the status of each submodule.
+${bright + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+\`${cyan}${EXECUTABLE_NAME} status${reset}\` is a wrapper around \`${cyan}git status${reset}\` with added support for recursive submodule status checking. When the \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
 
-${ncc('Bright') + _2PointGradient('RECURSIVE MODE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-When \`--recursive\` or \`-r\` is specified:
+${bright + _2PointGradient('RECURSIVE MODE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+When \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` is specified:
 - Shows status of the main repository first
 - Then shows status for each submodule with clear headers
 - Displays both absolute submodule paths and paths relative to your current directory
-- All other \`git status\` flags are passed through to each status check
+- All other \`${cyan}git status${reset}\` flags are passed through to each status check
 
-${ncc('Bright') + _2PointGradient('EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-${ncc('Cyan')}${EXECUTABLE_NAME} status --recursive${ncc()}
+${bright + _2PointGradient('EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${cyan}${EXECUTABLE_NAME} status --recursive${reset}
    Show status for repository and all submodules
 
-${ncc('Cyan')}${EXECUTABLE_NAME} s -r${ncc()}
+${cyan}${EXECUTABLE_NAME} s -r${reset}
    Same as above using shorthand
 
-${ncc('Cyan')}${EXECUTABLE_NAME} status -r --short${ncc()}
+${cyan}${EXECUTABLE_NAME} status -r --short${reset}
    Show short format status recursively
 
-${ncc('Cyan')}${EXECUTABLE_NAME} status --recursive --porcelain${ncc()}
+${cyan}${EXECUTABLE_NAME} status --recursive --porcelain${reset}
    Show porcelain format status recursively
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -174,24 +183,29 @@ ${ncc('Cyan')}${EXECUTABLE_NAME} status --recursive --porcelain${ncc()}
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Show working tree status with optional recursive submodule support',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} status ${ncc('Dim')}[--recursive|-r] [<git-status-options>]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} s ${ncc('Dim')}[--recursive|-r] [<git-status-options>]${ncc()}
+${cyan}${EXECUTABLE_NAME} status ${dim}[--recursive|-r] [<git-status-options>]${reset}
+${cyan}${EXECUTABLE_NAME} s ${dim}[--recursive|-r] [<git-status-options>]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} status --recursive ${ncc() + ncc('Dim')}# Show status for repo and all submodules${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} s -r --short ${ncc() + ncc('Dim')}# Short format with submodules${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} status --recursive ${reset + dim}# Show status for repo and all submodules${reset}
+   ${cyan}${EXECUTABLE_NAME} s -r --short ${reset + dim}# Short format with submodules${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

@@ -91,19 +91,21 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('NOCAP', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('NOCAP', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Generate a playful roast for your latest commit message.
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Reads the latest commit message authored by the configured git user and asks the configured LLM provider to produce a humorous "roast" or light-hearted commentary. Output is streamed to the terminal with progress spinners and incremental printing as the LLM responds.
 
-${ncc('Bright') + _2PointGradient('WHEN TO USE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('WHEN TO USE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Use when you want a quick, entertaining summary/critique of your most recent commit message before pushing, or as a lighthearted CI/gaming aid.
 
-${ncc('Bright') + _2PointGradient('NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -112,22 +114,27 @@ The command requires a valid git user.email in repo config and a configured LLM 
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Create a humorous critique of your latest commit message.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} nocap${ncc()}
+${cyan}${EXECUTABLE_NAME} nocap${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} nocap ${ncc() + ncc('Dim')}# Roast the latest commit by the configured git user${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} nocap ${reset + dim}# Roast the latest commit by the configured git user${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

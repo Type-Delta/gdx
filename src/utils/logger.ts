@@ -215,7 +215,7 @@ class Logger {
                message = strWrap(cleanString(message), 120, {
                   indent: 33,
                   redundancyLv: -1,
-                  mode: 'strict'
+                  mode: 'strict',
                });
 
                return `${timestamp} [${paddedLevel}] ${module}: ${message}`;

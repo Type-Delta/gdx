@@ -180,20 +180,23 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('CLEAR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('CLEAR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Safely backup and clear local working changes.
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`git reset --hard\` and \`git clean -fd\`. The latest patch is kept so you can restore it with ${ncc('Cyan')}${EXECUTABLE_NAME} clear pardon${ncc()}.
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${cyan}git reset --hard${reset}\` and \`${cyan}git clean -fd${reset}\`. The latest patch is kept so you can restore it with \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\`.
 
-${ncc('Bright') + _2PointGradient('SUBCOMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('SUBCOMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 - list: Show available backup patch files for this project/branch.
 - pardon: Restore the most recent backup patch.
 
-${ncc('Bright') + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -202,24 +205,29 @@ All files (tracked and untracked) are backed up before clearing. Pardon requires
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Backup and clear local changes, with a restore (pardon) option.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} clear ${ncc('Dim')}[list|pardon]${ncc()}
+${cyan}${EXECUTABLE_NAME} clear ${dim}[list|pardon]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} clear ${ncc() + ncc('Dim')}# Create backup patch and clear working tree${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} clear list ${ncc() + ncc('Dim')}# Show recent backup patches${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} clear pardon ${ncc() + ncc('Dim')}# Restore the latest backup patch${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}# Create backup patch and clear working tree${reset}
+   ${cyan}${EXECUTABLE_NAME} clear list ${reset + dim}# Show recent backup patches${reset}
+   ${cyan}${EXECUTABLE_NAME} clear pardon ${reset + dim}# Restore the latest backup patch${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

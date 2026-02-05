@@ -353,13 +353,15 @@ function formatPreview(value: unknown): string {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('CACHE', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('CACHE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Manually manage gdx cache entries and settings.
 
-${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 - list: Show cache keys, TTL, and a short value preview.
 - prune: Remove expired entries from the cache file.
 - reset: Delete the entire cache file.
@@ -372,24 +374,28 @@ ${ncc('Bright') + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2)
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Manually manage gdx cache entries and settings.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} cache prune${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} cache reset${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} cache list${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} cache delete ${ncc('Dim')}<key|prefix> [more...]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} cache enable${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} cache disable${ncc()}
+${cyan}${EXECUTABLE_NAME} cache prune${reset}
+${cyan}${EXECUTABLE_NAME} cache reset${reset}
+${cyan}${EXECUTABLE_NAME} cache list${reset}
+${cyan}${EXECUTABLE_NAME} cache delete ${dim}<key|prefix> [more...]${reset}
+${cyan}${EXECUTABLE_NAME} cache enable${reset}
+${cyan}${EXECUTABLE_NAME} cache disable${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} cache list ${ncc() + ncc('Dim')}# List cached keys with TTL${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} cache prune ${ncc() + ncc('Dim')}# Remove expired cache entries${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} cache reset ${ncc() + ncc('Dim')}# Delete cache file entirely${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} cache delete git git.config ${ncc() + ncc('Dim')}# Expire by key/prefix${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} cache disable ${ncc() + ncc('Dim')}# Turn caching off${ncc()}
+   ${cyan}${EXECUTABLE_NAME} cache list ${reset + dim}# List cached keys with TTL${reset}
+   ${cyan}${EXECUTABLE_NAME} cache prune ${reset + dim}# Remove expired cache entries${reset}
+   ${cyan}${EXECUTABLE_NAME} cache reset ${reset + dim}# Delete cache file entirely${reset}
+   ${cyan}${EXECUTABLE_NAME} cache delete git git.config ${reset + dim}# Expire by key/prefix${reset}
+   ${cyan}${EXECUTABLE_NAME} cache disable ${reset + dim}# Turn caching off${reset}
 `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -397,7 +403,8 @@ Examples:
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

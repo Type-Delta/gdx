@@ -916,9 +916,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1266,28 +1266,31 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('PARALLEL', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
+${bright + _2PointGradient('PARALLEL', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Manage parallel (forked) worktrees for iterative development.
 
-${ncc('Bright') + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
-\`${ncc('Cyan')}${EXECUTABLE_NAME} parallel${ncc()}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
+${bright + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+\`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
-Additionally, \`${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork${ncc()}\` can auto-initialize submodules and
+Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules and
 install dependencies using detected package managers (currently supports npm, pnpm, bun, and uv)
-if configured (see \`${ncc('Cyan')}parallel.init${ncc()}\` config for options),
+if configured (see \`${cyan}parallel.init${reset}\` config for options),
 getting the fork ready for work in no time.
 
-${ncc('Bright') + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
-- ${ncc('Cyan')}fork <alias>${ncc()}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${ncc('Cyan')}--move${ncc()}\` or \`${ncc('Cyan')}--mirror${ncc()}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${ncc('Cyan')}--no-init${ncc()}\`.
- - ${ncc('Cyan')}join [<alias>] [--keep|--all]${ncc()}: Cherry-picks commits from the fork back into the origin worktree. \`${ncc('Cyan')}--keep${ncc()}\` retains the fork and updates its base; \`${ncc('Cyan')}--all\` also includes uncommitted changes.
- - ${ncc('Cyan')}join -r|--recursive [--keep]${ncc()}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${ncc('Cyan')}--all${ncc()}\`.
-- ${ncc('Cyan')}list${ncc()}: Lists forks for the current branch with status (clean/dirty), commit divergence and optional path hyperlinks.
-- ${ncc('Cyan')}remove <alias>${ncc()}: Removes the forked worktree and cleans up the directory.
+${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+- ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
+- ${cyan}join [<alias>] [--keep|--all]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes.
+- ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
+- ${cyan}list${reset}: Lists forks for the current branch with status (clean/dirty), commit divergence and optional path hyperlinks.
+- ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
 
-${ncc('Bright') + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + ncc()}
+${bright + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -1296,33 +1299,38 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Manage temporary forked worktrees: create, list, join, open and remove.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork ${ncc('Dim')}<alias> [--move|--mirror] [--no-init[=submodule,pkg]]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel list${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel open ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel switch ${ncc('Dim')}<alias|origin> [-c|--copy]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}<alias> [--keep|--all]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel join ${ncc('Dim')}-r|--recursive [--keep]${ncc()}
-${ncc('Cyan')}${EXECUTABLE_NAME} parallel remove ${ncc('Dim')}<alias>${ncc()}
+${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
+${cyan}${EXECUTABLE_NAME} parallel list${reset}
+${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
+${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
+${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all]${reset}
+${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
+${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --move ${ncc() + ncc('Dim')}# Create fork and optionally move changes${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${ncc() + ncc('Dim')}# Skip all init behaviors${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${ncc() + ncc('Dim')}# Skip package installs only${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel list --short ${ncc() + ncc('Dim')}# Show forks for current branch${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join feature-x --all ${ncc() + ncc('Dim')}# Merge fork back into origin${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} parallel join -r ${ncc() + ncc('Dim')}# Merge all forks back into origin${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Show forks for current branch${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {

@@ -1,4 +1,4 @@
-import { CommandArgNode } from "@/common/types";
+import { CommandArgNode } from '@/common/types';
 
 /**
  * Creates a command argument node with the given options as children.
@@ -14,7 +14,7 @@ export function createOptionChildren(options: string[]): CommandArgNode {
    }
 
    return children;
-};
+}
 
 /**
  * Creates a command argument node with the given options as children.
@@ -34,4 +34,4 @@ export function createOptionChildrenWithFlags(
    }
 
    return children;
-};
+}

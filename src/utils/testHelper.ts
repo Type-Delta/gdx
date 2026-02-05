@@ -78,7 +78,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 
    let tracker = new TestEnvTracker();
    const envController = {
-      isTTY: true
+      isTTY: true,
    };
 
    tracker = overrideModules(tracker, tmpDir, envController);
@@ -168,7 +168,11 @@ async function initGitRepo(_$: typeof $) {
    };
 }
 
-function overrideModules(tracker: TestEnvTracker, tempDir: string, envController: EnvController): TestEnvTracker {
+function overrideModules(
+   tracker: TestEnvTracker,
+   tempDir: string,
+   envController: EnvController
+): TestEnvTracker {
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
@@ -191,7 +195,7 @@ function overrideModules(tracker: TestEnvTracker, tempDir: string, envController
                options: {},
             };
          },
-         isTTY: () => envController.isTTY
+         isTTY: () => envController.isTTY,
       };
    });
 

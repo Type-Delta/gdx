@@ -51,8 +51,7 @@ export class ArgsSet extends Array<string> {
             // Argument is in the form --arg=value
             value = getValueFromOption(this[index]);
             this.splice(index, 1);
-         }
-         else if (
+         } else if (
             !valSameIdxOnly &&
             index + 1 < this.length &&
             !this[index + 1].startsWith('-')
@@ -60,8 +59,7 @@ export class ArgsSet extends Array<string> {
             // Argument is in the form --arg value
             value = this[index + 1];
             this.splice(index, 2);
-         }
-         else {
+         } else {
             // Argument found but no value present
             this.splice(index, 1);
          }

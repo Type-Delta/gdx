@@ -89,7 +89,7 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
    );
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
@@ -97,7 +97,9 @@ export default async function doctor(): Promise<number> {
    quickPrint(`Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`);
 
    const cache = await getCache();
-   quickPrint(`Cache file path: ${ncc('Cyan') + hyperLink(cache.cachePath, cache.cachePath) + ncc()}`);
+   quickPrint(
+      `Cache file path: ${ncc('Cyan') + hyperLink(cache.cachePath, cache.cachePath) + ncc()}`
+   );
 
    // Detect git
    try {
@@ -142,13 +144,15 @@ export default async function doctor(): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('DOCTOR', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DOCTOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Diagnose installation and environment.
 
-${ncc('Bright') + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Checks for native binary, runtimes, and provides installation guidance.
 `,
          Math.min(100, global.terminalWidth - 4),
@@ -157,22 +161,27 @@ Checks for native binary, runtimes, and provides installation guidance.
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Run a diagnostic check on gdx installation and environment.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} doctor${ncc()}
+${cyan}${EXECUTABLE_NAME} doctor${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} doctor ${ncc() + ncc('Dim')}# Diagnose installation and environment${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} doctor ${reset + dim}# Diagnose installation and environment${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const;
 
 export const structure = {

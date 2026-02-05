@@ -52,12 +52,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-      `Gathering stats for user: ` +
-      ncc('Yellow') +
-      email +
-      ncc('Cyan') +
-      ` this may take a while...` +
-      ncc()
+         `Gathering stats for user: ` +
+         ncc('Yellow') +
+         email +
+         ncc('Cyan') +
+         ` this may take a while...` +
+         ncc()
    );
 
    try {
@@ -189,20 +189,23 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 }
 
 export const help = {
-   long: () =>
-      strWrap(
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Bright') + _2PointGradient('STATS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('STATS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Gather detailed contribution statistics for a git author in this repository.
 
-${ncc('Bright') + _2PointGradient('WHAT IT COMPUTES', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('WHAT IT COMPUTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 Total commits by the author, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, and time of the last commit.
 
-${ncc('Bright') + _2PointGradient('HOW IT WORKS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
+${bright + _2PointGradient('HOW IT WORKS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
 The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
-${ncc('Bright') + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2)}
-Use ${ncc('Cyan')}--author <email>${ncc()} to target a different author than the configured git user.email. Output includes a small visual graph invocation via the \`graph\` command by default.
+${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
 `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -210,23 +213,28 @@ Use ${ncc('Cyan')}--author <email>${ncc()} to target a different author than the
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
    short: 'Show (local) contribution statistics for a repository author.',
-   usage: () =>
-      strWrap(
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
          `
-${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc('Dim')}[--author <email>]${ncc()}
+${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>]${reset}
 
 Examples:
-   ${ncc('Cyan')}${EXECUTABLE_NAME} stats ${ncc() + ncc('Dim')}# Stats for configured git user${ncc()}
-   ${ncc('Cyan')}${EXECUTABLE_NAME} stats --author alice@example.com ${ncc() + ncc('Dim')}# Stats for specified author${ncc()}`,
+   ${cyan}${EXECUTABLE_NAME} stats ${reset + dim}# Stats for configured git user${reset}
+   ${cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${reset + dim}# Stats for specified author${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
             mode: 'softboundary',
             indent: '  ',
          }
-      ),
+      );
+   },
 } as const satisfies CommandHelpObj;
 
 export const structure = {
