@@ -9,6 +9,7 @@ import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getGitVersionCached, getGitConfigCached } from '@/modules/cache-controller';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
+import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -34,7 +35,7 @@ export async function dispatch(
    state: DispatchState = { inMacro: false }
 ): Promise<number> {
    const args = ctx.args;
-   const originalCmd = args[0];
+   const originalArgs = args.slice(0);
 
    // Check if the command is a macro (only if not already in a macro)
    if (!state.inMacro) {
@@ -44,23 +45,11 @@ export async function dispatch(
          const macroScript = macros[macroName];
          const macroArgs = args.slice(1);
 
-         // Separate macro arguments from flags
-         const macroArgsOnly: string[] = [];
-         const extraFlags: string[] = [];
-
-         for (const arg of macroArgs) {
-            if (arg.startsWith('-')) {
-               extraFlags.push(arg);
-            } else {
-               macroArgsOnly.push(arg);
-            }
-         }
-
-         quickPrint(ncc('Magenta') + `Executing macro '${macroName}'...` + ncc());
+         quickPrint(ncc('Dim') + ncc('Magenta') + `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` + ncc());
 
          // Import executeMacro lazily to avoid circular dependency
          const { executeMacro } = await import('@/modules/macro');
-         return await executeMacro(ctx.git$, macroScript, macroArgsOnly, extraFlags);
+         return await executeMacro(ctx.git$, macroScript, macroArgs);
       }
    } else {
       // Inside a macro - check if trying to invoke another macro
@@ -138,8 +127,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -285,16 +274,17 @@ export async function dispatch(
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
-                  `Ambiguous command '${originalCmd}'. Did you mean: ${candidates.join(', ')}?`
+                  `Ambiguous command '${originalArgs[0]}'. Did you mean: ${candidates.join(', ')}?`
                );
                break AliasNCustomCmd;
             }
       }
    }
 
-   if (args[0] !== originalCmd) {
+   if (state.inMacro || originalArgs.some((a, i) => args[i] !== a)) {
+      const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
-         ncc('Cyan') + `Command auto expanded to: git ${escapeCmdArgs(args).join(' ')}` + ncc()
+         ncc('Dim') + ncc(rgbVec2decimal(colorVec), 'fg') + `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` + ncc()
       );
    }
 

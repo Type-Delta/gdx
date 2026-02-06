@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- macro support for `$*` syntax to insert all arguments to that position.
+
+### Fixed
+
+- macro not properly append extra arguments
+- improved system message formatting
+
 ## Version 0.3.0 - 2026-02-5
 
 ### Added

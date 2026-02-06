@@ -115,7 +115,6 @@ export async function executeMacro(
    git$: string | string[],
    macroScript: string,
    macroArgs: string[],
-   extraFlags: string[]
 ): Promise<number> {
    // Split by semicolon to get individual commands
    const commands = macroScript
@@ -133,24 +132,23 @@ export async function executeMacro(
 
    for (let i = 0; i < commands.length; i++) {
       const isLastCommand = i === commands.length - 1;
-      let argv = tokenizeCommand(commands[i]);
+      const argv = tokenizeCommand(commands[i]);
 
       // Substitute placeholders
-      argv = substitutePlaceholders(argv, macroArgs);
+      const { substituted, notUsedArgs } = substitutePlaceholders(argv, macroArgs);
 
       // Append extra flags to the last command
-      if (isLastCommand && extraFlags.length > 0) {
-         argv.push(...extraFlags);
-      }
+      if (isLastCommand)
+         substituted.push(...notUsedArgs);
 
-      if (argv.length === 0) continue;
+      if (substituted.length === 0) continue;
 
-      quickPrint(ncc('Cyan') + `Executing: gdx ${escapeCmdArgs(argv).join(' ')}` + ncc());
+      quickPrint(ncc('Dim') + ncc('Cyan') + `▶ Executing: ${ncc('White') + ncc('Bright')}gdx ${escapeCmdArgs(substituted).join(' ')}` + ncc());
 
       // Create a context for this command
       const ctx: GdxContext = {
          git$,
-         args: new ArgsSet(argv),
+         args: new ArgsSet(substituted),
       };
 
       // Dispatch through gdx routing (which handles custom commands, aliases, etc.)
@@ -193,11 +191,38 @@ export function isFilePath(arg: string): boolean {
  * @param macroArgs - The arguments to substitute.
  * @returns Argv array with substitutions applied.
  */
-export function substitutePlaceholders(argv: string[], macroArgs: string[]): string[] {
-   return argv.map((arg) => {
-      return arg.replace(/\$(\d+)/g, (match, num) => {
+export function substitutePlaceholders(argv: string[], macroArgs: string[]): {
+   substituted: string[],
+   notUsedArgs: string[]
+} {
+   let allArgsIndex = -1;
+   const notUsedArgs: Set<string> = new Set(macroArgs);
+
+   const substituted = argv.map((arg, i) => {
+      return arg.replace(/\$(\*|\d+)/g, (match, num) => {
+         if (num === '*') {
+            allArgsIndex = i;
+            notUsedArgs.clear();
+            return '';
+         }
+
          const index = parseInt(num, 10) - 1;
-         return index >= 0 && index < macroArgs.length ? macroArgs[index] : match;
+         if (index >= 0 && index < macroArgs.length) {
+            notUsedArgs.delete(macroArgs[index]);
+            return macroArgs[index];
+         }
+
+         return match;
       });
    });
+
+   if (allArgsIndex !== -1) {
+      // Insert all remaining args at the position of $*
+      substituted.splice(allArgsIndex, 1, ...macroArgs);
+   }
+
+   return {
+      substituted,
+      notUsedArgs: Array.from(notUsedArgs),
+   };
 }
