@@ -39,7 +39,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       maxTokens: undefined,
       apiKey: undefined,
       baseUrl: undefined,
-      showThinking: true,
+      showThinking: false,
    },
    lint: {
       onPushBehavior: 'off',
@@ -96,7 +96,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'llm.showThinking': 'Whether to show part of LLM reasoning messages',
    lint: 'Configuration for post-commit linting',
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
-   'lint.maxFileSizeKb': 'Maximum allowed file size in KB',
+   'lint.maxFileSizeKb': 'Maximum allowed file size in KiB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',
    commit: 'Configuration for commit message generation',
    'commit.commitPattern':
@@ -104,8 +104,8 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'commit.guidelineCacheDays': 'Days to cache learned commit guidelines per repository',
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',
-   'cache.maxAgeMinutes': 'Maximum age of cache entries in minutes',
+   'cache.maxAgeMinutes': 'Default maximum age of cache entries in minutes (some cache ignore this)',
    parallel: 'Configuration for parallel worktree automation',
-   'parallel.init': 'Comma-separated init behaviors for new forks (submodule, pkg)',
+   'parallel.init': 'Comma-separated list specifying what to init for new forks (submodule, pkg)',
    defaultEditor: 'Default code editor to open files with',
 };

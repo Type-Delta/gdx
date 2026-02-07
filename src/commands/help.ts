@@ -65,7 +65,7 @@ Examples:
    ${cyan}${EXECUTABLE_NAME} st           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} stash${reset}
    ${cyan}${EXECUTABLE_NAME} lg           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} log --oneline --graph --all --decorate${reset}
    ${cyan}${EXECUTABLE_NAME} stash d 2..6 ${reset + dim}# drop stashes 2 through 6 (safe: drops high->low)${reset}
-   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory (use \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\` to restore)${reset}
+   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory (use \`${cyan}${EXECUTABLE_NAME} clear pardon${ncc('White')}\` to restore)${reset}
    ${cyan}${EXECUTABLE_NAME} cmi auto     ${reset + dim}# generate commit message based on staged changes using LLM${reset}
 
 ${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
