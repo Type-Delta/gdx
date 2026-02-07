@@ -11,7 +11,7 @@ import Logger from '../utils/logger';
 import { COLOR } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
-import { getRepoRootCached } from '@/modules/cache-controller';
+import { getRepoRootCached } from '@/modules/git';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;

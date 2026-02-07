@@ -7,9 +7,9 @@ import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
-import { getGitVersionCached, getGitConfigCached } from '@/modules/cache-controller';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
+import { getTrackedUpstreamRef, getGitVersionCached, getGitConfigCached } from '@/modules/git';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -45,7 +45,12 @@ export async function dispatch(
          const macroScript = macros[macroName];
          const macroArgs = args.slice(1);
 
-         quickPrint(ncc('Dim') + ncc('Magenta') + `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` + ncc());
+         quickPrint(
+            ncc('Dim') +
+            ncc('Magenta') +
+            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+            ncc()
+         );
 
          // Import executeMacro lazily to avoid circular dependency
          const { executeMacro } = await import('@/modules/macro');
@@ -171,6 +176,16 @@ export async function dispatch(
                   args[i] = `HEAD~${num}`;
                   break;
                }
+               const originMatch = /^origin~(\d+)$/i.exec(args[i]);
+               if (originMatch) {
+                  const upstream = await getTrackedUpstreamRef(ctx.git$);
+                  if (!upstream) {
+                     Logger.error('No upstream configured for current branch.', 'reset');
+                     return 1;
+                  }
+                  args[i] = `${upstream}~${originMatch[1]}`;
+                  break;
+               }
             }
             break;
          case 'log':
@@ -284,7 +299,10 @@ export async function dispatch(
    if (state.inMacro || originalArgs.some((a, i) => args[i] !== a)) {
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
-         ncc('Dim') + ncc(rgbVec2decimal(colorVec), 'fg') + `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` + ncc()
+         ncc('Dim') +
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+         ncc()
       );
    }
 

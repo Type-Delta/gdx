@@ -9,7 +9,7 @@ import { COLOR, EXECUTABLE_NAME } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
-import { getRepoRootCached } from '@/modules/cache-controller';
+import { getRepoRootCached } from '@/modules/git';
 
 /**
  * Represents a git submodule with its path information

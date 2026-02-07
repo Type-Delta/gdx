@@ -20,7 +20,6 @@ import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/str
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
-import { getRepoRootCached } from '@/modules/cache-controller';
 import {
    deinitSubmodules,
    getDirtySubmodules,
@@ -30,6 +29,7 @@ import {
    hasCherryPickInProgress,
    invalidateWorktreeListCache,
    normalizeStatusPath,
+   getRepoRootCached,
    pruneWorktrees,
 } from '@/modules/git';
 import { runWorktreeInit } from '@/modules/worktree-init';
@@ -963,9 +963,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {

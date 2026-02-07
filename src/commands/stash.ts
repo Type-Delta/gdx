@@ -8,12 +8,11 @@ import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
 import { COLOR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
-import { getStashEntry, restoreStash } from '@/modules/git';
+import { getStashEntry, restoreStash, getRepoRootCached } from '@/modules/git';
 import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
-import { getRepoRootCached } from '@/modules/cache-controller';
 
 export interface StashEntry {
    sha: string;
@@ -95,8 +94,8 @@ async function dropRange(
 
    quickPrint(
       ncc('Cyan') +
-         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-         ncc()
+      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+      ncc()
    );
 
    for (let i = end; i >= start; i--) {

@@ -77,6 +77,7 @@ ${bright + _2PointGradient('KEY FEATURES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + 
    - pull: ${cyan}${EXECUTABLE_NAME} pl -au ${reset + dim}-> expands -au to --allow-unrelated-histories.${reset}
    - push: ${cyan}${EXECUTABLE_NAME} ps -fl ${reset + dim}-> expands -fl to --force-with-lease.${reset}
    - reset: ${cyan}${EXECUTABLE_NAME} res -h ${reset + dim}-> ${reset + cyan}${EXECUTABLE_NAME} reset --hard${reset + dim}; ${reset + cyan}${EXECUTABLE_NAME} res ~3 ${reset + dim}-> ${reset + cyan}${EXECUTABLE_NAME} reset HEAD~3${reset}
+     ${dim}(also supports ${cyan}origin~N${reset + dim} for upstream-relative resets)${reset}
 - Clear convenience:
       - ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}->${reset} creates a timestamped patch backup
         in the system temp folder, then resets the working directory

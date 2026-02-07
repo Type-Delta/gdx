@@ -10,13 +10,13 @@ import { argsSet } from '../modules/arguments';
 import { EXECUTABLE_NAME, STATS_EST, COLOR } from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
-import { assertInGitWorktree } from '@/modules/git';
 import Logger from '../utils/logger';
 import {
    getRepoRootCached,
    getGitConfigCached,
    getGitBranchesCached,
-} from '@/modules/cache-controller';
+   assertInGitWorktree,
+} from '@/modules/git';
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
@@ -52,12 +52,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-         `Gathering stats for user: ` +
-         ncc('Yellow') +
-         email +
-         ncc('Cyan') +
-         ` this may take a while...` +
-         ncc()
+      `Gathering stats for user: ` +
+      ncc('Yellow') +
+      email +
+      ncc('Cyan') +
+      ` this may take a while...` +
+      ncc()
    );
 
    try {

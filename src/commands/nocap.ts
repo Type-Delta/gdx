@@ -9,7 +9,7 @@ import { nocapPrompt } from '../templates/prompts';
 import { COLOR, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
-import { getGitConfigCached } from '@/modules/cache-controller';
+import { getGitConfigCached } from '@/modules/git';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
    const { git$ } = ctx;

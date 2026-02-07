@@ -6,7 +6,7 @@ import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modul
 import { COLOR, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
-import { getGitConfigCached } from '@/modules/cache-controller';
+import { getGitConfigCached } from '@/modules/git';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "
@@ -77,9 +77,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-         ncc('Bright') +
-         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-         ` (Max: ${maxCommits} commits/day)\n`
+      ncc('Bright') +
+      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+      ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
