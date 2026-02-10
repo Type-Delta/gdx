@@ -239,7 +239,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    if (worktreeEntry?.locked) {
       const reason = worktreeEntry.lockReason ? ` (${worktreeEntry.lockReason})` : '';
       Logger.error(
-         `Worktree '${alias}' is locked${reason}. Unlock it before removing.`,
+         `Worktree '${alias}' is locked ${reason}. Unlock it before removing.`,
          'parallel'
       );
       return 1;
@@ -360,7 +360,10 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    });
 
    try {
-      await $inherit`${git$} worktree remove ${targetPath}`;
+      const result = await $`${git$} worktree remove ${targetPath}`;
+      spinnerCtrl.stop();
+
+      quickPrint(result.stdout.trim());
 
       // Clean up directory if it still exists
       try {
@@ -370,7 +373,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       }
 
       // LINK: dw2al2m string literal in spec
-      quickPrint(`${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
+      quickPrint(`\n${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
