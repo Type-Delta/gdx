@@ -742,6 +742,7 @@ export async function getSubmodules(
    git$: string | string[],
    worktreePath: string
 ): Promise<SubmoduleEntry[]> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const cache = await getCache();
    const cacheKey = createOneOffKey('git.submodules', getGitScope(git$, worktreePath));
    const cached = await cache.getOneOff<SubmoduleEntry[]>(cacheKey);
@@ -751,7 +752,7 @@ export async function getSubmodules(
       let configOutput = '';
       try {
          configOutput = (
-            await $`${git$} -C ${worktreePath} config --file .gitmodules --get-regexp path`
+            await $`${gitExec} -C ${worktreePath} config --file .gitmodules --get-regexp path`
          ).stdout.trim();
       } catch {
          configOutput = '';
@@ -784,7 +785,7 @@ export async function getSubmodules(
 
       let gitlinkPaths: string[] = [];
       try {
-         const lsFilesOutput = (await $`${git$} -C ${worktreePath} ls-files --stage`).stdout;
+         const lsFilesOutput = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
          gitlinkPaths = lsFilesOutput
             .split('\n')
             .map((line) => line.trim())
@@ -804,7 +805,8 @@ export async function getSubmodules(
 
       let statusMap = new Map<string, string>();
       try {
-         const output = (await $`${git$} -C ${worktreePath} submodule status --recursive`).stdout;
+         const output = (await $`${gitExec} -C ${worktreePath} submodule status --recursive`)
+            .stdout;
          const lines = output
             .split('\n')
             .map((line) => line.trim())
@@ -849,10 +851,11 @@ export async function getDirtySubmodules(
    worktreePath: string,
    submodules: SubmoduleEntry[]
 ): Promise<string[]> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const dirty: string[] = [];
 
    for (const submodule of submodules) {
-      if (submodule.status !== ' ' && submodule.status !== '-') {
+      if (submodule.status === 'U') {
          dirty.push(submodule.path);
          continue;
       }
@@ -875,7 +878,7 @@ export async function getDirtySubmodules(
 
       try {
          const status = (
-            await $`${git$} -C ${submodulePath} status --porcelain=v1 --untracked-files=normal`
+            await $`${gitExec} -C ${submodulePath} status --porcelain=v1 --untracked-files=normal`
          ).stdout.trim();
          if (status.length > 0) dirty.push(submodule.path);
       } catch {
@@ -895,7 +898,47 @@ export async function deinitSubmodules(
    git$: string | string[],
    worktreePath: string
 ): Promise<void> {
-   await $`${git$} -C ${worktreePath} submodule deinit -f --all`;
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
+
+   const submodules = await getSubmodules(git$, worktreePath);
+   if (submodules.length === 0) return;
+
+   for (const submodule of submodules) {
+      const submodulePath = path.resolve(worktreePath, submodule.path);
+      try {
+         if (fs.existsSync(submodulePath)) {
+            fs.rmSync(submodulePath, { recursive: true, force: true });
+         }
+         fs.mkdirSync(submodulePath, { recursive: true });
+      } catch (err) {
+         Logger.debug(
+            `Failed to clean submodule path '${submodulePath}'. ${yuString(err, { color: true })}`,
+            'git'
+         );
+      }
+   }
+
+   try {
+      const gitDirRaw = (await $`${gitExec} -C ${worktreePath} rev-parse --git-dir`).stdout.trim();
+      if (gitDirRaw) {
+         const gitDir = path.isAbsolute(gitDirRaw)
+            ? gitDirRaw
+            : path.resolve(worktreePath, gitDirRaw);
+         const normalizedGitDir = gitDir.replace(/\\/g, '/');
+         if (normalizedGitDir.includes('/.git/worktrees/')) {
+            const modulesPath = path.join(gitDir, 'modules');
+            if (fs.existsSync(modulesPath)) {
+               fs.rmSync(modulesPath, { recursive: true, force: true });
+            }
+         }
+      }
+   } catch (err) {
+      Logger.debug(
+         `Failed to clean worktree submodule metadata. ${yuString(err, { color: true })}`,
+         'git'
+      );
+   }
 }
 
 /**

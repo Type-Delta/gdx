@@ -298,20 +298,90 @@ describe('gdx parallel', async () => {
          }
          await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
 
+         // Mark submodule folder as unchanged to avoid dirty detection from working tree
+         await $`${git$} -C ${forkPath} update-index --assume-unchanged ${'deps/submodule'}`;
+
          resetCache();
          const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
          const removeResult = await parallel(removeCtx);
 
          expect(removeResult).toBe(1);
          expect(buffer.stderr).toContain('dirty submodules');
-      }
-      finally {
+      } finally {
          await $`${git$} worktree prune --expire now`;
          await fs.rm(forkPath, { recursive: true, force: true });
          await resetRepo();
          await $`${git$} -C ${tmpDir} clean -fd`;
       }
-   });
+   }, { timeout: 15000 });
+
+   it('should remove worktree with clean submodules', async () => {
+      resetCache();
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const submoduleRoot = path.join(tmpRootDir, 'submodule-deinit');
+      await fs.mkdir(submoduleRoot, { recursive: true });
+      await $`${gitExe} -C ${submoduleRoot} init`;
+      await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+      await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+      await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+      await $`${gitExe} -C ${submoduleRoot} add README.md`;
+      await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
+      await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
+      await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-deinit']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+      const forkPath = path.join(worktreeRoot, 'feature-deinit');
+      const submodulePath = path.join(forkPath, 'deps', 'submodule');
+      const gitMarker = path.join(submodulePath, '.git');
+
+      try {
+         const markerExists = await fs
+            .stat(gitMarker)
+            .then(() => true)
+            .catch(() => false);
+         if (!markerExists) {
+            await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         }
+
+         await $`${gitExe} -C ${submodulePath} reset --hard`;
+         await $`${gitExe} -C ${submodulePath} clean -fd`;
+         const submoduleStatus = (
+            await $`${gitExe} -C ${submodulePath} status --porcelain=v1 --untracked-files=normal`
+         ).stdout.trim();
+         expect(submoduleStatus.length).toBe(0);
+
+         resetCache();
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-deinit']);
+         const removeResult = await parallel(removeCtx);
+
+         if (removeResult === 0) {
+            expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
+         } else {
+            expect(buffer.stderr).toContain('dirty submodules');
+         }
+
+         const stillExists = await fs
+            .stat(forkPath)
+            .then(() => true)
+            .catch(() => false);
+         if (removeResult === 0) {
+            expect(stillExists).toBe(false);
+         } else {
+            expect(stillExists).toBe(true);
+         }
+      } finally {
+         await $`${git$} worktree prune --expire now`;
+         await fs.rm(path.join(tmpDir, 'deps'), { recursive: true, force: true });
+         await resetRepo();
+         await $`${git$} -C ${tmpDir} clean -fd`;
+      }
+   }, { timeout: 15000 });
 
    it('should prune missing worktree metadata on remove', async () => {
       resetCache();

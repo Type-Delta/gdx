@@ -28,7 +28,6 @@ import {
    getWorktreeOperations,
    hasCherryPickInProgress,
    invalidateWorktreeListCache,
-   normalizeStatusPath,
    getRepoRootCached,
    pruneWorktrees,
 } from '@/modules/git';
@@ -232,6 +231,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    Logger.debug(`Removing worktree '${alias}'...`, 'parallel');
    const targetPath = path.join(ctx.parallelRoot, alias);
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
 
    await invalidateWorktreeListCache(git$);
    const worktreeEntry = await getWorktreeEntry(git$, targetPath);
@@ -288,16 +288,35 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 1;
    }
 
+   const statusOutput = (
+      await $`${gitExec} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
+   ).stdout.trim();
+   if (statusOutput.length > 0) {
+      Logger.error(
+         `Worktree '${alias}' has uncommitted changes. Join or clean it before removing.`,
+         'parallel'
+      );
+      return 1;
+   }
+
+   quickPrint('');
+   const spinnerCtrl = spinner({
+      message: `Preparing worktree for removal...`,
+   });
+
    const submodules = await getSubmodules(git$, targetPath);
+   // spinnerCtrl.stop();
    Logger.debug(
       `Submodules in worktree '${alias}': ${submodules.length > 0 ? submodules.map((s) => s.path).join(', ') : 'none'}`,
       'parallel'
    );
+   // spinnerCtrl.resume();
    // deinit submodules
    if (submodules.length > 0) {
       const dirtySubmodules = await getDirtySubmodules(git$, targetPath, submodules);
       if (dirtySubmodules.length > 0) {
          const detail = dirtySubmodules.join(', ');
+         spinnerCtrl.stop();
          Logger.error(
             `Worktree '${alias}' has dirty submodules (${detail}). Commit, stash, or clean them before removing.`,
             'parallel'
@@ -307,11 +326,14 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
       Logger.debug(`Deinitializing submodules for worktree '${alias}'...`, 'parallel');
       quickPrint(`${ncc('Cyan')}Found submodules, deinitializing...${ncc()}`);
+      spinnerCtrl.options.message = `Deinitializing submodules...`;
       try {
+         Logger.debug(`Executing deinit for submodules with ${gitExec} -C ${targetPath}...`, 'parallel');
          await deinitSubmodules(git$, targetPath);
       } catch (err) {
+         spinnerCtrl.stop();
          const fallbackStatus = (
-            await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
+            await $`${gitExec} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
          ).stdout.trim();
          if (fallbackStatus.length === 0) {
             await pruneWorktrees(git$);
@@ -325,41 +347,8 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       }
    }
 
-   const statusOutput = (
-      await $`${git$} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
-   ).stdout.trim();
-   if (statusOutput.length > 0) {
-      if (submodules.length > 0) {
-         const submodulePaths = new Set(
-            submodules.map((submodule) => normalizeStatusPath(submodule.path))
-         );
-         const statusPaths = statusOutput
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0)
-            .map((line) => line.slice(3))
-            .map((rawPath) => rawPath.split(' -> ').pop() ?? rawPath)
-            .map((rawPath) => normalizeStatusPath(rawPath));
-
-         const dirtySubmodules = statusPaths.filter((statusPath) => submodulePaths.has(statusPath));
-         if (dirtySubmodules.length > 0) {
-            Logger.error(
-               `Worktree '${alias}' has dirty submodules (${dirtySubmodules.join(', ')}). Commit, stash, or clean them before removing.`,
-               'parallel'
-            );
-            return 1;
-         }
-      }
-
-      Logger.error(
-         `Worktree '${alias}' has uncommitted changes. Join or clean it before removing.`,
-         'parallel'
-      );
-      return 1;
-   }
-
-   quickPrint('');
-   const spinnerCtrl = spinner({
+   spinnerCtrl.options = {
+      ...spinnerCtrl.options,
       frames: [
          '███',
          '██▇',
@@ -379,7 +368,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       ],
       interval: 120,
       message: `Removing worktree '${alias}'...`,
-   });
+   }
 
    try {
       Logger.debug(`Executing git worktree remove for '${alias}'...`, 'parallel');

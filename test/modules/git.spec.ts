@@ -2,7 +2,7 @@ import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { getMainWorktreeRoot } from '@/modules/git';
+import { deinitSubmodules, getMainWorktreeRoot } from '@/modules/git';
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 
 describe('git module', async () => {
@@ -21,5 +21,45 @@ describe('git module', async () => {
       const mainRoot = await getMainWorktreeRoot(wtCtx.git$);
 
       expect(mainRoot.replace(/\\/g, '/')).toBe(tmpDir.replace(/\\/g, '/'));
+   });
+
+   it('should deinit submodules for a worktree', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const submoduleRoot = path.join(tmpRootDir, 'submodule-clean');
+      await fs.mkdir(submoduleRoot, { recursive: true });
+      await $`${gitExe} -C ${submoduleRoot} init`;
+      await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+      await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+      await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+      await $`${gitExe} -C ${submoduleRoot} add README.md`;
+      await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
+      await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
+      await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+      const submodulePath = path.join(tmpDir, 'deps', 'submodule');
+      const gitMarker = path.join(submodulePath, '.git');
+      const beforeExists = await fs
+         .stat(gitMarker)
+         .then(() => true)
+         .catch(() => false);
+      expect(beforeExists).toBe(true);
+
+      await deinitSubmodules(git$, tmpDir);
+
+      const afterExists = await fs
+         .stat(gitMarker)
+         .then(() => true)
+         .catch(() => false);
+      expect(afterExists).toBe(false);
+
+      const statusOutput = (await $`${gitExe} -C ${tmpDir} submodule status`).stdout.trim();
+      expect(statusOutput.startsWith('-')).toBe(true);
+
+      const entries = await fs.readdir(submodulePath);
+      expect(entries.length).toBe(0);
    });
 });

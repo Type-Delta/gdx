@@ -191,6 +191,9 @@ export function spinner(options: SpinnerOptions = {}) {
          stop: () => {
             /* no-op */
          },
+         resume: (newline = true) => {
+            if (newline) process.stdout.write('\n');
+         },
          options,
       };
    }
@@ -261,6 +264,19 @@ export function spinner(options: SpinnerOptions = {}) {
          process.stdout.write('\r\x1b[K\x1b[?25h');
       },
       /**
+       * Resumes the spinner if it was stopped
+       */
+      resume: (newline = true) => {
+         if (!isRunning) {
+            // Hide cursor then add a new line if requested
+            process.stdout.write('\x1b[?25l' + (newline ? '\n' : ''));
+
+            // Restart animation loop
+            isRunning = true;
+            intervalId = setInterval(render, options.interval);
+         }
+      },
+      /**
        * Spinner options reference
        */
       options,
@@ -296,7 +312,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => {});
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
       global.exitCodeOverride = -1;
       return;
    }

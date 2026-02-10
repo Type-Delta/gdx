@@ -3,7 +3,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 
-import { CheckCache, ncc } from '@lib/Tools';
+import { CheckCache, ncc, strWrap } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
 import { ArgsSet } from '../modules/arguments';
@@ -90,8 +90,9 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = () => {
       try {
-         console.log(`Cleaning up temp dir: ${tmpDir}`);
+         console.time(`Cleaning up temp dir: ${tmpDir}`);
          fs.rmSync(tmpDir, { recursive: true, force: true });
+         console.timeEnd(`Cleaning up temp dir: ${tmpDir}`);
       } catch {
          console.error(`Failed to remove temp dir: ${tmpDir}`);
       }
@@ -255,7 +256,7 @@ async function findGitExecutable(): Promise<string> {
 }
 
 function defineBunIt(tracker: TestEnvTracker) {
-   return function (name: string, fn: () => Promise<void> | void) {
+   return function (name: string, fn: () => Promise<void> | void, options?: { timeout?: number }) {
       return it(name, async (done) => {
          await stdioStore.run(
             { buffer: tracker.testSystem.buffer ?? { stdout: '', stderr: '', logs: '' } },
@@ -270,7 +271,7 @@ function defineBunIt(tracker: TestEnvTracker) {
                }
             }
          );
-      });
+      }, options);
    };
 }
 
@@ -282,8 +283,9 @@ function attachTestLivecycleHook(
    tracker.testSystem.buffer = buffer;
    afterEach((done) => {
       if (tracker.testSystem.lastTestStatus === 'failed') {
-         console.log(ncc('Dim') + '\nTest failed. Captured stdout:\n' + ncc(), buffer.stdout);
-         if (buffer.stderr) console.log(ncc('Dim') + 'Captured stderr:\n' + ncc(), buffer.stderr);
+         console.log(ncc('Dim') + '\nTest failed. Captured stdout:\n ' + ncc(), strWrap(buffer.stdout, 100, { indent: 2 }));
+         if (buffer.stderr) console.log(ncc('Dim') + 'Captured stderr:\n ' + ncc(), strWrap(buffer.stderr, 100, { indent: 2 }));
+         if (buffer.logs) console.log(ncc('Dim') + 'Captured logs:\n ' + ncc(), strWrap(buffer.logs, 100, { indent: 2 }));
       }
 
       done();
