@@ -675,36 +675,43 @@ async function getCommitComparison(
 ): Promise<{ ahead: number; behind: number }> {
    try {
       // Get HEAD of both worktrees
-      const wtHead = (await $`${git$} -C ${worktreePath} rev-parse HEAD`).stdout.trim();
-      const originHead = (await $`${git$} -C ${originPath} rev-parse HEAD`).stdout.trim();
+      const [wtHead, originHead] = await Promise.all([
+         $`${git$} -C ${worktreePath} rev-parse HEAD`.then(r => r.stdout.trim()),
+         $`${git$} -C ${originPath} rev-parse HEAD`.then(r => r.stdout.trim()),
+      ]);
 
       if (wtHead === originHead) {
          return { ahead: 0, behind: 0 };
       }
 
-      // Count commits ahead (in worktree but not in origin)
       let ahead = 0;
-      try {
-         const aheadOutput = (
-            await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
-         ).stdout.trim();
-         ahead = parseInt(aheadOutput, 10) || 0;
-      } catch {
-         // If the range is invalid, might be diverged completely
-         ahead = 0;
-      }
-
-      // Count commits behind (in origin but not in worktree)
       let behind = 0;
-      try {
-         const behindOutput = (
-            await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
-         ).stdout.trim();
-         behind = parseInt(behindOutput, 10) || 0;
-      } catch {
-         // If the range is invalid, might be diverged completely
-         behind = 0;
-      }
+      await Promise.all([
+         async () => {
+            // Count commits ahead (in worktree but not in origin)
+            try {
+               const aheadOutput = (
+                  await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
+               ).stdout.trim();
+               ahead = parseInt(aheadOutput, 10) || 0;
+            } catch {
+               // If the range is invalid, might be diverged completely
+               ahead = 0;
+            }
+         },
+         async () => {
+            // Count commits behind (in origin but not in worktree)
+            try {
+               const behindOutput = (
+                  await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
+               ).stdout.trim();
+               behind = parseInt(behindOutput, 10) || 0;
+            } catch {
+               // If the range is invalid, might be diverged completely
+               behind = 0;
+            }
+         }
+      ]);
 
       return { ahead, behind };
    } catch {
@@ -719,8 +726,6 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
-   const statusCache = new Map<string, { isDirty: boolean; baseShort: string }>();
-   const comparisonCache = new Map<string, { ahead: number; behind: number }>();
    const isShortOutput = args.includes('--short') || args.includes('-s');
 
    quickPrint(`${ncc('Cyan')}Project:${ncc()} ${ctx.projectName}`);
@@ -755,35 +760,16 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const baseCommit = meta.baseCommit?.trim();
       hasAnyWt = true;
 
-      const statusKey = path.resolve(wtPath);
-      let statusInfo = statusCache.get(statusKey);
-      if (!statusInfo) {
-         const statusOutput = (
-            await $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
-         ).stdout.trim();
-         const isDirty = statusOutput.length > 0;
+      const [statusOutput, comparison] = await Promise.all([
+         // get dirty status
+         $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
+            .then(r => r.stdout.trim()),
+         // Get commit comparison with origin
+         getCommitComparison(git$, wtPath, ctx.originPath),
+      ]);
 
-         let baseShort = 'unknown';
-         try {
-            if (baseCommit) {
-               baseShort = (
-                  await $`${git$} -C ${wtPath} rev-parse --short ${baseCommit}`
-               ).stdout.trim();
-            }
-         } catch {
-            // Keep 'unknown'
-         }
-         statusInfo = { isDirty, baseShort };
-         statusCache.set(statusKey, statusInfo);
-      }
-
-      // Get commit comparison with origin
-      const comparisonKey = `${statusKey}::${path.resolve(ctx.originPath)}`;
-      let comparison = comparisonCache.get(comparisonKey);
-      if (!comparison) {
-         comparison = await getCommitComparison(git$, wtPath, ctx.originPath);
-         comparisonCache.set(comparisonKey, comparison);
-      }
+      const isDirty = statusOutput.length > 0;
+      const baseShort = baseCommit.slice(0, 7);
 
       let commitInfo = '';
       if (comparison.ahead > 0 && comparison.behind > 0) {
@@ -797,7 +783,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       }
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
-      const statusLabel = statusInfo.isDirty
+      const statusLabel = isDirty
          ? `${ncc('Red')}dirty${ncc()}`
          : `${ncc('Green')}clean${ncc()}`;
 
@@ -808,7 +794,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       }
 
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${statusInfo.baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
       );
 
       if (baseCommit) {
@@ -826,7 +812,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             const maxCount = isShortOutput ? Math.min(3, commitCount) : commitCount;
             let logOutput = '';
             try {
-               const logArgs = ['-C', wtPath, 'log', '--pretty=format:%h%x20%s'];
+               const logArgs = ['-C', wtPath, 'log', `--pretty=format:${ncc('Yellow')}%h${ncc()} %s`];
                if (isShortOutput) logArgs.push(`--max-count=${maxCount}`);
                logArgs.push(`${baseCommit}..HEAD`);
                logOutput = (await $`${git$} ${logArgs}`).stdout.trim();
