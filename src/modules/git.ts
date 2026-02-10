@@ -463,7 +463,6 @@ export async function getGitAuthorExistsCached(
    }
 }
 
-
 /**
  * Resolves the tracked upstream ref for the current branch.
  * @param git$ - Git executable path or command array.
@@ -525,8 +524,9 @@ export async function getGitVersionCached(git$: string | string[]): Promise<stri
 export async function getRepoRootCached(git$: string | string[]): Promise<string> {
    const cache = await getCache();
    const cwd = process.cwd();
-   const cwdHash = crypto.createHash('sha1').update(cwd).digest('hex');
-   const cacheKey = 'git.repoRoot.' + cwdHash;
+   const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
+   const scopeHash = crypto.createHash('sha1').update(`${gitKey}|${cwd}`).digest('hex');
+   const cacheKey = 'git.repoRoot.' + scopeHash;
 
    const cachedDir = await cache.get<string>(cacheKey);
    if (
@@ -550,7 +550,6 @@ export async function getRepoRootCached(git$: string | string[]): Promise<string
       throw err;
    }
 }
-
 
 /**
  * Normalizes a worktree path for reliable comparisons.

@@ -40,6 +40,8 @@ interface EnvController {
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
+   openedPaths: string[] = [];
+   scheduledDirs: string[] = [];
    spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
    testSystem: TestSystem = {
       lastTestStatus: 'notrun',
@@ -48,6 +50,8 @@ class TestEnvTracker {
    reset() {
       this.sysClipboard = [];
       this.subprocessStack = [];
+      this.openedPaths = [];
+      this.scheduledDirs = [];
       this.spinnerStatus = 'nottriggered';
       this.testSystem.lastTestStatus = 'notrun';
    }
@@ -182,8 +186,9 @@ function overrideModules(
             tracker.sysClipboard.push(content);
             return true;
          },
-         openInEditor: async () => {
+         openInEditor: async (targetPath: string) => {
             tracker.subprocessStack.push('openInEditor');
+            tracker.openedPaths.push(targetPath);
          },
          $prompt: async () => 'y', // Auto-confirm prompts
          spinner: () => {
@@ -196,6 +201,9 @@ function overrideModules(
             };
          },
          isTTY: () => envController.isTTY,
+         scheduleChangeDir: async (targetDir?: string) => {
+            if (targetDir) tracker.scheduledDirs.push(targetDir);
+         },
       };
    });
 
@@ -210,6 +218,9 @@ function overrideModules(
          CONFIG_PATH: path.join(tempDir, '.gdx', '.gdxrc.toml'),
          CACHE_PATH: path.join(tempTmpDir, 'gdx', 'cache.json'),
          MACRO_PATH: path.join(tempDir, '.gdx', 'macro.json'),
+         get GDX_RESULT_FILE() {
+            return process.env.GDX_RESULT;
+         },
          SHOULD_WRITE_LOGS: false,
       };
    });

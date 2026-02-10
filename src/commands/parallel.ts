@@ -154,7 +154,7 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
 
    try {
       const repoRoot = await getRepoRootCached(git$);
-      const projectName = path.basename(repoRoot);
+      let projectName = path.basename(repoRoot);
 
       let branchName: string;
       try {
@@ -176,6 +176,7 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
       if (isParallel) {
          const meta = getParallelMetadata(repoRoot);
          if (meta) {
+            if (meta.project) projectName = meta.project;
             if (meta.branch) branchName = meta.branch;
             if (meta.originPath) originPath = path.resolve(meta.originPath);
             if (meta.alias) alias = meta.alias;
@@ -639,8 +640,7 @@ async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false
       }
 
       destination = ctx.originPath;
-   }
-   else {
+   } else {
       if (!testParallelAlias(target)) {
          Logger.error(`Alias '${target}' contains invalid characters or spaces.`, 'parallel');
          return 1;
@@ -673,11 +673,12 @@ async function getCommitComparison(
    worktreePath: string,
    originPath: string
 ): Promise<{ ahead: number; behind: number }> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
    try {
       // Get HEAD of both worktrees
       const [wtHead, originHead] = await Promise.all([
-         $`${git$} -C ${worktreePath} rev-parse HEAD`.then(r => r.stdout.trim()),
-         $`${git$} -C ${originPath} rev-parse HEAD`.then(r => r.stdout.trim()),
+         $`${gitExec} -C ${worktreePath} rev-parse HEAD`.then((r) => r.stdout.trim()),
+         $`${gitExec} -C ${originPath} rev-parse HEAD`.then((r) => r.stdout.trim()),
       ]);
 
       if (wtHead === originHead) {
@@ -687,30 +688,30 @@ async function getCommitComparison(
       let ahead = 0;
       let behind = 0;
       await Promise.all([
-         async () => {
+         (async () => {
             // Count commits ahead (in worktree but not in origin)
             try {
                const aheadOutput = (
-                  await $`${git$} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
+                  await $`${gitExec} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
                ).stdout.trim();
                ahead = parseInt(aheadOutput, 10) || 0;
             } catch {
                // If the range is invalid, might be diverged completely
                ahead = 0;
             }
-         },
-         async () => {
+         })(),
+         (async () => {
             // Count commits behind (in origin but not in worktree)
             try {
                const behindOutput = (
-                  await $`${git$} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
+                  await $`${gitExec} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
                ).stdout.trim();
                behind = parseInt(behindOutput, 10) || 0;
             } catch {
                // If the range is invalid, might be diverged completely
                behind = 0;
             }
-         }
+         })(),
       ]);
 
       return { ahead, behind };
@@ -726,13 +727,19 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
+   // need to extract git executable because test will inject its own `-C` option which
+   // will cause this function to list status of origin worktree instead of the fork
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const isShortOutput = args.includes('--short') || args.includes('-s');
 
+   // LINK: iin2ya string literal in spec
    quickPrint(`${ncc('Cyan')}Project:${ncc()} ${ctx.projectName}`);
    quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${ctx.branchName}`);
    quickPrint(`${ncc('Cyan')}Origin:${ncc()} ${ctx.originPath}`);
    const currentLabel = ctx.isParallelWorktree ? ctx.alias : 'origin';
-   quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel} ${currentLabel !== 'origin' ? ncc('Dim') + '(use "origin" alias to refer to main worktree)' + ncc() : ''}\n`);
+   quickPrint(
+      `${ncc('Cyan')}Current:${ncc()} ${currentLabel} ${currentLabel !== 'origin' ? ncc('Dim') + '(use "origin" alias to refer to main worktree)' + ncc() : ''}\n`
+   );
 
    if (!fs.existsSync(ctx.parallelRoot)) {
       // LINK: dkn2ika string literal in spec
@@ -752,7 +759,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
    let hasAnyWt = false;
    for (const wt of worktrees) {
-      let wtPath = path.join(ctx.parallelRoot, wt.name);
+      const wtPath = path.join(ctx.parallelRoot, wt.name);
       const meta = getParallelMetadata(wtPath);
       if (!meta) continue; // Skip invalid worktrees
 
@@ -762,8 +769,9 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       const [statusOutput, comparison] = await Promise.all([
          // get dirty status
-         $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`
-            .then(r => r.stdout.trim()),
+         $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`.then((r) =>
+            r.stdout.trim()
+         ),
          // Get commit comparison with origin
          getCommitComparison(git$, wtPath, ctx.originPath),
       ]);
@@ -783,25 +791,24 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       }
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
-      const statusLabel = isDirty
-         ? `${ncc('Red')}dirty${ncc()}`
-         : `${ncc('Green')}clean${ncc()}`;
+      const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
 
+      let displayPath = wtPath;
       if (isShortOutput) {
          // Format path with hyperlink and clamp it to reasonable length
          const clampedPath = strClamp(wtPath, 50, 'mid', -1);
-         wtPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
+         displayPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
       }
 
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${displayPath}`
       );
 
       if (baseCommit) {
          let commitCount = 0;
          try {
             const countOutput = (
-               await $`${git$} -C ${wtPath} rev-list --count ${baseCommit}..HEAD`
+               await $`${gitExec} -C ${wtPath} rev-list --count ${baseCommit}..HEAD`
             ).stdout.trim();
             commitCount = parseInt(countOutput, 10) || 0;
          } catch {
@@ -812,10 +819,15 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             const maxCount = isShortOutput ? Math.min(3, commitCount) : commitCount;
             let logOutput = '';
             try {
-               const logArgs = ['-C', wtPath, 'log', `--pretty=format:${ncc('Yellow')}%h${ncc()} %s`];
+               const logArgs = [
+                  '-C',
+                  wtPath,
+                  'log',
+                  `--pretty=format:${ncc('Yellow')}%h${ncc()} %s`,
+               ];
                if (isShortOutput) logArgs.push(`--max-count=${maxCount}`);
                logArgs.push(`${baseCommit}..HEAD`);
-               logOutput = (await $`${git$} ${logArgs}`).stdout.trim();
+               logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
             } catch {
                logOutput = '';
             }
