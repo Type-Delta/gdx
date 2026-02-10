@@ -1,6 +1,6 @@
 import path from 'path';
 
-import { Err, ncc, strWrap } from '@lib/Tools';
+import { CheckCache, Err, ncc, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit } from '@/modules/shell';
@@ -65,7 +65,7 @@ async function getSubmoduleStatus(
    args: string[]
 ): Promise<string> {
    try {
-      const result = await $`${git$} -C ${submodulePath} status ${args}`;
+      const result = await $`${git$} -C ${submodulePath} status ${buildSubmoduleStatusArgs(args)}`;
       return result.stdout;
    } catch (error) {
       const err = Err.from(error);
@@ -79,6 +79,24 @@ async function getSubmoduleStatus(
       );
       return '';
    }
+}
+
+function buildSubmoduleStatusArgs(args: string[]): string[] {
+   if (CheckCache.supportsColor <= 0) return args;
+   if (hasNoColorFlag(args) || hasPorcelainFlag(args) || hasExplicitColorFlag(args)) return args;
+   return [...args, '--color=always'];
+}
+
+function hasNoColorFlag(args: string[]): boolean {
+   return args.some((arg) => arg === '--no-color' || arg === '--color=never');
+}
+
+function hasPorcelainFlag(args: string[]): boolean {
+   return args.some((arg) => arg === '--porcelain' || arg.startsWith('--porcelain='));
+}
+
+function hasExplicitColorFlag(args: string[]): boolean {
+   return args.some((arg) => arg === '--color' || arg.startsWith('--color='));
 }
 
 /**
