@@ -285,28 +285,32 @@ describe('gdx parallel', async () => {
 
       const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
       const forkPath = path.join(worktreeRoot, 'feature-submodule');
-      const submodulePath = path.join(forkPath, 'deps', 'submodule');
-      const submoduleExists = await fs
-         .stat(submodulePath)
-         .then(() => true)
-         .catch(() => false);
-      if (!submoduleExists) {
-         await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
-         await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
+
+      try {
+         const submodulePath = path.join(forkPath, 'deps', 'submodule');
+         const submoduleExists = await fs
+            .stat(submodulePath)
+            .then(() => true)
+            .catch(() => false);
+         if (!submoduleExists) {
+            await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
+            await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
+         }
+         await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
+
+         resetCache();
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
+         const removeResult = await parallel(removeCtx);
+
+         expect(removeResult).toBe(1);
+         expect(buffer.stderr).toContain('dirty submodules');
       }
-      await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
-
-      resetCache();
-      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
-      const removeResult = await parallel(removeCtx);
-
-      expect(removeResult).toBe(1);
-      expect(buffer.stderr).toContain('dirty submodules');
-
-      await $`${git$} worktree prune --expire now`;
-      await fs.rm(forkPath, { recursive: true, force: true });
-      await resetRepo();
-      await $`${git$} -C ${tmpDir} clean -fd`;
+      finally {
+         await $`${git$} worktree prune --expire now`;
+         await fs.rm(forkPath, { recursive: true, force: true });
+         await resetRepo();
+         await $`${git$} -C ${tmpDir} clean -fd`;
+      }
    });
 
    it('should prune missing worktree metadata on remove', async () => {

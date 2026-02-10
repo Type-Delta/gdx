@@ -133,7 +133,9 @@ function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
 
    try {
       const content = fs.readFileSync(metaPath, 'utf-8');
-      return JSON.parse(content);
+      const obj = JSON.parse(content) as ParallelMetadata;
+      Logger.debug(`Loaded parallel metadata from '${metaPath}': ${yuString(obj)}`, 'parallel');
+      return obj;
    } catch {
       return null;
    }
@@ -228,6 +230,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
+   Logger.debug(`Removing worktree '${alias}'...`, 'parallel');
    const targetPath = path.join(ctx.parallelRoot, alias);
 
    await invalidateWorktreeListCache(git$);
@@ -247,10 +250,16 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    }
 
    if (!fs.existsSync(targetPath)) {
+      Logger.debug(
+         `Worktree path '${targetPath}' is missing on disk. Attempting prune...`,
+         'parallel'
+      );
+
       await pruneWorktrees(git$);
       const afterPrune = await getWorktreeEntry(git$, targetPath);
       if (!afterPrune) {
          quickPrint(`${ncc('Cyan')}Removed worktree metadata:${ncc()} ${alias}`);
+         Logger.debug(`Worktree '${alias}' pruned successfully.`, 'parallel');
          return 0;
       }
 
@@ -264,8 +273,13 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       Logger.error(`Worktree '${alias}' is not accessible or writable. Cannot remove.`, 'parallel');
       return 1;
    }
+   Logger.debug(`Worktree path '${targetPath}' is accessible.`, 'parallel');
 
    const activeOps = await getWorktreeOperations(git$, targetPath);
+   Logger.debug(
+      `Active operations for worktree '${alias}': ${activeOps.length > 0 ? activeOps.join(', ') : 'none'}`,
+      'parallel'
+   );
    if (activeOps.length > 0) {
       Logger.error(
          `Worktree '${alias}' has in-progress operations (${activeOps.join(', ')}). Complete or abort them before removing.`,
@@ -275,6 +289,11 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    }
 
    const submodules = await getSubmodules(git$, targetPath);
+   Logger.debug(
+      `Submodules in worktree '${alias}': ${submodules.length > 0 ? submodules.map((s) => s.path).join(', ') : 'none'}`,
+      'parallel'
+   );
+   // deinit submodules
    if (submodules.length > 0) {
       const dirtySubmodules = await getDirtySubmodules(git$, targetPath, submodules);
       if (dirtySubmodules.length > 0) {
@@ -286,6 +305,8 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
          return 1;
       }
 
+      Logger.debug(`Deinitializing submodules for worktree '${alias}'...`, 'parallel');
+      quickPrint(`${ncc('Cyan')}Found submodules, deinitializing...${ncc()}`);
       try {
          await deinitSubmodules(git$, targetPath);
       } catch (err) {
@@ -361,6 +382,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    });
 
    try {
+      Logger.debug(`Executing git worktree remove for '${alias}'...`, 'parallel');
       const result = await $`${git$} worktree remove ${targetPath}`;
       spinnerCtrl.stop();
 
@@ -368,9 +390,11 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
       // Clean up directory if it still exists
       try {
+         Logger.debug(`Removing directory '${targetPath}' (if exists)...`, 'parallel');
          fs.rmSync(targetPath, { recursive: true, force: true });
       } catch {
          // Ignore cleanup errors
+         Logger.warn(`Failed to remove directory '${targetPath}', ignoring.`, 'parallel');
       }
 
       // LINK: dw2al2m string literal in spec
@@ -378,6 +402,11 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
+      Logger.debug(
+         `Error removing worktree '${alias}': ${yuString(err, { color: true })}`,
+         'parallel'
+      );
+
       const errText = err instanceof ExecaError ? `${err.stderr || ''} ${err.message || ''}` : '';
       if (
          errText
@@ -936,6 +965,8 @@ async function joinWorktree(
    forkAlias: string,
    options: { keep: boolean; bringAll: boolean }
 ): Promise<number> {
+   Logger.debug(`Joining worktree '${forkAlias}'...`, 'parallel');
+
    const { keep, bringAll } = options;
    const meta = getParallelMetadata(forkPath);
    if (!meta) {
@@ -947,7 +978,6 @@ async function joinWorktree(
    }
 
    const originPath = path.resolve(meta.originPath);
-
    if (!fs.existsSync(originPath)) {
       Logger.error(
          `Original worktree path not found. Expected at '${meta.originPath}'.`,
@@ -956,11 +986,19 @@ async function joinWorktree(
       return 1;
    }
 
+   const [forkStatusResult, originStatusResult, forkHeadResult] = await Promise.all([
+      $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`,
+      $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`,
+      $`${git$} -C ${forkPath} rev-parse HEAD`,
+   ]);
+
    // Check fork status
-   const forkStatus = (
-      await $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`
-   ).stdout.trim();
+   const forkStatus = forkStatusResult.stdout.trim();
    const forkDirty = forkStatus.length > 0;
+   Logger.debug(
+      `Fork worktree '${forkAlias}' dirty status: ${forkDirty ? 'dirty' : 'clean'}`,
+      'parallel'
+   );
 
    if (forkDirty && !bringAll) {
       Logger.error(
@@ -971,10 +1009,8 @@ async function joinWorktree(
    }
 
    // Check origin status
-   const originStatus = (
-      await $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`
-   ).stdout.trim();
-   if (originStatus.length > 0) {
+   const originStatus = originStatusResult.stdout.trim();
+   if (originStatus.length > 0 && bringAll && forkDirty) {
       Logger.error(
          'Origin worktree has pending changes. Commit or stash them before joining.',
          'parallel'
@@ -992,9 +1028,12 @@ async function joinWorktree(
    }
 
    let stashRef: string | null = null;
-
    if (forkDirty && bringAll) {
       const stashMessage = `git-parallel-join:${forkAlias}`;
+      Logger.debug(
+         `Stashing uncommitted changes from fork '${forkAlias}' before joining...`,
+         'parallel'
+      );
       try {
          await $`${git$} -C ${forkPath} stash push --include-untracked -m ${stashMessage}`;
          stashRef = 'stash@{0}';
@@ -1005,9 +1044,13 @@ async function joinWorktree(
    }
 
    // Get commit list from fork
+   const forkHead = forkHeadResult.stdout.trim();
    let commitList: string[];
+   Logger.debug(
+      `Enumerating commits from fork '${forkAlias}' since base commit ${baseCommit}...`,
+      'parallel'
+   );
    try {
-      const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
       const output = (
          await $`${git$} -C ${forkPath} rev-list --reverse ${baseCommit}..${forkHead}`
       ).stdout.trim();
@@ -1026,11 +1069,14 @@ async function joinWorktree(
       return 1;
    }
 
-   const appliedCommits: string[] = [];
+   Logger.debug(`Found ${commitList.length} commit(s) to cherry-pick into origin.`, 'parallel');
 
+   // Cherry-pick commits into origin
+   const appliedCommits: string[] = [];
    for (const commit of commitList) {
       if (!commit) continue;
 
+      Logger.debug(`Cherry-picking commit ${commit} into origin...`, 'parallel');
       try {
          await $inherit`${git$} -C ${originPath} cherry-pick ${commit}`;
          appliedCommits.push(commit);
@@ -1114,6 +1160,10 @@ async function joinWorktree(
    }
 
    if (stashRef) {
+      Logger.debug(
+         `Applying stashed uncommitted changes from fork '${forkAlias}' to origin...`,
+         'parallel'
+      );
       try {
          // Get the full stash reference from the fork
          const stashList = (await $`${git$} -C ${forkPath} stash list`).stdout.trim();
@@ -1152,6 +1202,7 @@ async function joinWorktree(
    }
 
    if (!keep) {
+      Logger.debug(`Removing fork worktree '${forkAlias}' after join...`, 'parallel');
       const removeResult = await removeWorktree(git$, forkAlias);
       if (removeResult !== 0) {
          Logger.warn(
