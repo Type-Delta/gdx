@@ -628,33 +628,33 @@ async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false
    }
 
    const target = args[0];
-
+   let destination: string;
    if (target.toLowerCase() === 'origin') {
       if (!fs.existsSync(ctx.originPath)) {
          Logger.error(`Origin worktree path not found at '${ctx.originPath}'.`, 'parallel');
          return 1;
       }
 
-      await openInEditor(ctx.originPath);
-      return 0;
+      destination = ctx.originPath;
    }
+   else {
+      if (!testParallelAlias(target)) {
+         Logger.error(`Alias '${target}' contains invalid characters or spaces.`, 'parallel');
+         return 1;
+      }
 
-   if (!testParallelAlias(target)) {
-      Logger.error(`Alias '${target}' contains invalid characters or spaces.`, 'parallel');
-      return 1;
-   }
+      destination = path.join(ctx.parallelRoot, target);
 
-   const destination = path.join(ctx.parallelRoot, target);
+      if (!fs.existsSync(destination)) {
+         Logger.error(`Worktree '${target}' not found for branch '${ctx.branchName}'.`, 'parallel');
+         return 1;
+      }
 
-   if (!fs.existsSync(destination)) {
-      Logger.error(`Worktree '${target}' not found for branch '${ctx.branchName}'.`, 'parallel');
-      return 1;
-   }
-
-   if (args.includes('-c') || args.includes('--copy')) {
-      await copyToClipboard(destination);
-      quickPrint(`${ncc('Cyan')}Worktree path copied to clipboard!${ncc()}`);
-      return 0;
+      if (args.includes('-c') || args.includes('--copy')) {
+         await copyToClipboard(destination);
+         quickPrint(`${ncc('Cyan')}Worktree path copied to clipboard!${ncc()}`);
+         return 0;
+      }
    }
 
    if (changeDir) await scheduleChangeDir(destination);
@@ -716,14 +716,15 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
-   const statusCache = new Map<string, { isDirty: boolean; shortHead: string }>();
+   const statusCache = new Map<string, { isDirty: boolean; baseShort: string }>();
    const comparisonCache = new Map<string, { ahead: number; behind: number }>();
+   const isShortOutput = args.includes('--short') || args.includes('-s');
 
    quickPrint(`${ncc('Cyan')}Project:${ncc()} ${ctx.projectName}`);
    quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${ctx.branchName}`);
    quickPrint(`${ncc('Cyan')}Origin:${ncc()} ${ctx.originPath}`);
    const currentLabel = ctx.isParallelWorktree ? ctx.alias : 'origin';
-   quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel}\n`);
+   quickPrint(`${ncc('Cyan')}Current:${ncc()} ${currentLabel} ${currentLabel !== 'origin' ? ncc('Dim') + '(use "origin" alias to refer to main worktree)' + ncc() : ''}\n`);
 
    if (!fs.existsSync(ctx.parallelRoot)) {
       // LINK: dkn2ika string literal in spec
@@ -748,6 +749,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       if (!meta) continue; // Skip invalid worktrees
 
       const aliasLabel = meta?.alias || wt.name;
+      const baseCommit = meta.baseCommit?.trim();
       hasAnyWt = true;
 
       const statusKey = path.resolve(wtPath);
@@ -758,13 +760,17 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          ).stdout.trim();
          const isDirty = statusOutput.length > 0;
 
-         let shortHead = 'unknown';
+         let baseShort = 'unknown';
          try {
-            shortHead = (await $`${git$} -C ${wtPath} rev-parse --short HEAD`).stdout.trim();
+            if (baseCommit) {
+               baseShort = (
+                  await $`${git$} -C ${wtPath} rev-parse --short ${baseCommit}`
+               ).stdout.trim();
+            }
          } catch {
             // Keep 'unknown'
          }
-         statusInfo = { isDirty, shortHead };
+         statusInfo = { isDirty, baseShort };
          statusCache.set(statusKey, statusInfo);
       }
 
@@ -792,15 +798,58 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          ? `${ncc('Red')}dirty${ncc()}`
          : `${ncc('Green')}clean${ncc()}`;
 
-      if (args.includes('--short') || args.includes('-s')) {
+      if (isShortOutput) {
          // Format path with hyperlink and clamp it to reasonable length
          const clampedPath = strClamp(wtPath, 50, 'mid', -1);
          wtPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
       }
 
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${statusInfo.shortHead}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${statusInfo.baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${wtPath}`
       );
+
+      if (baseCommit) {
+         let commitCount = 0;
+         try {
+            const countOutput = (
+               await $`${git$} -C ${wtPath} rev-list --count ${baseCommit}..HEAD`
+            ).stdout.trim();
+            commitCount = parseInt(countOutput, 10) || 0;
+         } catch {
+            commitCount = 0;
+         }
+
+         if (commitCount > 0) {
+            const maxCount = isShortOutput ? Math.min(3, commitCount) : commitCount;
+            let logOutput = '';
+            try {
+               const logArgs = ['-C', wtPath, 'log', '--pretty=format:%h%x20%s'];
+               if (isShortOutput) logArgs.push(`--max-count=${maxCount}`);
+               logArgs.push(`${baseCommit}..HEAD`);
+               logOutput = (await $`${git$} ${logArgs}`).stdout.trim();
+            } catch {
+               logOutput = '';
+            }
+
+            const commitLines = logOutput
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.length > 0);
+            const moreCount = Math.max(commitCount - commitLines.length, 0);
+            const connectorMid = `${ncc('Dim')}  ├─ ${ncc()}`;
+            const connectorLast = `${ncc('Dim')}  └─ ${ncc()}`;
+
+            for (let i = 0; i < commitLines.length; i++) {
+               const isLast = i === commitLines.length - 1;
+               const connector = isLast && moreCount === 0 ? connectorLast : connectorMid;
+               quickPrint(`${connector}${commitLines[i]}`);
+            }
+
+            if (moreCount > 0) {
+               quickPrint(`${connectorLast}${ncc('Dim')}+${moreCount} more${ncc()}`);
+            }
+         }
+      }
    }
 
    if (!hasAnyWt) {
@@ -1334,7 +1383,7 @@ ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc
 - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
 - ${cyan}join [<alias>] [--keep|--all]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes.
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
-- ${cyan}list${reset}: Lists forks for the current branch with status (clean/dirty), commit divergence and optional path hyperlinks.
+- ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
 - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
 
 ${bright + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
@@ -1367,7 +1416,7 @@ Examples:
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Show forks for current branch${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}`,
          Math.min(100, global.terminalWidth - 4),
