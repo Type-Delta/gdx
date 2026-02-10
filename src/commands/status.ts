@@ -65,7 +65,7 @@ async function getSubmoduleStatus(
    args: string[]
 ): Promise<string> {
    try {
-      const result = await $`${git$} -C ${submodulePath} status ${buildSubmoduleStatusArgs(args)}`;
+      const result = await $`${git$} -C ${submodulePath} ${buildSubmoduleStatusArgs(args)}`;
       return result.stdout;
    } catch (error) {
       const err = Err.from(error);
@@ -82,9 +82,11 @@ async function getSubmoduleStatus(
 }
 
 function buildSubmoduleStatusArgs(args: string[]): string[] {
-   if (CheckCache.supportsColor <= 0) return args;
-   if (hasNoColorFlag(args) || hasPorcelainFlag(args) || hasExplicitColorFlag(args)) return args;
-   return [...args, '--color=always'];
+   const baseArgs = ['status', ...args];
+   if (CheckCache.supportsColor <= 0) return baseArgs;
+   if (hasNoColorFlag(args) || hasPorcelainFlag(args) || hasExplicitColorFlag(args))
+      return baseArgs;
+   return ['-c', 'color.ui=always', ...baseArgs];
 }
 
 function hasNoColorFlag(args: string[]): boolean {
