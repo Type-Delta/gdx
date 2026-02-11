@@ -25,6 +25,30 @@ describe('gdx __completion', async () => {
       delete process.env.GDX_CMP_IDX;
    });
 
+   it('should not suggest duplicate options', async () => {
+      const previous = global.logLevel;
+      process.env.GDX_CMP_IDX = '3';
+
+      let ctx = createGdxContext(tmpDir, ['__completion', 'parallel', 'fork', '--move', '--m']);
+      let exitCode = await completion(ctx);
+
+      expect(exitCode).toBe(0);
+      expect(buffer.stdout.trim()).toEqual('');
+      expect(global.logLevel).toBe(previous);
+
+      // passing incorrect index of 2 it should not suggest `--keep` again
+      buffer.stdout = '';
+      process.env.GDX_CMP_IDX = '2';
+      ctx = createGdxContext(tmpDir, ['__completion', 'parallel', 'join', '--keep', '']);
+      exitCode = await completion(ctx);
+
+      expect(exitCode).toBe(0);
+      expect(buffer.stdout.trim()).toEqual('');
+      expect(global.logLevel).toBe(previous);
+
+      delete process.env.GDX_CMP_IDX;
+   });
+
    it('suggests multiple root-level commands', async () => {
       process.env.GDX_CMP_IDX = '0';
 

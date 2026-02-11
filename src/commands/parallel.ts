@@ -989,7 +989,7 @@ async function joinWorktree(
       'parallel'
    );
 
-   if (forkDirty && !bringAll) {
+   if (forkDirty && !bringAll && !keep) {
       Logger.error(
          `Fork '${forkAlias}' has uncommitted changes. Re-run with --all to include them or clean the worktree first.`,
          'parallel'

@@ -166,6 +166,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 /**
  * Creates an animated spinner that displays in the terminal.
  *
+ * Animation will immediately start unless no message is provided (quiet mode).
+ * in this mode you will have to call `resume()` to start the spinner.
+ *
  * @param options - Configuration options for the spinner
  * @returns An object with `stop()` method to halt the spinner and restore stdout
  *
@@ -175,6 +178,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * spinner.stop();
  */
 export function spinner(options: SpinnerOptions = {}) {
+   const isQuietStart = !options.message;
    options = {
       message: '',
       interval: 80,
@@ -203,9 +207,6 @@ export function spinner(options: SpinnerOptions = {}) {
    let isRunning = true;
    let intervalId: NodeJS.Timeout | null = null;
    const resetColor = ncc();
-
-   // Hide cursor
-   process.stdout.write('\x1b[?25l');
 
    const render = () => {
       if (!isRunning) return;
@@ -246,9 +247,13 @@ export function spinner(options: SpinnerOptions = {}) {
       frameIndex++;
    };
 
-   // Start the animation loop
-   intervalId = setInterval(render, options.interval);
-   render(); // Initial render
+   // Start the animation loop only if not quiet
+   if (!isQuietStart) {
+      intervalId = setInterval(render, options.interval);
+      // Hide cursor
+      process.stdout.write('\x1b[?25l');
+      render(); // Initial render
+   }
 
    return {
       /**

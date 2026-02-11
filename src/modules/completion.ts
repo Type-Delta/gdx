@@ -204,7 +204,7 @@ export async function suggestArgs(
    // 3. Filter and return all matches
    const input = args[index] || '';
    const matches = Array.from(candidates)
-      .filter((c) => c.startsWith(input))
+      .filter((c) => c.startsWith(input) && c !== input.trim())
       .sort((a, b) => a.length - b.length || a.localeCompare(b));
    // Prefer shorter matches, then alphabetical
 
