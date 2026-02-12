@@ -30,6 +30,12 @@ import {
    invalidateWorktreeListCache,
    getRepoRootCached,
    pruneWorktrees,
+   stageResolvedConflicts,
+   isEmptyCherryPickError,
+   isCherryPickEmpty,
+   getUnmergedPaths,
+   getSubmoduleBaseSha,
+   getCommitRangeLog,
 } from '@/modules/git';
 import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
@@ -58,6 +64,14 @@ interface ParallelContext {
    alias: string | null;
    isParallelWorktree: boolean;
 }
+
+interface CommitGroup {
+   label: string;
+   commits: string[];
+   totalCount: number;
+   moreCount: number;
+}
+
 
 const PARALLEL_CONTEXT_TTL_MS = 1000;
 let parallelContextCache: {
@@ -328,7 +342,10 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       quickPrint(`${ncc('Cyan')}Found submodules, deinitializing...${ncc()}`);
       spinnerCtrl.options.message = `Deinitializing submodules...`;
       try {
-         Logger.debug(`Executing deinit for submodules with ${gitExec} -C ${targetPath}...`, 'parallel');
+         Logger.debug(
+            `Executing deinit for submodules with ${gitExec} -C ${targetPath}...`,
+            'parallel'
+         );
          await deinitSubmodules(git$, targetPath);
       } catch (err) {
          spinnerCtrl.stop();
@@ -368,7 +385,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       ],
       interval: 120,
       message: `Removing worktree '${alias}'...`,
-   }
+   };
 
    try {
       Logger.debug(`Executing git worktree remove for '${alias}'...`, 'parallel');
@@ -684,61 +701,6 @@ async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false
 }
 
 /**
- * Compares two worktrees and returns commits ahead/behind
- */
-async function getCommitComparison(
-   git$: string | string[],
-   worktreePath: string,
-   originPath: string
-): Promise<{ ahead: number; behind: number }> {
-   const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   try {
-      // Get HEAD of both worktrees
-      const [wtHead, originHead] = await Promise.all([
-         $`${gitExec} -C ${worktreePath} rev-parse HEAD`.then((r) => r.stdout.trim()),
-         $`${gitExec} -C ${originPath} rev-parse HEAD`.then((r) => r.stdout.trim()),
-      ]);
-
-      if (wtHead === originHead) {
-         return { ahead: 0, behind: 0 };
-      }
-
-      let ahead = 0;
-      let behind = 0;
-      await Promise.all([
-         (async () => {
-            // Count commits ahead (in worktree but not in origin)
-            try {
-               const aheadOutput = (
-                  await $`${gitExec} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
-               ).stdout.trim();
-               ahead = parseInt(aheadOutput, 10) || 0;
-            } catch {
-               // If the range is invalid, might be diverged completely
-               ahead = 0;
-            }
-         })(),
-         (async () => {
-            // Count commits behind (in origin but not in worktree)
-            try {
-               const behindOutput = (
-                  await $`${gitExec} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
-               ).stdout.trim();
-               behind = parseInt(behindOutput, 10) || 0;
-            } catch {
-               // If the range is invalid, might be diverged completely
-               behind = 0;
-            }
-         })(),
-      ]);
-
-      return { ahead, behind };
-   } catch {
-      return { ahead: 0, behind: 0 };
-   }
-}
-
-/**
  * List command - lists all parallel worktrees
  */
 async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> {
@@ -785,23 +747,46 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const baseCommit = meta.baseCommit?.trim();
       hasAnyWt = true;
 
-      const [statusOutput, comparison] = await Promise.all([
+      const maxLogCount = isShortOutput ? 3 : undefined;
+      const [statusOutput, comparison, mainLog, submoduleLog] = await Promise.all([
          // get dirty status
          $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`.then((r) =>
             r.stdout.trim()
          ),
          // Get commit comparison with origin
          getCommitComparison(git$, wtPath, ctx.originPath),
+         baseCommit
+            ? getCommitRangeLog({
+               gitExec,
+               repoPath: wtPath,
+               range: `${baseCommit}..HEAD`,
+               maxCount: maxLogCount,
+            })
+            : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
+         baseCommit
+            ? getSubmoduleCommitGroups({
+               git$,
+               gitExec,
+               worktreePath: wtPath,
+               baseCommit,
+               maxCount: maxLogCount,
+            })
+            : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
       const isDirty = statusOutput.length > 0;
-      const baseShort = baseCommit.slice(0, 7);
+      const baseShort = baseCommit ? baseCommit.slice(0, 7) : 'unknown';
+
+      const submoduleCount = submoduleLog.totalCount;
+      const hasAhead = comparison.ahead > 0 || submoduleCount > 0;
+      const aheadLabel =
+         submoduleCount > 0 ? `${comparison.ahead}+${submoduleCount}` : `${comparison.ahead}`;
 
       let commitInfo = '';
-      if (comparison.ahead > 0 && comparison.behind > 0) {
-         commitInfo = `${ncc('Yellow')}↑${comparison.ahead} ↓${comparison.behind}${ncc()}`;
-      } else if (comparison.ahead > 0) {
-         commitInfo = `${ncc('Green')}↑${comparison.ahead}${ncc()}`;
+      if (hasAhead && comparison.behind > 0) {
+         commitInfo = `${ncc('Yellow')}↑${aheadLabel} ↓${comparison.behind}${ncc()}`;
+      } else if (hasAhead) {
+         commitInfo = `${ncc('Green')}↑${aheadLabel}${ncc()}`;
       } else if (comparison.behind > 0) {
          commitInfo = `${ncc('Red')}↓${comparison.behind}${ncc()}`;
       } else {
@@ -823,50 +808,19 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       );
 
       if (baseCommit) {
-         let commitCount = 0;
-         try {
-            const countOutput = (
-               await $`${gitExec} -C ${wtPath} rev-list --count ${baseCommit}..HEAD`
-            ).stdout.trim();
-            commitCount = parseInt(countOutput, 10) || 0;
-         } catch {
-            commitCount = 0;
-         }
-
-         if (commitCount > 0) {
-            const maxCount = isShortOutput ? Math.min(3, commitCount) : commitCount;
-            let logOutput = '';
-            try {
-               const logArgs = [
-                  '-C',
-                  wtPath,
-                  'log',
-                  `--pretty=format:${ncc('Yellow')}%h${ncc()} %s`,
-               ];
-               if (isShortOutput) logArgs.push(`--max-count=${maxCount}`);
-               logArgs.push(`${baseCommit}..HEAD`);
-               logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
-            } catch {
-               logOutput = '';
-            }
-
-            const commitLines = logOutput
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0);
-            const moreCount = Math.max(commitCount - commitLines.length, 0);
-            const connectorMid = `${ncc('Dim')}  ├─ ${ncc()}`;
-            const connectorLast = `${ncc('Dim')}  └─ ${ncc()}`;
-
-            for (let i = 0; i < commitLines.length; i++) {
-               const isLast = i === commitLines.length - 1;
-               const connector = isLast && moreCount === 0 ? connectorLast : connectorMid;
-               quickPrint(`${connector}${commitLines[i]}`);
-            }
-
-            if (moreCount > 0) {
-               quickPrint(`${connectorLast}${ncc('Dim')}+${moreCount} more${ncc()}`);
-            }
+         if (submoduleLog.groups.length > 0) {
+            const groups: CommitGroup[] = [
+               {
+                  label: 'main',
+                  commits: mainLog.commits,
+                  totalCount: mainLog.totalCount,
+                  moreCount: mainLog.moreCount,
+               },
+               ...submoduleLog.groups,
+            ];
+            printCommitGroups(groups);
+         } else if (mainLog.totalCount > 0) {
+            printCommitBlock('  ', mainLog.commits, mainLog.moreCount);
          }
       }
    }
@@ -898,33 +852,13 @@ async function restoreJoinStash(
    }
 }
 
-async function getUnmergedPaths(git$: string | string[], originPath: string): Promise<string[]> {
-   try {
-      const output = (await $`${git$} -C ${originPath} diff --name-only --diff-filter=U`).stdout;
-      return output
-         .split('\n')
-         .map((line) => line.trim())
-         .filter((line) => line.length > 0);
-   } catch {
-      return [];
-   }
-}
-
-async function stageResolvedConflicts(git$: string | string[], originPath: string): Promise<void> {
-   const unmergedPaths = await getUnmergedPaths(git$, originPath);
-   if (unmergedPaths.length === 0) return;
-
-   const addArgs = ['-C', originPath, 'add', '-A', '--', ...unmergedPaths];
-   await $inherit`${git$} ${addArgs}`;
-}
-
-function printCherryPickSteps(
+async function printCherryPickSteps(
    originPath: string,
    forkAlias: string,
    commit: string,
    stashRef: string | null,
    unmergedPaths: string[]
-): void {
+): Promise<void> {
    quickPrint(
       `${ncc('Yellow')}Cherry-pick stopped at commit ${commit}. To resolve conflicts run:${ncc()}`
    );
@@ -1016,6 +950,8 @@ async function joinWorktree(
       return 1;
    }
 
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+
    let stashRef: string | null = null;
    if (forkDirty && bringAll) {
       const stashMessage = `git-parallel-join:${forkAlias}`;
@@ -1058,92 +994,95 @@ async function joinWorktree(
       return 1;
    }
 
+   const appliedCommits: string[] = [];
+   const appliedSubmoduleCommits: string[] = [];
+
    Logger.debug(`Found ${commitList.length} commit(s) to cherry-pick into origin.`, 'parallel');
 
-   // Cherry-pick commits into origin
-   const appliedCommits: string[] = [];
    for (const commit of commitList) {
       if (!commit) continue;
-
-      Logger.debug(`Cherry-picking commit ${commit} into origin...`, 'parallel');
       try {
-         await $inherit`${git$} -C ${originPath} cherry-pick ${commit}`;
-         appliedCommits.push(commit);
+         const applied = await applyCherryPick(git$, {
+            originRepoPath: originPath,
+            commit,
+            contextLabel: 'origin worktree',
+            forkAlias,
+            stashRef,
+         });
+         if (applied) appliedCommits.push(commit);
+      } catch {
+         if (stashRef) {
+            await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+         }
+         return 1;
+      }
+   }
+
+   const submodules = await getSubmodules(git$, forkPath);
+   for (const submodule of submodules) {
+      const forkSubPath = path.resolve(forkPath, submodule.path);
+      const originSubPath = path.resolve(originPath, submodule.path);
+      const forkGitMarker = path.join(forkSubPath, '.git');
+      const originGitMarker = path.join(originSubPath, '.git');
+      if (!fs.existsSync(forkSubPath) || !fs.existsSync(originSubPath)) continue;
+      if (!fs.existsSync(forkGitMarker) || !fs.existsSync(originGitMarker)) continue;
+
+      const baseSha = await getSubmoduleBaseSha(gitExec, forkPath, baseCommit, submodule.path);
+      if (!baseSha) continue;
+
+      let subCommitList: string[] = [];
+      try {
+         const subHead = (await $`${git$} -C ${forkSubPath} rev-parse HEAD`).stdout.trim();
+         const output = (
+            await $`${git$} -C ${forkSubPath} rev-list --reverse ${baseSha}..${subHead}`
+         ).stdout.trim();
+         subCommitList = output
+            ? output
+               .split('\n')
+               .map((c) => c.trim())
+               .filter((c) => c)
+            : [];
       } catch (err) {
-         const hasInProgress = await hasCherryPickInProgress(git$, originPath);
-         if (!hasInProgress) {
-            if (stashRef) {
-               await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-            }
-            Logger.error(`Cherry-pick failed while applying commit ${commit}.`, 'parallel');
-            Logger.debug(yuString(err, { color: true }), 'parallel');
-            return 1;
+         Logger.error(`Unable to enumerate submodule commits for '${submodule.path}'.`, 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         if (stashRef) {
+            await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
          }
+         return 1;
+      }
 
-         if (!isTTY()) {
-            const unmergedPaths = await getUnmergedPaths(git$, originPath);
-            printCherryPickSteps(originPath, forkAlias, commit, stashRef, unmergedPaths);
-            Logger.debug(yuString(err, { color: true }), 'parallel');
-            return 1;
-         }
+      if (subCommitList.length === 0) continue;
 
-         quickPrint(
-            `${ncc('Yellow')}Cherry-pick paused due to conflicts while applying commit ${commit}.${ncc()}`
-         );
-         quickPrint(
-            `${ncc('Dim')}Resolve conflicts in the origin worktree, then choose to continue or abort.${ncc()}`
-         );
-
-         while (true) {
-            const response = (
-               await $prompt('Type c to continue, a to abort (c|a): ')
-            ).toLowerCase();
-
-            if (
-               response === 'c' ||
-               response === 'continue' ||
-               response === 'y' ||
-               response === 'yes'
-            ) {
-               try {
-                  await stageResolvedConflicts(git$, originPath);
-                  await $inherit`${git$} -C ${originPath} cherry-pick --continue`;
-                  appliedCommits.push(commit);
-                  break;
-               } catch (continueErr) {
-                  const stillInProgress = await hasCherryPickInProgress(git$, originPath);
-                  if (stillInProgress) {
-                     quickPrint(
-                        `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
-                     );
-                     Logger.debug(yuString(continueErr, { color: true }), 'parallel');
-                     continue;
-                  }
-
-                  Logger.error(
-                     'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
-                     'parallel'
-                  );
-                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
-                  return 1;
-               }
-            }
-
-            if (response === 'a' || response === 'abort' || response === 'n' || response === 'no') {
-               try {
-                  await $inherit`${git$} -C ${originPath} cherry-pick --abort`;
-               } catch (abortErr) {
-                  Logger.error('Failed to abort cherry-pick.', 'parallel');
-                  Logger.debug(yuString(abortErr, { color: true }), 'parallel');
-                  return 1;
-               }
-
+      for (const commit of subCommitList) {
+         if (!commit) continue;
+         try {
+            try {
+               await $`${gitExec} -c protocol.file.allow=always -C ${originSubPath} fetch ${forkSubPath} ${commit}`;
+            } catch (fetchErr) {
+               Logger.error(
+                  `Failed to fetch submodule commit ${commit} from '${submodule.path}'.`,
+                  'parallel'
+               );
+               Logger.debug(yuString(fetchErr, { color: true }), 'parallel');
                if (stashRef) {
                   await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
                }
-               Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
                return 1;
             }
+
+            const applied = await applyCherryPick(git$, {
+               originRepoPath: originSubPath,
+               commit,
+               contextLabel: `submodule ${submodule.path}`,
+               forkAlias,
+               stashRef,
+            });
+            if (applied) appliedSubmoduleCommits.push(commit);
+         } catch {
+            if (stashRef) {
+               await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+            }
+            return 1;
          }
       }
    }
@@ -1180,10 +1119,15 @@ async function joinWorktree(
       }
    }
 
-   if (appliedCommits.length > 0) {
+   if (appliedCommits.length > 0 || appliedSubmoduleCommits.length > 0) {
       quickPrint(
          `${ncc('Cyan')}Cherry-picked ${appliedCommits.length} commit(s) into origin.${ncc()}`
       );
+      if (appliedSubmoduleCommits.length > 0) {
+         quickPrint(
+            `${ncc('Cyan')}Cherry-picked ${appliedSubmoduleCommits.length} submodule commit(s) into origin.${ncc()}`
+         );
+      }
    } else {
       quickPrint(
          `${ncc('Cyan')}No new commits to cherry-pick. Origin was already up to date.${ncc()}`
@@ -1399,6 +1343,282 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
       default:
          showUsage();
          return 1;
+   }
+}
+
+/**
+ * Applies a cherry-pick to the origin worktree, handling conflicts interactively
+ * if in a TTY environment.
+ * Returns true if the commit was applied, false if it was skipped.
+ *
+ * @param git$ Git executable or command array
+ * @param ctx Context for the cherry-pick operation
+ * @returns Promise<boolean> Whether the commit was applied
+ */
+async function applyCherryPick(git$: string | string[], ctx: {
+   originRepoPath: string;
+   commit: string;
+   contextLabel: string;
+   forkAlias: string;
+   stashRef: string | null;
+}): Promise<boolean> {
+   const { originRepoPath, commit, contextLabel, forkAlias, stashRef } = ctx;
+   Logger.debug(`Cherry-picking commit ${commit} into ${contextLabel}...`, 'parallel');
+   try {
+      await $inherit`${git$} -C ${originRepoPath} cherry-pick ${commit}`;
+      return true;
+   } catch (err) {
+      const didSkip = await skipEmptyCherryPick(git$, originRepoPath, err, contextLabel);
+      if (didSkip) return false;
+
+      const hasInProgress = await hasCherryPickInProgress(git$, originRepoPath);
+      if (!hasInProgress) {
+         Logger.error(`Cherry-pick failed while applying commit ${commit}.`, 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         throw err;
+      }
+
+      if (!isTTY()) {
+         const unmergedPaths = await getUnmergedPaths(git$, originRepoPath);
+         await printCherryPickSteps(originRepoPath, forkAlias, commit, stashRef, unmergedPaths);
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         throw err;
+      }
+
+      quickPrint(
+         `${ncc('Yellow')}Cherry-pick paused due to conflicts while applying commit ${commit}.${ncc()}`
+      );
+      quickPrint(
+         `${ncc('Dim')}Resolve conflicts in ${contextLabel}, then choose to continue or abort.${ncc()}`
+      );
+
+      while (true) {
+         const response = (
+            await $prompt('Type c to continue, a to abort (c|a): ')
+         ).toLowerCase();
+
+         if (
+            response === 'c' ||
+            response === 'continue' ||
+            response === 'y' ||
+            response === 'yes'
+         ) {
+            try {
+               await stageResolvedConflicts(git$, originRepoPath);
+               await $inherit`${git$} -C ${originRepoPath} cherry-pick --continue`;
+               return true;
+            } catch (continueErr) {
+               const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
+               if (stillInProgress) {
+                  quickPrint(
+                     `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
+                  );
+                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+                  continue;
+               }
+
+               Logger.error(
+                  'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
+                  'parallel'
+               );
+               Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+               throw continueErr;
+            }
+         }
+
+         if (response === 'a' || response === 'abort' || response === 'n' || response === 'no') {
+            try {
+               await $inherit`${git$} -C ${originRepoPath} cherry-pick --abort`;
+            } catch (abortErr) {
+               Logger.error('Failed to abort cherry-pick.', 'parallel');
+               Logger.debug(yuString(abortErr, { color: true }), 'parallel');
+               throw abortErr;
+            }
+
+            Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
+            throw err;
+         }
+      }
+   }
+};
+
+async function skipEmptyCherryPick(
+   git$: string | string[],
+   originPath: string,
+   err: unknown,
+   contextLabel: string
+): Promise<boolean> {
+   const hasInProgress = await hasCherryPickInProgress(git$, originPath);
+   const shouldSkip =
+      isEmptyCherryPickError(err) || (hasInProgress && (await isCherryPickEmpty(git$, originPath)));
+   if (!shouldSkip) return false;
+
+   if (!hasInProgress) {
+      Logger.debug(`Empty cherry-pick ignored for ${contextLabel}.`, 'parallel');
+      return true;
+   }
+
+   try {
+      await $inherit`${git$} -C ${originPath} cherry-pick --skip`;
+      Logger.debug(`Skipped empty cherry-pick for ${contextLabel}.`, 'parallel');
+      return true;
+   } catch (skipErr) {
+      Logger.error(`Failed to skip empty cherry-pick for ${contextLabel}.`, 'parallel');
+      Logger.debug(yuString(skipErr, { color: true }), 'parallel');
+      return false;
+   }
+}
+
+/**
+ * Compares two worktrees and returns commits ahead/behind
+ *
+ * @param git$ Git executable or command array
+ * @param worktreePath Path to the worktree to compare
+ * @param originPath Path to the origin worktree
+ * @returns Promise<{ ahead: number; behind: number }>
+ */
+async function getCommitComparison(
+   git$: string | string[],
+   worktreePath: string,
+   originPath: string
+): Promise<{ ahead: number; behind: number }> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   try {
+      // Get HEAD of both worktrees
+      const [wtHead, originHead] = await Promise.all([
+         $`${gitExec} -C ${worktreePath} rev-parse HEAD`.then((r) => r.stdout.trim()),
+         $`${gitExec} -C ${originPath} rev-parse HEAD`.then((r) => r.stdout.trim()),
+      ]);
+
+      if (wtHead === originHead) {
+         return { ahead: 0, behind: 0 };
+      }
+
+      let ahead = 0;
+      let behind = 0;
+      await Promise.all([
+         (async () => {
+            // Count commits ahead (in worktree but not in origin)
+            try {
+               const aheadOutput = (
+                  await $`${gitExec} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
+               ).stdout.trim();
+               ahead = parseInt(aheadOutput, 10) || 0;
+            } catch {
+               // If the range is invalid, might be diverged completely
+               ahead = 0;
+            }
+         })(),
+         (async () => {
+            // Count commits behind (in origin but not in worktree)
+            try {
+               const behindOutput = (
+                  await $`${gitExec} -C ${worktreePath} rev-list --count ${wtHead}..${originHead}`
+               ).stdout.trim();
+               behind = parseInt(behindOutput, 10) || 0;
+            } catch {
+               // If the range is invalid, might be diverged completely
+               behind = 0;
+            }
+         })(),
+      ]);
+
+      return { ahead, behind };
+   } catch {
+      return { ahead: 0, behind: 0 };
+   }
+}
+
+/**
+ * Gets commit logs for submodules since a base commit
+ * @param options Options for retrieving submodule commit groups
+ * @param options.git$ Git executable or command array
+ * @param options.gitExec Git executable path
+ * @param options.worktreePath Path to the worktree
+ * @param options.baseCommit Base commit SHA to compare against
+ * @param options.maxCount Optional maximum number of commits to retrieve per submodule
+ * @returns Promise with commit groups and total count
+ */
+async function getSubmoduleCommitGroups(options: {
+   git$: string | string[];
+   gitExec: string;
+   worktreePath: string;
+   baseCommit: string;
+   maxCount?: number;
+}): Promise<{ groups: CommitGroup[]; totalCount: number }> {
+   const { git$, gitExec, worktreePath, baseCommit, maxCount } = options;
+   const submodules = await getSubmodules(git$, worktreePath);
+   if (submodules.length === 0) return { groups: [], totalCount: 0 };
+
+   const groups: CommitGroup[] = [];
+   let totalCount = 0;
+
+   for (const submodule of submodules) {
+      const submoduleRepoPath = path.resolve(worktreePath, submodule.path);
+      const gitMarker = path.join(submoduleRepoPath, '.git');
+      if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
+
+      const baseSha = await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
+      if (!baseSha) continue;
+
+      const range = `${baseSha}..HEAD`;
+      const logResult = await getCommitRangeLog({
+         gitExec,
+         repoPath: submoduleRepoPath,
+         range,
+         maxCount,
+         formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`
+      });
+
+      if (logResult.totalCount === 0) continue;
+      const label = `${submodule.path} ${ncc('Dim')}[submodule]${ncc()}`;
+      groups.push({
+         label,
+         commits: logResult.commits,
+         totalCount: logResult.totalCount,
+         moreCount: logResult.moreCount,
+      });
+      totalCount += logResult.totalCount;
+   }
+
+   return { groups, totalCount };
+}
+
+/**
+ * Prints a block of commit lines with a prefix and connector lines
+ * @param prefix Prefix string for each line
+ * @param lines Array of commit lines to print
+ * @param moreCount Number of additional commits not shown
+ */
+function printCommitBlock(prefix: string, lines: string[], moreCount: number): void {
+   const renderedLines = [...lines];
+   if (moreCount > 0) {
+      renderedLines.push(`${ncc('Dim')}+${moreCount} more${ncc()}`);
+   }
+   if (renderedLines.length === 0) return;
+
+   for (let i = 0; i < renderedLines.length; i++) {
+      const isLast = i === renderedLines.length - 1;
+      const connector = isLast ? '└─ ' : '├─ ';
+      quickPrint(`${ncc('Dim')}${prefix}${connector}${ncc()}${renderedLines[i]}`);
+   }
+}
+
+/**
+ * Prints commit groups with labels and nested commit blocks
+ * @param groups Array of commit groups to print
+ */
+function printCommitGroups(groups: CommitGroup[]): void {
+   if (groups.length === 0) return;
+
+   for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      const isLastGroup = i === groups.length - 1;
+      const groupConnector = isLastGroup ? '  └─ ' : '  ├─ ';
+      quickPrint(`${ncc('Dim')}${groupConnector}${ncc()}${group.label}`);
+
+      const nestedPrefix = isLastGroup ? '     ' : '  │  ';
+      printCommitBlock(nestedPrefix, group.commits, group.moreCount);
    }
 }
 

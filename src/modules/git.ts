@@ -7,7 +7,8 @@ import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
 
 import Logger from '../utils/logger';
-import { $, createAbortableExec } from './shell';
+import { $, $inherit, createAbortableExec } from './shell';
+import { ExecaError } from 'execa';
 
 export interface WorktreeEntry {
    path: string;
@@ -21,6 +22,20 @@ export interface SubmoduleEntry {
    status: string;
    initialized: boolean;
 }
+
+/**
+ * Result of commit log retrieval.
+ * Includes the list of commits, total count, and more count.
+ * @property commits - Array of commit SHAs.
+ * @property totalCount - Total number of commits in the range.
+ * @property moreCount - Number of additional commits beyond the retrieved ones.
+ */
+export interface CommitLogResult {
+   commits: string[];
+   totalCount: number;
+   moreCount: number;
+}
+
 
 function createOneOffKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
@@ -950,6 +965,151 @@ export async function initSubmodules(git$: string | string[], worktreePath: stri
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return;
    await $`${git$} -c protocol.file.allow=always -C ${worktreePath} submodule update --init --recursive`;
+}
+
+/**
+ * Determines if an error is due to an empty cherry-pick.
+ *
+ * This function expects an error object of type ExecaError from the 'execa' library.
+ *
+ * @param err - The error to evaluate.
+ * @returns True if the error indicates an empty cherry-pick, false otherwise.
+ */
+export function isEmptyCherryPickError(err: unknown): boolean {
+   if (!(err instanceof ExecaError)) return false;
+   const message = `${err.stderr || ''}\n${err.stdout || ''}\n${err.message || ''}`.toLowerCase();
+   return (
+      message.includes('the previous cherry-pick is now empty') ||
+      message.includes('the patch is empty') ||
+      message.includes('previous cherry-pick is now empty') ||
+      message.includes('cherry-pick is now empty')
+   );
+}
+
+/**
+ * Gets the list of unmerged file paths in the repository.
+ * @param git$ - Git executable path or command array.
+ * @param originPath - The path to the Git repository.
+ * @returns An array of unmerged file paths.
+ */
+export async function getUnmergedPaths(git$: string | string[], originPath: string): Promise<string[]> {
+   try {
+      const output = (await $`${git$} -C ${originPath} diff --name-only --diff-filter=U`).stdout;
+      return output
+         .split('\n')
+         .map((line) => line.trim())
+         .filter((line) => line.length > 0);
+   } catch {
+      return [];
+   }
+}
+
+/**
+ * Stages all resolved conflicts in the repository.
+ * @param git$ - Git executable path or command array.
+ * @param originPath - The path to the Git repository.
+ */
+export async function stageResolvedConflicts(git$: string | string[], originPath: string): Promise<void> {
+   const unmergedPaths = await getUnmergedPaths(git$, originPath);
+   if (unmergedPaths.length === 0) return;
+
+   await $inherit`${git$} -C ${originPath} add -A -- ${unmergedPaths}`;
+}
+
+/**
+ * Determines if the current cherry-pick operation is empty (no changes to commit).
+ * @param git$ - Git executable path or command array.
+ * @param originPath - The path to the Git repository.
+ * @returns True if the cherry-pick is empty, false otherwise.
+ */
+export async function isCherryPickEmpty(git$: string | string[], originPath: string): Promise<boolean> {
+   const unmergedPaths = await getUnmergedPaths(git$, originPath);
+   if (unmergedPaths.length > 0) return false;
+
+   try {
+      const staged = (await $`${git$} -C ${originPath} diff --cached --name-only`).stdout.trim();
+      if (staged.length > 0) return false;
+   } catch {
+      return false;
+   }
+
+   return true;
+}
+
+/**
+ * Gets commit log entries for a specified range.
+ * @param options - The options for retrieving the commit log.
+ * @param options.gitExec - The git executable path.
+ * @param options.repoPath - The path to the Git repository.
+ * @param options.range - The commit range (e.g., "HEAD~5..HEAD").
+ * @param options.maxCount - Optional maximum number of commits to retrieve.
+ * @param options.format - Optional git log format string. [IMPORTANT: Must not contain newlines]
+ * @returns An object containing the commit log entries and counts.
+ */
+export async function getCommitRangeLog(options: {
+   gitExec: string;
+   repoPath: string;
+   range: string;
+   maxCount?: number;
+   formatTemplate?: string;
+}): Promise<CommitLogResult> {
+   const { gitExec, repoPath, range, maxCount, formatTemplate: format } = options;
+   let totalCount = 0;
+   try {
+      const countOutput = (
+         await $`${gitExec} -C ${repoPath} rev-list --count ${range}`
+      ).stdout.trim();
+      totalCount = parseInt(countOutput, 10) || 0;
+   } catch {
+      totalCount = 0;
+   }
+
+   if (totalCount === 0) {
+      return { commits: [], totalCount: 0, moreCount: 0 };
+   }
+
+   let logOutput = '';
+   try {
+      const logArgs = ['-C', repoPath, 'log', `--pretty=format:${format || '%h %s'}`];
+      if (maxCount && maxCount > 0) logArgs.push(`--max-count=${maxCount}`);
+      logArgs.push(range);
+      logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
+   } catch {
+      logOutput = '';
+   }
+
+   const commits = logOutput
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+   const moreCount = Math.max(totalCount - commits.length, 0);
+   return { commits, totalCount, moreCount };
+}
+
+/**
+ * Gets the base SHA of a submodule at a specific commit in the parent repository.
+ * @param gitExec - The git executable path.
+ * @param worktreePath - The path to the parent repository worktree.
+ * @param baseCommit - The commit SHA in the parent repository.
+ * @param submodulePath - The path to the submodule within the parent repository.
+ * @returns The submodule's base SHA or null if not found.
+ */
+export async function getSubmoduleBaseSha(
+   gitExec: string,
+   worktreePath: string,
+   baseCommit: string,
+   submodulePath: string
+): Promise<string | null> {
+   try {
+      const output = (
+         await $`${gitExec} -C ${worktreePath} ls-tree ${baseCommit} -- ${submodulePath}`
+      ).stdout.trim();
+      if (!output) return null;
+      const match = output.match(/^160000\s+commit\s+([0-9a-f]{7,40})\s+/i);
+      return match?.[1] ?? null;
+   } catch {
+      return null;
+   }
 }
 
 /**

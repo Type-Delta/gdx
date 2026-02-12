@@ -261,127 +261,135 @@ describe('gdx parallel', async () => {
       expect(await parallel(removeCtx)).toBe(0);
    });
 
-   it('should block removal when submodules are dirty', async () => {
-      resetCache();
-      const submoduleRoot = path.join(tmpRootDir, 'submodule');
-      await fs.mkdir(submoduleRoot, { recursive: true });
-      await $`${git$} -C ${submoduleRoot} init`;
-      await $`${git$} -C ${submoduleRoot} config user.name ${'Test User'}`;
-      await $`${git$} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-      await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
-      await $`${git$} -C ${submoduleRoot} add README.md`;
-      await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
-
-      const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
-      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
-      const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
-      await fs.writeFile(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
-      await $`${git$} -C ${tmpDir} add .gitmodules`;
-      await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
-      await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
-
-      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
-      expect(await parallel(forkCtx)).toBe(0);
-
-      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
-      const forkPath = path.join(worktreeRoot, 'feature-submodule');
-
-      try {
-         const submodulePath = path.join(forkPath, 'deps', 'submodule');
-         const submoduleExists = await fs
-            .stat(submodulePath)
-            .then(() => true)
-            .catch(() => false);
-         if (!submoduleExists) {
-            await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
-            await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
-         }
-         await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
-
-         // Mark submodule folder as unchanged to avoid dirty detection from working tree
-         await $`${git$} -C ${forkPath} update-index --assume-unchanged ${'deps/submodule'}`;
-
+   it(
+      'should block removal when submodules are dirty',
+      async () => {
          resetCache();
-         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
-         const removeResult = await parallel(removeCtx);
+         const submoduleRoot = path.join(tmpRootDir, 'submodule');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${git$} -C ${submoduleRoot} init`;
+         await $`${git$} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${git$} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${git$} -C ${submoduleRoot} add README.md`;
+         await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         expect(removeResult).toBe(1);
-         expect(buffer.stderr).toContain('dirty submodules');
-      } finally {
-         await $`${git$} worktree prune --expire now`;
-         await fs.rm(forkPath, { recursive: true, force: true });
-         await resetRepo();
-         await $`${git$} -C ${tmpDir} clean -fd`;
-      }
-   }, { timeout: 15000 });
+         const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
+         await fs.writeFile(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
+         await $`${git$} -C ${tmpDir} add .gitmodules`;
+         await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
+         await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
-   it('should remove worktree with clean submodules', async () => {
-      resetCache();
-      const gitExe = Array.isArray(git$) ? git$[0] : git$;
-      const submoduleRoot = path.join(tmpRootDir, 'submodule-deinit');
-      await fs.mkdir(submoduleRoot, { recursive: true });
-      await $`${gitExe} -C ${submoduleRoot} init`;
-      await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-      await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-      await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
-      await $`${gitExe} -C ${submoduleRoot} add README.md`;
-      await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
+         expect(await parallel(forkCtx)).toBe(0);
 
-      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
-      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
-      await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
-      await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+         const forkPath = path.join(worktreeRoot, 'feature-submodule');
 
-      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-deinit']);
-      expect(await parallel(forkCtx)).toBe(0);
+         try {
+            const submodulePath = path.join(forkPath, 'deps', 'submodule');
+            const submoduleExists = await fs
+               .stat(submodulePath)
+               .then(() => true)
+               .catch(() => false);
+            if (!submoduleExists) {
+               await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
+               await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
+            }
+            await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
 
-      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
-      const forkPath = path.join(worktreeRoot, 'feature-deinit');
-      const submodulePath = path.join(forkPath, 'deps', 'submodule');
-      const gitMarker = path.join(submodulePath, '.git');
+            // Mark submodule folder as unchanged to avoid dirty detection from working tree
+            await $`${git$} -C ${forkPath} update-index --assume-unchanged ${'deps/submodule'}`;
 
-      try {
-         const markerExists = await fs
-            .stat(gitMarker)
-            .then(() => true)
-            .catch(() => false);
-         if (!markerExists) {
-            await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
-         }
+            resetCache();
+            const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-submodule']);
+            const removeResult = await parallel(removeCtx);
 
-         await $`${gitExe} -C ${submodulePath} reset --hard`;
-         await $`${gitExe} -C ${submodulePath} clean -fd`;
-         const submoduleStatus = (
-            await $`${gitExe} -C ${submodulePath} status --porcelain=v1 --untracked-files=normal`
-         ).stdout.trim();
-         expect(submoduleStatus.length).toBe(0);
-
-         resetCache();
-         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-deinit']);
-         const removeResult = await parallel(removeCtx);
-
-         if (removeResult === 0) {
-            expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
-         } else {
+            expect(removeResult).toBe(1);
             expect(buffer.stderr).toContain('dirty submodules');
+         } finally {
+            await $`${git$} worktree prune --expire now`;
+            await fs.rm(forkPath, { recursive: true, force: true });
+            await resetRepo();
+            await $`${git$} -C ${tmpDir} clean -fd`;
          }
+      },
+      { timeout: 15000 }
+   );
 
-         const stillExists = await fs
-            .stat(forkPath)
-            .then(() => true)
-            .catch(() => false);
-         if (removeResult === 0) {
-            expect(stillExists).toBe(false);
-         } else {
-            expect(stillExists).toBe(true);
+   it(
+      'should remove worktree with clean submodules',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-deinit');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-deinit']);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
+         const forkPath = path.join(worktreeRoot, 'feature-deinit');
+         const submodulePath = path.join(forkPath, 'deps', 'submodule');
+         const gitMarker = path.join(submodulePath, '.git');
+
+         try {
+            const markerExists = await fs
+               .stat(gitMarker)
+               .then(() => true)
+               .catch(() => false);
+            if (!markerExists) {
+               await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+            }
+
+            await $`${gitExe} -C ${submodulePath} reset --hard`;
+            await $`${gitExe} -C ${submodulePath} clean -fd`;
+            const submoduleStatus = (
+               await $`${gitExe} -C ${submodulePath} status --porcelain=v1 --untracked-files=normal`
+            ).stdout.trim();
+            expect(submoduleStatus.length).toBe(0);
+
+            resetCache();
+            const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-deinit']);
+            const removeResult = await parallel(removeCtx);
+
+            if (removeResult === 0) {
+               expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
+            } else {
+               expect(buffer.stderr).toContain('dirty submodules');
+            }
+
+            const stillExists = await fs
+               .stat(forkPath)
+               .then(() => true)
+               .catch(() => false);
+            if (removeResult === 0) {
+               expect(stillExists).toBe(false);
+            } else {
+               expect(stillExists).toBe(true);
+            }
+         } finally {
+            await $`${git$} worktree prune --expire now`;
+            await fs.rm(path.join(tmpDir, 'deps'), { recursive: true, force: true });
+            await resetRepo();
+            await $`${git$} -C ${tmpDir} clean -fd`;
          }
-      } finally {
-         await $`${git$} worktree prune --expire now`;
-         await fs.rm(path.join(tmpDir, 'deps'), { recursive: true, force: true });
-         await resetRepo();
-         await $`${git$} -C ${tmpDir} clean -fd`;
-      }
-   }, { timeout: 15000 });
+      },
+      { timeout: 15000 }
+   );
 
    it('should prune missing worktree metadata on remove', async () => {
       resetCache();
@@ -497,6 +505,184 @@ describe('gdx parallel', async () => {
 
       const cherryPickHead = await $`${git$} -C ${tmpDir} rev-parse -q --verify CHERRY_PICK_HEAD`;
       expect(cherryPickHead.exitCode).toBe(0);
+      await $`${git$} -C ${tmpDir} cherry-pick --abort`;
       env.isTTY = true;
+   });
+
+   it(
+      'should list commits grouped by submodule',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-list');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submodulePath = 'deps/submodule-list';
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-list');
+         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+
+         const alias = 'feature-sub-list';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, alias);
+
+         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-list');
+
+         await fs.writeFile(path.join(forkSubmodulePath, 'change.txt'), 'sub-change');
+         await $`${gitExe} -C ${forkSubmodulePath} add change.txt`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change'}`;
+
+         await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule'}`;
+
+         await fs.writeFile(path.join(forkPath, 'main.txt'), 'main');
+         await $`${gitExe} -C ${forkPath} add main.txt`;
+         await $`${gitExe} -C ${forkPath} commit -m ${'Main change'}`;
+
+         resetCache();
+         const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
+         expect(await parallel(listCtx)).toBe(0);
+
+         const output = buffer.stdout.replace(/\r/g, '');
+         expect(output).toContain('main');
+         expect(output).toContain('deps/submodule-list [submodule]');
+         expect(output).toContain('Main change');
+         expect(output).toContain('Bump submodule');
+         expect(output).toContain('Submodule change');
+
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+         expect(await parallel(removeCtx)).toBe(0);
+
+         await resetRepo();
+         await $`${gitExe} -C ${tmpDir} clean -fd`;
+      },
+      { timeout: 20000 }
+   );
+
+   it(
+      'should cherry-pick submodule commits on join',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-join');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submodulePath = 'deps/submodule-join';
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-join');
+         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+
+         const alias = 'feature-sub-join';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, alias);
+
+         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-join');
+
+         await fs.writeFile(path.join(forkSubmodulePath, 'join-change.txt'), 'sub-join');
+         await $`${gitExe} -C ${forkSubmodulePath} add join-change.txt`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule join change'}`;
+
+         await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule for join'}`;
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+         expect(await parallel(joinCtx)).toBe(0);
+
+         const submoduleLog = (
+            await $`${gitExe} -C ${originSubmodulePath} log -1 --format=%s`
+         ).stdout.trim();
+         expect(submoduleLog).toBe('Submodule join change');
+
+         const originLog = (await $`${gitExe} -C ${tmpDir} log --format=%s`).stdout.trim();
+         expect(originLog).toContain('Bump submodule for join');
+
+         await resetRepo();
+         await $`${gitExe} -C ${tmpDir} clean -fd`;
+      },
+      { timeout: 20000 }
+   );
+
+   it('should skip empty cherry-picks during join', async () => {
+      resetCache();
+      const alias = 'feature-empty';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, alias);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const forkGit$ = [gitExec, '-C', forkPath];
+
+      await fs.writeFile(path.join(forkPath, 'duplicate.txt'), 'duplicate');
+      await $`${forkGit$} add duplicate.txt`;
+      await $`${forkGit$} commit -m ${'Duplicate change'}`;
+      await $`${forkGit$} reset --hard HEAD`;
+
+      const duplicateSha = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
+      await fs.writeFile(path.join(tmpDir, 'duplicate.txt'), 'duplicate');
+      await $`${git$} -C ${tmpDir} add duplicate.txt`;
+      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate change origin'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+      const joinResult = await parallel(joinCtx);
+      expect(joinResult).toBe(0);
+
+      const forkExists = await fs
+         .stat(forkPath)
+         .then(() => true)
+         .catch(() => false);
+      expect(forkExists).toBe(false);
    });
 });
