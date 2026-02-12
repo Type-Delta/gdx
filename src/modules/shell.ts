@@ -1,4 +1,4 @@
-import { execa, ExecaMethod, Options, $, ExecaError } from 'execa';
+import { execa, ExecaMethod, Options, ExecaError } from 'execa';
 import path from 'path';
 import { createInterface } from 'readline';
 
@@ -14,13 +14,28 @@ import { writeFile } from 'fs/promises';
 import { unlink } from 'fs/promises';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
+import { MinimalVerboseObject } from 'execa/types/verbose';
 
-export { $ } from 'execa';
+const logger = new Logger('shell');
+const dim = ncc('Dim');
+const reset = ncc();
+const bright = ncc('Bright');
 
 /**
  * Indicates if the current process is running in a TTY (interactive terminal).
  */
 export const isTTY = () => process.stdout.isTTY && process.stdin.isTTY;
+
+/**
+ * `$` tag template for executing shell commands using execa.
+ *
+ * Configured to pipe stdout and stderr.
+ */
+export const $ = execa({
+   stdout: 'pipe',
+   stderr: 'pipe',
+   verbose: execaCustomLogger,
+});
 
 /**
  * Creates an execa tag template that shares a single AbortController.
@@ -31,6 +46,7 @@ export function createAbortableExec(options: Options = {}) {
    const _shell = execa({
       cancelSignal: controller.signal,
       ...options,
+      verbose: execaCustomLogger,
    } satisfies Options);
 
    return {
@@ -43,7 +59,11 @@ export function createAbortableExec(options: Options = {}) {
 /**
  * An execa instance configured to inherit stdout/stderr from the parent process.
  */
-export const $inherit = execa({ stdout: 'inherit', stderr: 'inherit' });
+export const $inherit = execa({
+   stdout: 'inherit',
+   stderr: 'inherit',
+   verbose: execaCustomLogger,
+});
 
 /**
  * Prompts the user with a question and returns their input.
@@ -403,4 +423,26 @@ export async function execGit(
    }
 
    return exitCode ?? 0;
+}
+
+/**
+ * Custom logger function for execa verbose output.
+ * Logs only duration events with command details.
+ * @param verboseLine - The verbose line (unused).
+ * @param verboseObject - The verbose object containing event details.
+ */
+function execaCustomLogger(verboseLine: string, verboseObject: MinimalVerboseObject) {
+   if (verboseObject.type !== 'duration') return;
+   let exitType = 'done';
+   // @ts-expect-error -- known property
+   if (verboseObject['result']['failed']) exitType = 'FAILED';
+   // @ts-expect-error -- known property
+   else if (verboseObject['result']['timedOut']) exitType = 'TIMEOUT';
+   // @ts-expect-error -- known property
+   else if (verboseObject['result']['isCanceled']) exitType = 'CANCELED';
+   // @ts-expect-error -- known property
+   else if (verboseObject['result']['isTerminated']) exitType = 'TERMINATED';
+
+   // @ts-expect-error -- known property
+   logger.debug(`${bright + dim}$ ${reset + verboseObject.escapedCommand + dim} (${exitType} in ${verboseObject['result']['durationMs']}ms)`)
 }

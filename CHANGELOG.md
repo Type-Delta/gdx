@@ -10,6 +10,8 @@
 
 - macro not properly append extra arguments
 - improved system message formatting
+- improve submodule support of `gdx parallel` command
+- `gdx parallel join` failure from empty commit in cherry-pick operation.
 
 ## Version 0.3.0 - 2026-02-5
 

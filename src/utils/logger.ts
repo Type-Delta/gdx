@@ -4,7 +4,7 @@ import os from 'os';
 
 import { cleanString, ncc, strWrap } from '@lib/Tools';
 
-import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS } from '@/consts';
+import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS, VERSION } from '@/consts';
 import global from '@/global';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug';
@@ -70,7 +70,12 @@ class Logger {
       level: LogLevel;
       message: string;
       module: string;
-   }> = [];
+   }> = [{
+      timestamp: new Date().toISOString(),
+      level: 'info',
+      message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
+      module: 'logger',
+   }];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
@@ -212,7 +217,7 @@ class Logger {
          const newLogs = Logger.allLogs
             .map(({ timestamp, level, message, module }) => {
                const paddedLevel = level.toUpperCase().padEnd(5);
-               message = strWrap(cleanString(message), 120, {
+               message = strWrap(cleanString(message), 100, {
                   indent: 33,
                   redundancyLv: -1,
                   mode: 'strict',
