@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import path from 'path';
 
-import { Err, yuString } from '@lib/Tools';
+import { CheckCache, Err, yuString } from '@lib/Tools';
 
 import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
@@ -1111,6 +1111,16 @@ export async function getSubmoduleBaseSha(
       return null;
    }
 }
+
+
+/**
+ * returns git's `color.ui=always` options of the host's terminal supports it.
+ */
+export function forceColorArgs(): string[] {
+   if (CheckCache.supportsColor <= 0) return [];
+   return ['-c', 'color.ui=always'];
+}
+
 
 /**
  * Helper function to normalize a remote URL's host and path components.

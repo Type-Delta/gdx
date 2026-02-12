@@ -2,7 +2,15 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { ExecaError } from 'execa';
 
-import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
+import {
+   ncc,
+   yuString,
+   hyperLink,
+   strClamp,
+   padEnd,
+   strJustify,
+   strWrap,
+} from '@lib/Tools';
 
 import {
    $,
@@ -36,6 +44,7 @@ import {
    getUnmergedPaths,
    getSubmoduleBaseSha,
    getCommitRangeLog,
+   forceColorArgs,
 } from '@/modules/git';
 import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
@@ -71,7 +80,6 @@ interface CommitGroup {
    totalCount: number;
    moreCount: number;
 }
-
 
 const PARALLEL_CONTEXT_TTL_MS = 1000;
 let parallelContextCache: {
@@ -747,6 +755,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const baseCommit = meta.baseCommit?.trim();
       hasAnyWt = true;
 
+      const spinnerCtrl = spinner({ message: `Gatering information for ${aliasLabel}...` });
       const maxLogCount = isShortOutput ? 3 : undefined;
       const [statusOutput, comparison, mainLog, submoduleLog] = await Promise.all([
          // get dirty status
@@ -761,6 +770,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
                repoPath: wtPath,
                range: `${baseCommit}..HEAD`,
                maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
             })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
@@ -803,6 +813,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          displayPath = hyperLink(clampedPath, `file://${wtPath.replace(/\\/g, '/')}`);
       }
 
+      spinnerCtrl.stop();
       quickPrint(
          `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${displayPath}`
       );
@@ -1355,21 +1366,28 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
  * @param ctx Context for the cherry-pick operation
  * @returns Promise<boolean> Whether the commit was applied
  */
-async function applyCherryPick(git$: string | string[], ctx: {
-   originRepoPath: string;
-   commit: string;
-   contextLabel: string;
-   forkAlias: string;
-   stashRef: string | null;
-}): Promise<boolean> {
+async function applyCherryPick(
+   git$: string | string[],
+   ctx: {
+      originRepoPath: string;
+      commit: string;
+      contextLabel: string;
+      forkAlias: string;
+      stashRef: string | null;
+   }
+): Promise<boolean> {
    const { originRepoPath, commit, contextLabel, forkAlias, stashRef } = ctx;
    Logger.debug(`Cherry-picking commit ${commit} into ${contextLabel}...`, 'parallel');
+   const colorArgs = forceColorArgs();
    try {
-      await $inherit`${git$} -C ${originRepoPath} cherry-pick ${commit}`;
+      const result = await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick ${commit}`;
+      printGitResult(result);
       return true;
    } catch (err) {
       const didSkip = await skipEmptyCherryPick(git$, originRepoPath, err, contextLabel);
       if (didSkip) return false;
+
+      printGitResult(getGitErrorOutput(err));
 
       const hasInProgress = await hasCherryPickInProgress(git$, originRepoPath);
       if (!hasInProgress) {
@@ -1405,9 +1423,12 @@ async function applyCherryPick(git$: string | string[], ctx: {
          ) {
             try {
                await stageResolvedConflicts(git$, originRepoPath);
-               await $inherit`${git$} -C ${originRepoPath} cherry-pick --continue`;
+               const result =
+                  await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --continue`;
+               printGitResult(result);
                return true;
             } catch (continueErr) {
+               printGitResult(getGitErrorOutput(continueErr));
                const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
                if (stillInProgress) {
                   quickPrint(
@@ -1428,8 +1449,11 @@ async function applyCherryPick(git$: string | string[], ctx: {
 
          if (response === 'a' || response === 'abort' || response === 'n' || response === 'no') {
             try {
-               await $inherit`${git$} -C ${originRepoPath} cherry-pick --abort`;
+               const result =
+                  await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --abort`;
+               printGitResult(result);
             } catch (abortErr) {
+               printGitResult(getGitErrorOutput(abortErr));
                Logger.error('Failed to abort cherry-pick.', 'parallel');
                Logger.debug(yuString(abortErr, { color: true }), 'parallel');
                throw abortErr;
@@ -1440,7 +1464,7 @@ async function applyCherryPick(git$: string | string[], ctx: {
          }
       }
    }
-};
+}
 
 async function skipEmptyCherryPick(
    git$: string | string[],
@@ -1459,10 +1483,11 @@ async function skipEmptyCherryPick(
    }
 
    try {
-      await $inherit`${git$} -C ${originPath} cherry-pick --skip`;
+      await $`${git$} ${forceColorArgs()} -C ${originPath} cherry-pick --skip`;
       Logger.debug(`Skipped empty cherry-pick for ${contextLabel}.`, 'parallel');
       return true;
    } catch (skipErr) {
+      printGitResult(getGitErrorOutput(skipErr));
       Logger.error(`Failed to skip empty cherry-pick for ${contextLabel}.`, 'parallel');
       Logger.debug(yuString(skipErr, { color: true }), 'parallel');
       return false;
@@ -1567,7 +1592,7 @@ async function getSubmoduleCommitGroups(options: {
          repoPath: submoduleRepoPath,
          range,
          maxCount,
-         formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`
+         formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
       });
 
       if (logResult.totalCount === 0) continue;
@@ -1620,6 +1645,32 @@ function printCommitGroups(groups: CommitGroup[]): void {
       const nestedPrefix = isLastGroup ? '     ' : '  │  ';
       printCommitBlock(nestedPrefix, group.commits, group.moreCount);
    }
+}
+
+function formatGitOutput(output: unknown): string {
+   if (!output) return '';
+   if (typeof output === 'string') return output;
+   if (output instanceof Uint8Array) return new TextDecoder().decode(output);
+   return String(output);
+}
+
+function printGitOutput(output: unknown): void {
+   const text = formatGitOutput(output);
+   if (!text) return;
+   quickPrint(text, text.endsWith('\n') ? '' : '\n');
+}
+
+function printGitResult(result: { stdout?: unknown; stderr?: unknown }): void {
+   printGitOutput(result.stdout);
+   printGitOutput(result.stderr);
+}
+
+function getGitErrorOutput(err: unknown): { stdout?: unknown; stderr?: unknown } {
+   if (err instanceof ExecaError) {
+      return { stdout: err.stdout, stderr: err.stderr };
+   }
+   const typedErr = err as { stdout?: unknown; stderr?: unknown } | null;
+   return { stdout: typedErr?.stdout, stderr: typedErr?.stderr };
 }
 
 export const help = {
