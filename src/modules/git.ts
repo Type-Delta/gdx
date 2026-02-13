@@ -36,7 +36,6 @@ export interface CommitLogResult {
    moreCount: number;
 }
 
-const SUBMODULE_STATUS_CACHE_TTL_MINUTES = 1;
 const GIT_HEAD_CACHE_TTL_MINUTES = 360;
 const GIT_PATH_CACHE_TTL_MINUTES = 360;
 
@@ -850,7 +849,6 @@ export async function getSubmodules(
    const scope = getGitScope(git$, worktreePath);
    const pathsCacheKey = createCacheKey('git.submodules.paths', scope);
    const gitlinksCacheKey = createCacheKey('git.submodules.gitlinks', scope);
-   const statusCacheKey = createCacheKey('git.submodules.status', scope);
    const gitmodulesPath = path.join(worktreePath, '.gitmodules');
    const gitmodulesMtime = (await fs.getStatMTime(gitmodulesPath)) ?? null;
    let indexMtime: number | null = null;
@@ -886,6 +884,7 @@ export async function getSubmodules(
       }
 
       let gitlinkPaths: string[] = [];
+      let gitlinkInfo = new Map<string, { sha: string; stage: string }>();
       if (indexMtime === null) {
          indexMtime =
             (await fs.getStatMTime(await getGitPath(git$, worktreePath, 'index'))) ?? null;
@@ -895,12 +894,21 @@ export async function getSubmodules(
       } else {
          try {
             const lsFilesOutput = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
-            gitlinkPaths = lsFilesOutput
+            const gitlinkEntries = lsFilesOutput
                .split('\n')
                .map((line) => line.trim())
                .filter((line) => line.startsWith('160000 '))
-               .map((line) => line.match(/^160000 [0-9a-f]{40} \d\t(.+)$/)?.[1]?.trim() ?? '')
-               .filter((submodulePath) => submodulePath.length > 0);
+               .map((line) => {
+                  const match = line.match(/^160000 ([0-9a-f]{40}) (\d)\t(.+)$/);
+                  return match ? { sha: match[1], stage: match[2], path: match[3].trim() } : null;
+               })
+               .filter((entry): entry is { sha: string; stage: string; path: string } => !!entry)
+               .filter((entry) => entry.path.length > 0);
+
+            gitlinkInfo = new Map(
+               gitlinkEntries.map((entry) => [entry.path, { sha: entry.sha, stage: entry.stage }])
+            );
+            gitlinkPaths = Array.from(gitlinkInfo.keys());
          } catch {
             gitlinkPaths = [];
          }
@@ -911,39 +919,32 @@ export async function getSubmodules(
       if (configPathSet.size === 0) return [];
       const resolvedPaths = Array.from(configPathSet);
 
-      let statusMap = new Map<string, string>();
-      const cachedStatus = await cache.get<Record<string, string>>(statusCacheKey);
-      if (cachedStatus) {
-         statusMap = new Map(Object.entries(cachedStatus));
-      } else {
-         try {
-            const output = (await $`${gitExec} -C ${worktreePath} submodule status --recursive`)
-               .stdout;
-            const lines = output
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0 && !line.startsWith('Entering '));
+      const statusList = await Promise.all(
+         resolvedPaths.map(async (submodulePath) => {
+            const info = gitlinkInfo.get(submodulePath);
+            if (info && info.stage !== '0') return { path: submodulePath, status: 'U' };
 
-            for (const line of lines) {
-               const status = line[0];
-               const match = line.match(/^[ +-U]([0-9a-f]{7,40})\s+(.+?)(?:\s+\(|$)/);
-               const submodulePath = match?.[2]?.trim();
-               if (submodulePath) statusMap.set(submodulePath, status);
+            const submoduleRepoPath = path.resolve(worktreePath, submodulePath);
+            const gitMarker = path.join(submoduleRepoPath, '.git');
+            if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) {
+               return { path: submodulePath, status: '-' };
             }
-         } catch {
-            statusMap = new Map<string, string>();
-         }
-         await cache.set(statusCacheKey, Object.fromEntries(statusMap), {
-            maxAgeMinutes: SUBMODULE_STATUS_CACHE_TTL_MINUTES,
-         });
-      }
 
-      return resolvedPaths.map((submodulePath) => {
-         const status = statusMap.get(submodulePath) ?? '-';
+            if (!info?.sha) {
+               return { path: submodulePath, status: ' ' };
+            }
+
+            const headSha = (await getRevParseCached(gitExec, submoduleRepoPath, 'HEAD')).trim();
+            const status = headSha && headSha !== info.sha ? '+' : ' ';
+            return { path: submodulePath, status };
+         })
+      );
+
+      return statusList.map((entry) => {
          return {
-            path: submodulePath,
-            status,
-            initialized: status !== '-',
+            path: entry.path,
+            status: entry.status,
+            initialized: entry.status !== '-',
          } satisfies SubmoduleEntry;
       });
    } catch (err) {
@@ -960,7 +961,6 @@ export async function invalidateSubmodulesCache(
    const scope = getGitScope(git$, worktreePath);
    await cache.delete(createCacheKey('git.submodules.paths', scope));
    await cache.delete(createCacheKey('git.submodules.gitlinks', scope));
-   await cache.delete(createCacheKey('git.submodules.status', scope));
 }
 
 /**
@@ -1023,9 +1023,6 @@ export async function deinitSubmodules(
    worktreePath: string
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   const cache = await getCache();
-   const scope = getGitScope(git$, worktreePath);
-   await cache.delete(createCacheKey('git.submodules.status', scope));
    await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
 
    await invalidateSubmodulesCache(git$, worktreePath);
@@ -1078,9 +1075,6 @@ export async function initSubmodules(git$: string | string[], worktreePath: stri
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return;
    await $`${git$} -c protocol.file.allow=always -C ${worktreePath} submodule update --init --recursive`;
-   const cache = await getCache();
-   const scope = getGitScope(git$, worktreePath);
-   await cache.delete(createCacheKey('git.submodules.status', scope));
    await invalidateSubmodulesCache(git$, worktreePath);
 }
 
