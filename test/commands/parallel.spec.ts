@@ -670,7 +670,6 @@ describe('gdx parallel', async () => {
       await $`${forkGit$} commit -m ${'Duplicate change'}`;
       await $`${forkGit$} reset --hard HEAD`;
 
-      const duplicateSha = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
       await fs.writeFile(path.join(tmpDir, 'duplicate.txt'), 'duplicate');
       await $`${git$} -C ${tmpDir} add duplicate.txt`;
       await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate change origin'}`;

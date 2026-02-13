@@ -183,7 +183,7 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
 
       // LINK: dkk2iia forked worktree path
       const worktreeRoot = path.join(TEMP_DIR, 'worktrees');
-      const isParallel = repoRoot.startsWith(worktreeRoot.replace(/\\/g, '/'));
+      const isParallel = fs.isChildrenOf(worktreeRoot, repoRoot);
 
       let safeProject = projectName;
       let safeBranch = branchName;
