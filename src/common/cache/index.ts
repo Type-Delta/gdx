@@ -53,6 +53,7 @@ export class CacheService {
    private loaded = false;
    private dirty = false;
    private loadingPromise: Promise<void> | null = null;
+   private readonly logger = new Logger('cache');
 
    constructor(cachePath?: string) {
       this.cachePath = cachePath || CACHE_PATH;
@@ -155,7 +156,7 @@ export class CacheService {
          this.resetCache(false);
          this.loaded = true;
          this.isDisabled = true;
-         Logger.debug('Cache is disabled via configuration', 'cache');
+         this.logger.debug('Cache is disabled via configuration');
          return;
       }
 
@@ -172,9 +173,8 @@ export class CacheService {
 
          // Check version mismatch (auto-invalidate on VERSION change)
          if (parsed.meta.version !== VERSION) {
-            Logger.debug(
+            this.logger.debug(
                `Cache version mismatch: stored=${parsed.meta.version}, current=${VERSION}. Resetting cache.`,
-               'cache'
             );
             this.resetCache(false);
             this.loaded = true;
@@ -183,9 +183,8 @@ export class CacheService {
 
          // Ensure required fields exist
          if (!parsed.entryMeta || !parsed.meta.lastPruneAt) {
-            Logger.debug(
+            this.logger.debug(
                "Existing cache file' schema mismatch; resetting cache to newer version",
-               'cache'
             );
             this.resetCache(false);
             this.loaded = true;
@@ -199,24 +198,22 @@ export class CacheService {
          const daysSinceLastPrune = (now - this.cache.meta.lastPruneAt) / ONE_DAY_MS;
 
          if (daysSinceLastPrune >= CACHE_PRUNE_INTERVAL_DAYS) {
-            Logger.debug(
+            this.logger.debug(
                `Last prune was ${daysSinceLastPrune.toFixed(1)} days ago. Running cache pruning...`,
-               'cache'
             );
             const prunedCount = this.pruneExpiredKeys();
             if (prunedCount > 0) {
-               Logger.debug(`Pruned ${prunedCount} expired cache entries`, 'cache');
+               this.logger.debug(`Pruned ${prunedCount} expired cache entries`);
             } else {
-               Logger.debug('No expired entries found during pruning', 'cache');
+               this.logger.debug('No expired entries found during pruning');
             }
          }
       } catch (e) {
          const err = new Err(e);
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not fatal
-            Logger.debug(
+            this.logger.debug(
                `Failed to parse cache file at ${this.cachePath}: ${err.message}`,
-               'cache'
             );
          }
          // Use defaults if file doesn't exist or can't be parsed
@@ -260,13 +257,13 @@ export class CacheService {
 
       // Entry not found in metadata (cache miss)
       if (!entry) {
+         this.logger.debug(`Cache ${keyPath} missed.`);
          return defaultValue;
       }
 
       if (Date.now() > entry.expiresAt) {
-         Logger.debug(
+         this.logger.debug(
             `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`,
-            'cache'
          );
          await this.delete(keyPath);
          return defaultValue;
@@ -284,6 +281,7 @@ export class CacheService {
          }
       }
 
+      this.logger.debug(`Cache ${keyPath} hit.`);
       return value as T;
    }
 
@@ -299,6 +297,7 @@ export class CacheService {
 
       const entry = this.memoryEntryMeta[keyPath];
       if (!entry) {
+         this.logger.debug(`Memory cache ${keyPath} missed.`);
          return defaultValue;
       }
 
@@ -313,6 +312,7 @@ export class CacheService {
          }
       }
 
+      this.logger.debug(`Memory cache ${keyPath} hit.`);
       return value as T;
    }
 
@@ -332,6 +332,8 @@ export class CacheService {
          options?.maxAgeMinutes ??
          config.get<number>('cache.maxAgeMinutes') ??
          DEFAULT_CACHE_MAX_AGE;
+
+      this.logger.debug(`Setting cache ${keyPath} with maxAgeMinutes=${cacheMaxAge}`);
 
       // Ensure intermediate objects exist
       for (let i = 0; i < keys.length - 1; i++) {
@@ -368,6 +370,8 @@ export class CacheService {
 
       const keys = keyPath.split('.');
       let target: any = this.memoryData;
+
+      this.logger.debug(`Setting memory cache ${keyPath}`);
 
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
@@ -439,7 +443,7 @@ export class CacheService {
 
       this.cache.meta.updatedAt = Date.now();
       this.dirty = true;
-      Logger.debug(`Cache entry deleted: ${keyPath}`, 'cache');
+      this.logger.debug(`Cache entry deleted: ${keyPath}`);
 
       return true;
    }
@@ -486,6 +490,8 @@ export class CacheService {
          }
       }
 
+      this.logger.debug(`Memory cache entry deleted: ${keyPath}`);
+
       return true;
    }
 
@@ -519,10 +525,10 @@ export class CacheService {
          const cacheJson = JSON.stringify(this.cache);
          fs.writeFileSync(this.cachePath, cacheJson, 'utf-8');
          this.dirty = false;
-         Logger.debug(`Cache flushed to ${this.cachePath}`, 'cache');
+         this.logger.debug(`Cache flushed to ${this.cachePath}`);
       } catch (e) {
          const err = new Err(e);
-         Logger.warn(`Failed to flush cache: ${err.message}`, 'cache');
+         this.logger.warn(`Failed to flush cache: ${err.message}`);
       }
    }
 

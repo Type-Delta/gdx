@@ -2,15 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { ExecaError } from 'execa';
 
-import {
-   ncc,
-   yuString,
-   hyperLink,
-   strClamp,
-   padEnd,
-   strJustify,
-   strWrap,
-} from '@lib/Tools';
+import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
 
 import {
    $,
@@ -46,6 +38,7 @@ import {
    getSubmoduleBaseSha,
    getCommitRangeLog,
    forceColorArgs,
+   getRevParseCached,
 } from '@/modules/git';
 import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
@@ -180,9 +173,10 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
       const repoRoot = await getRepoRootCached(git$);
       let projectName = path.basename(repoRoot);
 
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
       let branchName: string;
       try {
-         branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         branchName = (await getRevParseCached(gitExec, repoRoot, ['--abbrev-ref', 'HEAD'])).trim();
       } catch {
          branchName = 'HEAD';
       }
@@ -544,7 +538,8 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    fs.mkdirSync(ctx.parallelRoot, { recursive: true });
 
    // Get base commit
-   const baseCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
 
    // Check for changes
    const statusOutput = (
@@ -767,21 +762,24 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath),
          baseCommit
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${baseCommit}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${baseCommit}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
-            ? getSubmoduleCommitGroups({
-               git$,
-               gitExec,
-               worktreePath: wtPath,
-               baseCommit,
-               maxCount: maxLogCount,
-            }, spinnerCtrl)
+            ? getSubmoduleCommitGroups(
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -921,10 +919,11 @@ async function joinWorktree(
       return 1;
    }
 
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const [forkStatusResult, originStatusResult, forkHeadResult] = await Promise.all([
       $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`,
       $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`,
-      $`${git$} -C ${forkPath} rev-parse HEAD`,
+      getRevParseCached(gitExec, forkPath, 'HEAD'),
    ]);
 
    // Check fork status
@@ -962,8 +961,6 @@ async function joinWorktree(
       return 1;
    }
 
-   const gitExec = Array.isArray(git$) ? git$[0] : git$;
-
    let stashRef: string | null = null;
    if (forkDirty && bringAll) {
       const stashMessage = `git-parallel-join:${forkAlias}`;
@@ -981,7 +978,7 @@ async function joinWorktree(
    }
 
    // Get commit list from fork
-   const forkHead = forkHeadResult.stdout.trim();
+   const forkHead = forkHeadResult.trim();
    let commitList: string[];
    Logger.debug(
       `Enumerating commits from fork '${forkAlias}' since base commit ${baseCommit}...`,
@@ -993,9 +990,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1044,15 +1041,15 @@ async function joinWorktree(
 
       let subCommitList: string[] = [];
       try {
-         const subHead = (await $`${git$} -C ${forkSubPath} rev-parse HEAD`).stdout.trim();
+         const subHead = (await getRevParseCached(gitExec, forkSubPath, 'HEAD')).trim();
          const output = (
             await $`${git$} -C ${forkSubPath} rev-list --reverse ${baseSha}..${subHead}`
          ).stdout.trim();
          subCommitList = output
             ? output
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => c)
+                 .split('\n')
+                 .map((c) => c.trim())
+                 .filter((c) => c)
             : [];
       } catch (err) {
          Logger.error(`Unable to enumerate submodule commits for '${submodule.path}'.`, 'parallel');
@@ -1159,7 +1156,7 @@ async function joinWorktree(
    } else {
       // Update metadata with new base commit
       try {
-         const newBase = (await $`${git$} -C ${originPath} rev-parse HEAD`).stdout.trim();
+         const newBase = (await getRevParseCached(gitExec, originPath, 'HEAD')).trim();
          if (newBase) {
             meta.baseCommit = newBase;
             meta.updatedAt = new Date().toISOString();
@@ -1412,9 +1409,7 @@ async function applyCherryPick(
       );
 
       while (true) {
-         const response = (
-            await $prompt('Type c to continue, a to abort (c|a): ')
-         ).toLowerCase();
+         const response = (await $prompt('Type c to continue, a to abort (c|a): ')).toLowerCase();
 
          if (
             response === 'c' ||
@@ -1512,8 +1507,8 @@ async function getCommitComparison(
    try {
       // Get HEAD of both worktrees
       const [wtHead, originHead] = await Promise.all([
-         $`${gitExec} -C ${worktreePath} rev-parse HEAD`.then((r) => r.stdout.trim()),
-         $`${gitExec} -C ${originPath} rev-parse HEAD`.then((r) => r.stdout.trim()),
+         getRevParseCached(gitExec, worktreePath, 'HEAD').then((r) => r.trim()),
+         getRevParseCached(gitExec, originPath, 'HEAD').then((r) => r.trim()),
       ]);
 
       if (wtHead === originHead) {
@@ -1565,13 +1560,16 @@ async function getCommitComparison(
  * @param options.maxCount Optional maximum number of commits to retrieve per submodule
  * @returns Promise with commit groups and total count
  */
-async function getSubmoduleCommitGroups(options: {
-   git$: string | string[];
-   gitExec: string;
-   worktreePath: string;
-   baseCommit: string;
-   maxCount?: number;
-}, spinner?: SpinnerContoller): Promise<{ groups: CommitGroup[]; totalCount: number }> {
+async function getSubmoduleCommitGroups(
+   options: {
+      git$: string | string[];
+      gitExec: string;
+      worktreePath: string;
+      baseCommit: string;
+      maxCount?: number;
+   },
+   spinner?: SpinnerContoller
+): Promise<{ groups: CommitGroup[]; totalCount: number }> {
    const { git$, gitExec, worktreePath, baseCommit, maxCount } = options;
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return { groups: [], totalCount: 0 };
@@ -1584,8 +1582,7 @@ async function getSubmoduleCommitGroups(options: {
       const gitMarker = path.join(submoduleRepoPath, '.git');
       if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
 
-      if (spinner)
-         spinner.options.message = `Collecting submodule '${submodule.path}'...`;
+      if (spinner) spinner.options.message = `Collecting submodule '${submodule.path}'...`;
       const baseSha = await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
       if (!baseSha) continue;
 

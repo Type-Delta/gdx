@@ -37,6 +37,8 @@ export interface CommitLogResult {
 }
 
 const SUBMODULE_STATUS_CACHE_TTL_MINUTES = 1;
+const GIT_HEAD_CACHE_TTL_MINUTES = 360;
+const GIT_PATH_CACHE_TTL_MINUTES = 360;
 
 function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
@@ -698,7 +700,7 @@ export async function getGitPath(
    const cache = await getCache();
    const scope = `${getGitScope(git$, worktreePath)}|${gitPath}`;
    const cacheKey = createCacheKey('git.path', scope);
-   const cached = await cache.getOneOff<string | null>(cacheKey);
+   const cached = await cache.get<string | null>(cacheKey);
    if (cached !== undefined) return cached;
 
    try {
@@ -706,15 +708,100 @@ export async function getGitPath(
          await $`${git$} -C ${worktreePath} rev-parse --git-path ${gitPath}`
       ).stdout.trim();
       if (!output) {
-         await cache.setOneOff(cacheKey, null);
+         await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
          return null;
       }
       const resolved = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
-      await cache.setOneOff(cacheKey, resolved);
+      await cache.set(cacheKey, resolved, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
       return resolved;
    } catch {
-      await cache.setOneOff(cacheKey, null);
+      await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
       return null;
+   }
+}
+
+async function getHeadSignature(gitExec: string, repoPath: string): Promise<string | null> {
+   const headPath = await getGitPath(gitExec, repoPath, 'HEAD');
+   if (!headPath) return null;
+
+   const headMtime = await fs.getStatMTime(headPath);
+   let refMtime: number | undefined;
+   let refPath = '';
+
+   try {
+      const content = fs.readFileSync(headPath, 'utf-8').trim();
+      const match = content.match(/^ref:\s*(.+)$/i);
+      if (match?.[1]) {
+         refPath = match[1].trim();
+         if (refPath) {
+            const resolvedRef = await getGitPath(gitExec, repoPath, refPath);
+            refMtime = await fs.getStatMTime(resolvedRef);
+         }
+      }
+   } catch {
+      // ignore signature enrichment errors
+   }
+
+   return `${headMtime ?? 'null'}|${refPath}|${refMtime ?? 'null'}`;
+}
+
+/**
+ * Gets a rev-parse value cached on disk.
+ * @param gitExec - Git executable path.
+ * @param repoPath - Repository path.
+ * @param ref - Ref to resolve.
+ * @returns The resolved SHA/ref string, or empty string on failure.
+ */
+export async function getRevParseCached(
+   gitExec: string,
+   repoPath: string,
+   ref: string | string[]
+): Promise<string> {
+   const cache = await getCache();
+   const refArgs = Array.isArray(ref) ? ref : ref.trim().split(/\s+/).filter(Boolean);
+   const refKey = refArgs.join(' ');
+   const scope = `${gitExec}|${path.resolve(repoPath)}|${refKey}`;
+   const cacheKey = createCacheKey('git.revParse', scope);
+   const isHeadRef =
+      (refArgs.length === 1 && refArgs[0] === 'HEAD') ||
+      (refArgs.length === 2 && refArgs[0] === '--abbrev-ref' && refArgs[1] === 'HEAD');
+   const headSignature = isHeadRef ? await getHeadSignature(gitExec, repoPath) : null;
+   if (isHeadRef && headSignature !== null) {
+      const cached = await cache.get<{ value: string; signature: string | null }>(cacheKey);
+      if (cached && cached.signature === headSignature) return cached.value;
+   } else {
+      const cached = await cache.get<string>(cacheKey);
+      if (cached !== undefined) return cached;
+   }
+
+   try {
+      const args = ['-C', repoPath, 'rev-parse', ...refArgs];
+      const output = (await $`${gitExec} ${args}`).stdout.trim();
+      if (isHeadRef && headSignature !== null) {
+         await cache.set(
+            cacheKey,
+            { value: output, signature: headSignature },
+            {
+               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+            }
+         );
+      } else {
+         await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+      }
+      return output;
+   } catch {
+      if (isHeadRef && headSignature !== null) {
+         await cache.set(
+            cacheKey,
+            { value: '', signature: headSignature },
+            {
+               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+            }
+         );
+      } else {
+         await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+      }
+      return '';
    }
 }
 
