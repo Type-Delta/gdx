@@ -36,8 +36,9 @@ export interface CommitLogResult {
    moreCount: number;
 }
 
+const SUBMODULE_STATUS_CACHE_TTL_MINUTES = 1;
 
-function createOneOffKey(prefix: string, scope: string): string {
+function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
    return `${prefix}.${hash}`;
 }
@@ -75,7 +76,7 @@ export async function getStashEntry(
    index: number
 ): Promise<{ sha: string; message: string } | null> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.stashEntry', `${getGitScope(git$)}|${index}`);
+   const cacheKey = createCacheKey('git.stashEntry', `${getGitScope(git$)}|${index}`);
    const cached = await cache.getOneOff<{ sha: string; message: string } | null>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -145,7 +146,7 @@ export function normalizeRemoteUrl(rawUrl: string): string {
  */
 export async function getDefaultRemoteName(git$: string | string[]): Promise<string | null> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.defaultRemoteName', getGitScope(git$));
+   const cacheKey = createCacheKey('git.defaultRemoteName', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -193,7 +194,7 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
  */
 export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<string | null> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.normalizedRemoteUrl', getGitScope(git$));
+   const cacheKey = createCacheKey('git.normalizedRemoteUrl', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -228,7 +229,7 @@ export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<s
  */
 export async function getMainWorktreeRoot(git$: string | string[]): Promise<string> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.mainWorktreeRoot', getGitScope(git$));
+   const cacheKey = createCacheKey('git.mainWorktreeRoot', getGitScope(git$));
    const cached = await cache.getOneOff<string>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -309,7 +310,7 @@ export async function hasCherryPickInProgress(
    originPath: string
 ): Promise<boolean> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey(
+   const cacheKey = createCacheKey(
       'git.cherryPickInProgress',
       `${getGitScope(git$, originPath)}|${path.resolve(originPath)}`
    );
@@ -485,7 +486,7 @@ export async function getGitAuthorExistsCached(
  */
 export async function getTrackedUpstreamRef(git$: string | string[]): Promise<string | null> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.trackedUpstreamRef', getGitScope(git$));
+   const cacheKey = createCacheKey('git.trackedUpstreamRef', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
 
    if (cached !== undefined) return cached;
@@ -593,7 +594,7 @@ export function normalizeStatusPath(rawPath: string): string {
  */
 export async function getWorktreeList(git$: string | string[]): Promise<WorktreeEntry[]> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.worktreeList', getGitScope(git$));
+   const cacheKey = createCacheKey('git.worktreeList', getGitScope(git$));
    const cached = await cache.getOneOff<WorktreeEntry[]>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -649,7 +650,7 @@ export async function getWorktreeList(git$: string | string[]): Promise<Worktree
  */
 export async function invalidateWorktreeListCache(git$: string | string[]): Promise<void> {
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.worktreeList', getGitScope(git$));
+   const cacheKey = createCacheKey('git.worktreeList', getGitScope(git$));
    await cache.deleteOneOff(cacheKey);
 }
 
@@ -696,7 +697,7 @@ export async function getGitPath(
 ): Promise<string | null> {
    const cache = await getCache();
    const scope = `${getGitScope(git$, worktreePath)}|${gitPath}`;
-   const cacheKey = createOneOffKey('git.path', scope);
+   const cacheKey = createCacheKey('git.path', scope);
    const cached = await cache.getOneOff<string | null>(cacheKey);
    if (cached !== undefined) return cached;
 
@@ -759,85 +760,98 @@ export async function getSubmodules(
 ): Promise<SubmoduleEntry[]> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const cache = await getCache();
-   const cacheKey = createOneOffKey('git.submodules', getGitScope(git$, worktreePath));
-   const cached = await cache.getOneOff<SubmoduleEntry[]>(cacheKey);
-   if (cached !== undefined) return cached;
+   const scope = getGitScope(git$, worktreePath);
+   const pathsCacheKey = createCacheKey('git.submodules.paths', scope);
+   const gitlinksCacheKey = createCacheKey('git.submodules.gitlinks', scope);
+   const statusCacheKey = createCacheKey('git.submodules.status', scope);
+   const gitmodulesPath = path.join(worktreePath, '.gitmodules');
+   const gitmodulesMtime = (await fs.getStatMTime(gitmodulesPath)) ?? null;
+   let indexMtime: number | null = null;
+   const cachedGitlinks = await cache.get<{ mtime: number | null; paths: string[] }>(
+      gitlinksCacheKey
+   );
 
    try {
-      let configOutput = '';
-      try {
-         configOutput = (
-            await $`${gitExec} -C ${worktreePath} config --file .gitmodules --get-regexp path`
-         ).stdout.trim();
-      } catch {
-         configOutput = '';
-      }
-
-      const configPaths = configOutput
-         .split('\n')
-         .map((line) => line.trim())
-         .filter((line) => line.length > 0)
-         .map((line) => {
-            const match = line.match(/^submodule\.(.+?)\.path\s+(.+)$/);
-            return match?.[2]?.trim() ?? '';
-         })
-         .filter((submodulePath) => submodulePath.length > 0);
-
-      const gitmodulesPath = path.join(worktreePath, '.gitmodules');
-      let filePaths: string[] = [];
-      if (fs.existsSync(gitmodulesPath)) {
+      let configPaths: string[] = [];
+      const cachedPaths = await cache.get<{ mtime: number | null; paths: string[] }>(pathsCacheKey);
+      if (cachedPaths && cachedPaths.mtime === gitmodulesMtime) {
+         configPaths = cachedPaths.paths;
+      } else if (gitmodulesMtime !== null) {
          try {
-            const content = fs.readFileSync(gitmodulesPath, 'utf-8');
-            filePaths = content
+            const configOutput = (
+               await $`${gitExec} -C ${worktreePath} config --file .gitmodules --get-regexp path`
+            ).stdout.trim();
+            configPaths = configOutput
                .split('\n')
                .map((line) => line.trim())
-               .map((line) => line.match(/^path\s*=\s*(.+)$/)?.[1]?.trim() ?? '')
+               .filter((line) => line.length > 0)
+               .map((line) => {
+                  const match = line.match(/^submodule\.(.+?)\.path\s+(.+)$/);
+                  return match?.[2]?.trim() ?? '';
+               })
                .filter((submodulePath) => submodulePath.length > 0);
          } catch {
-            filePaths = [];
+            configPaths = [];
          }
+         await cache.set(pathsCacheKey, { mtime: gitmodulesMtime, paths: configPaths });
+      } else if (cachedPaths && cachedPaths.mtime === null) {
+         configPaths = cachedPaths.paths;
       }
 
       let gitlinkPaths: string[] = [];
-      try {
-         const lsFilesOutput = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
-         gitlinkPaths = lsFilesOutput
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.startsWith('160000 '))
-            .map((line) => line.match(/^160000 [0-9a-f]{40} \d\t(.+)$/)?.[1]?.trim() ?? '')
-            .filter((submodulePath) => submodulePath.length > 0);
-      } catch {
-         gitlinkPaths = [];
+      if (indexMtime === null) {
+         indexMtime =
+            (await fs.getStatMTime(await getGitPath(git$, worktreePath, 'index'))) ?? null;
+      }
+      if (cachedGitlinks && cachedGitlinks.mtime === indexMtime && indexMtime !== null) {
+         gitlinkPaths = cachedGitlinks.paths;
+      } else {
+         try {
+            const lsFilesOutput = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
+            gitlinkPaths = lsFilesOutput
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.startsWith('160000 '))
+               .map((line) => line.match(/^160000 [0-9a-f]{40} \d\t(.+)$/)?.[1]?.trim() ?? '')
+               .filter((submodulePath) => submodulePath.length > 0);
+         } catch {
+            gitlinkPaths = [];
+         }
+         await cache.set(gitlinksCacheKey, { mtime: indexMtime, paths: gitlinkPaths });
       }
 
-      const configPathSet = new Set([...configPaths, ...filePaths, ...gitlinkPaths]);
-      if (configPathSet.size === 0) {
-         await cache.setOneOff(cacheKey, []);
-         return [];
-      }
+      const configPathSet = new Set([...configPaths, ...gitlinkPaths]);
+      if (configPathSet.size === 0) return [];
       const resolvedPaths = Array.from(configPathSet);
 
       let statusMap = new Map<string, string>();
-      try {
-         const output = (await $`${gitExec} -C ${worktreePath} submodule status --recursive`)
-            .stdout;
-         const lines = output
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0 && !line.startsWith('Entering '));
+      const cachedStatus = await cache.get<Record<string, string>>(statusCacheKey);
+      if (cachedStatus) {
+         statusMap = new Map(Object.entries(cachedStatus));
+      } else {
+         try {
+            const output = (await $`${gitExec} -C ${worktreePath} submodule status --recursive`)
+               .stdout;
+            const lines = output
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.length > 0 && !line.startsWith('Entering '));
 
-         for (const line of lines) {
-            const status = line[0];
-            const match = line.match(/^[ +-U]([0-9a-f]{7,40})\s+(.+?)(?:\s+\(|$)/);
-            const submodulePath = match?.[2]?.trim();
-            if (submodulePath) statusMap.set(submodulePath, status);
+            for (const line of lines) {
+               const status = line[0];
+               const match = line.match(/^[ +-U]([0-9a-f]{7,40})\s+(.+?)(?:\s+\(|$)/);
+               const submodulePath = match?.[2]?.trim();
+               if (submodulePath) statusMap.set(submodulePath, status);
+            }
+         } catch {
+            statusMap = new Map<string, string>();
          }
-      } catch {
-         statusMap = new Map<string, string>();
+         await cache.set(statusCacheKey, Object.fromEntries(statusMap), {
+            maxAgeMinutes: SUBMODULE_STATUS_CACHE_TTL_MINUTES,
+         });
       }
 
-      const result = resolvedPaths.map((submodulePath) => {
+      return resolvedPaths.map((submodulePath) => {
          const status = statusMap.get(submodulePath) ?? '-';
          return {
             path: submodulePath,
@@ -845,13 +859,21 @@ export async function getSubmodules(
             initialized: status !== '-',
          } satisfies SubmoduleEntry;
       });
-      await cache.setOneOff(cacheKey, result);
-      return result;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
-      await cache.setOneOff(cacheKey, []);
       return [];
    }
+}
+
+export async function invalidateSubmodulesCache(
+   git$: string | string[],
+   worktreePath: string
+): Promise<void> {
+   const cache = await getCache();
+   const scope = getGitScope(git$, worktreePath);
+   await cache.delete(createCacheKey('git.submodules.paths', scope));
+   await cache.delete(createCacheKey('git.submodules.gitlinks', scope));
+   await cache.delete(createCacheKey('git.submodules.status', scope));
 }
 
 /**
@@ -914,8 +936,12 @@ export async function deinitSubmodules(
    worktreePath: string
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const cache = await getCache();
+   const scope = getGitScope(git$, worktreePath);
+   await cache.delete(createCacheKey('git.submodules.status', scope));
    await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
 
+   await invalidateSubmodulesCache(git$, worktreePath);
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return;
 
@@ -965,6 +991,10 @@ export async function initSubmodules(git$: string | string[], worktreePath: stri
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return;
    await $`${git$} -c protocol.file.allow=always -C ${worktreePath} submodule update --init --recursive`;
+   const cache = await getCache();
+   const scope = getGitScope(git$, worktreePath);
+   await cache.delete(createCacheKey('git.submodules.status', scope));
+   await invalidateSubmodulesCache(git$, worktreePath);
 }
 
 /**
@@ -992,7 +1022,10 @@ export function isEmptyCherryPickError(err: unknown): boolean {
  * @param originPath - The path to the Git repository.
  * @returns An array of unmerged file paths.
  */
-export async function getUnmergedPaths(git$: string | string[], originPath: string): Promise<string[]> {
+export async function getUnmergedPaths(
+   git$: string | string[],
+   originPath: string
+): Promise<string[]> {
    try {
       const output = (await $`${git$} -C ${originPath} diff --name-only --diff-filter=U`).stdout;
       return output
@@ -1009,7 +1042,10 @@ export async function getUnmergedPaths(git$: string | string[], originPath: stri
  * @param git$ - Git executable path or command array.
  * @param originPath - The path to the Git repository.
  */
-export async function stageResolvedConflicts(git$: string | string[], originPath: string): Promise<void> {
+export async function stageResolvedConflicts(
+   git$: string | string[],
+   originPath: string
+): Promise<void> {
    const unmergedPaths = await getUnmergedPaths(git$, originPath);
    if (unmergedPaths.length === 0) return;
 
@@ -1022,7 +1058,10 @@ export async function stageResolvedConflicts(git$: string | string[], originPath
  * @param originPath - The path to the Git repository.
  * @returns True if the cherry-pick is empty, false otherwise.
  */
-export async function isCherryPickEmpty(git$: string | string[], originPath: string): Promise<boolean> {
+export async function isCherryPickEmpty(
+   git$: string | string[],
+   originPath: string
+): Promise<boolean> {
    const unmergedPaths = await getUnmergedPaths(git$, originPath);
    if (unmergedPaths.length > 0) return false;
 
@@ -1054,35 +1093,22 @@ export async function getCommitRangeLog(options: {
    formatTemplate?: string;
 }): Promise<CommitLogResult> {
    const { gitExec, repoPath, range, maxCount, formatTemplate: format } = options;
-   let totalCount = 0;
-   try {
-      const countOutput = (
-         await $`${gitExec} -C ${repoPath} rev-list --count ${range}`
-      ).stdout.trim();
-      totalCount = parseInt(countOutput, 10) || 0;
-   } catch (err) {
-      totalCount = 0;
-      Logger.debug(`Failed to get commit count for range '${range}': ${Err.from(err)}`, 'git');
-   }
-
-   if (totalCount === 0) {
-      return { commits: [], totalCount: 0, moreCount: 0 };
-   }
-
    let logOutput = '';
    try {
-      const logArgs = ['-C', repoPath, 'log', `--pretty=format:${format || '%h %s'}`];
-      if (maxCount && maxCount > 0) logArgs.push(`--max-count=${maxCount}`);
-      logArgs.push(range);
+      const logArgs = ['-C', repoPath, 'log', `--pretty=format:${format || '%h %s'}`, range];
       logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
    } catch {
       logOutput = '';
    }
 
-   const commits = logOutput
+   const allCommits = logOutput
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0);
+   const totalCount = allCommits.length;
+   if (totalCount === 0) return { commits: [], totalCount: 0, moreCount: 0 };
+
+   const commits = maxCount && maxCount > 0 ? allCommits.slice(0, maxCount) : allCommits;
    const moreCount = Math.max(totalCount - commits.length, 0);
    return { commits, totalCount, moreCount };
 }
@@ -1101,18 +1127,29 @@ export async function getSubmoduleBaseSha(
    baseCommit: string,
    submodulePath: string
 ): Promise<string | null> {
+   const cache = await getCache();
+   const scope = `${gitExec}|${path.resolve(worktreePath)}|${baseCommit}|${submodulePath}`;
+   const cacheKey = createCacheKey('git.submoduleBaseSha', scope);
+   const cached = await cache.get<string | null>(cacheKey);
+   if (cached !== undefined) return cached;
+
    try {
       const output = (
          await $`${gitExec} -C ${worktreePath} ls-tree ${baseCommit} -- ${submodulePath}`
       ).stdout.trim();
-      if (!output) return null;
+      if (!output) {
+         await cache.set(cacheKey, null);
+         return null;
+      }
       const match = output.match(/^160000\s+commit\s+([0-9a-f]{7,40})\s+/i);
-      return match?.[1] ?? null;
+      const result = match?.[1] ?? null;
+      await cache.set(cacheKey, result);
+      return result;
    } catch {
+      await cache.set(cacheKey, null);
       return null;
    }
 }
-
 
 /**
  * returns git's `color.ui=always` options of the host's terminal supports it.
@@ -1121,7 +1158,6 @@ export function forceColorArgs(): string[] {
    if (CheckCache.supportsColor <= 0) return [];
    return ['-c', 'color.ui=always'];
 }
-
 
 /**
  * Helper function to normalize a remote URL's host and path components.
