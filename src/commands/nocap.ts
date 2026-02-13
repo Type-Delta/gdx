@@ -32,7 +32,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       // Display the commit message
       const lines = latestCommitMessage.split('\n');
       for (const line of lines) {
-         quickPrint(`${ncc('Dim')}> ${ncc()}${line}`);
+         quickPrint(`${ncc('Dim')}▐  ${ncc()}${line}`);
       }
       quickPrint(`\n${ncc('Cyan')}${ncc('Dim')}Reviewing your commit message...${ncc()}\n`);
 

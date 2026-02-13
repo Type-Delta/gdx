@@ -65,15 +65,20 @@ async function dropRange(
    }
 
    // Capture logic
-   const entries: StashEntry[] = [];
+   let entries: StashEntry[] = [];
    try {
       const root = await getRepoRootCached(git$);
 
       // Loop high to low
+      const getEntriesProms: ReturnType<typeof getStashEntry>[] = [];
       for (let i = end; i >= start; i--) {
-         const entry = await getStashEntry(git$, i);
-         if (entry) entries.push(entry);
+         getEntriesProms.push(
+            getStashEntry(git$, i)
+         );
       }
+
+      entries = (await Promise.all(getEntriesProms))
+         .filter((e): e is StashEntry => e != null);
 
       if (entries.length > 0) {
          saveStashDrop(

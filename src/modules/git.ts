@@ -1060,8 +1060,9 @@ export async function getCommitRangeLog(options: {
          await $`${gitExec} -C ${repoPath} rev-list --count ${range}`
       ).stdout.trim();
       totalCount = parseInt(countOutput, 10) || 0;
-   } catch {
+   } catch (err) {
       totalCount = 0;
+      Logger.debug(`Failed to get commit count for range '${range}': ${Err.from(err)}`, 'git');
    }
 
    if (totalCount === 0) {

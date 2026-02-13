@@ -72,6 +72,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
          });
          try {
             await initSubmodules(options.git$, options.worktreePath);
+            spinnerCtrl.stop();
          } catch (err) {
             spinnerCtrl.stop();
             warnings.push(`Submodule init failed. ${yuString(err, { color: true })}`);

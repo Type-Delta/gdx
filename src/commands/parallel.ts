@@ -21,6 +21,7 @@ import {
    openInEditor,
    scheduleChangeDir,
    spinner,
+   SpinnerContoller,
 } from '@/modules/shell';
 import { normalizePath, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
@@ -780,7 +781,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
                worktreePath: wtPath,
                baseCommit,
                maxCount: maxLogCount,
-            })
+            }, spinnerCtrl)
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1570,7 +1571,7 @@ async function getSubmoduleCommitGroups(options: {
    worktreePath: string;
    baseCommit: string;
    maxCount?: number;
-}): Promise<{ groups: CommitGroup[]; totalCount: number }> {
+}, spinner?: SpinnerContoller): Promise<{ groups: CommitGroup[]; totalCount: number }> {
    const { git$, gitExec, worktreePath, baseCommit, maxCount } = options;
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return { groups: [], totalCount: 0 };
@@ -1583,6 +1584,8 @@ async function getSubmoduleCommitGroups(options: {
       const gitMarker = path.join(submoduleRepoPath, '.git');
       if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
 
+      if (spinner)
+         spinner.options.message = `Collecting submodule '${submodule.path}'...`;
       const baseSha = await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
       if (!baseSha) continue;
 

@@ -16,6 +16,12 @@ import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
 import { MinimalVerboseObject } from 'execa/types/verbose';
 
+export interface SpinnerContoller {
+   stop: () => void;
+   start: (newline?: boolean) => void;
+   options: Required<SpinnerOptions>;
+}
+
 const logger = new Logger('shell');
 const dim = ncc('Dim');
 const reset = ncc();
@@ -197,7 +203,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * // ... do work ...
  * spinner.stop();
  */
-export function spinner(options: SpinnerOptions = {}) {
+export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    const isQuietStart = !options.message;
    options = {
       message: '',
@@ -215,10 +221,10 @@ export function spinner(options: SpinnerOptions = {}) {
          stop: () => {
             /* no-op */
          },
-         resume: (newline = true) => {
+         start: (newline = true) => {
             if (newline) process.stdout.write('\n');
          },
-         options,
+         options: options as Required<SpinnerOptions>,
       };
    }
 
@@ -291,7 +297,7 @@ export function spinner(options: SpinnerOptions = {}) {
       /**
        * Resumes the spinner if it was stopped
        */
-      resume: (newline = true) => {
+      start: (newline = true) => {
          if (!isRunning) {
             // Hide cursor then add a new line if requested
             process.stdout.write('\x1b[?25l' + (newline ? '\n' : ''));
@@ -304,7 +310,7 @@ export function spinner(options: SpinnerOptions = {}) {
       /**
        * Spinner options reference
        */
-      options,
+      options: options as Required<SpinnerOptions>,
    };
 }
 
