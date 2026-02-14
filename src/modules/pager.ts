@@ -1,6 +1,8 @@
-import Logger from '@/utils/logger';
 import { maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
-import { bgRgb, fgRgb } from './graphics';
+
+import Logger from '@/utils/logger';
+import { bgRgb, fgRgb, getDisplayWidth, RgbVec, stripAnsiColor } from './graphics';
+import { CATPPUCCIN_VPALETTE } from '@/consts';
 
 /**
  * Options for configuring pager behavior.
@@ -17,7 +19,7 @@ export interface PagerOptions {
    /** Custom status bar format function */
    statusFormat?: (current: number, total: number, termWidth: number) => string;
    /** Background color for the pager (24-bit RGB as [r, g, b]) */
-   backgroundColor?: [number, number, number];
+   backgroundColor?: RgbVec;
 }
 
 /**
@@ -58,7 +60,7 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
          redundancyLv: 0,
       });
    },
-   backgroundColor: [30, 30, 46], // catppuccin-mocha base
+   backgroundColor: CATPPUCCIN_VPALETTE.base,
 };
 
 /** Cached terminal dimensions */
@@ -92,24 +94,6 @@ export function getTerminalWidth(): number {
 export function clearTerminalCache(): void {
    cachedTerminalHeight = null;
    cachedTerminalWidth = null;
-}
-
-/**
- * Strips ANSI escape codes from a string to get visible length.
- * @param str - String with potential ANSI codes
- * @returns String with all ANSI codes removed
- */
-export function stripAnsiColor(str: string): string {
-   return str.replace(/\x1b\[[0-9;]*m/g, '');
-}
-
-/**
- * Gets the visible display width of a string (excluding ANSI codes).
- * @param str - String to measure
- * @returns Visible character count
- */
-export function getDisplayWidth(str: string): number {
-   return stripAnsiColor(str).length;
 }
 
 /**
@@ -272,7 +256,7 @@ export async function pagerWithRenderer(
          const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth);
          const padding = Math.max(0, currentWidth - getDisplayWidth(statusLine));
          const bgColor = bgRgb(opts.backgroundColor);
-         const dimColor = fgRgb([147, 153, 178]); // catppuccin-mocha overlay0
+         const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
          process.stdout.write('\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + ncc());
       }
       if (performanceSamples.length > 30)

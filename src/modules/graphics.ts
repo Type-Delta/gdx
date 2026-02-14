@@ -248,6 +248,24 @@ export function bgRgb(rgb: RgbVec): string {
 }
 
 /**
+ * Strips ANSI escape codes (SGR) from a string to get visible length.
+ * @param str - String with potential ANSI codes
+ * @returns String with all ANSI codes removed
+ */
+export function stripAnsiColor(str: string): string {
+   return str.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+/**
+ * Gets the visible display width of a string (excluding SGR ANSI codes).
+ * @param str - String to measure
+ * @returns Visible character count
+ */
+export function getDisplayWidth(str: string): number {
+   return stripAnsiColor(str).length;
+}
+
+/**
  * Cubic Bezier curve implementation that mimics CSS's cubic-bezier() function.
  * Calculates the eased value for a given time using cubic bezier curve with control points.
  *

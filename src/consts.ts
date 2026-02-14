@@ -27,6 +27,7 @@ export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];
 export const CACHE_FILE_NAME = 'cache.json';
 export const MACRO_FILE_NAME = 'macro.json';
+export const TUI_THEME = 'catppuccin-mocha'; // TUI theme, can not be overridden by anthing, Im lazy :)
 
 export const COMMON_GIT_CMDS = [
    // For original git commands ONLY
@@ -70,7 +71,7 @@ export const GDX_VPALETTE = {
 /**
  * Catppuccin Mocha color palette for TUI theming
  */
-export const CATPPUCCIN_VPALETTE: Record<string, RgbVec> = {
+export const CATPPUCCIN_VPALETTE = {
    base: [30, 30, 46],
    mantle: [24, 24, 37],
    crust: [17, 17, 27],

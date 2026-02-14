@@ -8,8 +8,8 @@ import {
    canUseDiffViewer,
    BundledLanguage,
 } from '@/modules/diff-viewer';
-import { stripAnsiColor } from '@/modules/pager';
 import { createTestEnv } from '@/utils/testHelper';
+import { stripAnsiColor } from '@/modules/graphics';
 
 mock.module('@shikijs/cli', () => ({
    codeToANSI: async (code: string) => code,

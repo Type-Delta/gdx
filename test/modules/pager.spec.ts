@@ -5,9 +5,9 @@ import {
    getTerminalWidth,
    getTerminalHeight,
    clearTerminalCache,
-   stripAnsiColor,
 } from '@/modules/pager';
 import { createTestEnv } from '@/utils/testHelper';
+import { stripAnsiColor } from '@/modules/graphics';
 
 describe('pager module', async () => {
    const { cleanup, it } = await createTestEnv();

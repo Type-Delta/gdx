@@ -9,14 +9,12 @@ import {
    getTerminalWidth,
    getTerminalHeight,
    clearTerminalCache,
-   stripAnsiColor,
-   getDisplayWidth,
    pager,
 } from './pager';
-import { bgRgb, colorMix, fgRgb, RgbVec } from './graphics';
+import { bgRgb, colorMix, fgRgb, getDisplayWidth, RgbVec, stripAnsiColor } from './graphics';
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
-import { CATPPUCCIN_VPALETTE } from '@/consts';
+import { CATPPUCCIN_VPALETTE, TUI_THEME } from '@/consts';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -24,8 +22,6 @@ const STYLES = {
    underline: (str: string) => `\x1b[4m${str}\x1b[24m`,
    dim: (str: string) => `\x1b[2m${str}\x1b[22m`,
 };
-
-const THEME = 'catppuccin-mocha';
 
 /** Options for the diff viewer */
 export interface DiffViewerOptions extends PagerOptions {
@@ -313,7 +309,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          lineNumberWidth: 5,
          wrapLines: true,
          showStatus: true,
-         theme: THEME,
+         theme: TUI_THEME,
          statusFormat: (current, total) => {
             const endLine = Math.min(current + getTerminalHeight() - 2, total);
             return `lines ${current}-${endLine} of ${total}`;
@@ -356,7 +352,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       let sign = ' ';
       let bgCode: RgbVec = blockBg;
       let gutterBgCode: RgbVec = blockBg;
-      let signColor = CATPPUCCIN_VPALETTE.overlay0;
+      let signColor = CATPPUCCIN_VPALETTE.overlay0 as RgbVec;
 
       switch (line.type) {
          case 'add':
