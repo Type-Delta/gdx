@@ -174,7 +174,7 @@ export class CacheService {
          // Check version mismatch (auto-invalidate on VERSION change)
          if (parsed.meta.version !== VERSION) {
             this.logger.debug(
-               `Cache version mismatch: stored=${parsed.meta.version}, current=${VERSION}. Resetting cache.`,
+               `Cache version mismatch: stored=${parsed.meta.version}, current=${VERSION}. Resetting cache.`
             );
             this.resetCache(false);
             this.loaded = true;
@@ -184,7 +184,7 @@ export class CacheService {
          // Ensure required fields exist
          if (!parsed.entryMeta || !parsed.meta.lastPruneAt) {
             this.logger.debug(
-               "Existing cache file' schema mismatch; resetting cache to newer version",
+               "Existing cache file' schema mismatch; resetting cache to newer version"
             );
             this.resetCache(false);
             this.loaded = true;
@@ -199,7 +199,7 @@ export class CacheService {
 
          if (daysSinceLastPrune >= CACHE_PRUNE_INTERVAL_DAYS) {
             this.logger.debug(
-               `Last prune was ${daysSinceLastPrune.toFixed(1)} days ago. Running cache pruning...`,
+               `Last prune was ${daysSinceLastPrune.toFixed(1)} days ago. Running cache pruning...`
             );
             const prunedCount = this.pruneExpiredKeys();
             if (prunedCount > 0) {
@@ -212,9 +212,7 @@ export class CacheService {
          const err = new Err(e);
          if (err.code !== 'ENOENT') {
             // File exists but couldn't be parsed - not fatal
-            this.logger.debug(
-               `Failed to parse cache file at ${this.cachePath}: ${err.message}`,
-            );
+            this.logger.debug(`Failed to parse cache file at ${this.cachePath}: ${err.message}`);
          }
          // Use defaults if file doesn't exist or can't be parsed
          this.resetCache(false);
@@ -263,7 +261,7 @@ export class CacheService {
 
       if (Date.now() > entry.expiresAt) {
          this.logger.debug(
-            `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`,
+            `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`
          );
          await this.delete(keyPath);
          return defaultValue;

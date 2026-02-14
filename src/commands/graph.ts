@@ -77,9 +77,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-      ncc('Bright') +
-      _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-      ` (Max: ${maxCommits} commits/day)\n`
+         ncc('Bright') +
+         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
+         ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)

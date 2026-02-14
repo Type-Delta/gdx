@@ -65,9 +65,7 @@ export function normalizeSync(inputPath: string): string {
       resolved = path.resolve(inputPath);
    }
 
-   return process.platform === 'win32'
-      ? resolved.replace(/\\/g, '/').toLowerCase()
-      : resolved;
+   return process.platform === 'win32' ? resolved.replace(/\\/g, '/').toLowerCase() : resolved;
 }
 
 /**

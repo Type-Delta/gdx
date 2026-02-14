@@ -52,12 +52,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-      `Gathering stats for user: ` +
-      ncc('Yellow') +
-      email +
-      ncc('Cyan') +
-      ` this may take a while...` +
-      ncc()
+         `Gathering stats for user: ` +
+         ncc('Yellow') +
+         email +
+         ncc('Cyan') +
+         ` this may take a while...` +
+         ncc()
    );
 
    try {

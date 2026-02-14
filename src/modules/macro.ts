@@ -114,7 +114,7 @@ export async function getMacrosCachedOrLoad(): Promise<MacroMap> {
 export async function executeMacro(
    git$: string | string[],
    macroScript: string,
-   macroArgs: string[],
+   macroArgs: string[]
 ): Promise<number> {
    // Split by semicolon to get individual commands
    const commands = macroScript
@@ -138,12 +138,16 @@ export async function executeMacro(
       const { substituted, notUsedArgs } = substitutePlaceholders(argv, macroArgs);
 
       // Append extra flags to the last command
-      if (isLastCommand)
-         substituted.push(...notUsedArgs);
+      if (isLastCommand) substituted.push(...notUsedArgs);
 
       if (substituted.length === 0) continue;
 
-      quickPrint(ncc('Dim') + ncc('Cyan') + `▶ Executing: ${ncc('White') + ncc('Bright')}gdx ${escapeCmdArgs(substituted).join(' ')}` + ncc());
+      quickPrint(
+         ncc('Dim') +
+            ncc('Cyan') +
+            `▶ Executing: ${ncc('White') + ncc('Bright')}gdx ${escapeCmdArgs(substituted).join(' ')}` +
+            ncc()
+      );
 
       // Create a context for this command
       const ctx: GdxContext = {
@@ -191,9 +195,12 @@ export function isFilePath(arg: string): boolean {
  * @param macroArgs - The arguments to substitute.
  * @returns Argv array with substitutions applied.
  */
-export function substitutePlaceholders(argv: string[], macroArgs: string[]): {
-   substituted: string[],
-   notUsedArgs: string[]
+export function substitutePlaceholders(
+   argv: string[],
+   macroArgs: string[]
+): {
+   substituted: string[];
+   notUsedArgs: string[];
 } {
    let allArgsIndex = -1;
    const notUsedArgs: Set<string> = new Set(macroArgs);

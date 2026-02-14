@@ -449,6 +449,8 @@ function execaCustomLogger(verboseLine: string, verboseObject: MinimalVerboseObj
    // @ts-expect-error -- known property
    else if (verboseObject['result']['isTerminated']) exitType = 'TERMINATED';
 
-   // @ts-expect-error -- known property
-   logger.debug(`${bright + dim}$ ${reset + verboseObject.escapedCommand + dim} (${exitType} in ${verboseObject['result']['durationMs']}ms)`)
+   logger.debug(
+      // @ts-expect-error -- known property
+      `${bright + dim}$ ${reset + verboseObject.escapedCommand + dim} (${exitType} in ${verboseObject['result']['durationMs']}ms)`
+   );
 }

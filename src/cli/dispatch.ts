@@ -47,9 +47,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-            ncc('Magenta') +
-            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-            ncc()
+               ncc('Magenta') +
+               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+               ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -132,8 +132,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -300,9 +300,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-         ncc()
+            ncc(rgbVec2decimal(colorVec), 'fg') +
+            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+            ncc()
       );
    }
 

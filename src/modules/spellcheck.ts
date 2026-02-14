@@ -4,6 +4,7 @@ import type { spellCheckDocument as CSpellSpellCheckDocument } from 'cspell-lib'
 
 let cspellModulePromise: Promise<typeof import('cspell-lib')> | null = null;
 let bundledDictionaryNamesPromise: Promise<string[]> | null = null;
+
 async function getCSpell() {
    cspellModulePromise ??= import('cspell-lib');
    return await cspellModulePromise;

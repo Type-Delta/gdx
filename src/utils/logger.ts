@@ -62,6 +62,7 @@ const MessageColors: Record<LogLevel, 'Red' | 'Yellow' | 'Cyan' | 'Magenta'> = {
 
 class Logger {
    static logFile: string = path.join(os.tmpdir(), 'gdx', 'gdx.log');
+   static logLevel: number = LogLevelMap[global.logLevel];
 
    private moduleName: string;
    private static initialized: boolean = false;
@@ -70,16 +71,28 @@ class Logger {
       level: LogLevel;
       message: string;
       module: string;
-   }> = [{
-      timestamp: new Date().toISOString(),
-      level: 'info',
-      message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
-      module: 'logger',
-   }];
+   }> = [
+      {
+         timestamp: new Date().toISOString(),
+         level: 'info',
+         message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
+         module: 'logger',
+      },
+   ];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
       Logger.ensureInitialized();
+   }
+
+   /**
+    * Checks if a message at the given level would be logged based on the current global log level.
+    * This can be used to avoid expensive log message construction when the message would not be logged.
+    * @param level The log level to check.
+    * @returns True if a message at the given level would be logged, false otherwise.
+    */
+   static wouldLog(level: LogLevel): boolean {
+      return LogLevelMap[level] <= Logger.logLevel;
    }
 
    private static ensureInitialized(): void {

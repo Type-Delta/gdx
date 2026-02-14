@@ -72,13 +72,10 @@ async function dropRange(
       // Loop high to low
       const getEntriesProms: ReturnType<typeof getStashEntry>[] = [];
       for (let i = end; i >= start; i--) {
-         getEntriesProms.push(
-            getStashEntry(git$, i)
-         );
+         getEntriesProms.push(getStashEntry(git$, i));
       }
 
-      entries = (await Promise.all(getEntriesProms))
-         .filter((e): e is StashEntry => e != null);
+      entries = (await Promise.all(getEntriesProms)).filter((e): e is StashEntry => e != null);
 
       if (entries.length > 0) {
          saveStashDrop(
@@ -99,8 +96,8 @@ async function dropRange(
 
    quickPrint(
       ncc('Cyan') +
-      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-      ncc()
+         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+         ncc()
    );
 
    for (let i = end; i >= start; i--) {

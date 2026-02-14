@@ -322,12 +322,14 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    });
 
    const submodules = await getSubmodules(git$, targetPath);
-   // spinnerCtrl.stop();
-   Logger.debug(
-      `Submodules in worktree '${alias}': ${submodules.length > 0 ? submodules.map((s) => s.path).join(', ') : 'none'}`,
-      'parallel'
-   );
-   // spinnerCtrl.resume();
+   if (Logger.wouldLog('debug')) {
+      spinnerCtrl.stop();
+      Logger.debug(
+         `Submodules in worktree '${alias}': ${submodules.length > 0 ? submodules.map((s) => s.path).join(', ') : 'none'}`,
+         'parallel'
+      );
+      spinnerCtrl.start();
+   }
    // deinit submodules
    if (submodules.length > 0) {
       const dirtySubmodules = await getDirtySubmodules(git$, targetPath, submodules);
@@ -407,7 +409,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       }
 
       // LINK: dw2al2m string literal in spec
-      quickPrint(`\n${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
+      quickPrint(`${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
