@@ -5,7 +5,7 @@ import { Err, jsTime, ncc, strJustify, strLimit, strWrap, yuString } from '@lib/
 import { resetCache } from '@/common/cache';
 import { getConfig } from '@/common/config';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { CACHE_PATH, COLOR, EXECUTABLE_NAME, VERSION } from '@/consts';
+import { CACHE_PATH, GDX_VPALETTE, EXECUTABLE_NAME, VERSION } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import * as fs from '@/modules/fs';
@@ -359,10 +359,10 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('CACHE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('CACHE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Manually manage gdx cache entries and settings.
 
-${bright + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - list: Show cache keys, TTL, and a short value preview.
 - prune: Remove expired entries from the cache file.
 - reset: Delete the entire cache file.

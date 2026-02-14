@@ -8,7 +8,7 @@ import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, SECURE_CONF_KEYS, COLOR } from '@/consts';
+import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 
@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -194,13 +194,13 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('GDX-CONFIG', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('GDX-CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 View and modify gdx configuration.
 
-${bright + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
 
-${bright + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - list: Prints flattened configuration with defaults and modified markers.
 - path: Prints the path to the active config file used by gdx.
 - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.

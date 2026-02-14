@@ -49,8 +49,12 @@ export const COMMON_GIT_CMDS = [
    'switch',
 ];
 
-// palette taken from https://tailwindcss.com/docs/colors
-export const COLOR = {
+/**
+ * GDX color palette
+ *
+ * palette taken from https://tailwindcss.com/docs/colors
+ */
+export const GDX_VPALETTE = {
    OceanDeepBlue: [46, 149, 153],
    OceanGreen: [57, 211, 83],
    ForestGreen: [34, 139, 34],
@@ -63,7 +67,29 @@ export const COLOR = {
    Teal300: [94, 234, 212],
 } as const satisfies Record<string, RgbVec>;
 
-export const SPINNER: string[] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+/**
+ * Catppuccin Mocha color palette for TUI theming
+ */
+export const CATPPUCCIN_VPALETTE: Record<string, RgbVec> = {
+   base: [30, 30, 46],
+   mantle: [24, 24, 37],
+   crust: [17, 17, 27],
+   surface0: [49, 50, 68],
+   surface1: [69, 71, 90],
+   overlay0: [147, 153, 178],
+   overlay1: [127, 132, 156],
+   text: [205, 214, 244],
+   green: [166, 227, 161],
+   red: [243, 139, 168],
+   yellow: [249, 226, 175],
+   blue: [137, 180, 250],
+   cyan: [148, 226, 213],
+   lavender: [180, 190, 254],
+} as const satisfies Record<string, RgbVec>;
+
+
+
+export const DEFAULT_SPINNER: string[] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
 export const STATS_EST = {
    AVG_CHARS_PER_LINE: 40,

@@ -6,7 +6,7 @@ import { noop, quickPrint } from '../utils/utilities';
 import { getLLMProvider } from '../common/adapters/llm';
 import Logger from '../utils/logger';
 import { nocapPrompt } from '../templates/prompts';
-import { COLOR, EXECUTABLE_NAME } from '@/consts';
+import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
@@ -42,8 +42,8 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       const spin = spinner({
          message: 'cooking up a roast...',
          animateGradient: true,
-         gradientColor: COLOR.Teal300,
-         gradientColorBg: COLOR.Fuchsia400,
+         gradientColor: GDX_VPALETTE.Teal300,
+         gradientColorBg: GDX_VPALETTE.Fuchsia400,
       });
 
       const connection = llm.streamGenerate({
@@ -96,16 +96,16 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('NOCAP', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('NOCAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Generate a playful roast for your latest commit message.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Reads the latest commit message authored by the configured git user and asks the configured LLM provider to produce a humorous "roast" or light-hearted commentary. Output is streamed to the terminal with progress spinners and incremental printing as the LLM responds.
 
-${bright + _2PointGradient('WHEN TO USE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('WHEN TO USE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Use when you want a quick, entertaining summary/critique of your most recent commit message before pushing, or as a lighthearted CI/gaming aid.
 
-${bright + _2PointGradient('NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
 `,
          Math.min(100, global.terminalWidth - 4),

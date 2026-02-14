@@ -1,5 +1,6 @@
 import Logger from '@/utils/logger';
 import { maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
+import { bgRgb, fgRgb } from './graphics';
 
 /**
  * Options for configuring pager behavior.
@@ -94,31 +95,6 @@ export function clearTerminalCache(): void {
 }
 
 /**
- * Creates an ANSI escape code for 24-bit foreground color.
- * Format: \x1b[38;2;R;G;Bm
- * @param rgb - RGB color values [r, g, b]
- * @returns ANSI escape code string
- */
-export function fgRgb(rgb: [number, number, number]): string {
-   return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
-}
-
-/**
- * Creates an ANSI escape code for 24-bit background color.
- * Format: \x1b[48;2;R;G;Bm
- * @param rgb - RGB color values [r, g, b]
- * @returns ANSI escape code string
- */
-export function bgRgb(rgb: [number, number, number]): string {
-   return `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
-}
-
-/**
- * ANSI reset code to clear all styling.
- */
-export const RESET = '\x1b[0m';
-
-/**
  * Strips ANSI escape codes from a string to get visible length.
  * @param str - String with potential ANSI codes
  * @returns String with all ANSI codes removed
@@ -203,6 +179,7 @@ export class SimplePagerRenderer implements PagerRenderer {
    render(startLine: number, height: number, width: number): string[] {
       const result: string[] = [];
       const bgColor = bgRgb(this.options.backgroundColor);
+      const reset = ncc();
 
       for (let i = 0; i < height - 1; i++) {
          const lineIndex = startLine + i;
@@ -210,9 +187,9 @@ export class SimplePagerRenderer implements PagerRenderer {
             const line = this.wrappedLines[lineIndex];
             const stripped = stripAnsiColor(line);
             const padding = Math.max(0, width - stripped.length);
-            result.push(`${bgColor}${line}${' '.repeat(padding)}${RESET}`);
+            result.push(`${bgColor}${line}${' '.repeat(padding)}${reset}`);
          } else {
-            result.push(`${bgColor}${' '.repeat(width)}${RESET}`);
+            result.push(`${bgColor}${' '.repeat(width)}${reset}`);
          }
       }
 
@@ -296,7 +273,7 @@ export async function pagerWithRenderer(
          const padding = Math.max(0, currentWidth - getDisplayWidth(statusLine));
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb([147, 153, 178]); // catppuccin-mocha overlay0
-         process.stdout.write('\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + RESET);
+         process.stdout.write('\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + ncc());
       }
       if (performanceSamples.length > 30)
          performanceSamples.shift();

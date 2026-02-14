@@ -7,7 +7,7 @@ import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
-import { EXECUTABLE_NAME, STATS_EST, COLOR } from '../consts';
+import { EXECUTABLE_NAME, STATS_EST, GDX_VPALETTE } from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import Logger from '../utils/logger';
@@ -52,12 +52,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       ncc('Cyan') +
-         `Gathering stats for user: ` +
-         ncc('Yellow') +
-         email +
-         ncc('Cyan') +
-         ` this may take a while...` +
-         ncc()
+      `Gathering stats for user: ` +
+      ncc('Yellow') +
+      email +
+      ncc('Cyan') +
+      ` this may take a while...` +
+      ncc()
    );
 
    try {
@@ -195,16 +195,16 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('STATS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Gather detailed contribution statistics for a git author in this repository.
 
-${bright + _2PointGradient('WHAT IT COMPUTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Total commits by the author, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, and time of the last commit.
 
-${bright + _2PointGradient('HOW IT WORKS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
-${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
 `,
          Math.min(100, global.terminalWidth - 4),

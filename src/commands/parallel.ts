@@ -18,7 +18,7 @@ import {
 import { normalizePath, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, COLOR } from '@/consts';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import {
@@ -764,24 +764,24 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath),
          baseCommit
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${baseCommit}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${baseCommit}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -992,9 +992,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1049,9 +1049,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-                 .split('\n')
-                 .map((c) => c.trim())
-                 .filter((c) => c)
+               .split('\n')
+               .map((c) => c.trim())
+               .filter((c) => c)
             : [];
       } catch (err) {
          Logger.error(`Unable to enumerate submodule commits for '${submodule.path}'.`, 'parallel');
@@ -1682,10 +1682,10 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('PARALLEL', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('PARALLEL', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Manage parallel (forked) worktrees for iterative development.
 
-${bright + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 \`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
 Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules and
@@ -1693,14 +1693,14 @@ install dependencies using detected package managers (currently supports npm, pn
 if configured (see \`${cyan}parallel.init${reset}\` config for options),
 getting the fork ready for work in no time.
 
-${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
 - ${cyan}join [<alias>] [--keep|--all]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes.
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
 - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
 - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
 
-${bright + _2PointGradient('SAFETY AND NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
 `,
          Math.min(100, global.terminalWidth - 4),

@@ -1,15 +1,22 @@
-import { describe, expect, afterAll } from 'bun:test';
+import { afterAll, describe, expect, mock } from 'bun:test';
+import path from 'path';
 
+import * as fs from '@/modules/fs';
 import {
    DiffViewerRenderer,
    parseDiffOutput,
    canUseDiffViewer,
    BundledLanguage,
 } from '@/modules/diff-viewer';
+import { stripAnsiColor } from '@/modules/pager';
 import { createTestEnv } from '@/utils/testHelper';
 
+mock.module('@shikijs/cli', () => ({
+   codeToANSI: async (code: string) => code,
+}));
+
 describe('diff-viewer module', async () => {
-   const { cleanup, it } = await createTestEnv();
+   const { cleanup, it, tmpDir } = await createTestEnv();
    afterAll(cleanup);
 
    describe('parseDiffOutput', () => {
@@ -187,6 +194,27 @@ rename to new.ts`;
 
          expect(Array.isArray(lines)).toBe(true);
          expect(lines.length).toBe(5);
+      });
+
+      it('should keep deleted line content when line numbers overlap', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,1 +1,1 @@
+-import { ncc } from '@lib/Tools';
++import { Err, ncc } from '@lib/Tools';`;
+
+         fs.writeFileSync(path.join(tmpDir, 'test.ts'), `import { Err, ncc } from '@lib/Tools';\n`);
+
+         const renderer = new DiffViewerRenderer(diffText, { workingDir: tmpDir });
+         await renderer.prepareHighlighting();
+
+         const rendered = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            stripAnsiColor(renderer.getLine(i))
+         ).join('\n');
+
+         expect(rendered).toContain("- import { ncc } from '@lib/Tools';");
+         expect(rendered).toContain("+ import { Err, ncc } from '@lib/Tools';");
       });
 
       it('should handle resize', () => {

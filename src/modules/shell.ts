@@ -7,7 +7,7 @@ import { CheckCache, Err, ncc, yuString } from '@lib/Tools';
 import { isExecutable } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
-import { COLOR, GDX_RESULT_FILE, GDX_SIGNAL_CODE, SPINNER } from '@/consts';
+import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER } from '@/consts';
 import { getConfig } from '@/common/config';
 import global from '@/global';
 import { writeFile } from 'fs/promises';
@@ -208,10 +208,10 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    options = {
       message: '',
       interval: 80,
-      frames: SPINNER,
+      frames: DEFAULT_SPINNER,
       animateGradient: false,
-      gradientColor: COLOR.Zinc100,
-      gradientColorBg: COLOR.Zinc700,
+      gradientColor: GDX_VPALETTE.Zinc100,
+      gradientColorBg: GDX_VPALETTE.Zinc700,
       gradientSpeed: 0.11,
       ...options,
    } satisfies Required<SpinnerOptions>;

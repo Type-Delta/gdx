@@ -216,15 +216,35 @@ export function hslToRgbVec(h: number, s: number, l: number): RgbVec {
  * @param ratio - The blend ratio (0..1) determining the influence of the overlay color.
  */
 export function colorMix(
-   base: [number, number, number],
-   overlay: [number, number, number],
+   base: RgbVec,
+   overlay: RgbVec,
    ratio: number
-): [number, number, number] {
+): RgbVec {
    return [
       Math.round(base[0] * (1 - ratio) + overlay[0] * ratio),
       Math.round(base[1] * (1 - ratio) + overlay[1] * ratio),
       Math.round(base[2] * (1 - ratio) + overlay[2] * ratio),
    ];
+}
+
+/**
+ * Creates an ANSI escape code for 24-bit foreground color.
+ * Format: \x1b[38;2;R;G;Bm
+ * @param rgb - RGB color values [r, g, b]
+ * @returns ANSI escape code string
+ */
+export function fgRgb(rgb: RgbVec): string {
+   return `\x1b[38;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
+}
+
+/**
+ * Creates an ANSI escape code for 24-bit background color.
+ * Format: \x1b[48;2;R;G;Bm
+ * @param rgb - RGB color values [r, g, b]
+ * @returns ANSI escape code string
+ */
+export function bgRgb(rgb: RgbVec): string {
+   return `\x1b[48;2;${rgb[0]};${rgb[1]};${rgb[2]}m`;
 }
 
 /**

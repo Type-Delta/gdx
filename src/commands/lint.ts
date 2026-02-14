@@ -5,7 +5,7 @@ import { createAbortableExec } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree } from '@/modules/git';
-import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, COLOR } from '@/consts';
+import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, GDX_VPALETTE } from '@/consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
@@ -76,7 +76,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-               prettyFormatIssues(result, commitMsg)
+            prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -172,13 +172,13 @@ function printLWarning(subject: string, message: string) {
 
    quickPrint(
       ncc('BgYellow') +
-         ncc('Bright') +
-         ncc('White') +
-         ' LWARN ' +
-         ncc() +
-         ncc('Invert') +
-         ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
-         ncc()
+      ncc('Bright') +
+      ncc('White') +
+      ' LWARN ' +
+      ncc() +
+      ncc('Invert') +
+      ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
+      ncc()
    );
 }
 
@@ -189,13 +189,13 @@ function printLError(subject: string, message: string) {
 
    quickPrint(
       ncc('BgRed') +
-         ncc('Bright') +
-         ncc('White') +
-         ' LERROR ' +
-         ncc() +
-         ncc('Invert') +
-         ` ${subject} ${ncc() + ncc('Red')} ${message}` +
-         ncc()
+      ncc('Bright') +
+      ncc('White') +
+      ' LERROR ' +
+      ncc() +
+      ncc('Invert') +
+      ` ${subject} ${ncc() + ncc('Red')} ${message}` +
+      ncc()
    );
 }
 
@@ -206,16 +206,16 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('LINT', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('LINT', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
 
-${bright + _2PointGradient('CHECKS PERFORMED', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('CHECKS PERFORMED', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - Spelling: Checks for typos in commit messages using cspell.
 - Sensitive Content: Scans for API keys, tokens, and private keys.
 - Conflict Markers: Checks for leftover merge conflict markers.
 - File Size: Warns if files exceed the configured size limit (default 1MB).
 
-${bright + _2PointGradient('CONFIGURATION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('CONFIGURATION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${cyan}${EXECUTABLE_NAME} gdx-config${reset}\`:
 [lint]
 onPushBehavior = "off" | "error" | "warning"  # Default: "off"

@@ -14,7 +14,7 @@ import {
    commitMsgGeneratorInherent,
    guidelineLearningPrompt,
 } from '@/templates/prompts';
-import { EXECUTABLE_NAME, TEMP_DIR, COLOR } from '@/consts';
+import { EXECUTABLE_NAME, TEMP_DIR, GDX_VPALETTE } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
@@ -286,16 +286,16 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('COMMIT AUTO', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('COMMIT AUTO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Generate a commit message from staged changes using an LLM.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
-${bright + _2PointGradient('FLAGS AND BEHAVIOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. The tool writes a temporary message file when performing an actual commit.
 
-${bright + _2PointGradient('REQUIREMENTS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 A non-empty staged diff is required; the command will error if there are no staged changes.
 `,
          Math.min(100, global.terminalWidth - 4),

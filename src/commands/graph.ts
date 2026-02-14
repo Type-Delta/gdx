@@ -3,7 +3,7 @@ import { quickPrint } from '../utils/utilities';
 import { MathKit, ncc, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
-import { COLOR, EXECUTABLE_NAME } from '../consts';
+import { GDX_VPALETTE, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { getGitConfigCached } from '@/modules/git';
@@ -77,9 +77,9 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-         ncc('Bright') +
-         _2PointGradient('Contribution Graph', COLOR.OceanDeepBlue, COLOR.OceanGreen, 0.12, 0.83) +
-         ` (Max: ${maxCommits} commits/day)\n`
+      ncc('Bright') +
+      _2PointGradient('Contribution Graph', GDX_VPALETTE.OceanDeepBlue, GDX_VPALETTE.OceanGreen, 0.12, 0.83) +
+      ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
@@ -126,13 +126,13 @@ export default async function graph(ctx: GdxContext): Promise<number> {
          let color: string;
          let cellChar = '■';
          if (commitCount === 0) {
-            color = ncc('Dim') + ncc(rgbVec2decimal(COLOR.MidnightBlack));
+            color = ncc('Dim') + ncc(rgbVec2decimal(GDX_VPALETTE.MidnightBlack));
             cellChar = '▨'; // Different char for zero commits
          } else {
             const intensity = MathKit.clamp(commitCount / maxCommits, 0.15, 1);
             const interpColor = _2PointGradientInterp(
-               COLOR.MidnightBlack,
-               COLOR.OceanGreen,
+               GDX_VPALETTE.MidnightBlack,
+               GDX_VPALETTE.OceanGreen,
                intensity
             );
             color = ncc(rgbVec2decimal(interpColor));
@@ -155,16 +155,16 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('GRAPH', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Render a calendar-style contribution graph for a repository author.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
-${bright + _2PointGradient('OPTIONS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
 
-${bright + _2PointGradient('TERMINAL NOTES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
 `,
          Math.min(100, global.terminalWidth - 4),

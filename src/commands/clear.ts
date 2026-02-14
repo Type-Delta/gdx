@@ -8,7 +8,7 @@ import { $, $inherit, $prompt } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 import Logger from '../utils/logger';
-import { COLOR } from '../consts';
+import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
 import { getRepoRootCached } from '@/modules/git';
@@ -186,17 +186,17 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('CLEAR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('CLEAR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Safely backup and clear local working changes.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${cyan}git reset --hard${reset}\` and \`${cyan}git clean -fd${reset}\`. The latest patch is kept so you can restore it with \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\`.
 
-${bright + _2PointGradient('SUBCOMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - list: Show available backup patch files for this project/branch.
 - pardon: Restore the most recent backup patch.
 
-${bright + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
 `,
          Math.min(100, global.terminalWidth - 4),

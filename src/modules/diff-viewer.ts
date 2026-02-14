@@ -1,6 +1,7 @@
-import { Err, strWrap } from '@lib/Tools';
+import { Err, ncc, strWrap } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
 import * as fs from '@/modules/fs';
+
 import {
    pagerWithRenderer,
    PagerRenderer,
@@ -8,48 +9,21 @@ import {
    getTerminalWidth,
    getTerminalHeight,
    clearTerminalCache,
-   bgRgb,
-   fgRgb,
    stripAnsiColor,
    getDisplayWidth,
-   RESET,
    pager,
 } from './pager';
-import { colorMix } from './graphics';
+import { bgRgb, colorMix, fgRgb, RgbVec } from './graphics';
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
-
-/** Catppuccin Mocha color palette */
-const COLORS = {
-   base: [30, 30, 46] as [number, number, number],
-   mantle: [24, 24, 37] as [number, number, number],
-   crust: [17, 17, 27] as [number, number, number],
-   surface0: [49, 50, 68] as [number, number, number],
-   surface1: [69, 71, 90] as [number, number, number],
-   overlay0: [147, 153, 178] as [number, number, number],
-   overlay1: [127, 132, 156] as [number, number, number],
-   text: [205, 214, 244] as [number, number, number],
-   green: [166, 227, 161] as [number, number, number],
-   red: [243, 139, 168] as [number, number, number],
-   yellow: [249, 226, 175] as [number, number, number],
-   blue: [137, 180, 250] as [number, number, number],
-   cyan: [148, 226, 213] as [number, number, number],
-   lavender: [180, 190, 254] as [number, number, number],
-};
+import { CATPPUCCIN_VPALETTE } from '@/consts';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
    italic: (str: string) => `\x1b[3m${str}\x1b[23m`,
    underline: (str: string) => `\x1b[4m${str}\x1b[24m`,
    dim: (str: string) => `\x1b[2m${str}\x1b[22m`,
-}
-
-/** Blended background colors for diff lines (translucent effect) */
-const ADDED_BG = colorMix(COLORS.base, COLORS.green, 0.1);
-const DELETED_BG = colorMix(COLORS.base, COLORS.red, 0.1);
-const ADDED_GUTTER_BG = colorMix(COLORS.base, COLORS.green, 0.25);
-const DELETED_GUTTER_BG = colorMix(COLORS.base, COLORS.red, 0.25);
-const CONTEXT_BG = COLORS.base;
+};
 
 const THEME = 'catppuccin-mocha';
 
@@ -75,7 +49,7 @@ interface ParsedDiff {
    lines: DiffLine[];
 }
 
-export type BundledLanguage = Parameters<typeof import('@shikijs/cli')['codeToANSI']>[1];
+export type BundledLanguage = Parameters<(typeof import('@shikijs/cli'))['codeToANSI']>[1];
 
 let shikiPromise: Promise<typeof import('@shikijs/cli')> | null = null;
 
@@ -84,8 +58,13 @@ async function getShiki(): Promise<typeof import('@shikijs/cli')> {
    return await shikiPromise;
 }
 
+/**
+ * Checks if the current environment supports rendering the diff viewer (i.e. both stdin and stdout are TTY and terminal supports truecolor).
+ */
 export function canUseDiffViewer(): boolean {
-   return process.stdout.isTTY === true && process.stdin.isTTY === true && CheckCache.supportsColor >= 3;
+   return (
+      process.stdout.isTTY === true && process.stdin.isTTY === true && CheckCache.supportsColor >= 3
+   );
 }
 
 function detectLanguage(fileName: string): BundledLanguage {
@@ -129,7 +108,7 @@ function detectLanguage(fileName: string): BundledLanguage {
       perl: 'perl',
       php: 'php',
    };
-   return langMap[ext] as BundledLanguage || 'text';
+   return (langMap[ext] as BundledLanguage) || 'text';
 }
 
 function parseDiffOutput(diffText: string): ParsedDiff[] {
@@ -229,77 +208,85 @@ async function highlightDiffWithContext(
    diff: ParsedDiff,
    theme: string,
    workingDir?: string
-): Promise<Map<number, string>> {
-   const result = new Map<number, string>();
+): Promise<Map<DiffLine, string>> {
+   const result = new Map<DiffLine, string>();
    const codeLines = diff.lines.filter(
       (l) => l.type === 'add' || l.type === 'delete' || l.type === 'context'
    );
    if (codeLines.length === 0) return result;
 
-   const changedLines = new Set<number>();
-   codeLines.forEach((l) => {
-      if (l.newLineNum) changedLines.add(l.newLineNum);
-      if (l.oldLineNum) changedLines.add(l.oldLineNum);
-   });
-
-   const fileContext = await readFileContext(diff.newFileName, changedLines, 20, workingDir);
+   const newLines = codeLines.filter((line) => line.type !== 'delete');
+   const deletedLines = codeLines.filter((line) => line.type === 'delete');
 
    try {
-      Logger.debug(
-         `Highlighting diff for ${diff.newFileName} with ${codeLines.length} changed lines and ${fileContext.size} lines of context from FS`,
-         'diff-viewer'
-      );
-
       const shiki = await Logger.timeAsync('Loading shiki module', getShiki, 'diff-viewer');
-      if (fileContext.size > 0) {
-         Logger.time('Highlighting diff');
-         const minLine = Math.min(...fileContext.keys());
-         const maxLine = Math.max(...fileContext.keys());
-         const contextArray: string[] = [];
-         for (let i = minLine; i <= maxLine; i++) contextArray.push(fileContext.get(i) || '');
+      Logger.time('Highlighting diff');
 
-         const highlighted = await shiki.codeToANSI(
-            contextArray.join('\n'),
-            diff.lang,
-            theme as never
-         );
+      if (newLines.length > 0) {
+         const changedLines = new Set<number>();
+         newLines.forEach((line) => {
+            if (line.newLineNum !== undefined) changedLines.add(line.newLineNum);
+         });
 
-         const highlightedLines = highlighted.split('\n');
-         for (const line of codeLines) {
-            const lineNum = line.newLineNum ?? line.oldLineNum;
-            if (lineNum !== undefined) {
-               const idx = lineNum - minLine;
-               if (idx >= 0 && idx < highlightedLines.length)
-                  result.set(lineNum, highlightedLines[idx]);
-            }
-         }
-         Logger.timeEnd('Highlighting diff', 'diff-viewer');
-      }
-      else {
+         const fileContext = await readFileContext(diff.newFileName, changedLines, 20, workingDir);
+
          Logger.debug(
-            `No additional context from FS for ${diff.newFileName}, using what we have from git`,
+            `Highlighting diff for ${diff.newFileName} with ${codeLines.length} changed lines and ${fileContext.size} lines of context from FS`,
             'diff-viewer'
          );
 
-         Logger.time('Highlighting diff');
-         const code = codeLines.map((l) => l.content).join('\n');
-         const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
-         const highlightedLines = highlighted.split('\n');
-         for (let i = 0; i < codeLines.length; i++) {
-            if (highlightedLines[i]) {
-               result.set(
-                  codeLines[i].newLineNum ?? codeLines[i].oldLineNum ?? i,
-                  highlightedLines[i]
-               );
+         if (fileContext.size > 0) {
+            const minLine = Math.min(...fileContext.keys());
+            const maxLine = Math.max(...fileContext.keys());
+            const contextArray: string[] = [];
+            for (let i = minLine; i <= maxLine; i++) contextArray.push(fileContext.get(i) || '');
+
+            const highlighted = await shiki.codeToANSI(
+               contextArray.join('\n'),
+               diff.lang,
+               theme as never
+            );
+
+            const highlightedLines = highlighted.split('\n');
+            for (const line of newLines) {
+               const lineNum = line.newLineNum;
+               if (lineNum !== undefined) {
+                  const idx = lineNum - minLine;
+                  if (idx >= 0 && idx < highlightedLines.length)
+                     result.set(line, highlightedLines[idx]);
+               }
+            }
+         } else {
+            Logger.debug(
+               `No additional context from FS for ${diff.newFileName}, using what we have from git`,
+               'diff-viewer'
+            );
+
+            const code = newLines.map((line) => line.content).join('\n');
+            const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+            const highlightedLines = highlighted.split('\n');
+            for (let i = 0; i < newLines.length; i++) {
+               if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
             }
          }
-         Logger.timeEnd('Highlighting diff', 'diff-viewer');
       }
+
+      if (deletedLines.length > 0) {
+         const code = deletedLines.map((line) => line.content).join('\n');
+         const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+         const highlightedLines = highlighted.split('\n');
+         for (let i = 0; i < deletedLines.length; i++) {
+            if (highlightedLines[i]) result.set(deletedLines[i], highlightedLines[i]);
+         }
+      }
+
+      Logger.timeEnd('Highlighting diff', 'diff-viewer');
    } catch (e) {
-      Logger.error(`Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`, 'diff-viewer');
-      codeLines.forEach((line) =>
-         result.set(line.newLineNum ?? line.oldLineNum ?? 0, line.content)
+      Logger.error(
+         `Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`,
+         'diff-viewer'
       );
+      codeLines.forEach((line) => result.set(line, line.content));
    }
    return result;
 }
@@ -313,6 +300,12 @@ export class DiffViewerRenderer implements PagerRenderer {
    private lastHeight: number = 0;
    private logger = new Logger('diff-renderer');
 
+   /** Blended background colors for diff lines (translucent effect) */
+   private readonly ADDED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.1);
+   private readonly DELETED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.1);
+   private readonly ADDED_GUTTER_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.25);
+   private readonly DELETED_GUTTER_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.25);
+
    constructor(diffText: string, options: DiffViewerOptions = {}) {
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + JSON.stringify(options));
       this.options = {
@@ -325,7 +318,7 @@ export class DiffViewerRenderer implements PagerRenderer {
             const endLine = Math.min(current + getTerminalHeight() - 2, total);
             return `lines ${current}-${endLine} of ${total}`;
          },
-         backgroundColor: COLORS.mantle,
+         backgroundColor: CATPPUCCIN_VPALETTE.mantle,
          workingDir: undefined,
          ...options,
       } as Required<DiffViewerOptions>;
@@ -348,40 +341,38 @@ export class DiffViewerRenderer implements PagerRenderer {
             this.options.workingDir
          );
          codeLines.forEach((line) => {
-            const lineNum = line.newLineNum ?? line.oldLineNum;
-            if (lineNum !== undefined && highlightedMap.has(lineNum)) {
-               line.highlightedContent = highlightedMap.get(lineNum);
-            }
+            const highlighted = highlightedMap.get(line);
+            if (highlighted !== undefined) line.highlightedContent = highlighted;
          });
       }
       this.updateRenderedLines();
    }
 
-   private renderLine(line: DiffLine, width: number, blockBg: [number, number, number]): string[] {
+   private renderLine(line: DiffLine, width: number, blockBg: RgbVec): string[] {
       const results: string[] = [];
       const lineNumWidth = this.options.lineNumberWidth;
       const contentWidth = width - lineNumWidth - 4;
 
       let sign = ' ';
-      let bgCode: [number, number, number] = blockBg;
-      let gutterBgCode: [number, number, number] = blockBg;
-      let signColor = COLORS.overlay0;
+      let bgCode: RgbVec = blockBg;
+      let gutterBgCode: RgbVec = blockBg;
+      let signColor = CATPPUCCIN_VPALETTE.overlay0;
 
       switch (line.type) {
          case 'add':
             sign = '+';
-            bgCode = ADDED_BG;
-            gutterBgCode = ADDED_GUTTER_BG;
-            signColor = COLORS.green;
+            bgCode = this.ADDED_BG;
+            gutterBgCode = this.ADDED_GUTTER_BG;
+            signColor = CATPPUCCIN_VPALETTE.green;
             break;
          case 'delete':
             sign = '-';
-            bgCode = DELETED_BG;
-            gutterBgCode = DELETED_GUTTER_BG;
-            signColor = COLORS.red;
+            bgCode = this.DELETED_BG;
+            gutterBgCode = this.DELETED_GUTTER_BG;
+            signColor = CATPPUCCIN_VPALETTE.red;
             break;
          case 'context':
-            bgCode = CONTEXT_BG;
+            bgCode = CATPPUCCIN_VPALETTE.base;
             break;
          case 'hunk':
             results.push(this.renderHunkHeader(line.content, width));
@@ -397,7 +388,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       const lineNum = line.newLineNum ?? line.oldLineNum;
       const lineNumStr =
          lineNum !== undefined ? String(lineNum).padStart(lineNumWidth) : ' '.repeat(lineNumWidth);
-      const gutter = `${fgRgb(COLORS.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `;
+      const gutter = `${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `;
 
       if (this.options.wrapLines && getDisplayWidth(displayContent) > contentWidth) {
          const wrapped = strWrap(displayContent, contentWidth, { mode: 'softboundary' });
@@ -407,44 +398,44 @@ export class DiffViewerRenderer implements PagerRenderer {
             results.push(this.padLineWithBg(g + bgRgb(bgCode) + splitted[i], width, gutterBgCode));
          }
       } else {
-         results.push(this.padLineWithBg(gutter + bgRgb(bgCode) + displayContent, width, gutterBgCode));
+         results.push(
+            this.padLineWithBg(gutter + bgRgb(bgCode) + displayContent, width, gutterBgCode)
+         );
       }
       return results;
    }
 
-   private padLineWithBg(str: string, width: number, bgColor: [number, number, number]): string {
+   private padLineWithBg(str: string, width: number, bgColor: RgbVec): string {
       const stripped = stripAnsiColor(str);
       const padding = Math.max(0, width - stripped.length);
-      return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${RESET}`;
+      return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${ncc()}`;
    }
 
-   private renderHunkHeader(
-      content: string,
-      width: number,
-   ): string {
-      const bgCode = colorMix(COLORS.crust, COLORS.surface0, 0.3);
-      return this.padLineWithBg(`    ↕   ${fgRgb(COLORS.cyan)}${STYLES.italic(content)}`, width, bgCode);
+   private renderHunkHeader(content: string, width: number): string {
+      const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
+      return this.padLineWithBg(
+         `    ↕   ${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${STYLES.italic(content)}`,
+         width,
+         bgCode
+      );
    }
 
-   private renderFileHeader(
-      content: string,
-      width: number,
-   ): string {
-      const bgCode = colorMix(COLORS.crust, COLORS.surface0, 0.3);
-      return this.padLineWithBg(`      ${fgRgb(COLORS.overlay1)}${content}`, width, bgCode);
+   private renderFileHeader(content: string, width: number): string {
+      const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
+      return this.padLineWithBg(`      ${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${content}`, width, bgCode);
    }
 
    private renderFileName(oldName: string, newName: string, width: number): string {
-      const bgCode = colorMix(COLORS.crust, COLORS.surface0, 0.3);
+      const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
       if (oldName === newName) {
          return this.padLineWithBg(
-            `    ${fgRgb(COLORS.lavender)}${STYLES.bold(newName)}`,
+            `    ${fgRgb(CATPPUCCIN_VPALETTE.lavender)}${STYLES.bold(newName)}`,
             width,
             bgCode
          );
       }
       return this.padLineWithBg(
-         `    ${fgRgb(COLORS.yellow)}${oldName} -> ${newName}`,
+         `    ${fgRgb(CATPPUCCIN_VPALETTE.yellow)}${oldName} -> ${newName}`,
          width,
          bgCode
       );
@@ -455,30 +446,35 @@ export class DiffViewerRenderer implements PagerRenderer {
       this.renderedLines = [];
       this.exitLines = [];
       const width = this.lastWidth;
+      const reset = ncc();
 
       for (let i = 0; i < this.parsedDiffs.length; i++) {
          const diff = this.parsedDiffs[i];
-         const blockBg = colorMix(COLORS.mantle, COLORS.surface0, 0.2);
+         const blockBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
 
          if (i !== 0) {
             this.renderedLines.push(
                this.padLineWithBg(' ', width, blockBg),
-               this.padLineWithBg('      ' + fgRgb(COLORS.surface0) + '─'.repeat(width - 12), width, blockBg),
-               this.padLineWithBg(' ', width, blockBg),
+               this.padLineWithBg(
+                  '      ' + fgRgb(CATPPUCCIN_VPALETTE.surface0) + '─'.repeat(width - 12),
+                  width,
+                  blockBg
+               ),
+               this.padLineWithBg(' ', width, blockBg)
             );
          }
          this.renderedLines.push(this.renderFileName(diff.oldFileName, diff.newFileName, width));
-         this.exitLines.push(`${fgRgb(COLORS.lavender)}${diff.newFileName}${RESET}`);
+         this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.lavender)}${diff.newFileName}${reset}`);
 
          for (const line of diff.lines) {
             this.renderedLines.push(...this.renderLine(line, width, blockBg));
             if (line.type === 'add')
-               this.exitLines.push(`${fgRgb(COLORS.green)}+ ${line.content}${RESET}`);
+               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.green)}+ ${line.content}${reset}`);
             else if (line.type === 'delete')
-               this.exitLines.push(`${fgRgb(COLORS.red)}- ${line.content}${RESET}`);
+               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.red)}- ${line.content}${reset}`);
             else if (line.type === 'context') this.exitLines.push(`  ${line.content}`);
             else if (line.type === 'hunk')
-               this.exitLines.push(`${fgRgb(COLORS.cyan)}${line.content}${RESET}`);
+               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${line.content}${reset}`);
          }
       }
       Logger.timeEnd('Rendering diff lines', 'diff-viewer');
@@ -499,7 +495,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          result.push(
             lineIndex < this.renderedLines.length
                ? this.renderedLines[lineIndex]
-               : `${bgCode}${' '.repeat(width)}${RESET}`
+               : `${bgCode}${' '.repeat(width)}${ncc()}`
          );
       }
       return result;
@@ -527,10 +523,13 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
       return pager(diffText, { ...options, showLineNumbers: false });
    }
 
-   const spinnerCtrl = diffText.length > 10000 ? spinner({
-      message: 'Preparing diff viewer...',
-      interval: 10,
-   }) : undefined;
+   const spinnerCtrl =
+      diffText.length > 10000
+         ? spinner({
+            message: 'Preparing diff viewer...',
+            interval: 10,
+         })
+         : undefined;
 
    Logger.time('Preparing diff highlighting');
    const renderer = new DiffViewerRenderer(diffText, options);

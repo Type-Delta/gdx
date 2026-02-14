@@ -5,7 +5,7 @@ import { CheckCache, Err, ncc, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit } from '@/modules/shell';
 import { quickPrint } from '@/utils/utilities';
-import { COLOR, EXECUTABLE_NAME } from '@/consts';
+import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
@@ -171,20 +171,20 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('STATUS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('STATUS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Show the working tree status for the repository and optionally all submodules.
 
-${bright + _2PointGradient('OVERVIEW', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 \`${cyan}${EXECUTABLE_NAME} status${reset}\` is a wrapper around \`${cyan}git status${reset}\` with added support for recursive submodule status checking. When the \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
 
-${bright + _2PointGradient('RECURSIVE MODE', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 When \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` is specified:
 - Shows status of the main repository first
 - Then shows status for each submodule with clear headers
 - Displays both absolute submodule paths and paths relative to your current directory
 - All other \`${cyan}git status${reset}\` flags are passed through to each status check
 
-${bright + _2PointGradient('EXAMPLES', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('EXAMPLES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 ${cyan}${EXECUTABLE_NAME} status --recursive${reset}
    Show status for repository and all submodules
 

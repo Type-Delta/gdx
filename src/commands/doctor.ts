@@ -7,7 +7,7 @@ import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
 import global from '@/global';
-import { COLOR } from '../consts';
+import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
 import { getCache } from '@/common/cache';
@@ -89,7 +89,7 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-         (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
    );
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
@@ -149,10 +149,10 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('DOCTOR', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DOCTOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Diagnose installation and environment.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Checks for native binary, runtimes, and provides installation guidance.
 `,
          Math.min(100, global.terminalWidth - 4),

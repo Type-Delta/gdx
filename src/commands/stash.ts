@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { $inherit } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
-import { COLOR } from '@/consts';
+import { GDX_VPALETTE } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import { getStashEntry, restoreStash, getRepoRootCached } from '@/modules/git';
 import { getConfig } from '@/common/config';
@@ -96,8 +96,8 @@ async function dropRange(
 
    quickPrint(
       ncc('Cyan') +
-         `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-         ncc()
+      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
+      ncc()
    );
 
    for (let i = end; i >= start; i--) {
@@ -221,20 +221,20 @@ export const help = {
       const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('STASH DROP', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('STASH DROP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Remove a stash entry or a range of stash entries.
 
-${bright + _2PointGradient('DESCRIPTION', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Accepts a single stash index, a range like <start>..<end>, or defaults to the latest stash.
 Includes safety features:
 - **Undoable**: You can restore the last dropped stash(es) with \`${cyan}${EXECUTABLE_NAME} stash drop pardon${reset}\`.
 
-${bright + _2PointGradient('COMMANDS', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - \`${cyan}drop <index>${reset}\`: Drop specific stash.
 - \`${cyan}drop <start>..<end>${reset}\`: Drop range of stashes.
 - \`${cyan}drop pardon${reset}\`: Undo the last drop operation.
 
-${bright + _2PointGradient('SAFETY', COLOR.Zinc400, COLOR.Zinc100, 0.2) + reset}
+${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Dropped stashes are backed up temporarily. Use \`${cyan}pardon${reset}\` to bring them back.
 `,
          Math.min(100, global.terminalWidth - 4),
