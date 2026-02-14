@@ -2,12 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-import { cleanString, ncc, strWrap } from '@lib/Tools';
+import { cleanString, jsTime, ncc, strWrap } from '@lib/Tools';
 
 import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS, VERSION } from '@/consts';
 import global from '@/global';
 
-export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug';
+export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
 
 export interface LogRecord {
    timestamp: string;
@@ -31,16 +31,18 @@ const LogLevelMap: Record<LogLevel, number> = {
    warn: 2,
    info: 3,
    debug: 4,
+   verbose: 5,
 };
 
-const LogLevelColors: Record<LogLevel, 'BgRed' | 'BgYellow' | 'BgBlue' | 'BgCyan'> = {
+const LogLevelColors = {
    off: 'BgBlue',
    fatal: 'BgRed',
    error: 'BgRed',
    warn: 'BgYellow',
    info: 'BgBlue',
-   debug: 'BgCyan',
-};
+   debug: 'BgMagenta',
+   verbose: 'BgCyan',
+} as const satisfies Record<LogLevel, string>;
 
 const LogLevelBadges: Record<LogLevel, string> = {
    off: '',
@@ -49,20 +51,23 @@ const LogLevelBadges: Record<LogLevel, string> = {
    warn: 'WARN',
    info: 'INFO',
    debug: 'DEBUG',
-};
+   verbose: 'VERBOSE',
+} as const;
 
-const MessageColors: Record<LogLevel, 'Red' | 'Yellow' | 'Cyan' | 'Magenta'> = {
+const MessageColors = {
    off: 'Cyan',
    fatal: 'Red',
    error: 'Red',
    warn: 'Yellow',
    info: 'Cyan',
    debug: 'Magenta',
-};
+   verbose: 'Blue',
+} as const satisfies Record<LogLevel, string>;
 
 class Logger {
    static logFile: string = path.join(os.tmpdir(), 'gdx', 'gdx.log');
    static logLevel: number = LogLevelMap[global.logLevel];
+   static timeLabels: Map<string, number> = new Map();
 
    private moduleName: string;
    private static initialized: boolean = false;
@@ -72,13 +77,13 @@ class Logger {
       message: string;
       module: string;
    }> = [
-      {
-         timestamp: new Date().toISOString(),
-         level: 'info',
-         message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
-         module: 'logger',
-      },
-   ];
+         {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
+            module: 'logger',
+         },
+      ];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
@@ -187,6 +192,53 @@ class Logger {
       Logger.logInternal('debug', message, this.moduleName);
    }
 
+   public verbose(message: string): void {
+      Logger.logInternal('verbose', message, this.moduleName);
+   }
+
+   /**
+    * Starts a timer with the given label. If only the label is provided, it stores the start time internally and returns void.
+    * If a function is also provided, it executes the function and logs the time taken with the given label, then returns the function's result.
+     * @param label The label for the timer.
+     * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
+     * @returns The result of the function if provided, otherwise void.
+    */
+   public time(label: string): void
+   public time<T>(label: string, fn: () => T): T
+   public time<T>(label: string, fn?: () => T): T | void {
+      if (!fn) {
+         Logger.timeLabels.set(label, performance.now());
+         return;
+      }
+
+      return Logger.time(label, fn, this.moduleName);
+   }
+
+   /**
+    * Ends a timer with the given label and logs the time taken. The label must have been previously started with the time() method.
+    * @param label The label for the timer to end.
+     * @returns void
+    */
+   public timeEnd(label: string): void {
+      Logger.timeEnd(label, this.moduleName);
+   }
+
+   /**
+    * Starts a timer with the given label, executes the provided async function, and logs the time taken with the given label. Then returns the function's result.
+     * @param label The label for the timer.
+     * @param fn The async function to execute and time.
+     * @returns The result of the async function.
+     * @example
+     * await logger.timeAsync('fetchData', async () => {
+     *    const data = await fetchDataFromAPI();
+     *    return data;
+     * });
+     * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
+    */
+   public async timeAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
+      return await Logger.timeAsync(label, fn, this.moduleName);
+   }
+
    // Static methods
    public static fatal(message: string, moduleName: string = 'gdx'): void {
       Logger.logInternal('fatal', message, moduleName);
@@ -206,6 +258,78 @@ class Logger {
 
    public static debug(message: string, moduleName: string = 'gdx'): void {
       Logger.logInternal('debug', message, moduleName);
+   }
+
+   public static verbose(message: string, moduleName: string = 'gdx'): void {
+      Logger.logInternal('verbose', message, moduleName);
+   }
+
+   /**
+    * Starts a timer with the given label, executes the provided async function, and logs the time taken with the given label. Then returns the function's result.
+     * @param label The label for the timer.
+     * @param fn The async function to execute and time.
+     * @param moduleName Optional module name for logging. Defaults to 'gdx'.
+     * @returns The result of the async function.
+     * @example
+     * await Logger.timeAsync('fetchData', async () => {
+     *    const data = await fetchDataFromAPI();
+     *    return data;
+     * }, 'myModule');
+     * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
+    */
+   public static async timeAsync<T>(label: string, fn: () => T | Promise<T>, moduleName: string = 'gdx'): Promise<T> {
+      const start = performance.now();
+      try {
+         return await fn();
+      } finally {
+         const end = performance.now();
+         const duration = jsTime.getTimeFromMS(end - start).modern();
+         Logger.debug(`${label} took ${duration}`, moduleName);
+      }
+   }
+
+   /**
+    * Starts a timer with the given label. If only the label is provided, it stores the start time internally and returns void.
+    * If a function is also provided, it executes the function and logs the time taken with the given label, then returns the function's result.
+     * @param label The label for the timer.
+     * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
+     * @param moduleName Optional module name for logging. Defaults to 'gdx'.
+     * @returns The result of the function if provided, otherwise void.
+    */
+   public static time(label: string): void
+   public static time<T>(label: string, fn: () => T, moduleName?: string): T
+   public static time<T>(label: string, fn?: () => T, moduleName: string = 'gdx'): T | void {
+      const start = performance.now();
+      if (!fn) {
+         Logger.timeLabels.set(label, start);
+         return;
+      }
+
+      try {
+         return fn();
+      } finally {
+         const end = performance.now();
+         const duration = jsTime.getTimeFromMS(end - start).modern();
+         Logger.debug(`${label} took ${duration}`, moduleName);
+      }
+   }
+
+   /**
+    * Ends a timer with the given label and logs the time taken. The label must have been previously started with the time() method.
+    * @param label The label for the timer to end.
+    * @param moduleName Optional module name for logging. Defaults to 'gdx'.
+    * @returns void
+    */
+   public static timeEnd(label: string, moduleName: string = 'gdx'): void {
+      const end = performance.now();
+      const start = Logger.timeLabels.get(label);
+      if (start) {
+         const duration = jsTime.getTimeFromMS(end - start).modern();
+         Logger.debug(`${label} took ${duration}`, moduleName);
+         Logger.timeLabels.delete(label);
+      } else {
+         Logger.warn(`No such label '${label}' for timeEnd`, moduleName);
+      }
    }
 
    private static flushLogs(): void {

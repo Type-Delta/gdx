@@ -204,6 +204,30 @@ export function hslToRgbVec(h: number, s: number, l: number): RgbVec {
 }
 
 /**
+ * Blends two RGB colors together with a given ratio.
+ * The `ratio` parameter controls the weight of `overlay` color:
+ * - `ratio = 0` returns `base` color.
+ * - `ratio = 1` returns `overlay` color.
+ * - Values in between produce a mix of the two colors.
+ * All color components are clamped to the [0, 255] range.
+ *
+ * @param base - The base color as an `RgbVec`.
+ * @param overlay - The overlay color as an `RgbVec`.
+ * @param ratio - The blend ratio (0..1) determining the influence of the overlay color.
+ */
+export function colorMix(
+   base: [number, number, number],
+   overlay: [number, number, number],
+   ratio: number
+): [number, number, number] {
+   return [
+      Math.round(base[0] * (1 - ratio) + overlay[0] * ratio),
+      Math.round(base[1] * (1 - ratio) + overlay[1] * ratio),
+      Math.round(base[2] * (1 - ratio) + overlay[2] * ratio),
+   ];
+}
+
+/**
  * Cubic Bezier curve implementation that mimics CSS's cubic-bezier() function.
  * Calculates the eased value for a given time using cubic bezier curve with control points.
  *

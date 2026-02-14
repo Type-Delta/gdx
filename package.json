@@ -38,9 +38,9 @@
     "transpile-esm": "bunx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "check": "bun run ts-check && bun run lint && bun run build",
     "lint": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts --fix",
-    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
+    "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names --external=@shikijs/cli",
     "ts-check": "bunx tsc --noEmit",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --format=esm --production --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --format=esm --production --keep-names",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
@@ -69,6 +69,7 @@
     "typescript-eslint": "^8.50.0"
   },
   "dependencies": {
+    "@shikijs/cli": "^3.22.0",
     "cspell-lib": "9.4.0",
     "keytar": "^7.9.0"
   }

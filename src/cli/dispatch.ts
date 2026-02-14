@@ -1,4 +1,4 @@
-import { ncc } from '@lib/Tools';
+import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
 import { COMMON_GIT_CMDS } from '@/consts';
@@ -9,7 +9,13 @@ import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
-import { getTrackedUpstreamRef, getGitVersionCached, getGitConfigCached } from '@/modules/git';
+import {
+   getTrackedUpstreamRef,
+   getGitVersionCached,
+   getGitConfigCached,
+} from '@/modules/git';
+import { canUseDiffViewer, isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
+import { $ } from '@/modules/shell';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -47,9 +53,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-               ncc('Magenta') +
-               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-               ncc()
+            ncc('Magenta') +
+            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+            ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -115,6 +121,65 @@ export async function dispatch(
             break;
          case 'lint':
             return await cmd.lint(ctx);
+         case 'diff': {
+            if (
+               canUseDiffViewer() &&
+               !args.includes('--stat') &&
+               !args.includes('-h') &&
+               !args.includes('--help') &&
+               !args.includes('--numstat') &&
+               !args.includes('--name-only') &&
+               !args.includes('--name-status')
+            ) {
+               if (args.popOption('--no-pager')) break; // Don't use diff viewer if --no-pager is specified
+               const diffArgs = args.slice(1);
+               try {
+                  const result = await $`${ctx.git$} -c color.ui=never diff ${diffArgs}`;
+                  if (
+                     result.stdout &&
+                     isGitDiffOutput(result.stdout)
+                  ) {
+                     await viewDiff(result.stdout);
+                     return 0;
+                  }
+               } catch (e) {
+                  Logger.info(
+                     'Failed to get or parse diff output for enhanced diff-view, ignoring: ' + Err.from(e)
+                  );
+               }
+            }
+            break;
+         }
+         case 'show': {
+            if (
+               canUseDiffViewer() &&
+               !args.includes('--stat') &&
+               !args.includes('-h') &&
+               !args.includes('--help') &&
+               !args.includes('--numstat') &&
+               !args.includes('--name-only') &&
+               !args.includes('--name-status') &&
+               !args.hasOption('--format')
+            ) {
+               if (args.popOption('--no-pager')) break; // Don't use diff viewer if --no-pager is specified
+               const showArgs = args.slice(1);
+               try {
+                  const result = await $`${ctx.git$} -c color.ui=never show ${showArgs}`;
+                  if (
+                     result.stdout &&
+                     isGitDiffOutput(result.stdout)
+                  ) {
+                     await viewDiff(result.stdout);
+                     return 0;
+                  }
+               } catch (e) {
+                  Logger.info(
+                     'Failed to get show output for enhanced diff-view, ignoring: ' + Err.from(e)
+                  );
+               }
+            }
+            break;
+         }
          case 'ps': // alias for 'push'
             args[0] = 'push';
          case 'push': {
@@ -132,8 +197,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -300,9 +365,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-            ncc(rgbVec2decimal(colorVec), 'fg') +
-            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-            ncc()
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+         ncc()
       );
    }
 
