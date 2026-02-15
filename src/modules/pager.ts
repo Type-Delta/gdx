@@ -20,6 +20,10 @@ export interface PagerOptions {
    statusFormat?: (current: number, total: number, termWidth: number) => string;
    /** Background color for the pager (24-bit RGB as [r, g, b]) */
    backgroundColor?: RgbVec;
+   /**
+    * How much to scroll when navigating by line. Can be increased for faster scrolling.
+    */
+   scrollSensitivity?: number;
 }
 
 /**
@@ -61,6 +65,7 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
       });
    },
    backgroundColor: CATPPUCCIN_VPALETTE.base,
+   scrollSensitivity: 3,
 };
 
 /** Cached terminal dimensions */
@@ -322,12 +327,12 @@ export async function pagerWithRenderer(
          case '\x1b[A': // Up arrow
          case '\u001b[\u0041':
          case 'k':
-            currentLine = Math.max(0, currentLine - 1);
+            currentLine = Math.max(0, currentLine - opts.scrollSensitivity);
             break;
          case '\x1b[B': // Down arrow
          case '\u001b[\u0042':
          case 'j':
-            currentLine = Math.min(maxLine, currentLine + 1);
+            currentLine = Math.min(maxLine, currentLine + opts.scrollSensitivity);
             break;
          case '\x1b[5~': // Page Up
          case 'b': {

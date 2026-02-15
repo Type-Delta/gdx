@@ -27,6 +27,7 @@ const STYLES = {
 export interface DiffViewerOptions extends PagerOptions {
    theme?: string;
    workingDir?: string;
+   preambleLines?: string[];
 }
 
 interface DiffLine {
@@ -295,8 +296,16 @@ export class DiffViewerRenderer implements PagerRenderer {
    /** Blended background colors for diff lines (translucent effect) */
    private readonly ADDED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.1);
    private readonly DELETED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.1);
-   private readonly ADDED_GUTTER_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.25);
-   private readonly DELETED_GUTTER_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.25);
+   private readonly ADDED_GUTTER_BG = colorMix(
+      CATPPUCCIN_VPALETTE.base,
+      CATPPUCCIN_VPALETTE.green,
+      0.25
+   );
+   private readonly DELETED_GUTTER_BG = colorMix(
+      CATPPUCCIN_VPALETTE.base,
+      CATPPUCCIN_VPALETTE.red,
+      0.25
+   );
 
    constructor(diffText: string, options: DiffViewerOptions = {}) {
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + JSON.stringify(options));
@@ -312,6 +321,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          },
          backgroundColor: CATPPUCCIN_VPALETTE.mantle,
          workingDir: undefined,
+         preambleLines: [],
          ...options,
       } as Required<DiffViewerOptions>;
 
@@ -414,7 +424,11 @@ export class DiffViewerRenderer implements PagerRenderer {
 
    private renderFileHeader(content: string, width: number): string {
       const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
-      return this.padLineWithBg(`      ${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${content}`, width, bgCode);
+      return this.padLineWithBg(
+         `      ${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${content}`,
+         width,
+         bgCode
+      );
    }
 
    private renderFileName(oldName: string, newName: string, width: number): string {
@@ -433,16 +447,46 @@ export class DiffViewerRenderer implements PagerRenderer {
       );
    }
 
+   private renderPreambleLine(line: string, width: number, blockBg: RgbVec, leftPadding: number): string[] {
+      if (!line) return [this.padLineWithBg(' ', width, blockBg)];
+      line = ' '.repeat(leftPadding) + line; // Indent preamble lines to align with diff content
+      const contentWidth = width;
+      const color = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
+
+      if (this.options.wrapLines && getDisplayWidth(line) > contentWidth) {
+         const wrapped = strWrap(line, contentWidth, {
+            mode: 'softboundary',
+            indent: leftPadding
+         });
+         return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
+      }
+
+      return [this.padLineWithBg(color + line, width, blockBg)];
+   }
+
    private updateRenderedLines(): void {
-      Logger.time('Rendering diff lines');
       this.renderedLines = [];
       this.exitLines = [];
       const width = this.lastWidth;
       const reset = ncc();
+      const baseBlockBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
+
+      if (this.options.preambleLines.length > 0) {
+         for (const line of this.options.preambleLines) {
+            this.renderedLines.push(...this.renderPreambleLine(line, width, baseBlockBg, 3));
+            if (line.length === 0) this.exitLines.push('');
+            else this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${line}${reset}`);
+         }
+
+         if (this.parsedDiffs.length > 0) {
+            this.renderedLines.push(this.padLineWithBg(' ', width, baseBlockBg));
+            this.exitLines.push('');
+         }
+      }
 
       for (let i = 0; i < this.parsedDiffs.length; i++) {
          const diff = this.parsedDiffs[i];
-         const blockBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
+         const blockBg = baseBlockBg;
 
          if (i !== 0) {
             this.renderedLines.push(
@@ -469,7 +513,6 @@ export class DiffViewerRenderer implements PagerRenderer {
                this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${line.content}${reset}`);
          }
       }
-      this.logger.timeEnd('Rendering diff lines');
    }
 
    getLineCount(): number {
@@ -515,6 +558,13 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
       return pager(diffText, { ...options, showLineNumbers: false });
    }
 
+   const lines = diffText.split('\n');
+   const firstDiffIndex = lines.findIndex((line) => line.startsWith('diff --git '));
+   const preambleLines =
+      firstDiffIndex > 0 ? lines.slice(0, firstDiffIndex) : firstDiffIndex === -1 ? lines : [];
+   const diffBody =
+      firstDiffIndex === -1 ? '' : lines.slice(Math.max(firstDiffIndex, 0)).join('\n');
+
    const spinnerCtrl =
       diffText.length > 10000
          ? spinner({
@@ -524,7 +574,7 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
          : undefined;
 
    Logger.time('Preparing diff highlighting');
-   const renderer = new DiffViewerRenderer(diffText, options);
+   const renderer = new DiffViewerRenderer(diffBody, { ...options, preambleLines });
    await renderer.prepareHighlighting();
    clearTerminalCache();
    renderer.onResize(getTerminalWidth(), getTerminalHeight());
@@ -538,7 +588,7 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
  * Simple check to see if the text looks like git diff output. Not foolproof but good enough for deciding when to use the diff viewer.
  */
 export function isGitDiffOutput(text: string): boolean {
-   return /^diff --git a\/.+ b\/.+/.test(text);
+   return /^diff --git a\/.+ b\/.+/m.test(text);
 }
 
 export { parseDiffOutput };

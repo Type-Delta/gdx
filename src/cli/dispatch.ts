@@ -9,11 +9,7 @@ import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
-import {
-   getTrackedUpstreamRef,
-   getGitVersionCached,
-   getGitConfigCached,
-} from '@/modules/git';
+import { getTrackedUpstreamRef, getGitVersionCached, getGitConfigCached } from '@/modules/git';
 import { canUseDiffViewer, isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
 import { $ } from '@/modules/shell';
 
@@ -53,9 +49,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-            ncc('Magenta') +
-            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-            ncc()
+               ncc('Magenta') +
+               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+               ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -138,16 +134,14 @@ export async function dispatch(
                const diffArgs = args.slice(1);
                try {
                   const result = await $`${ctx.git$} -c color.ui=never diff ${diffArgs}`;
-                  if (
-                     result.stdout &&
-                     isGitDiffOutput(result.stdout)
-                  ) {
+                  if (result.stdout) {
                      await viewDiff(result.stdout);
                      return 0;
                   }
                } catch (e) {
                   Logger.info(
-                     'Failed to get or parse diff output for enhanced diff-view, ignoring: ' + Err.from(e)
+                     'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
+                        Err.from(e)
                   );
                }
             }
@@ -170,11 +164,7 @@ export async function dispatch(
                const showArgs = args.slice(1);
                try {
                   const result = await $`${ctx.git$} -c color.ui=never show ${showArgs}`;
-                  if (
-                     result.stdout // &&
-                     // isGitDiffOutput(result.stdout) // TODO: We might want a more flexible check here since 'git show' can include non-diff content
-                  ) {
-                     // TODO: make viewDiff support non-diff content or create a new renderer for 'git show' output
+                  if (result.stdout && isGitDiffOutput(result.stdout)) {
                      await viewDiff(result.stdout);
                      return 0;
                   }
@@ -203,8 +193,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -371,9 +361,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-         ncc()
+            ncc(rgbVec2decimal(colorVec), 'fg') +
+            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+            ncc()
       );
    }
 
