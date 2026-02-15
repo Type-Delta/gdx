@@ -228,6 +228,10 @@ Tools to help you feel productive without leaving the terminal.
 - **`gdx graph`**: Renders a GitHub-style contribution heatmap in your terminal using TrueColor.
 - **`gdx nocap`**: Uses AI to roast your latest commit message.
 
+#### Example: `gdx stats`
+
+![stats example](/resources/images/gdx-stats.png)
+
 ## Command Reference
 
 | Command      | Expansion / Function                                               |
