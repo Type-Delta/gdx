@@ -215,9 +215,7 @@ async function highlightDiffWithContext(
    const deletedLines = codeLines.filter((line) => line.type === 'delete');
 
    try {
-      const shiki = await Logger.timeAsync('Loading shiki module', getShiki, 'diff-viewer');
-      Logger.time('Highlighting diff');
-
+      const shiki = await getShiki();
       if (newLines.length > 0) {
          const changedLines = new Set<number>();
          newLines.forEach((line) => {
@@ -275,8 +273,6 @@ async function highlightDiffWithContext(
             if (highlightedLines[i]) result.set(deletedLines[i], highlightedLines[i]);
          }
       }
-
-      Logger.timeEnd('Highlighting diff', 'diff-viewer');
    } catch (e) {
       Logger.error(
          `Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`,
@@ -473,7 +469,7 @@ export class DiffViewerRenderer implements PagerRenderer {
                this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${line.content}${reset}`);
          }
       }
-      Logger.timeEnd('Rendering diff lines', 'diff-viewer');
+      this.logger.timeEnd('Rendering diff lines');
    }
 
    getLineCount(): number {
@@ -532,9 +528,9 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
    await renderer.prepareHighlighting();
    clearTerminalCache();
    renderer.onResize(getTerminalWidth(), getTerminalHeight());
+   spinnerCtrl?.stop();
    Logger.timeEnd('Preparing diff highlighting', 'diff-viewer');
 
-   spinnerCtrl?.stop();
    return pagerWithRenderer(renderer, options);
 }
 

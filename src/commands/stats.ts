@@ -1,9 +1,7 @@
-import dedent from 'dedent';
-
 import { maxFraction, ncc, toShortNum, yuString, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { createAbortableExec } from '../modules/shell';
+import { createAbortableExec, spinner } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
@@ -50,15 +48,9 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   quickPrint(
-      ncc('Cyan') +
-      `Gathering stats for user: ` +
-      ncc('Yellow') +
-      email +
-      ncc('Cyan') +
-      ` this may take a while...` +
-      ncc()
-   );
+   const spinnerCtrl = spinner({
+      message: `Gathering stats for ${email}...`,
+   });
 
    try {
       // Parallel execution group 1
@@ -103,8 +95,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       }
 
       // Fun scales
-      const addedSize = toShortNum(totalAdded * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'B';
-      const removedSize = toShortNum(totalRemoved * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'B';
+      const addedSize = toShortNum(totalAdded * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'iB';
+      const removedSize = toShortNum(totalRemoved * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'iB';
 
       const addedFuncs = toShortNum(
          totalAdded / STATS_EST.AVG_LINES_PER_FUNCTION,
@@ -167,21 +159,23 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       // Last Commit
       const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
 
-      quickPrint(dedent`
-         \n=== ${username} Git Stats ===
-         Project:             ${ncc('Cyan')}${projectName}${ncc()}
-         Total Commits:       ${ncc('Green')}${userTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)
-         Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)${ncc()}
-         Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)${ncc()}
-         Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project
-         Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
-         Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}
+      spinnerCtrl.stop();
+      quickPrint(`
+  ─── ${username} Git Stats ───
+  Project:             ${ncc('Cyan')}${projectName}${ncc()}
+  Total Commits:       ${ncc('Green')}${userTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)
+  Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)${ncc()}
+  Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)${ncc()}
+  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project
+  Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
+  Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}
       `);
 
       // Pass --quiet to graph to match the PS behavior
       await graph({ ...ctx, args: argsSet(['--quiet', '--author', email]) });
       return 0;
    } catch (err) {
+      spinnerCtrl.stop();
       exec.abort();
       Logger.error(yuString(err, { color: true }));
       return 1;

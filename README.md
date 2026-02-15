@@ -178,15 +178,27 @@ install dependencies using detected package managers (currently supports npm, pn
 if configured (see `parallel.init` config for options),
 getting the fork ready for work in no time.
 
+### 5. Git Output with Human in Mind (Experimental)
+
+Admit it, Git's default output isn't exactly designed for readability.
+`gdx` enhances the output of some commands with better formatting to make it more enjoyable and less "git" to read.
+
+Currently, we only support enhanced formatting for `gdx diff` and `gdx show`,
+but more commands will be added in the future. (feel free to request what commands you'd like to see enhanced!)
+
+#### Example: `gdx diff`
+
+![diff example](/resources/images/gdx-diff-enhance.png)
+
 ### 5. Advanced Stash Management
 
 Git stash is great until you need to clean it up.
 
 ```bash
 gdx sta l           # git stash list
-gdx sta d 2..6      # Drops stashes 2 through 6.
+gdx sta drop 2..6   # Drops stashes 2 through 6.
                     # (Drops high->low to prevent index shifting)
-gdx sta d pardon    # Restores the last dropped stash.
+gdx stash d pardon  # Restores the last dropped stash.
 ```
 
 ### 6. AI-Powered Commits
@@ -198,7 +210,7 @@ gdx commit auto   # Generates a commit message based on staged changes, then com
 # or
 # Generates a commit message based on staged changes, but does not commit them.
 # `--copy` also copies the message to clipboard.
-gdx commit auto --no-commit --copy
+gdx cmi auto --no-commit --copy
 # You can also configure which LLM to use with `gdx-config`
 ```
 

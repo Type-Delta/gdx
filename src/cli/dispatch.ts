@@ -76,6 +76,7 @@ export async function dispatch(
 
    let redirectTo: string | null = null;
    let redirectMode: string = '>';
+   const noEnhancedOutput = !args.popOption('--no-enhance');
 
    AliasNCustomCmd: if (args[0]) {
       const { match, candidates } = progressiveMatch(args[0], COMMON_GIT_CMDS);
@@ -122,7 +123,10 @@ export async function dispatch(
          case 'lint':
             return await cmd.lint(ctx);
          case 'diff': {
+            const config = await getConfig();
             if (
+               noEnhancedOutput &&
+               config.get<boolean>('enhancedOutput') &&
                canUseDiffViewer() &&
                !args.includes('--stat') &&
                !args.includes('-h') &&
@@ -131,7 +135,6 @@ export async function dispatch(
                !args.includes('--name-only') &&
                !args.includes('--name-status')
             ) {
-               if (args.popOption('--no-pager')) break; // Don't use diff viewer if --no-pager is specified
                const diffArgs = args.slice(1);
                try {
                   const result = await $`${ctx.git$} -c color.ui=never diff ${diffArgs}`;
@@ -151,7 +154,10 @@ export async function dispatch(
             break;
          }
          case 'show': {
+            const config = await getConfig();
             if (
+               noEnhancedOutput &&
+               config.get<boolean>('enhancedOutput') &&
                canUseDiffViewer() &&
                !args.includes('--stat') &&
                !args.includes('-h') &&
@@ -161,14 +167,14 @@ export async function dispatch(
                !args.includes('--name-status') &&
                !args.hasOption('--format')
             ) {
-               if (args.popOption('--no-pager')) break; // Don't use diff viewer if --no-pager is specified
                const showArgs = args.slice(1);
                try {
                   const result = await $`${ctx.git$} -c color.ui=never show ${showArgs}`;
                   if (
-                     result.stdout &&
-                     isGitDiffOutput(result.stdout)
+                     result.stdout // &&
+                     // isGitDiffOutput(result.stdout) // TODO: We might want a more flexible check here since 'git show' can include non-diff content
                   ) {
+                     // TODO: make viewDiff support non-diff content or create a new renderer for 'git show' output
                      await viewDiff(result.stdout);
                      return 0;
                   }

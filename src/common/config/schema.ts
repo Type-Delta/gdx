@@ -29,6 +29,7 @@ export interface GdxConfig {
       init?: string;
    };
    defaultEditor: string;
+   enhancedOutput?: boolean;
 }
 
 export const DEFAULT_CONFIG: GdxConfig = {
@@ -60,6 +61,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       init: 'submodule',
    },
    defaultEditor: 'code',
+   enhancedOutput: true,
 };
 
 export const ENV_PREFIX = 'GDX_';
@@ -82,6 +84,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    'parallel.init': 'GDX_PARALLEL_INIT',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
+   enhancedOutput: 'GDX_ENHANCED_OUTPUT',
 };
 
 // Configuration field descriptions
@@ -109,4 +112,5 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    parallel: 'Configuration for parallel worktree automation',
    'parallel.init': 'Comma-separated list specifying what to init for new forks (submodule, pkg)',
    defaultEditor: 'Default code editor to open files with',
+   enhancedOutput: 'Whether to enhanced Git\'s output (modify the output of some git commands when conditions are met)',
 };

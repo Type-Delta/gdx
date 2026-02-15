@@ -118,6 +118,7 @@ ${formatShortCmdList(HELP_MAP, { cyan, reset })}
 ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 ${cyan}--init <shell>         ${reset}Output shell initialization script for given shell.
 ${cyan}--bypass               ${reset}Bypass gdx and execute git directly with the provided arguments.
+${cyan}--no-enhance           ${reset}Bypass gdx enhanced Git's output.
 ${cyan}--loglevel <level>     ${reset}Set log level (error, warning, info, debug).
 ${cyan}--ghelp,               ${reset}Show GDX help message. ${dim}(use \`${cyan}ghelp <command>${reset}\`
 ${cyan}  --gdx-help, -gh      ${reset + dim}for command-specific help)${reset}

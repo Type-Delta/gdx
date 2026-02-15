@@ -5,6 +5,7 @@
 ### Added
 
 - macro support for `$*` syntax to insert all arguments to that position.
+- enhanced Git's output features with more user-friendly formatting (experimental)
 
 ### Fixed
 
@@ -12,6 +13,7 @@
 - improved system message formatting
 - improve submodule support of `gdx parallel` command
 - `gdx parallel join` failure from empty commit in cherry-pick operation.
+- optimized `gdx parallel` command to reduce redundant operations and improve performance.
 
 ## Version 0.3.0 - 2026-02-5
 
