@@ -1255,7 +1255,7 @@ export function forceColorArgs(): string[] {
  */
 export async function expandRelativeRef(args: ArgsSet, git$: string | string[], startIdx: number = 0): Promise<Result<void>> {
    for (let i = startIdx; i < args.length; i++) {
-      const match = /^(head|origin)~(\d+)$/i.exec(args[i]);
+      const match = /^(head|origin)?~(\d+)?$/i.exec(args[i]);
       if (!match) continue;
 
       let relativeIdx = 0;
@@ -1268,7 +1268,7 @@ export async function expandRelativeRef(args: ArgsSet, git$: string | string[], 
       }
 
       try {
-         if (match[1].toLowerCase() === 'origin') {
+         if (match[1]?.toLowerCase() === 'origin') {
             const upstream = await getTrackedUpstreamRef(git$);
             if (!upstream) {
                Logger.error('No upstream configured for current branch.', 'reset');
