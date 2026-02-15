@@ -160,7 +160,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
 
       spinnerCtrl.stop();
-      quickPrint(`
+      quickPrint(`  ${ncc('Dim') + ncc('Italic')}Showing stats for ${email} in ${projectName}${ncc()}
+
   ─── ${username} Git Stats ───
   Project:             ${ncc('Cyan')}${projectName}${ncc()}
   Total Commits:       ${ncc('Green')}${userTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)

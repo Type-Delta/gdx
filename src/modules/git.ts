@@ -9,6 +9,8 @@ import * as fs from '@/modules/fs';
 import Logger from '../utils/logger';
 import { $, $inherit, createAbortableExec } from './shell';
 import { ExecaError } from 'execa';
+import { ArgsSet } from './arguments';
+import { Result } from '@/common/types';
 
 export interface WorktreeEntry {
    path: string;
@@ -1238,6 +1240,53 @@ export async function getSubmoduleBaseSha(
 export function forceColorArgs(): string[] {
    if (CheckCache.supportsColor <= 0) return [];
    return ['-c', 'color.ui=always'];
+}
+
+/**
+ * Expands relative ref notations in the provided arguments array.
+ * Supports \~N and origin\~N formats, resolving them to absolute refs.
+ *
+ * For example, "HEAD~3" would be expanded to the commit SHA 3 ancestors before HEAD, and "origin~2" would resolve the upstream branch and then find the commit 2 ancestors before it.
+ *
+ * @param args - The array of arguments to process and expand.
+ * @param git$ - Git executable reference, used for resolving upstream refs.
+ * @param startIdx - The index in the args array to start processing from (default is 0).
+ * @returns A Result indicating success or containing an error if expansion fails.
+ */
+export async function expandRelativeRef(args: ArgsSet, git$: string | string[], startIdx: number = 0): Promise<Result<void>> {
+   for (let i = startIdx; i < args.length; i++) {
+      const match = /^(head|origin)~(\d+)$/i.exec(args[i]);
+      if (!match) continue;
+
+      let relativeIdx = 0;
+      if (match[2]) {
+         relativeIdx = parseInt(match[2], 10);
+         if (isNaN(relativeIdx) || relativeIdx < 0) {
+            Logger.error(`Invalid relative ref format: ${args[i]}`, 'reset');
+            return { error: new Err(`Invalid relative ref format: ${args[i]}`) };
+         }
+      }
+
+      try {
+         if (match[1].toLowerCase() === 'origin') {
+            const upstream = await getTrackedUpstreamRef(git$);
+            if (!upstream) {
+               Logger.error('No upstream configured for current branch.', 'reset');
+               return { error: new Err('No upstream configured for current branch.') };
+            }
+            args[i] = `${upstream}~${relativeIdx}`;
+            break;
+         }
+         else {
+            args[i] = `HEAD~${relativeIdx}`;
+         }
+      }
+      catch (err) {
+         Logger.error(`Failed to expand relative ref: ${Err.from(err)}`, 'reset');
+         return { error: Err.from(err) };
+      }
+   }
+   return { value: undefined };
 }
 
 /**

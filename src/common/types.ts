@@ -149,3 +149,10 @@ export interface CommandArgNode {
     */
    [key: string]: CommandArgNode | string[] | CommandArgThunk | CommandArgListThunk | undefined;
 }
+
+/**
+ * A result type that can represent either a successful value or an error.
+ * @template T - The type of the successful value.
+ * @template E - The type of the error (defaults to Error).
+ */
+export type Result<T, E = Error> = { value: T, error?: never } | { value?: never, error: E };

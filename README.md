@@ -190,7 +190,13 @@ but more commands will be added in the future. (feel free to request what comman
 
 ![diff example](/resources/images/gdx-diff-enhance.png)
 
-### 5. Advanced Stash Management
+> [!NOTE]
+> The enhanced output is only enabled when the output is TTY (i.e., in the terminal) plus other conditions based on the command (e.g., `diff` must be run without `--name-only`).
+> If you pipe the output to a file or another command, it will fall back to the standard Git output.
+>
+> If you want to disable the enhanced output altogether, you can set `enhancedOutput` to `false` in the config.
+
+### 6. Advanced Stash Management
 
 Git stash is great until you need to clean it up.
 
@@ -201,7 +207,7 @@ gdx sta drop 2..6   # Drops stashes 2 through 6.
 gdx stash d pardon  # Restores the last dropped stash.
 ```
 
-### 6. AI-Powered Commits
+### 7. Commits Message Generation
 
 Struggling to come up with a commit message? Let `gdx` do it for you.
 
@@ -214,7 +220,7 @@ gdx cmi auto --no-commit --copy
 # You can also configure which LLM to use with `gdx-config`
 ```
 
-### 7. Fun & Analytics
+### 8. Fun & Analytics
 
 Tools to help you feel productive without leaving the terminal.
 
@@ -232,6 +238,8 @@ Tools to help you feel productive without leaving the terminal.
 | `br`, `bra`  | `git branch`                                                       |
 | `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!)                 |
 | `res`        | `git reset` (supports `res ~3`, `res -h` expansion)                |
+| `dif`        | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)          |
+| `sho`        | `git show` (supports `sho ~3`, `sho origin ~2` expansion)          |
 | `sta`, `st`  | `git stash`                                                        |
 | `lint`       | Run pre-push checks (spelling, secrets, etc.)                      |
 | `gdx-config` | Manage gdx configuration                                           |

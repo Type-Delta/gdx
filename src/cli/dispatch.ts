@@ -9,7 +9,7 @@ import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
-import { getTrackedUpstreamRef, getGitVersionCached, getGitConfigCached } from '@/modules/git';
+import { getGitVersionCached, getGitConfigCached, expandRelativeRef } from '@/modules/git';
 import { canUseDiffViewer, isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
 import { $ } from '@/modules/shell';
 
@@ -49,9 +49,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-               ncc('Magenta') +
-               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-               ncc()
+            ncc('Magenta') +
+            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+            ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -119,6 +119,9 @@ export async function dispatch(
          case 'lint':
             return await cmd.lint(ctx);
          case 'diff': {
+            const { error } = await expandRelativeRef(args, ctx.git$);
+            if (error) return 1;
+
             const config = await getConfig();
             if (
                noEnhancedOutput &&
@@ -141,13 +144,16 @@ export async function dispatch(
                } catch (e) {
                   Logger.info(
                      'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
-                        Err.from(e)
+                     Err.from(e)
                   );
                }
             }
             break;
          }
          case 'show': {
+            const { error } = await expandRelativeRef(args, ctx.git$);
+            if (error) return 1;
+
             const config = await getConfig();
             if (
                noEnhancedOutput &&
@@ -193,8 +199,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -214,7 +220,7 @@ export async function dispatch(
          case 'rb': // alias for 'rebase'
             args[0] = 'rebase';
             break;
-         case 'reset':
+         case 'reset': {
             args[0] = 'reset';
             // Handle special reset flags
             for (let i = 1; i < args.length; i++) {
@@ -226,29 +232,12 @@ export async function dispatch(
                   args[i] = '--soft';
                   break;
                }
-               // Handle '~' notation
-               if (args[i] === '~') {
-                  args[i] = 'HEAD';
-                  break;
-               }
-               // Handle ~N notation (e.g., ~1, ~2)
-               if (/^~\d+$/.test(args[i])) {
-                  const num = args[i].substring(1);
-                  args[i] = `HEAD~${num}`;
-                  break;
-               }
-               const originMatch = /^origin~(\d+)$/i.exec(args[i]);
-               if (originMatch) {
-                  const upstream = await getTrackedUpstreamRef(ctx.git$);
-                  if (!upstream) {
-                     Logger.error('No upstream configured for current branch.', 'reset');
-                     return 1;
-                  }
-                  args[i] = `${upstream}~${originMatch[1]}`;
-                  break;
-               }
             }
+
+            const { error } = await expandRelativeRef(args, ctx.git$);
+            if (error) return 1;
             break;
+         }
          case 'log':
          case 'lg': // alias for 'log'
             if (args[0] === 'lg' && args.length === 1) {
@@ -361,9 +350,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-            ncc(rgbVec2decimal(colorVec), 'fg') +
-            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-            ncc()
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+         ncc()
       );
    }
 

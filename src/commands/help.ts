@@ -129,10 +129,20 @@ ${cyan}-fl                    ${yellow}[For '${EXECUTABLE_NAME} push']${reset} S
 ${cyan}-h                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--hard${reset}.
 ${cyan}-s                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--soft${reset}.
 
-${bright + _2PointGradient('LOG EXPORT EXAMPLE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-${cyan}${EXECUTABLE_NAME} lg export --author="me@example.com"${reset}
-   Generate a formatted log export file (wrapper will add default
-   --author if missing and format the output for export).
+${bright + _2PointGradient('RELATIVE REF EXPANSION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+Expansions are triggered by specific shorthand patterns in the arguments. When detected, they are expanded to their full form before being passed to git.
+
+Syntax:
+  [origin|head]~[<number>] (e.g. ${cyan}~3${reset}, ${cyan}origin~2${reset})
+  - origin~N expansions resolve relative to the current branch's upstream (e.g. origin~2 -> upstream~2).
+  - ~N or head~N expansions resolve relative to HEAD (e.g. ~3 -> HEAD~3).
+  - [head] and <number> can be omitted, they will default to HEAD and 0 respectively (e.g. ${cyan}origin~${reset} -> upstream, ${cyan}~${reset} -> HEAD).
+
+Examples:
+- ${cyan}${EXECUTABLE_NAME} reset ~3${reset} expands to ${cyan}${EXECUTABLE_NAME} reset HEAD~3${reset}.
+- ${cyan}${EXECUTABLE_NAME} reset -h${reset} expands to ${cyan}${EXECUTABLE_NAME} reset --hard${reset}.
+- ${cyan}${EXECUTABLE_NAME} show origin ~2${reset} expands to ${cyan}${EXECUTABLE_NAME} show <upstream>~2${reset}.
+- ${cyan}${EXECUTABLE_NAME} diff origin ~2${reset} expands to ${cyan}${EXECUTABLE_NAME} diff <upstream>~2${reset}.
 
 ${bright + _2PointGradient('NOTES & SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - Help message for individual custom commands is available via
