@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.4.0 - 2026-02-15
 
 ### Added
 
 - macro support for `$*` syntax to insert all arguments to that position.
 - enhanced Git's output features with more user-friendly formatting (experimental)
+- relative ref expansions supports for `gdx diff` and `gdx show` commands.
 
 ### Fixed
 

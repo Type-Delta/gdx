@@ -178,7 +178,7 @@ install dependencies using detected package managers (currently supports npm, pn
 if configured (see `parallel.init` config for options),
 getting the fork ready for work in no time.
 
-### 5. Git Output with Human in Mind (Experimental)
+### 5. Git Output for Human (Experimental)
 
 Admit it, Git's default output isn't exactly designed for readability.
 `gdx` enhances the output of some commands with better formatting to make it more enjoyable and less "git" to read.
@@ -188,7 +188,7 @@ but more commands will be added in the future. (feel free to request what comman
 
 #### Example: `gdx diff`
 
-![diff example](/resources/images/gdx-diff-enhance.png)
+![diff example](https://github.com/Type-Delta/gdx/raw/main/resources/images/gdx-diff-enhance.png)
 
 > [!NOTE]
 > The enhanced output is only enabled when the output is TTY (i.e., in the terminal) plus other conditions based on the command (e.g., `diff` must be run without `--name-only`).
@@ -230,7 +230,7 @@ Tools to help you feel productive without leaving the terminal.
 
 #### Example: `gdx stats`
 
-![stats example](/resources/images/gdx-stats.png)
+![stats example](https://github.com/Type-Delta/gdx/raw/main/resources/images/gdx-stats.png)
 
 ## Command Reference
 
