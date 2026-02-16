@@ -127,7 +127,11 @@ const parallelJoinStructure: CommandArgThunk = async ({ git$ }) => {
 
 const parallelRemoveStructure: CommandArgThunk = async ({ git$ }) => {
    const aliases = await listParallelAliases(git$);
-   return createOptionChildren(aliases);
+   return {
+      '-r': {},
+      '--recursive': {},
+      ...createOptionChildren(aliases),
+   };
 };
 
 /**
@@ -344,7 +348,6 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       }
 
       Logger.debug(`Deinitializing submodules for worktree '${alias}'...`, 'parallel');
-      quickPrint(`${ncc('Cyan')}Found submodules, deinitializing...${ncc()}`);
       spinnerCtrl.options.message = `Deinitializing submodules...`;
       try {
          Logger.debug(
@@ -631,22 +634,55 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
  * Remove command - removes a parallel worktree
  */
 async function cmdRemove(git$: string | string[], args: ArgsSet): Promise<number> {
-   if (args.length < 1) {
+   const ctx = await getParallelContext(git$);
+   if (!ctx) return 1;
+
+   const validFlags = ['-r', '--recursive'];
+   const flags: Set<string> = new Set();
+   let targetAlias: string | null = null;
+
+   for (const arg of args) {
+      const flag = arg.toLowerCase();
+      if (validFlags.includes(flag)) {
+         flags.add(flag);
+      } else if (!targetAlias && !arg.startsWith('-')) {
+         targetAlias = arg;
+      } else {
+         Logger.error(`Unknown option '${arg}'.`, 'parallel');
+         showUsage();
+         return 1;
+      }
+   }
+
+   const recursive = flags.has('-r') || flags.has('--recursive');
+
+   if (recursive && targetAlias) {
+      Logger.error('Recursive remove does not accept an alias. Omit <alias> with -r.', 'parallel');
+      showUsage();
+      return 1;
+   }
+
+   if (recursive && ctx.isParallelWorktree) {
+      Logger.error('Run recursive remove from the origin worktree, not from a fork.', 'parallel');
+      return 1;
+   }
+
+   if (recursive) {
+      return await cmdRemoveRecursive(git$, ctx);
+   }
+
+   if (!targetAlias) {
       Logger.error('Missing worktree alias to remove.', 'parallel');
       showUsage();
       return 1;
    }
 
-   const alias = args[0];
-   if (!testParallelAlias(alias)) {
-      Logger.error(`Alias '${alias}' contains invalid characters or spaces.`, 'parallel');
+   if (!testParallelAlias(targetAlias)) {
+      Logger.error(`Alias '${targetAlias}' contains invalid characters or spaces.`, 'parallel');
       return 1;
    }
 
-   const ctx = await getParallelContext(git$);
-   if (!ctx) return 1;
-
-   const targetPath = path.join(ctx.parallelRoot, alias);
+   const targetPath = path.join(ctx.parallelRoot, targetAlias);
 
    if (path.resolve(ctx.repoRoot) === path.resolve(targetPath)) {
       Logger.error(
@@ -656,7 +692,35 @@ async function cmdRemove(git$: string | string[], args: ArgsSet): Promise<number
       return 1;
    }
 
-   return await removeWorktree(git$, alias);
+   return await removeWorktree(git$, targetAlias);
+}
+
+async function cmdRemoveRecursive(git$: string | string[], ctx: ParallelContext): Promise<number> {
+   if (!fs.existsSync(ctx.parallelRoot)) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      return 0;
+   }
+
+   const entries = fs.readdirSync(ctx.parallelRoot, { withFileTypes: true });
+   const worktrees = entries
+      .filter((e) => e.isDirectory())
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+   if (worktrees.length === 0) {
+      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      return 0;
+   }
+
+   for (const wt of worktrees) {
+      const forkPath = path.join(ctx.parallelRoot, wt.name);
+      const meta = getParallelMetadata(forkPath);
+      const forkAlias = meta?.alias || wt.name;
+
+      const result = await removeWorktree(git$, forkAlias);
+      if (result !== 0) return result;
+   }
+
+   return 0;
 }
 
 /**
@@ -1699,6 +1763,7 @@ ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
 - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
 - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
+- ${cyan}remove -r|--recursive${reset}: Removes every fork for the current branch.
 
 ${bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
@@ -1725,6 +1790,7 @@ ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${rese
 ${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
+${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
 
 Examples:
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
@@ -1732,7 +1798,8 @@ Examples:
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
    ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}`,
+   ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel remove -r ${reset + dim}# Remove all forks for this branch${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

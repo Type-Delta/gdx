@@ -411,6 +411,41 @@ describe('gdx parallel', async () => {
       expect(listOutput).not.toContain(forkPath);
    });
 
+   it('should remove all worktrees recursively', async () => {
+      const forkOneCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-r1']);
+      const forkTwoCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-r2']);
+      expect(await parallel(forkOneCtx)).toBe(0);
+      expect(await parallel(forkTwoCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkOnePath = path.join(worktreeRoot, 'feature-r1');
+      const forkTwoPath = path.join(worktreeRoot, 'feature-r2');
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', '-r']);
+      const removeResult = await parallel(removeCtx);
+
+      expect(removeResult).toBe(0);
+
+      const forkOneExists = await fs
+         .stat(forkOnePath)
+         .then(() => true)
+         .catch(() => false);
+      const forkTwoExists = await fs
+         .stat(forkTwoPath)
+         .then(() => true)
+         .catch(() => false);
+      expect(forkOneExists).toBe(false);
+      expect(forkTwoExists).toBe(false);
+   });
+
    it('should join all worktrees recursively', async () => {
       const forkOneCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
       const forkTwoCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-2']);
@@ -466,6 +501,20 @@ describe('gdx parallel', async () => {
 
       expect(joinResult).toBe(1);
       expect(buffer.stderr).toContain('Recursive join does not accept an alias');
+   });
+
+   it('should reject recursive remove with alias', async () => {
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-r3']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', '-r', 'feature-r3']);
+      const removeResult = await parallel(removeCtx);
+
+      expect(removeResult).toBe(1);
+      expect(buffer.stderr).toContain('Recursive remove does not accept an alias');
+
+      const cleanupCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-r3']);
+      await parallel(cleanupCtx);
    });
 
    it('should reject recursive join with --all', async () => {
