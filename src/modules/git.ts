@@ -373,7 +373,7 @@ export async function getGitConfigCached(
 
 /**
  * Gets list of git branches, cached for the session.
- * Cache key: 'git.branches'
+ * Cache key: 'git.branches.<repo>'
  *
  * @param git$ - Git executable reference.
  * @param remote - If true, returns remote branches; otherwise local branches.
@@ -384,7 +384,8 @@ export async function getGitBranchesCached(
    remote: boolean = false
 ): Promise<string[]> {
    const cache = await getCache();
-   const cacheKey = `git.branches${remote ? '.remote' : ''}`;
+   const scope = `${getGitScope(git$)}|${remote ? 'remote' : 'local'}`;
+   const cacheKey = createCacheKey('git.branches', scope);
 
    const cached = await cache.get<string[]>(cacheKey);
    if (cached) {
@@ -1253,7 +1254,11 @@ export function forceColorArgs(): string[] {
  * @param startIdx - The index in the args array to start processing from (default is 0).
  * @returns A Result indicating success or containing an error if expansion fails.
  */
-export async function expandRelativeRef(args: ArgsSet, git$: string | string[], startIdx: number = 0): Promise<Result<void>> {
+export async function expandRelativeRef(
+   args: ArgsSet,
+   git$: string | string[],
+   startIdx: number = 0
+): Promise<Result<void>> {
    for (let i = startIdx; i < args.length; i++) {
       const match = /^(head|origin)?~(\d+)?$/i.exec(args[i]);
       if (!match) continue;
@@ -1276,12 +1281,10 @@ export async function expandRelativeRef(args: ArgsSet, git$: string | string[], 
             }
             args[i] = `${upstream}~${relativeIdx}`;
             break;
-         }
-         else {
+         } else {
             args[i] = `HEAD~${relativeIdx}`;
          }
-      }
-      catch (err) {
+      } catch (err) {
          Logger.error(`Failed to expand relative ref: ${Err.from(err)}`, 'reset');
          return { error: Err.from(err) };
       }

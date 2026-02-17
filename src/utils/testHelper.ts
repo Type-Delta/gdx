@@ -195,6 +195,9 @@ function overrideModules(
          spinner: () => {
             tracker.spinnerStatus = 'started';
             return {
+               start: () => {
+                  tracker.spinnerStatus = 'started';
+               },
                stop: () => {
                   tracker.spinnerStatus = 'stopped';
                },
