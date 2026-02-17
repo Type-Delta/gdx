@@ -199,9 +199,9 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * @returns An object with `stop()` method to halt the spinner and restore stdout
  *
  * @example
- * const spinner = spinner({ message: 'Loading...', animateGradient: true });
+ * const spinnerCtrl = spinner({ message: 'Loading...', animateGradient: true });
  * // ... do work ...
- * spinner.stop();
+ * spinnerCtrl.stop();
  */
 export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    const isQuietStart = !options.message;
