@@ -1,7 +1,7 @@
 import { suggestArgs } from '@/modules/completion';
 import { GdxContext } from '@/common/types';
 import global from '@/global';
-import { COMMON_GIT_CMDS } from '@/consts';
+import { GDX_COMMANDS } from '@/consts';
 import Logger from '@/utils/logger';
 
 import { GDX_GLOBAL_FLAGS, GDX_SHORTHANDS, STRUCTURE_MAP } from './__completion.structure';
@@ -59,7 +59,7 @@ export default async function completion(ctx: GdxContext): Promise<number> {
          }
 
          // Add common git subcommands
-         for (const gitCmd of COMMON_GIT_CMDS) {
+         for (const gitCmd of GDX_COMMANDS) {
             candidates.add(gitCmd);
          }
 

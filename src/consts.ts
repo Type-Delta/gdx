@@ -29,8 +29,8 @@ export const CACHE_FILE_NAME = 'cache.json';
 export const MACRO_FILE_NAME = 'macro.json';
 export const TUI_THEME = 'catppuccin-mocha'; // TUI theme, can not be overridden by anthing, Im lazy :)
 
-export const COMMON_GIT_CMDS = [
-   // For original git commands ONLY
+export const GDX_COMMANDS = [
+   // original git commands
    'add',
    'branch',
    'checkout',
@@ -48,6 +48,16 @@ export const COMMON_GIT_CMDS = [
    'stash',
    'status',
    'switch',
+   // custom commands
+   'parallel',
+   'nocap',
+   // 'stats',
+   'clear',
+   'gdx-config',
+   'graph',
+   'macro',
+   'cache',
+   'doctor',
 ];
 
 /**

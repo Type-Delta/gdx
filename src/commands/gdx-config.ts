@@ -6,7 +6,7 @@ import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
-import { quickPrint } from '../utils/utilities';
+import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE } from '@/consts';
 import global from '@/global';
@@ -160,7 +160,11 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
 }
 
 export default async function gdxConfig(ctx: GdxContext): Promise<number> {
-   const subcommand = ctx.args[1];
+   const inputCommand = ctx.args[1]?.toLowerCase();
+   const { match: subcommand } = progressiveMatch(
+      inputCommand,
+      ['list', 'path']
+   );
 
    if (subcommand === 'list') {
       return await listConfig();

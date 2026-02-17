@@ -7,7 +7,7 @@ import {
 } from '@/modules/macro';
 import { Err, ncc } from '@lib/Tools';
 import Logger from '@/utils/logger';
-import { quickPrint } from '@/utils/utilities';
+import { progressiveMatch, quickPrint } from '@/utils/utilities';
 import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
 
@@ -16,7 +16,11 @@ import * as fs from '@/modules/fs';
  */
 async function macro(ctx: GdxContext): Promise<number> {
    const { args } = ctx;
-   const subCmd = args[1];
+   const inputCommand = args[1]?.toLowerCase();
+   const { match: subCmd, candidates } = progressiveMatch(
+      inputCommand,
+      ['set', 'list', 'drop', 'sync']
+   );
 
    switch (subCmd) {
       case 'set':
@@ -28,10 +32,14 @@ async function macro(ctx: GdxContext): Promise<number> {
       case 'sync':
          return await macroSync();
       default:
-         Logger.error(
-            `Unknown macro subcommand: '${subCmd}'. Available: set, list, drop, sync`,
-            'macro'
-         );
+         if (candidates && candidates.length > 0) {
+            Logger.warn(
+               `Ambiguous command '${inputCommand}'. Did you mean one of: ${candidates.join(', ')}?`
+            );
+         } else {
+            Logger.warn(`Unknown macro subcommand '${inputCommand}'`);
+         }
+         Logger.info('Available subcommands: set, list, drop, sync', 'macro');
          return 1;
    }
 }

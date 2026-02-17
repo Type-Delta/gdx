@@ -5,7 +5,7 @@ import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { $, $inherit, $prompt } from '../modules/shell';
-import { quickPrint } from '../utils/utilities';
+import { progressiveMatch, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 import Logger from '../utils/logger';
 import { GDX_VPALETTE } from '../consts';
@@ -15,6 +15,12 @@ import { getRepoRootCached } from '@/modules/git';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
+
+   const inputCommand = args[1]?.toLowerCase();
+   const { match: subCommand } = progressiveMatch(
+      inputCommand,
+      ['list', 'pardon']
+   );
 
    const [branchName, repoRoot] = await Promise.all([
       $`${git$} rev-parse --abbrev-ref HEAD`.then((c) => c.stdout.trim().replace(/\//g, '-')),
@@ -29,7 +35,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    const suffix = `.patch`;
 
    // LIST subcommand
-   if (args.includes('list')) {
+   if (subCommand === 'list') {
       quickPrint(`${ncc('Cyan')}Project:${ncc()} ${projectName}`);
       quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${branchName}`);
       quickPrint(`${ncc('Cyan')}Backup location:${ncc()} ${osTemp}`);
@@ -86,7 +92,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    }
 
    // PARDON subcommand
-   if (args.includes('pardon')) {
+   if (subCommand === 'pardon') {
       const hasCachedChanges = (await $`${git$} diff --cached --name-only`).stdout.length > 0;
       const hasChanges = hasCachedChanges || (await $`${git$} diff --name-only`).stdout.length > 0;
 

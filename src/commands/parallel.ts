@@ -15,7 +15,7 @@ import {
    spinner,
    SpinnerContoller,
 } from '@/modules/shell';
-import { normalizePath, quickPrint } from '@/utils/utilities';
+import { normalizePath, progressiveMatch, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE } from '@/consts';
@@ -1380,48 +1380,6 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
 }
 
 /**
- * Main entry point for the parallel command
- */
-export default async function parallel(ctx: GdxContext): Promise<number> {
-   const { git$, args } = ctx;
-
-   if (args.length < 2) {
-      showUsage();
-      return 1;
-   }
-
-   const subCommand = args[1].toLowerCase();
-   const remaining = args.slice(2);
-
-   switch (subCommand) {
-      case 'fork':
-         return await cmdFork(git$, remaining);
-      case 'remove':
-         return await cmdRemove(git$, remaining);
-      case 'switch':
-         if (!GDX_RESULT_FILE) {
-            Logger.error(
-               `'git parallel switch' requires the shell integration. See readme for details.`
-            );
-            return 1;
-         }
-         return await cmdOpen(git$, remaining, true);
-      case 'open':
-         return await cmdOpen(git$, remaining);
-      case 'list':
-         return await cmdList(git$, remaining);
-      case 'join':
-         return await cmdJoin(git$, remaining);
-      case 'help':
-         showUsage();
-         return 0;
-      default:
-         showUsage();
-         return 1;
-   }
-}
-
-/**
  * Applies a cherry-pick to the origin worktree, handling conflicts interactively
  * if in a TTY environment.
  * Returns true if the commit was applied, false if it was skipped.
@@ -1737,6 +1695,60 @@ function getGitErrorOutput(err: unknown): { stdout?: unknown; stderr?: unknown }
    }
    const typedErr = err as { stdout?: unknown; stderr?: unknown } | null;
    return { stdout: typedErr?.stdout, stderr: typedErr?.stderr };
+}
+
+/**
+ * Main entry point for the parallel command
+ */
+export default async function parallel(ctx: GdxContext): Promise<number> {
+   const { git$, args } = ctx;
+
+   if (args.length < 2) {
+      showUsage();
+      return 1;
+   }
+
+   const inputCommand = args[1].toLowerCase();
+   const { match: subCommand, candidates } = progressiveMatch(
+      inputCommand,
+      ['fork', 'list', 'open', 'switch', 'join', 'remove', 'help']
+   );
+   const remaining = args.slice(2);
+
+   switch (subCommand) {
+      case 'fork':
+         return await cmdFork(git$, remaining);
+      case 'remove':
+         return await cmdRemove(git$, remaining);
+      case 'switch':
+         if (!GDX_RESULT_FILE) {
+            Logger.error(
+               `'git parallel switch' requires the shell integration. See readme for details.`
+            );
+            return 1;
+         }
+         return await cmdOpen(git$, remaining, true);
+      case 'open':
+         return await cmdOpen(git$, remaining);
+      case 'list':
+         return await cmdList(git$, remaining);
+      case 'join':
+         return await cmdJoin(git$, remaining);
+      case 'help':
+         showUsage();
+         return 0;
+      default:
+         if (candidates && candidates.length > 0) {
+            Logger.warn(
+               `Ambiguous command '${inputCommand}'. Did you mean one of: ${candidates.join(', ')}?`
+            );
+         } else {
+            Logger.warn(`Unknown subcommand '${inputCommand}'`);
+         }
+
+         showUsage();
+         return 1;
+   }
 }
 
 export const help = {

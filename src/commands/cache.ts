@@ -10,7 +10,7 @@ import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import * as fs from '@/modules/fs';
 import Logger from '@/utils/logger';
-import { quickPrint } from '@/utils/utilities';
+import { progressiveMatch, quickPrint } from '@/utils/utilities';
 
 interface CacheMetadata {
    version: string;
@@ -32,7 +32,11 @@ interface CacheStructure {
 }
 
 export default async function cache(ctx: GdxContext): Promise<number> {
-   const subcommand = ctx.args[1];
+   const inputCommand = ctx.args[1]?.toLowerCase();
+   const { match: subcommand, candidates } = progressiveMatch(
+      inputCommand,
+      ['list', 'prune', 'reset', 'delete', 'disable', 'enable']
+   );
 
    switch (subcommand) {
       case 'list':
@@ -48,6 +52,11 @@ export default async function cache(ctx: GdxContext): Promise<number> {
       case 'enable':
          return await setCacheEnabled(true);
       default:
+         if (candidates && candidates.length > 0) {
+            Logger.warn(
+               `Ambiguous command '${inputCommand}'. Did you mean one of: ${candidates.join(', ')}?`
+            );
+         }
          quickPrint(help.usage());
          return 0;
    }

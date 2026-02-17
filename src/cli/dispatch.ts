@@ -1,7 +1,7 @@
 import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
-import { COMMON_GIT_CMDS } from '@/consts';
+import { GDX_COMMANDS } from '@/consts';
 import { execGit } from '@/modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
@@ -75,7 +75,7 @@ export async function dispatch(
    const noEnhancedOutput = !args.popOption('--no-enhance');
 
    AliasNCustomCmd: if (args[0]) {
-      const { match, candidates } = progressiveMatch(args[0], COMMON_GIT_CMDS);
+      const { match, candidates } = progressiveMatch(args[0], GDX_COMMANDS);
 
       if (match) args[0] = match;
 
@@ -339,7 +339,7 @@ export async function dispatch(
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
-                  `Ambiguous command '${originalArgs[0]}'. Did you mean: ${candidates.join(', ')}?`
+                  `Ambiguous command '${originalArgs[0]}'. Did you mean one of: ${candidates.join(', ')}?`
                );
                break AliasNCustomCmd;
             }
