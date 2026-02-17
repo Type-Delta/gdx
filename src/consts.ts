@@ -88,9 +88,11 @@ export const CATPPUCCIN_VPALETTE = {
    lavender: [180, 190, 254],
 } as const satisfies Record<string, RgbVec>;
 
-
-
-export const DEFAULT_SPINNER: string[] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+// from unicode-animations package. value prerendered for performance
+export const DEFAULT_SPINNER: readonly string[] = [
+   "⠁⠀", "⠋⠀", "⠟⠁", "⡿⠋", "⣿⠟", "⣿⡿", "⣿⣿", "⣿⣿", "⣾⣿", "⣴⣿",
+   "⣠⣾", "⢀⣴", "⠀⣠", "⠀⢀", "⠀⠀", "⠀⠀"
+];
 
 export const STATS_EST = {
    AVG_CHARS_PER_LINE: 40,

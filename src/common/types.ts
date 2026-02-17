@@ -21,6 +21,12 @@ export interface SpinnerOptions {
    gradientColorBg?: RgbVec;
    /** Speed of gradient animation (0-1, default: 0.02) */
    gradientSpeed?: number;
+   /**
+    * Interval between gradient swipe between cycles
+    * each cycle is when gradient completes a full loop through the frames,
+    * so higher values will make the gradient swipe less often (must be in Integer >= 1, default: 3)
+    */
+   gradientInterval?: number;
 }
 
 export interface CommandHelpObj {

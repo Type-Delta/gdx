@@ -207,12 +207,13 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    const isQuietStart = !options.message;
    options = {
       message: '',
-      interval: 80,
-      frames: DEFAULT_SPINNER,
+      interval: 70,
+      frames: DEFAULT_SPINNER as string[],
       animateGradient: false,
       gradientColor: GDX_VPALETTE.Zinc100,
       gradientColorBg: GDX_VPALETTE.Zinc700,
       gradientSpeed: 0.11,
+      gradientInterval: 3,
       ...options,
    } satisfies Required<SpinnerOptions>;
 
@@ -244,7 +245,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
       if (options.message) {
          if (options.animateGradient && CheckCache.supportsColor >= 3) {
             // Create animated gradient effect with easing
-            const rawOffset = gradientOffset % 2;
+            const rawOffset = gradientOffset % options.gradientInterval!;
             if (rawOffset <= 1) {
                const easedOffset = Easing.easeInOut(rawOffset);
                const gradientText = radialGradient(
