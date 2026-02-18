@@ -1138,9 +1138,9 @@ async function joinWorktree(
          return 1;
       }
 
+      spinnerCtrl.stop();
       if (subCommitList.length === 0) continue;
 
-      spinnerCtrl.stop();
       Logger.debug(
          `Found ${subCommitList.length} commit(s) to cherry-pick for submodule '${submodule.path}'.`,
          'parallel'

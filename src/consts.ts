@@ -48,6 +48,14 @@ export const GDX_COMMANDS = [
    'stash',
    'status',
    'switch',
+   'submodule',
+   'tag',
+   'fetch',
+   'remote',
+   'show',
+   'init',
+   'config',
+   // gdx custom commands
    // custom commands
    'parallel',
    'nocap',
