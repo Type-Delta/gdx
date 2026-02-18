@@ -3,8 +3,25 @@ import { GdxContext } from '@/common/types';
 import global from '@/global';
 import { GDX_COMMANDS } from '@/consts';
 import Logger from '@/utils/logger';
+import { progressiveMatch } from '@/utils/utilities';
 
 import { GDX_GLOBAL_FLAGS, GDX_SHORTHANDS, STRUCTURE_MAP } from './__completion.structure';
+
+const COMMAND_ALIASES: Record<string, string> = {
+   s: 'status',
+   co: 'checkout',
+   br: 'branch',
+   cmi: 'commit',
+   mg: 'merge',
+   pl: 'pull',
+   pu: 'pull',
+   ps: 'push',
+   ad: 'add',
+   rv: 'revert',
+   rb: 'rebase',
+   lg: 'log',
+   sta: 'stash',
+};
 
 function parseIndex(totalArgs: number): number {
    const raw = process.env.GDX_CMP_IDX;
@@ -44,7 +61,8 @@ export default async function completion(ctx: GdxContext): Promise<number> {
          const candidates = new Set<string>();
 
          // Add gdx custom commands
-         for (const cmd of Object.keys(STRUCTURE_MAP)) { // TODO: some custom commands have progressive match, which breaks current structure-based completion
+         for (const cmd of Object.keys(STRUCTURE_MAP)) {
+            // TODO: some custom commands have progressive match, which breaks current structure-based completion
             candidates.add(cmd);
          }
 
@@ -78,7 +96,9 @@ export default async function completion(ctx: GdxContext): Promise<number> {
          return 0;
       }
 
-      const commandName = allArgs[0];
+      const commandToken = allArgs[0];
+      const { match: commandMatch } = progressiveMatch(commandToken, GDX_COMMANDS);
+      const commandName = commandMatch || COMMAND_ALIASES[commandToken] || commandToken;
       const commandArgs = allArgs.slice(1);
       const structure = STRUCTURE_MAP[commandName];
 

@@ -1,3 +1,5 @@
+import { progressiveMatch } from '@/utils/utilities';
+
 import {
    CommandStructure,
    CommandArgNode,
@@ -20,6 +22,11 @@ interface NormalizedNode {
    children: Record<string, CommandArgNode | string[] | CommandArgThunk>;
    anyOf: Set<string>;
    allOf: Set<string>;
+}
+
+interface TokenMatchResult {
+   match: string | null;
+   isAmbiguous: boolean;
 }
 
 function isCommandArgNode(value: unknown): value is CommandArgNode {
@@ -87,6 +94,25 @@ async function normalizeNode(
    return { children, anyOf, allOf };
 }
 
+function resolveTokenMatch(
+   token: string,
+   options: Iterable<string>,
+   priorityMatch = false
+): TokenMatchResult {
+   const list = Array.from(new Set(options));
+   const { match, candidates } = progressiveMatch(token, list, priorityMatch);
+
+   if (match) {
+      return { match, isAmbiguous: false };
+   }
+
+   if (token && candidates && candidates.length > 1) {
+      return { match: null, isAmbiguous: true };
+   }
+
+   return { match: null, isAmbiguous: false };
+}
+
 /**
  * Suggests all matching arguments based on the current command structure and history.
  *
@@ -104,6 +130,7 @@ export async function suggestArgs(
    let currentNode: CommandArgNode | string[] = structure.$root;
    const accumulatedAllOf = new Set<string>();
    const consumedAllOf = new Set<string>();
+   const normalizedArgs = [...args];
 
    // Tracks whether an exclusive option ($anyOf) has been used at the *current* node level.
    // This resets when we descend into a child subcommand.
@@ -115,7 +142,7 @@ export async function suggestArgs(
       mode: CompletionThunkContext['mode']
    ): CompletionThunkContext => ({
       git$: ctx.git$,
-      args,
+      args: normalizedArgs,
       index: argIndex,
       cursorIndex,
       mode,
@@ -123,47 +150,63 @@ export async function suggestArgs(
 
    // 1. Traverse history up to the current index
    for (let i = 0; i < index; i++) {
-      const token = args[i];
+      const token = normalizedArgs[i];
       if (!token) continue;
 
       currentNode = await resolveNode(currentNode, buildCtx(i, 'history'));
       const norm = await normalizeNode(currentNode, buildCtx(i, 'history'));
 
       // Check for Child Transition
-      if (token in norm.children) {
+      const childKeys = Object.keys(norm.children);
+      const childMatch = resolveTokenMatch(token, childKeys);
+      if (childMatch.isAmbiguous) {
+         return { completions: [] };
+      }
+
+      if (childMatch.match) {
          // Add current level's $allOf options to accumulated set before descending
          for (const flag of norm.allOf) {
             accumulatedAllOf.add(flag);
          }
 
-         const childNode = await resolveNode(norm.children[token], buildCtx(i, 'history'));
+         const childNode = await resolveNode(
+            norm.children[childMatch.match],
+            buildCtx(i, 'history')
+         );
          currentNode = childNode;
+         normalizedArgs[i] = childMatch.match;
          consumedAnyOfCurrentNode = false; // Reset for new node
          continue;
       }
 
       // Check $anyOf (Exclusive choice at current level)
-      if (norm.anyOf.has(token)) {
+      const anyMatch = resolveTokenMatch(token, norm.anyOf);
+      if (anyMatch.isAmbiguous) {
+         return { completions: [] };
+      }
+
+      if (anyMatch.match) {
          if (consumedAnyOfCurrentNode) {
             // Already consumed an exclusive choice at this node
             return { completions: [] };
          }
          consumedAnyOfCurrentNode = true;
+         normalizedArgs[i] = anyMatch.match;
          // Stay at current node (options are siblings)
          continue;
       }
 
       // Check $allOf (Local)
-      if (norm.allOf.has(token)) {
-         if (consumedAllOf.has(token)) return { completions: [] };
-         consumedAllOf.add(token);
-         continue;
+      const allOptions = new Set([...norm.allOf, ...accumulatedAllOf]);
+      const allMatch = resolveTokenMatch(token, allOptions);
+      if (allMatch.isAmbiguous) {
+         return { completions: [] };
       }
 
-      // Check $allOf (Accumulated/Global)
-      if (accumulatedAllOf.has(token)) {
-         if (consumedAllOf.has(token)) return { completions: [] };
-         consumedAllOf.add(token);
+      if (allMatch.match) {
+         if (consumedAllOf.has(allMatch.match)) return { completions: [] };
+         consumedAllOf.add(allMatch.match);
+         normalizedArgs[i] = allMatch.match;
          continue;
       }
 
@@ -202,7 +245,7 @@ export async function suggestArgs(
    }
 
    // 3. Filter and return all matches
-   const input = args[index] || '';
+   const input = normalizedArgs[index] || '';
    const matches = Array.from(candidates)
       .filter((c) => c.startsWith(input) && c !== input.trim())
       .sort((a, b) => a.length - b.length || a.localeCompare(b));
