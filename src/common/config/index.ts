@@ -8,10 +8,23 @@ import { CONFIG_PATH, KEYCHAIN_SERVICE, LEGACY_CONFIG_PATH, SECURE_CONF_KEYS } f
 import { Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
 
+type KeytarApi = {
+   getPassword(service: string, account: string): Promise<string | null>;
+   setPassword(service: string, account: string, password: string): Promise<void>;
+   deletePassword(service: string, account: string): Promise<boolean>;
+};
+
 let keytarModulePromise: Promise<typeof import('keytar')> | null = null;
-async function getKeytar() {
+async function getKeytar(): Promise<KeytarApi> {
    keytarModulePromise ??= import('keytar');
-   return await keytarModulePromise;
+   const module = await keytarModulePromise;
+   const keytar = (module as { default?: KeytarApi }).default ?? (module as KeytarApi);
+
+   if (!keytar || typeof keytar.setPassword !== 'function') {
+      throw new Err('Keytar module does not expose setPassword.', 'KEYTAR_INVALID');
+   }
+
+   return keytar;
 }
 
 export class ConfigService {
