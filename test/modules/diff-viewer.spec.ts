@@ -165,6 +165,23 @@ rename to new.ts`;
          expect(result[0].oldFileName).toBe('old.ts');
          expect(result[0].newFileName).toBe('new.ts');
       });
+
+      it('should parse combined diff output', () => {
+         const diffText = `diff --cc file.txt
+index e69de29,1b2c3d4..5e6f7g8
+--- a/file.txt
++++ b/file.txt
+@@@ -0,0 -0,0 +1,2 @@@
++ +line one
++ +line two`;
+
+         const result = parseDiffOutput(diffText);
+
+         expect(result.length).toBe(1);
+         expect(result[0].fileName).toBe('file.txt');
+         const addLines = result[0].lines.filter((l) => l.type === 'add');
+         expect(addLines.length).toBe(2);
+      });
    });
 
    describe('DiffViewerRenderer', () => {

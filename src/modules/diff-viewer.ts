@@ -23,6 +23,9 @@ const STYLES = {
    dim: (str: string) => `\x1b[2m${str}\x1b[22m`,
 };
 
+const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
+const DIFF_HEADER_TEXT_REGEX = /^diff --(git|cc|combined)\b/m;
+
 /** Options for the diff viewer */
 export interface DiffViewerOptions extends PagerOptions {
    theme?: string;
@@ -114,19 +117,24 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
    let currentDiff: ParsedDiff | null = null;
    let oldLineNum = 0;
    let newLineNum = 0;
+   let isCombinedDiff = false;
 
    for (const line of lines) {
-      if (line.startsWith('diff --git ')) {
+      if (DIFF_HEADER_LINE_REGEX.test(line)) {
          if (currentDiff) results.push(currentDiff);
-         const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
-         if (match) {
+         const diffHeader = parseDiffHeader(line);
+         if (diffHeader) {
             currentDiff = {
-               fileName: match[2],
-               oldFileName: match[1],
-               newFileName: match[2],
-               lang: detectLanguage(match[2]),
+               fileName: diffHeader.fileName,
+               oldFileName: diffHeader.oldFileName,
+               newFileName: diffHeader.newFileName,
+               lang: detectLanguage(diffHeader.fileName),
                lines: [],
             };
+            isCombinedDiff = diffHeader.isCombined;
+         } else {
+            currentDiff = null;
+            isCombinedDiff = false;
          }
          continue;
       }
@@ -134,6 +142,14 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
 
       if (line.startsWith('--- ') || line.startsWith('+++ ')) {
          currentDiff.lines.push({ type: 'header', content: line });
+         continue;
+      }
+      if (line.startsWith('@@@ ')) {
+         const oldMatch = line.match(/@@@ -(\d+)(?:,\d+)?/);
+         const newMatch = line.match(/\+(\d+)(?:,\d+)? @@@/);
+         if (oldMatch) oldLineNum = parseInt(oldMatch[1], 10);
+         if (newMatch) newLineNum = parseInt(newMatch[1], 10);
+         currentDiff.lines.push({ type: 'hunk', content: line });
          continue;
       }
       if (line.startsWith('@@ ')) {
@@ -144,6 +160,29 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
          }
          currentDiff.lines.push({ type: 'hunk', content: line });
          continue;
+      }
+      if (isCombinedDiff) {
+         const combinedLineMatch = line.match(/^([ +-]{2,})(.*)$/);
+         if (combinedLineMatch) {
+            const prefix = combinedLineMatch[1];
+            const content = combinedLineMatch[2];
+            const hasPlus = prefix.includes('+');
+            const hasMinus = prefix.includes('-');
+            const type: DiffLine['type'] =
+               hasPlus && !hasMinus ? 'add' : hasMinus && !hasPlus ? 'delete' : 'context';
+            const parsedLine: DiffLine = {
+               type,
+               content,
+            };
+            if (type === 'add') parsedLine.newLineNum = newLineNum++;
+            else if (type === 'delete') parsedLine.oldLineNum = oldLineNum++;
+            else {
+               parsedLine.oldLineNum = oldLineNum++;
+               parsedLine.newLineNum = newLineNum++;
+            }
+            currentDiff.lines.push(parsedLine);
+            continue;
+         }
       }
       if (line[0] === '+') {
          currentDiff.lines.push({
@@ -447,7 +486,12 @@ export class DiffViewerRenderer implements PagerRenderer {
       );
    }
 
-   private renderPreambleLine(line: string, width: number, blockBg: RgbVec, leftPadding: number): string[] {
+   private renderPreambleLine(
+      line: string,
+      width: number,
+      blockBg: RgbVec,
+      leftPadding: number
+   ): string[] {
       if (!line) return [this.padLineWithBg(' ', width, blockBg)];
       line = ' '.repeat(leftPadding) + line; // Indent preamble lines to align with diff content
       const contentWidth = width;
@@ -456,7 +500,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       if (this.options.wrapLines && getDisplayWidth(line) > contentWidth) {
          const wrapped = strWrap(line, contentWidth, {
             mode: 'softboundary',
-            indent: leftPadding
+            indent: leftPadding,
          });
          return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
       }
@@ -559,7 +603,7 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
    }
 
    const lines = diffText.split('\n');
-   const firstDiffIndex = lines.findIndex((line) => line.startsWith('diff --git '));
+   const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
    const preambleLines =
       firstDiffIndex > 0 ? lines.slice(0, firstDiffIndex) : firstDiffIndex === -1 ? lines : [];
    const diffBody =
@@ -568,9 +612,9 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
    const spinnerCtrl =
       diffText.length > 10000
          ? spinner({
-            message: 'Preparing diff viewer...',
-            interval: 10,
-         })
+              message: 'Preparing diff viewer...',
+              interval: 10,
+           })
          : undefined;
 
    Logger.time('Preparing diff highlighting');
@@ -588,7 +632,31 @@ export async function viewDiff(diffText: string, options: DiffViewerOptions = {}
  * Simple check to see if the text looks like git diff output. Not foolproof but good enough for deciding when to use the diff viewer.
  */
 export function isGitDiffOutput(text: string): boolean {
-   return /^diff --git a\/.+ b\/.+/m.test(text);
+   return DIFF_HEADER_TEXT_REGEX.test(text);
 }
 
 export { parseDiffOutput };
+
+function parseDiffHeader(
+   line: string
+): { fileName: string; oldFileName: string; newFileName: string; isCombined: boolean } | null {
+   if (line.startsWith('diff --git ')) {
+      const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
+      if (!match) return null;
+      return {
+         fileName: match[2],
+         oldFileName: match[1],
+         newFileName: match[2],
+         isCombined: false,
+      };
+   }
+
+   const combinedMatch = line.match(/^diff --(?:cc|combined) (.+)$/);
+   if (!combinedMatch) return null;
+   return {
+      fileName: combinedMatch[1],
+      oldFileName: combinedMatch[1],
+      newFileName: combinedMatch[1],
+      isCombined: true,
+   };
+}
