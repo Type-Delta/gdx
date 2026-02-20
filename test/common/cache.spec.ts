@@ -5,7 +5,8 @@ import fs from 'fs/promises';
 
 import { getCache, resetCache, CacheService } from '@/common/cache';
 import { createTestEnv } from '@/utils/testHelper';
-import { CACHE_PRUNE_INTERVAL_DAYS, DEFAULT_CACHE_MAX_AGE, ONE_DAY_MS, VERSION } from '@/consts';
+import { CACHE_PRUNE_INTERVAL_DAYS, DEFAULT_CACHE_MAX_AGE, GDX_CACHE_SCHEMA_VERSION, ONE_DAY_MS, VERSION } from '@/consts';
+import { CacheStructure } from '@/common/schema';
 
 describe('CacheService', async () => {
    const { tmpRootDir, cleanup, it } = await createTestEnv();
@@ -115,21 +116,22 @@ describe('CacheService', async () => {
       expect(value).toBe('persisted-value');
    });
 
-   it('should invalidate cache on VERSION mismatch', async () => {
+   it('should invalidate cache on cache schema version mismatch', async () => {
       resetCache();
       const cacheFile4 = path.join(tmpRootDir, 'cache4.json');
 
       // Write cache with old version
       const oldCacheData = {
          meta: {
-            version: 'old-version-1.0.0',
+            version: 'old-version-1.0.0', // This should be silently updated to current version on next load
+            cacheSchemaVersion: 0 as typeof GDX_CACHE_SCHEMA_VERSION, // Old version to trigger invalidation
             createdAt: Date.now(),
             updatedAt: Date.now(),
             lastPruneAt: Date.now(),
          },
          data: { test: 'should-be-ignored' },
          entryMeta: {},
-      };
+      } satisfies CacheStructure;
 
       await fs.writeFile(cacheFile4, JSON.stringify(oldCacheData));
 
@@ -139,6 +141,10 @@ describe('CacheService', async () => {
 
       // Data should be gone due to version mismatch
       expect(value).toBeUndefined();
+
+      // App version should be updated to current version
+      const allData = await cache.getAll();
+      expect(allData.meta.version).toBe(VERSION);
    });
 
    it('should invalidate cache on expiry', async () => {
@@ -149,6 +155,7 @@ describe('CacheService', async () => {
       const expiredCacheData = {
          meta: {
             version: VERSION,
+            cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
             createdAt: Date.now(),
             updatedAt: Date.now(),
             lastPruneAt: Date.now(),
@@ -166,7 +173,7 @@ describe('CacheService', async () => {
                expiresAt: Date.now() + 10000, // Not expired
             },
          },
-      };
+      } satisfies CacheStructure;
 
       await fs.writeFile(cacheFile5, JSON.stringify(expiredCacheData));
 
@@ -391,6 +398,7 @@ describe('CacheService', async () => {
       const cacheData = {
          meta: {
             version: VERSION,
+            cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
             createdAt: oldTimestamp,
             updatedAt: oldTimestamp,
             lastPruneAt: oldTimestamp,
@@ -417,7 +425,7 @@ describe('CacheService', async () => {
                expiresAt: Date.now() + 10000, // Not expired
             },
          },
-      };
+      } satisfies CacheStructure;
 
       await fs.writeFile(cacheFile10, JSON.stringify(cacheData));
 
@@ -440,15 +448,16 @@ describe('CacheService', async () => {
       expect(allData.meta.lastPruneAt).toBeGreaterThan(oldTimestamp);
    });
 
-   it('should not prune when last prune is within 7 days', async () => {
+   it(`should not prune when last prune is within ${CACHE_PRUNE_INTERVAL_DAYS} days`, async () => {
       resetCache();
       const cacheFile11 = path.join(tmpRootDir, 'cache11.json');
 
       // Create cache with recent lastPruneAt and expired entry
-      const recentTimestamp = Date.now() - 2 * ONE_DAY_MS; // 2 days ago
+      const recentTimestamp = Date.now() - (CACHE_PRUNE_INTERVAL_DAYS / 2) * ONE_DAY_MS; // Half the prune interval ago
       const cacheData = {
          meta: {
             version: VERSION,
+            cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
             createdAt: recentTimestamp,
             updatedAt: recentTimestamp,
             lastPruneAt: recentTimestamp,
@@ -463,7 +472,7 @@ describe('CacheService', async () => {
                expiresAt: Date.now() - 1000, // Already expired
             },
          },
-      };
+      } satisfies CacheStructure;
 
       await fs.writeFile(cacheFile11, JSON.stringify(cacheData));
 
@@ -488,6 +497,7 @@ describe('CacheService', async () => {
       const cacheData = {
          meta: {
             version: VERSION,
+            cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
             createdAt: Date.now(),
             updatedAt: Date.now(),
             // lastPruneAt is missing
@@ -500,7 +510,7 @@ describe('CacheService', async () => {
                expiresAt: Date.now() + 10000,
             },
          },
-      };
+      } satisfies Omit<CacheStructure, 'meta'> & { meta: Omit<CacheStructure['meta'], 'lastPruneAt'> };
 
       await fs.writeFile(cacheFile12, JSON.stringify(cacheData));
 

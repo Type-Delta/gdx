@@ -1,40 +1,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import path from 'path';
-
 import * as fs from '@/modules/fs';
+
+import { beforeExit, Err } from '@lib/Tools';
+
 import {
    CACHE_PATH,
    CACHE_PRUNE_INTERVAL_DAYS,
    DEFAULT_CACHE_MAX_AGE,
+   GDX_CACHE_SCHEMA_VERSION,
    ONE_DAY_MS,
    VERSION,
 } from '@/consts';
-import { beforeExit, Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
 import { getConfig } from '../config';
+import { CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
 
-interface CacheMetadata {
-   version: string;
-   createdAt: number;
-   updatedAt: number;
-   lastPruneAt: number;
-}
-
-interface CacheEntryMetadata {
-   createdAt: number;
-   updatedAt: number;
-   expiresAt: number;
-}
-
-interface CacheStructure {
-   meta: CacheMetadata;
-   data: Record<string, unknown>;
-   entryMeta: Record<string, CacheEntryMetadata>;
-}
 
 const DEFAULT_CACHE: CacheStructure = {
    meta: {
       version: VERSION,
+      cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       lastPruneAt: Date.now(),
@@ -164,31 +150,23 @@ export class CacheService {
          const fileContent = await fs.readFile(this.cachePath, 'utf-8');
          const parsed = JSON.parse(fileContent) as CacheStructure;
 
-         // Validate schema
-         if (!parsed.meta || !parsed.data) {
+         try {
+            // Check version mismatch (auto-invalidate on cache version & structure change)
+            ZCacheStructure(parsed); // Validate structure and types
+         }
+         catch {
+            this.logger.warn('Cache file structure is outdated or invalid. Cache will be reset on next write.');
             this.resetCache(false);
             this.loaded = true;
             return;
          }
 
-         // Check version mismatch (auto-invalidate on VERSION change)
          if (parsed.meta.version !== VERSION) {
             this.logger.debug(
-               `Cache version mismatch: stored=${parsed.meta.version}, current=${VERSION}. Resetting cache.`
+               `App version mismatch: stored=${parsed.meta.version}, current=${VERSION}. Updating version number.`
             );
-            this.resetCache(false);
-            this.loaded = true;
-            return;
-         }
-
-         // Ensure required fields exist
-         if (!parsed.entryMeta || !parsed.meta.lastPruneAt) {
-            this.logger.debug(
-               "Existing cache file' schema mismatch; resetting cache to newer version"
-            );
-            this.resetCache(false);
-            this.loaded = true;
-            return;
+            parsed.meta.version = VERSION;
+            this.dirty = true; // Mark dirty to update version on next flush
          }
 
          this.cache = parsed;

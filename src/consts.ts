@@ -15,6 +15,7 @@ export const CONFIG_FILE_NAME = '.gdxrc.toml';
 export const CONFIG_DIR = path.join(os.homedir(), '.gdx');
 export const CONFIG_PATH = path.join(CONFIG_DIR, CONFIG_FILE_NAME);
 export const LEGACY_CONFIG_PATH = path.join(os.homedir(), CONFIG_FILE_NAME);
+export const GDX_CACHE_SCHEMA_VERSION = 1; // Increment this if there are breaking changes to the cache structure
 export const GIT_DIR_NAME = '.git';
 export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;

@@ -5,31 +5,14 @@ import { Err, jsTime, ncc, strJustify, strLimit, strWrap, yuString } from '@lib/
 import { resetCache } from '@/common/cache';
 import { getConfig } from '@/common/config';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { CACHE_PATH, GDX_VPALETTE, EXECUTABLE_NAME, VERSION } from '@/consts';
+import { CACHE_PATH, GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import * as fs from '@/modules/fs';
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
+import { CacheStructure, ZCacheStructure } from '@/common/schema';
 
-interface CacheMetadata {
-   version: string;
-   createdAt: number;
-   updatedAt: number;
-   lastPruneAt: number;
-}
-
-interface CacheEntryMetadata {
-   createdAt: number;
-   updatedAt: number;
-   expiresAt: number;
-}
-
-interface CacheStructure {
-   meta: CacheMetadata;
-   data: Record<string, unknown>;
-   entryMeta: Record<string, CacheEntryMetadata>;
-}
 
 export default async function cache(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
@@ -72,7 +55,7 @@ async function pruneCache(): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No cache file found. Nothing to prune.${ncc()}`);
+      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to prune.${ncc()}`);
       return 0;
    }
 
@@ -114,7 +97,7 @@ async function listCache(): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No cache file found. Nothing to list.${ncc()}`);
+      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to list.${ncc()}`);
       return 0;
    }
 
@@ -162,7 +145,7 @@ async function resetCacheFile(): Promise<number> {
       resetCache();
 
       if (!existsBefore) {
-         quickPrint(`${ncc('Yellow')}No cache file found. Nothing to delete.${ncc()}`);
+         quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to delete.${ncc()}`);
          return 0;
       }
 
@@ -192,7 +175,7 @@ async function expireCacheKeys(rawKeys: string[]): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No cache file found. Nothing to delete.${ncc()}`);
+      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to delete.${ncc()}`);
       return 0;
    }
 
@@ -255,18 +238,11 @@ async function loadCacheFile(): Promise<CacheStructure | null> {
       const content = await fs.readFile(CACHE_PATH, 'utf-8');
       const parsed = JSON.parse(content) as CacheStructure;
 
-      if (!parsed || !parsed.meta || !parsed.data || !parsed.entryMeta) {
-         throw new Err(
-            'Cache file is invalid or corrupted. Run `gdx cache reset`.',
-            'CACHE_INVALID'
-         );
+      try {
+         ZCacheStructure(parsed); // Validate structure and types
       }
-
-      if (parsed.meta.version !== VERSION) {
-         throw new Err(
-            `Cache version mismatch (found ${parsed.meta.version}, expected ${VERSION}). Run gdx cache reset.`,
-            'CACHE_VERSION_MISMATCH'
-         );
+      catch {
+         return null;
       }
 
       if (!parsed.meta.lastPruneAt) {
