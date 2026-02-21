@@ -422,6 +422,40 @@ export async function execGit(
       }
    } catch (_err) {
       const err = Err.from(_err);
+      if (
+         err.code === 'SIGINT' ||
+         err.code === 'SIGTERM' ||
+         err.code === 'SIGABRT' ||
+         err.code === 'SIGKILL'
+      ) {
+         Logger.debug(
+            `Git command was killed by signal: ${err.code}. Treating as failure with exit code 1.`
+         );
+         Logger.verbose('Full error details: ' + yuString(err, { color: true }));
+         return 1; // process was killed, return 1 to indicate failure
+      }
+
+      if (err.code === 'ENOENT') {
+         Logger.error(
+            `Git executable not found: "${git$}". Ensure git is installed and in your PATH.`
+         );
+         return 1; // git not found, return 1 to indicate failure
+      }
+
+      if (err.code === 'EACCES') {
+         Logger.error(
+            `Permission denied when trying to execute git: "${git$}". Check your permissions for this executable.`
+         );
+         return 1; // permission issue, return 1 to indicate failure
+      }
+
+      if (err.code === 'SIGPIPE') {
+         Logger.debug(
+            `Git command failed with SIGPIPE. This may indicate that the pipe was no longer inuse by the consumer process.`
+         );
+         return 1; // SIGPIPE, return 1 to indicate failure
+      }
+
       if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
          return exitCode || 1; // git command failed, return exit code
 
