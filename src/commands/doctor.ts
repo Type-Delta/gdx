@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 
-import { ncc, arrToString, yuString, strWrap, remap, Err, hyperLink } from '@lib/Tools';
+import { ncc, arrToString, yuString, strWrap, remap, Err, hyperLink, CheckCache } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
@@ -65,23 +65,24 @@ export default async function doctor(): Promise<number> {
    }
 
    quickPrint(`Version: ${ncc('Cyan') + VERSION + ncc()}`);
-   quickPrint(`Platform: ${ncc('Magenta') + process.platform + ncc()}`);
-   quickPrint(`Arch: ${ncc('Magenta') + process.arch + ncc()}`);
+   quickPrint(`Platform: ${ncc('Magenta') + process.platform} (${process.arch})` + ncc());
    quickPrint(
       `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + ncc()}`
    );
+   quickPrint(`Terminal color support index: ${ncc('Cyan') + (CheckCache.supportsColor) + ncc() + ncc('Dim')} ${CheckCache.supportsColor === 0 ? '(No color)' : CheckCache.supportsColor === 1 ? '(16 colors)' : CheckCache.supportsColor === 2 ? '(8bit color)' : CheckCache.supportsColor === 3 ? '(24bit True color)' : ''}` + ncc());
+   quickPrint(`TTY mode: ${ncc('Cyan') + (process.stdout.isTTY ? 'Yes' : 'No') + ncc()}`);
 
    // Detect runtimes
    try {
       const bunVer = await execa('bun', ['--version']);
-      quickPrint(`Bun: ${ncc('Cyan') + bunVer.stdout.trim() + ncc()}`);
+      quickPrint(`Bun: ${ncc('Cyan') + bunVer.stdout.trim() + ncc()}` + (!isBun ? ncc('Dim') + ` (inactive)` + ncc() : ''));
    } catch {
       quickPrint(`Bun: Not found`);
    }
 
    try {
       const nodeVer = await execa('node', ['--version']);
-      quickPrint(`Node: ${ncc('Cyan') + nodeVer.stdout.trim() + ncc()}`);
+      quickPrint(`Node: ${ncc('Cyan') + nodeVer.stdout.trim() + ncc()}` + (!isNode ? ncc('Dim') + ` (inactive)` + ncc() : ''));
    } catch {
       quickPrint(`Node: Not found`);
    }
@@ -89,7 +90,7 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development)' + ncc())
+      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development mode)' + ncc())
    );
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
