@@ -23,7 +23,7 @@
     "gdx": "scripts/launcher.cjs"
   },
   "files": [
-    "dist/",
+    "dist/*.js",
     "scripts/postinstall.cjs",
     "scripts/launcher.cjs",
     "README.md",

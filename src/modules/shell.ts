@@ -421,7 +421,7 @@ export async function execGit(
          exitCode = eCode;
       }
    } catch (_err) {
-      const err = Err.from(_err);
+      const err = Err.from(_err, undefined, (_err as ExecaError).signal);
       if (
          err.code === 'SIGINT' ||
          err.code === 'SIGTERM' ||
