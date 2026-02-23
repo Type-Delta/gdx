@@ -67,6 +67,36 @@ describe('gdx commit auto', async () => {
       const status = (await $`${git$} status --porcelain`).stdout;
       expect(status).toContain('M  newfile.txt');
    });
+
+   it('should commit immediately with --yes', async () => {
+      // Modify file and stage
+      await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'yes mode content');
+      await $`${git$} add newfile.txt`;
+
+      const yesCtx = createGdxContext(tmpDir, ['commit', 'auto', '--yes']);
+      const result = await commit.auto(yesCtx);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Generated Commit Message');
+
+      const log = (await $`${git$} log -1 --pretty=%B`).stdout;
+      expect(log).toContain('Mock response from LLM');
+   });
+
+   it('should warn and ignore --yes when --no-commit is set', async () => {
+      await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'ignored yes content');
+      await $`${git$} add newfile.txt`;
+
+      const noCommitYesCtx = createGdxContext(tmpDir, ['commit', 'auto', '--no-commit', '--yes']);
+      const result = await commit.auto(noCommitYesCtx);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Generated Commit Message');
+      expect(buffer.stdout).toContain('Ignoring --yes because --no-commit was requested.');
+
+      const status = (await $`${git$} status --porcelain`).stdout;
+      expect(status).toContain('M  newfile.txt');
+   });
 });
 
 describe('gdx commit auto - inherit mode', async () => {
