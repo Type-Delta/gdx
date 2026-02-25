@@ -25,7 +25,7 @@ import {
    GDX_VPALETTE,
    CATPPUCCIN_VPALETTE,
 } from '@/consts';
-import { _2PointGradient, fgRgb } from '@/modules/graphics';
+import { _2PointGradient, bgRgb, fgRgb } from '@/modules/graphics';
 import global from '@/global';
 import { viewDiff } from '@/modules/diff-viewer';
 import { PagerActionResult } from '@/modules/pager';
@@ -1063,17 +1063,22 @@ async function getCherryPickPreview(options: {
    try {
       await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
       let appliedPatch = false;
+      let applyConflictInfo: ConflictInfo | undefined;
       try {
          await $({
             env,
             input: patch,
          })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
          appliedPatch = true;
-      } catch {
-         // Ignore here; we'll fall back to showing the original commit diff below.
+      } catch (err) {
+         applyConflictInfo = parseApplyConflictInfo(err);
       }
 
-      const conflictInfo = await getIndexConflictInfo(gitExec, originRepoPath, env);
+      const indexConflictInfo = await getIndexConflictInfo(gitExec, originRepoPath, env);
+      let conflictInfo = mergeConflictInfo(indexConflictInfo, applyConflictInfo);
+      if (!conflictInfo && !appliedPatch) {
+         conflictInfo = parsePatchConflictInfo(patch);
+      }
 
       if (!appliedPatch) {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
@@ -1147,6 +1152,102 @@ async function getIndexConflictInfo(
    return { files, counts };
 }
 
+function parseApplyConflictInfo(error: unknown): ConflictInfo | undefined {
+   const parts: unknown[] = [];
+   if (typeof error === 'string') {
+      parts.push(error);
+   } else if (error instanceof ExecaError) {
+      parts.push(error.stderr, error.stdout, error.message, error.shortMessage);
+   } else if (error && typeof error === 'object') {
+      const typedErr = error as { stderr?: unknown; stdout?: unknown; message?: unknown };
+      parts.push(typedErr.stderr, typedErr.stdout, typedErr.message);
+   }
+
+   const text = parts
+      .map((part) => formatGitOutput(part))
+      .filter(Boolean)
+      .join('\n');
+   if (!text) return undefined;
+
+   const files: string[] = [];
+   const counts: Record<string, number> = {};
+   const lines = text.split('\n');
+
+   for (const line of lines) {
+      const patchMatch = line.match(/patch failed:\s+(.+?):\d+/i);
+      if (patchMatch) {
+         const file = patchMatch[1].trim();
+         if (!files.includes(file)) files.push(file);
+         counts[file] = (counts[file] || 0) + 1;
+         continue;
+      }
+
+      const applyMatch = line.match(/error:\s+(.+?):\s+patch does not apply/i);
+      if (applyMatch) {
+         const file = applyMatch[1].trim();
+         if (!files.includes(file)) files.push(file);
+      }
+   }
+
+   if (files.length === 0) return undefined;
+
+   const hasCounts = files.every((file) => typeof counts[file] === 'number' && counts[file] > 0);
+   return { files, counts: hasCounts ? counts : undefined };
+}
+
+function mergeConflictInfo(
+   primary?: ConflictInfo,
+   fallback?: ConflictInfo
+): ConflictInfo | undefined {
+   if (!primary && !fallback) return undefined;
+   if (!primary) return fallback;
+   if (!fallback) return primary;
+
+   const files = primary.files.length > 0 ? primary.files : fallback.files;
+   if (files.length === 0) return fallback.files.length > 0 ? fallback : undefined;
+
+   const primaryCounts = pickConflictCounts(primary, files);
+   const fallbackCounts = pickConflictCounts(fallback, files);
+   return { files, counts: primaryCounts ?? fallbackCounts };
+}
+
+function parsePatchConflictInfo(patch: string): ConflictInfo | undefined {
+   const files: string[] = [];
+   const lines = patch.split('\n');
+
+   for (const line of lines) {
+      if (line.startsWith('diff --git ')) {
+         const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
+         if (match) {
+            const file = match[2].trim();
+            if (file && !files.includes(file)) files.push(file);
+         }
+         continue;
+      }
+      if (line.startsWith('diff --cc ')) {
+         const file = line.slice('diff --cc '.length).trim();
+         if (file && !files.includes(file)) files.push(file);
+         continue;
+      }
+      if (line.startsWith('diff --combined ')) {
+         const file = line.slice('diff --combined '.length).trim();
+         if (file && !files.includes(file)) files.push(file);
+      }
+   }
+
+   if (files.length === 0) return undefined;
+   return { files };
+}
+
+function pickConflictCounts(
+   info: ConflictInfo | undefined,
+   files: string[]
+): Record<string, number> | undefined {
+   if (!info?.counts) return undefined;
+   const hasCounts = files.every((file) => typeof info.counts?.[file] === 'number');
+   return hasCounts ? info.counts : undefined;
+}
+
 function parseCombinedConflictCounts(diffText: string): Record<string, number> {
    const counts: Record<string, number> = {};
    let currentFile: string | null = null;
@@ -1197,8 +1298,8 @@ function buildCommitPreamble(options: {
 
    const trimmedStat = stat
       .trimEnd()
-      .replace(/(\++)/g, `${ncc('Green')}$1${ncc()}`)
-      .replace(/(-+)/g, `${ncc('Red')}$1${ncc()}`);
+      .replace(/(?:\W)(\++)/g, `${ncc('Green')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
+      .replace(/(-+)/g, `${ncc('Red')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
    if (trimmedStat.length > 0) {
       lines.push('');
       lines.push(...trimmedStat.split('\n').map((line) => `   ${line}`));
@@ -1276,17 +1377,45 @@ async function interactiveCherryPickDecision(
       submodulePath,
       conflictInfo: preview.conflictInfo,
    });
-   const actions = [
-      { key: 'a', label: 'apply', action: 'apply' },
-      { key: 's', label: 'skip', action: 'skip' },
-      { key: 'u', label: 'undo', action: 'undo' },
-      { key: 'q', label: 'abort', action: 'abort' },
-   ];
-   let statusText = preview.isEmpty ? 'Empty diff: choose skip to continue' : '';
+   const actions = preview.isEmpty
+      ? [
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ]
+      : [
+           { key: 'a', label: 'apply', action: 'apply' },
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ];
+
+   let statusText: string;
    if (preview.appliedPatch) {
-      statusText = ncc('Green') + ncc('White') + ncc('Bright') + ' CLEAN ' + ncc();
+      statusText =
+         ncc('Green') +
+         ncc('White') +
+         ncc('Bright') +
+         ' CLEAN ' +
+         ncc() +
+         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+         bgRgb(CATPPUCCIN_VPALETTE.base);
+   } else if (preview.isEmpty) {
+      statusText =
+         ncc('BgWhite') +
+         ncc('Black') +
+         ncc('Bright') +
+         ' EMPTY ' +
+         ncc() +
+         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+         bgRgb(CATPPUCCIN_VPALETTE.base);
    } else {
-      statusText = ncc('BgRed') + ncc('White') + ncc('Bright') + ' CONFLICT ' + ncc();
+      statusText =
+         ncc('BgRed') +
+         ncc('White') +
+         ncc('Bright') +
+         ' CONFLICT ' +
+         ncc() +
+         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+         bgRgb(CATPPUCCIN_VPALETTE.base);
    }
 
    const diffText = preview.diff.trimEnd();
