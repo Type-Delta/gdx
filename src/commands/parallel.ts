@@ -871,25 +871,25 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${mainRangeStart}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${mainRangeStart}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                    submoduleCursors: meta.submoduleCursors,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1379,14 +1379,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ]
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ]
       : [
-           { key: 'a', label: 'apply', action: 'apply' },
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ];
+         { key: 'a', label: 'apply', action: 'apply' },
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ];
 
    let statusText: string;
    if (preview.appliedPatch) {
@@ -1591,9 +1591,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1726,9 +1726,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-                 .split('\n')
-                 .map((c) => c.trim())
-                 .filter((c) => c)
+               .split('\n')
+               .map((c) => c.trim())
+               .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -2163,6 +2163,9 @@ async function applyCherryPick(
                   Logger.debug(`Skipped commit ${commit} for ${contextLabel}.`, 'parallel');
                   return false;
                } catch (skipErr) {
+                  const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
+                  if (!stillInProgress) return false;
+
                   printGitResult(getGitErrorOutput(skipErr));
                   Logger.error(`Failed to skip commit ${commit} for ${contextLabel}.`, 'parallel');
                   Logger.debug(yuString(skipErr, { color: true }), 'parallel');
