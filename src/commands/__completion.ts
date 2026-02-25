@@ -62,7 +62,6 @@ export default async function completion(ctx: GdxContext): Promise<number> {
 
          // Add gdx custom commands
          for (const cmd of Object.keys(STRUCTURE_MAP)) {
-            // TODO: some custom commands have progressive match, which breaks current structure-based completion
             candidates.add(cmd);
          }
 

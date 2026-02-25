@@ -287,8 +287,10 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
    - Interactive fuzzy search for branches, commits, stash, log and files instead of `less`
    - Code line statistics in `gdx stats` using `cloc`
 - [x] **gdx clear Untracked files support**: `gdx clear` now automatically backs up untracked files in the patch.
-- [ ] **gdx migrate**: move dirty changes to another branch/worktree without committing.
 - [x] **Recursive status for submodules** with `gdx status --recursive` or `gdx s -r`
+- [x] **Submodule dir switching**: extension of `git submodule`, `gdx submodule switch` to jump into a submodule's directory from the parent repo (requires shell integration)
+- [ ] **Snapshot**: `gdx snap` to create snapshot of current state of your working directory (including uncommitted changes, untracked files) that can be easily switched back to later (similar to a lightweight, temporary branch that doesn't clutter your branch list)
+- [ ] **Enhanced output for more commands**: Extend the "Git Output for Humans"
 
 ## License
 

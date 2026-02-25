@@ -12,6 +12,7 @@ import lint from './lint';
 import doctor from './doctor';
 import status from './status';
 import macro from './macro';
+import submodule from './submodule';
 import __completion from './__completion';
 
 export default {
@@ -30,4 +31,5 @@ export default {
    doctor,
    status,
    macro,
+   submodule,
 };

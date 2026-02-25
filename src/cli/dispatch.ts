@@ -2,7 +2,7 @@ import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
 import { GDX_COMMANDS } from '@/consts';
-import { execGit } from '@/modules/shell';
+import { $, execGit } from '@/modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
@@ -11,7 +11,6 @@ import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
 import { getGitVersionCached, getGitConfigCached, expandRelativeRef } from '@/modules/git';
 import { canUseDiffViewer, isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
-import { $ } from '@/modules/shell';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -88,6 +87,14 @@ export async function dispatch(
                return await cmd.status(ctx);
             }
             break;
+         case 'submodule': {
+            const subCommands = [
+               'switch',
+            ];
+            const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
+            if (subCmdMatch.match !== 'switch') break;
+            return await cmd.submodule.switch(ctx);
+         }
          case 'co': // alias for 'checkout'
             args[0] = 'checkout';
             break;

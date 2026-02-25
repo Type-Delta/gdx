@@ -13,8 +13,43 @@ import { structure as stashStructure } from './stash';
 import { structure as statsStructure } from './stats';
 import { structure as statusStructure } from './status';
 import { structure as macroStructure } from './macro';
+import { structure as submoduleStructure } from './submodule';
+
+/**
+ * command structure for command extensions that doesn't a dedicated source file
+ */
+export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
+   commit: {
+      $root: {
+         auto: {
+            $anyOf: ['--no-commit', '--copy', '--yes'],
+         },
+      },
+   },
+   push: {
+      $root: {
+         $anyOf: ['-fl', '--no-lint'],
+      },
+   },
+   pull: {
+      $root: {
+         $anyOf: ['-au'],
+      },
+   },
+   status: {
+      $root: {
+         $anyOf: ['--recursive', '-r'],
+      },
+   },
+   log: {
+      $root: {
+         $anyOf: ['--author', '--relative'],
+      },
+   },
+};
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
+   ...GIT_EXTENSION_STRUCTURE,
    cache: cacheStructure,
    clear: clearStructure,
    doctor: doctorStructure,
@@ -28,6 +63,7 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    stats: statsStructure,
    status: statusStructure,
    macro: macroStructure,
+   submodule: submoduleStructure,
 };
 
 export const GDX_SHORTHANDS = [
