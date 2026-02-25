@@ -857,38 +857,38 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             r.stdout.trim()
          ),
          // Get commit comparison with origin
-         getCommitComparison(git$, wtPath, ctx.originPath),
+         getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
       const isDirty = statusOutput.length > 0;
       const baseShort = mainRangeStart ? mainRangeStart.slice(0, 7) : 'unknown';
 
+      const mainCount = comparison.ahead;
       const submoduleCount = submoduleLog.totalCount;
-      const hasAhead = comparison.ahead > 0 || submoduleCount > 0;
-      const aheadLabel =
-         submoduleCount > 0 ? `${comparison.ahead}+${submoduleCount}` : `${comparison.ahead}`;
+      const hasAhead = mainCount > 0 || submoduleCount > 0;
+      const aheadLabel = submoduleCount > 0 ? `${mainCount}+${submoduleCount}` : `${mainCount}`;
 
       let commitInfo = '';
       if (hasAhead && comparison.behind > 0) {
@@ -1330,9 +1330,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1465,9 +1465,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => c)
+                 .split('\n')
+                 .map((c) => c.trim())
+                 .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -1982,7 +1982,8 @@ async function skipEmptyCherryPick(
 async function getCommitComparison(
    git$: string | string[],
    worktreePath: string,
-   originPath: string
+   originPath: string,
+   baseCommit?: string
 ): Promise<{ ahead: number; behind: number }> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    try {
@@ -2002,8 +2003,9 @@ async function getCommitComparison(
          (async () => {
             // Count commits ahead (in worktree but not in origin)
             try {
+               const rangeStart = baseCommit || originHead;
                const aheadOutput = (
-                  await $`${gitExec} -C ${worktreePath} rev-list --count ${originHead}..${wtHead}`
+                  await $`${gitExec} -C ${worktreePath} rev-list --count ${rangeStart}..${wtHead}`
                ).stdout.trim();
                ahead = parseInt(aheadOutput, 10) || 0;
             } catch {

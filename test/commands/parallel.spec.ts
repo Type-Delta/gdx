@@ -5,6 +5,7 @@ import path from 'path';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { normalizePath } from '@/utils/utilities';
+import { stripAnsiColor } from '@/modules/graphics';
 
 describe('gdx parallel', async () => {
    const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env, resetRepo, tracker } =
@@ -702,6 +703,79 @@ describe('gdx parallel', async () => {
          expect(output).toContain('Bump submodule 2');
          expect(output).toContain('Submodule change 2');
          expect(output).toContain('Submodule change 1');
+
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+         expect(await parallel(removeCtx)).toBe(0);
+
+         await resetRepo();
+         await $`${gitExe} -C ${tmpDir} clean -fd`;
+      },
+      { timeout: 20000 }
+   );
+
+   it(
+      'should align commit counter with listed commits',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-counter');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submodulePath = 'deps/submodule-counter';
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+         const alias = 'feature-counter';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, alias);
+
+         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-counter');
+
+         await fs.writeFile(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
+         await $`${gitExe} -C ${forkSubmodulePath} add change-1.txt`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 1'}`;
+
+         await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 1'}`;
+
+         await fs.writeFile(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
+         await $`${gitExe} -C ${forkSubmodulePath} add change-2.txt`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 2'}`;
+
+         await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 2'}`;
+
+         resetCache();
+         const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
+         expect(await parallel(listCtx)).toBe(0);
+         const output = stripAnsiColor(buffer.stdout.replace(/\r/g, ''));
+         const counter = output.match(/feature-counter[\s\S]*?↑(\d+)\+(\d+)/);
+         expect(counter).toBeTruthy();
+         const numbers = counter?.slice(1, 3) ?? [];
+         const mainCount = Number(numbers[0] || 0);
+         const subCount = Number(numbers[1] || 0);
+         expect(mainCount).toBe(2);
+         expect(subCount).toBe(2);
 
          const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
          expect(await parallel(removeCtx)).toBe(0);
