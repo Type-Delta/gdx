@@ -733,4 +733,50 @@ describe('gdx parallel', async () => {
          .catch(() => false);
       expect(forkExists).toBe(false);
    });
+
+   it('should treat empty cherry-pick as non-conflict', async () => {
+      resetCache();
+      const alias = 'feature-empty-status';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, alias);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const forkGit$ = [gitExec, '-C', forkPath];
+
+      await fs.writeFile(path.join(forkPath, 'duplicate-status.txt'), 'duplicate');
+      await $`${forkGit$} add duplicate-status.txt`;
+      await $`${forkGit$} commit -m ${'Duplicate status change'}`;
+      await $`${forkGit$} reset --hard HEAD`;
+
+      await fs.writeFile(path.join(tmpDir, 'duplicate-status.txt'), 'duplicate');
+      await $`${git$} -C ${tmpDir} add duplicate-status.txt`;
+      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate status change origin'}`;
+
+      env.isTTY = false;
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+      const joinResult = await parallel(joinCtx);
+      env.isTTY = true;
+
+      expect(joinResult).toBe(0);
+      expect(buffer.stdout).not.toContain('cherry-pick --continue');
+
+      let cherryPickExitCode = 0;
+      try {
+         await $`${git$} -C ${tmpDir} rev-parse -q --verify CHERRY_PICK_HEAD`;
+      } catch (err) {
+         const typedErr = err as { exitCode?: number } | null;
+         cherryPickExitCode = typedErr?.exitCode ?? 1;
+      }
+      expect(cherryPickExitCode).not.toBe(0);
+   });
 });

@@ -7,6 +7,25 @@ import { CATPPUCCIN_VPALETTE } from '@/consts';
 /**
  * Options for configuring pager behavior.
  */
+export interface PagerAction {
+   /** Key(s) that trigger the action */
+   key: string | string[];
+   /** Action label for status bar */
+   label: string;
+   /** Action identifier to return */
+   action: string;
+}
+
+export interface PagerStatusContext {
+   statusText?: string | (() => string);
+   actions?: PagerAction[];
+}
+
+export interface PagerActionResult {
+   action: string;
+   key: string;
+}
+
 export interface PagerOptions {
    /** Whether to show line numbers. Default: false */
    showLineNumbers?: boolean;
@@ -17,7 +36,16 @@ export interface PagerOptions {
    /** Whether to show status bar at bottom. Default: true */
    showStatus?: boolean;
    /** Custom status bar format function */
-   statusFormat?: (current: number, total: number, termWidth: number) => string;
+   statusFormat?: (
+      current: number,
+      total: number,
+      termWidth: number,
+      context?: PagerStatusContext
+   ) => string;
+   /** Optional status text for the status bar */
+   statusText?: string | (() => string);
+   /** Optional actions for interactive pager sessions */
+   actions?: PagerAction[];
    /** Background color for the pager (24-bit RGB as [r, g, b]) */
    backgroundColor?: RgbVec;
    /**
@@ -49,23 +77,43 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
    lineNumberWidth: 4,
    wrapLines: true,
    showStatus: true,
-   statusFormat: (current, total, termWidth) => {
+   statusFormat: (current, total, termWidth, context) => {
       const bright = ncc('Bright');
       const normal = ncc('Normal');
+      const dim = ncc('Dim');
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
+      const statusText =
+         typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
+      const actionHint = context?.actions
+         ? context.actions
+              .map((action) => {
+                 const keys = Array.isArray(action.key) ? action.key : [action.key];
+                 const keyLabel = keys[0] ?? '';
+                 if (!keyLabel) return '';
+                 return `${bright}${keyLabel}${normal} ${action.label}`;
+              })
+              .filter(Boolean)
+              .join(` ${dim}|${normal} `)
+         : '';
+      const navHint = `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} to quit`;
+      const leftParts = [statusText, navHint, actionHint].filter(Boolean);
       return strJustify(
          [
-            `  ${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} to quit`,
-            `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? (ncc('Red') + ' (EOF)' + ncc('White')) : ''}  `
+            `  ${leftParts.join('  ')}`,
+            `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `,
          ],
-         termWidth, {
-         align: 'spacebetween',
-         filler: ' ',
-         redundancyLv: 0,
-      });
+         termWidth,
+         {
+            align: 'spacebetween',
+            filler: ' ',
+            redundancyLv: 0,
+         }
+      );
    },
    backgroundColor: CATPPUCCIN_VPALETTE.base,
    scrollSensitivity: 3,
+   statusText: '',
+   actions: [],
 };
 
 /** Cached terminal dimensions */
@@ -203,7 +251,10 @@ export class SimplePagerRenderer implements PagerRenderer {
  * @param content - The text content to display
  * @param options - Pager configuration options
  */
-export async function pager(content: string, options: PagerOptions = {}): Promise<void> {
+export async function pager(
+   content: string,
+   options: PagerOptions = {}
+): Promise<PagerActionResult | void> {
    const renderer = new SimplePagerRenderer(content, options);
    return pagerWithRenderer(renderer, options);
 }
@@ -216,7 +267,7 @@ export async function pager(content: string, options: PagerOptions = {}): Promis
 export async function pagerWithRenderer(
    renderer: PagerRenderer,
    options: PagerOptions = {}
-): Promise<void> {
+): Promise<PagerActionResult | void> {
    const opts = { ...DEFAULT_OPTIONS, ...options };
 
    // Non-TTY fallback: just print all lines
@@ -235,6 +286,7 @@ export async function pagerWithRenderer(
    let currentLine = 0;
    const totalLines = renderer.getLineCount();
    let isRunning = true;
+   let actionResult: PagerActionResult | null = null;
    const performanceSamples: number[] = [];
 
    // Hide cursor and clear screen
@@ -258,14 +310,18 @@ export async function pagerWithRenderer(
 
       // Status bar
       if (opts.showStatus) {
-         const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth);
+         const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
+            statusText: opts.statusText,
+            actions: opts.actions,
+         });
          const padding = Math.max(0, currentWidth - getDisplayWidth(statusLine));
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
-         process.stdout.write('\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + ncc());
+         process.stdout.write(
+            '\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + ncc()
+         );
       }
-      if (performanceSamples.length > 30)
-         performanceSamples.shift();
+      if (performanceSamples.length > 30) performanceSamples.shift();
       performanceSamples.push(performance.now() - startTime);
    }
 
@@ -318,10 +374,25 @@ export async function pagerWithRenderer(
       const visibleCount = currentHeight - 1;
       const maxLine = Math.max(0, renderer.getLineCount() - visibleCount);
 
+      const actionBindings = opts.actions || [];
+      if (actionBindings.length > 0) {
+         for (const action of actionBindings) {
+            const keys = Array.isArray(action.key) ? action.key : [action.key];
+            if (keys.includes(key)) {
+               actionResult = { action: action.action, key };
+               isRunning = false;
+               return;
+            }
+         }
+      }
+
       switch (key) {
          case 'q':
          case '\x03': // Ctrl+C
          case '\x1b': // Escape
+            if (actionBindings.length > 0 && !actionResult) {
+               actionResult = { action: 'abort', key };
+            }
             isRunning = false;
             break;
          case '\x1b[A': // Up arrow
@@ -384,7 +455,7 @@ export async function pagerWithRenderer(
       const checkInterval = setInterval(() => {
          if (!isRunning) {
             clearInterval(checkInterval);
-            resolve();
+            resolve(actionResult || undefined);
          }
       }, 50);
    });

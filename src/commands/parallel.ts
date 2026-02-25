@@ -21,6 +21,8 @@ import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/str
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
+import { viewDiff } from '@/modules/diff-viewer';
+import { pager, PagerActionResult } from '@/modules/pager';
 import {
    deinitSubmodules,
    getDirtySubmodules,
@@ -54,6 +56,8 @@ interface ParallelMetadata {
    baseCommit: string;
    createdAt: string;
    updatedAt?: string;
+   joinCursor?: string;
+   submoduleCursors?: Record<string, string>;
 }
 
 interface ParallelContext {
@@ -73,6 +77,17 @@ interface CommitGroup {
    commits: string[];
    totalCount: number;
    moreCount: number;
+}
+
+interface InteractiveDecisionContext {
+   git$: string | string[];
+   gitExec: string;
+   originRepoPath: string;
+   forkRepoPath: string;
+   commit: string;
+   forkAlias: string;
+   isSubmodule: boolean;
+   submodulePath?: string;
 }
 
 const PARALLEL_CONTEXT_TTL_MS = 1000;
@@ -118,10 +133,10 @@ const parallelSwitchStructure: CommandArgThunk = async ({ git$ }) => {
 const parallelJoinStructure: CommandArgThunk = async ({ git$ }) => {
    const aliases = await listParallelAliases(git$);
    return {
-      $allOf: ['--keep', '--all'],
+      $allOf: ['--keep', '--all', '-i', '--interactive'],
       '-r': { $allOf: ['--keep'] },
       '--recursive': { $allOf: ['--keep'] },
-      ...createOptionChildrenWithFlags(aliases, ['--keep', '--all']),
+      ...createOptionChildrenWithFlags(aliases, ['--keep', '--all', '-i', '--interactive']),
    };
 };
 
@@ -158,6 +173,11 @@ function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
    } catch {
       return null;
    }
+}
+
+function writeParallelMetadata(worktreePath: string, meta: ParallelMetadata): void {
+   const metaPath = path.join(worktreePath, '.git-parallel.json');
+   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
 }
 
 /**
@@ -613,8 +633,7 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
       createdAt: new Date().toISOString(),
    };
 
-   const metaPath = path.join(targetPath, '.git-parallel.json');
-   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
+   writeParallelMetadata(targetPath, metadata);
 
    quickPrint(`${ncc('Cyan')}Parallel worktree created:${ncc()} ${targetPath}`);
    if (changesOpt) {
@@ -959,15 +978,239 @@ async function printCherryPickSteps(
    }
 }
 
+function normalizePagerResult(result?: PagerActionResult | void): PagerActionResult {
+   if (!result) return { action: 'abort', key: 'q' };
+   return result;
+}
+
+async function getCommitInfo(
+   gitExec: string,
+   repoPath: string,
+   commit: string
+): Promise<{
+   hash: string;
+   authorName: string;
+   authorEmail: string;
+   authorDate: string;
+   message: string;
+}> {
+   const format = ['%H', '%an', '%ae', '%ad', '%B'].join('%n');
+   const output = (
+      await $`${gitExec} -C ${repoPath} show -s --date=iso --format=${format} ${commit}`
+   ).stdout;
+   const lines = output.split('\n');
+   const [hash, authorName, authorEmail, authorDate, ...messageLines] = lines;
+   const message = messageLines.join('\n').trimEnd();
+   return {
+      hash: hash?.trim() || commit,
+      authorName: authorName?.trim() || 'unknown',
+      authorEmail: authorEmail?.trim() || 'unknown',
+      authorDate: authorDate?.trim() || 'unknown',
+      message: message.length > 0 ? message : '(no message)',
+   };
+}
+
+async function getCherryPickPreview(options: {
+   gitExec: string;
+   originRepoPath: string;
+   forkRepoPath: string;
+   commit: string;
+}): Promise<{ diff: string; stat: string; isEmpty: boolean; warning?: string }> {
+   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   const patch = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
+      .stdout;
+
+   const tempRoot = path.join(TEMP_DIR, 'parallel-join-preview');
+   fs.mkdirSync(tempRoot, { recursive: true });
+   const tempDir = fs.mkdtempSync(path.join(tempRoot, 'index-'));
+   const tempIndex = path.join(tempDir, 'index');
+   const env = { ...process.env, GIT_INDEX_FILE: tempIndex };
+
+   try {
+      await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+      try {
+         await $({
+            env,
+            input: patch,
+         })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
+      } catch {
+         const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
+            .stdout;
+         const stat = (
+            await $`${gitExec} -C ${forkRepoPath} show --stat --format= --no-color ${commit}`
+         ).stdout;
+         return {
+            diff,
+            stat,
+            isEmpty: diff.trim().length === 0,
+            warning:
+               'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.',
+         };
+      }
+
+      const diff = (await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --no-color`)
+         .stdout;
+      const stat = (
+         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
+      ).stdout;
+      return { diff, stat, isEmpty: diff.trim().length === 0 };
+   } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+   }
+}
+
+function buildCommitPreamble(options: {
+   commitInfo: {
+      hash: string;
+      authorName: string;
+      authorEmail: string;
+      authorDate: string;
+      message: string;
+   };
+   stat: string;
+   warning?: string;
+   isEmpty: boolean;
+   isSubmodule: boolean;
+   submodulePath?: string;
+}): string[] {
+   const { commitInfo, stat, warning, isEmpty, isSubmodule, submodulePath } = options;
+   const lines: string[] = [];
+   lines.push(`Commit: ${commitInfo.hash}`);
+   lines.push(`Author: ${commitInfo.authorName} <${commitInfo.authorEmail}>`);
+   lines.push(`Date: ${commitInfo.authorDate}`);
+   if (isSubmodule && submodulePath) {
+      lines.push(`Scope: submodule ${submodulePath}`);
+   }
+   lines.push('');
+   lines.push(...commitInfo.message.split('\n').map((line) => `  ${line}`));
+
+   const trimmedStat = stat.trimEnd();
+   if (trimmedStat.length > 0) {
+      lines.push('');
+      lines.push(...trimmedStat.split('\n').map((line) => `  ${line}`));
+   }
+
+   if (warning) {
+      lines.push('');
+      lines.push(`Warning: ${warning}`);
+   }
+
+   if (isEmpty) {
+      lines.push('');
+      lines.push('Note: No changes against origin. This commit will be skipped unless applied.');
+   }
+
+   return lines;
+}
+
+async function interactiveCherryPickDecision(
+   options: InteractiveDecisionContext
+): Promise<PagerActionResult> {
+   const { gitExec, originRepoPath, forkRepoPath, commit, isSubmodule, submodulePath } = options;
+   const commitInfo = await getCommitInfo(gitExec, forkRepoPath, commit);
+   const preview = await getCherryPickPreview({
+      gitExec,
+      originRepoPath,
+      forkRepoPath,
+      commit,
+   });
+   const preambleLines = buildCommitPreamble({
+      commitInfo,
+      stat: preview.stat,
+      warning: preview.warning,
+      isEmpty: preview.isEmpty,
+      isSubmodule,
+      submodulePath,
+   });
+   const actions = [
+      { key: 'a', label: 'apply', action: 'apply' },
+      { key: 's', label: 'skip', action: 'skip' },
+      { key: 'u', label: 'undo', action: 'undo' },
+      { key: 'q', label: 'abort', action: 'abort' },
+   ];
+   const statusText = preview.isEmpty
+      ? 'Empty diff: choose skip to continue'
+      : 'Select apply/skip/undo/abort';
+
+   const diffText = preview.diff.trimEnd();
+   if (diffText.length > 0) {
+      const content = [...preambleLines, '', diffText].join('\n');
+      const result = await viewDiff(content, { statusText, actions });
+      return normalizePagerResult(result);
+   }
+
+   const content = preambleLines.join('\n');
+   const result = await pager(content, { statusText, actions, showLineNumbers: false });
+   return normalizePagerResult(result);
+}
+
+async function undoLastCherryPick(git$: string | string[], repoPath: string): Promise<boolean> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   try {
+      await $`${gitExec} -C ${repoPath} rev-parse --verify HEAD~1`;
+   } catch {
+      Logger.error('No commit available to undo.', 'parallel');
+      return false;
+   }
+
+   try {
+      await $`${gitExec} -C ${repoPath} reset --hard HEAD~1`;
+      quickPrint(`${ncc('Cyan')}Undid last cherry-picked commit in ${repoPath}.${ncc()}`);
+      return true;
+   } catch (err) {
+      Logger.error('Failed to undo last cherry-picked commit.', 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return false;
+   }
+}
+
+async function isUsableJoinCursor(
+   gitExec: string,
+   repoPath: string,
+   baseCommit: string,
+   cursor?: string
+): Promise<boolean> {
+   if (!cursor) return false;
+   const head = (await getRevParseCached(gitExec, repoPath, 'HEAD')).trim();
+   if (!head) return false;
+
+   try {
+      await $`${gitExec} -C ${repoPath} merge-base --is-ancestor ${baseCommit} ${cursor}`;
+      await $`${gitExec} -C ${repoPath} merge-base --is-ancestor ${cursor} ${head}`;
+      return true;
+   } catch {
+      return false;
+   }
+}
+
+function updateSubmoduleCursor(
+   meta: ParallelMetadata,
+   submodulePath: string,
+   rangeStart: string,
+   applied: string[],
+   explicitCursor?: string
+): void {
+   meta.submoduleCursors ??= {};
+   if (explicitCursor) {
+      meta.submoduleCursors[submodulePath] = explicitCursor;
+      return;
+   }
+   meta.submoduleCursors[submodulePath] = applied[applied.length - 1] || rangeStart;
+}
+
 async function joinWorktree(
    git$: string | string[],
    forkPath: string,
    forkAlias: string,
-   options: { keep: boolean; bringAll: boolean }
+   options: { keep: boolean; bringAll: boolean; interactive: boolean }
 ): Promise<number> {
    Logger.debug(`Joining worktree '${forkAlias}'...`, 'parallel');
 
-   const { keep, bringAll } = options;
+   const { keep, bringAll, interactive } = options;
+   const interactiveEnabled = interactive && isTTY();
+   if (interactive && !interactiveEnabled) {
+      Logger.warn('Interactive join requires a TTY. Proceeding without --interactive.', 'parallel');
+   }
    const meta = getParallelMetadata(forkPath);
    if (!meta) {
       Logger.error(
@@ -1023,6 +1266,7 @@ async function joinWorktree(
    }
 
    const baseCommit = meta.baseCommit?.trim();
+   const joinCursor = meta.joinCursor?.trim();
    if (!baseCommit) {
       spinnerCtrl.stop();
       Logger.error(
@@ -1031,6 +1275,9 @@ async function joinWorktree(
       );
       return 1;
    }
+
+   const shouldUseCursor = await isUsableJoinCursor(gitExec, forkPath, baseCommit, joinCursor);
+   const mainRangeStart = shouldUseCursor ? joinCursor! : baseCommit;
 
    let stashRef: string | null = null;
    if (forkDirty && bringAll) {
@@ -1053,13 +1300,13 @@ async function joinWorktree(
    const forkHead = forkHeadResult.trim();
    let commitList: string[];
    Logger.debug(
-      `Enumerating commits from fork '${forkAlias}' since base commit ${baseCommit}...`,
+      `Enumerating commits from fork '${forkAlias}' since ${shouldUseCursor ? 'join cursor' : 'base commit'} ${mainRangeStart}...`,
       'parallel'
    );
    spinnerCtrl.options.message = `Enumerating commits to join`;
    try {
       const output = (
-         await $`${git$} -C ${forkPath} rev-list --reverse ${baseCommit}..${forkHead}`
+         await $`${git$} -C ${forkPath} rev-list --reverse ${mainRangeStart}..${forkHead}`
       ).stdout.trim();
       commitList = output
          ? output
@@ -1077,28 +1324,98 @@ async function joinWorktree(
    }
 
    const appliedCommits: string[] = [];
+   const appliedIndices: number[] = [];
    const appliedSubmoduleCommits: string[] = [];
 
    spinnerCtrl.stop();
    Logger.debug(`Found ${commitList.length} commit(s) to cherry-pick into origin.`, 'parallel');
 
-   for (const commit of commitList) {
-      if (!commit) continue;
+   let index = 0;
+   while (index < commitList.length) {
+      const commit = commitList[index];
+      if (!commit) {
+         index++;
+         continue;
+      }
       try {
-         const applied = await applyCherryPick(git$, {
-            originRepoPath: originPath,
-            commit,
-            contextLabel: 'origin worktree',
-            forkAlias,
-            stashRef,
-         });
-         if (applied) appliedCommits.push(commit);
+         let applied = false;
+         let skipped = false;
+         if (interactiveEnabled) {
+            const interactiveResult = await interactiveCherryPickDecision({
+               git$,
+               gitExec,
+               originRepoPath: originPath,
+               forkRepoPath: forkPath,
+               commit,
+               forkAlias,
+               isSubmodule: false,
+            });
+            if (interactiveResult.action === 'abort') {
+               if (stashRef) {
+                  await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+               }
+               return 1;
+            }
+            if (interactiveResult.action === 'undo') {
+               if (appliedIndices.length === 0) {
+                  quickPrint(`${ncc('Yellow')}No commit to undo yet.${ncc()}`);
+                  continue;
+               }
+               const lastAppliedIndex = appliedIndices.pop();
+               if (lastAppliedIndex === undefined) {
+                  continue;
+               }
+               const undoResult = await undoLastCherryPick(git$, originPath);
+               if (!undoResult) {
+                  if (stashRef) {
+                     await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+                  }
+                  return 1;
+               }
+               if (appliedCommits.length > 0) {
+                  appliedCommits.pop();
+               }
+               const newCursor =
+                  lastAppliedIndex > 0 ? commitList[lastAppliedIndex - 1] : mainRangeStart;
+               meta.joinCursor = newCursor;
+               writeParallelMetadata(forkPath, meta);
+               index = Math.max(lastAppliedIndex, 0);
+               continue;
+            }
+            if (interactiveResult.action === 'skip') {
+               skipped = true;
+            } else if (interactiveResult.action === 'apply') {
+               applied = true;
+            }
+         } else {
+            applied = true;
+         }
+
+         if (applied) {
+            const appliedResult = await applyCherryPick(git$, {
+               originRepoPath: originPath,
+               commit,
+               contextLabel: 'origin worktree',
+               forkAlias,
+               stashRef,
+            });
+            if (appliedResult) {
+               appliedCommits.push(commit);
+               appliedIndices.push(index);
+            }
+            meta.joinCursor = commit;
+            writeParallelMetadata(forkPath, meta);
+         } else if (skipped) {
+            meta.joinCursor = commit;
+            writeParallelMetadata(forkPath, meta);
+         }
       } catch {
          if (stashRef) {
             await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
          }
          return 1;
       }
+      index++;
    }
 
    const submodules = await getSubmodules(git$, forkPath);
@@ -1116,11 +1433,15 @@ async function joinWorktree(
       const baseSha = await getSubmoduleBaseSha(gitExec, forkPath, baseCommit, submodule.path);
       if (!baseSha) continue;
 
+      const subCursor = meta.submoduleCursors?.[submodule.path]?.trim();
+      const useSubCursor = await isUsableJoinCursor(gitExec, forkSubPath, baseSha, subCursor);
+      const subRangeStart = useSubCursor ? subCursor! : baseSha;
+
       let subCommitList: string[] = [];
       try {
          const subHead = (await getRevParseCached(gitExec, forkSubPath, 'HEAD')).trim();
          const output = (
-            await $`${git$} -C ${forkSubPath} rev-list --reverse ${baseSha}..${subHead}`
+            await $`${git$} -C ${forkSubPath} rev-list --reverse ${subRangeStart}..${subHead}`
          ).stdout.trim();
          subCommitList = output
             ? output
@@ -1145,8 +1466,14 @@ async function joinWorktree(
          `Found ${subCommitList.length} commit(s) to cherry-pick for submodule '${submodule.path}'.`,
          'parallel'
       );
-      for (const commit of subCommitList) {
-         if (!commit) continue;
+      const subAppliedIndices: number[] = [];
+      let subIndex = 0;
+      while (subIndex < subCommitList.length) {
+         const commit = subCommitList[subIndex];
+         if (!commit) {
+            subIndex++;
+            continue;
+         }
          try {
             try {
                await $`${gitExec} -c protocol.file.allow=always -C ${originSubPath} fetch ${forkSubPath} ${commit}`;
@@ -1162,20 +1489,98 @@ async function joinWorktree(
                return 1;
             }
 
-            const applied = await applyCherryPick(git$, {
-               originRepoPath: originSubPath,
-               commit,
-               contextLabel: `submodule ${submodule.path}`,
-               forkAlias,
-               stashRef,
-            });
-            if (applied) appliedSubmoduleCommits.push(commit);
+            let applied = false;
+            let skipped = false;
+            if (interactiveEnabled) {
+               const interactiveResult = await interactiveCherryPickDecision({
+                  git$,
+                  gitExec,
+                  originRepoPath: originSubPath,
+                  forkRepoPath: forkSubPath,
+                  commit,
+                  forkAlias,
+                  isSubmodule: true,
+                  submodulePath: submodule.path,
+               });
+               if (interactiveResult.action === 'abort') {
+                  if (stashRef) {
+                     await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+                  }
+                  return 1;
+               }
+               if (interactiveResult.action === 'undo') {
+                  if (subAppliedIndices.length === 0) {
+                     quickPrint(`${ncc('Yellow')}No commit to undo yet.${ncc()}`);
+                     continue;
+                  }
+                  const lastAppliedIndex = subAppliedIndices.pop();
+                  if (lastAppliedIndex === undefined) {
+                     continue;
+                  }
+                  const undoResult = await undoLastCherryPick(git$, originSubPath);
+                  if (!undoResult) {
+                     if (stashRef) {
+                        await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
+                     }
+                     return 1;
+                  }
+                  if (appliedSubmoduleCommits.length > 0) {
+                     appliedSubmoduleCommits.pop();
+                  }
+                  const newCursor =
+                     lastAppliedIndex > 0 ? subCommitList[lastAppliedIndex - 1] : subRangeStart;
+                  meta.submoduleCursors ??= {};
+                  meta.submoduleCursors[submodule.path] = newCursor;
+                  writeParallelMetadata(forkPath, meta);
+                  subIndex = Math.max(lastAppliedIndex, 0);
+                  continue;
+               }
+               if (interactiveResult.action === 'skip') {
+                  skipped = true;
+               } else if (interactiveResult.action === 'apply') {
+                  applied = true;
+               }
+            } else {
+               applied = true;
+            }
+
+            if (applied) {
+               const appliedResult = await applyCherryPick(git$, {
+                  originRepoPath: originSubPath,
+                  commit,
+                  contextLabel: `submodule ${submodule.path}`,
+                  forkAlias,
+                  stashRef,
+               });
+               if (appliedResult) {
+                  appliedSubmoduleCommits.push(commit);
+                  subAppliedIndices.push(subIndex);
+               }
+               updateSubmoduleCursor(
+                  meta,
+                  submodule.path,
+                  subRangeStart,
+                  appliedSubmoduleCommits,
+                  commit
+               );
+               writeParallelMetadata(forkPath, meta);
+            } else if (skipped) {
+               updateSubmoduleCursor(
+                  meta,
+                  submodule.path,
+                  subRangeStart,
+                  appliedSubmoduleCommits,
+                  commit
+               );
+               writeParallelMetadata(forkPath, meta);
+            }
          } catch {
             if (stashRef) {
                await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
             }
             return 1;
          }
+         subIndex++;
       }
    }
 
@@ -1243,12 +1648,13 @@ async function joinWorktree(
          if (newBase) {
             meta.baseCommit = newBase;
             meta.updatedAt = new Date().toISOString();
-            const metaPath = path.join(forkPath, '.git-parallel.json');
-            fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
          }
       } catch {
          // Ignore metadata update errors
       }
+      meta.joinCursor = undefined;
+      meta.submoduleCursors = undefined;
+      writeParallelMetadata(forkPath, meta);
       quickPrint(
          `${ncc('Cyan')}Fork '${forkAlias}' merged into origin. Worktree kept at:${ncc()} ${forkPath}`
       );
@@ -1285,7 +1691,11 @@ async function cmdJoinRecursive(
       const forkAlias = meta.alias || wt.name;
       hasAnyWt = true;
 
-      const result = await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll: false });
+      const result = await joinWorktree(git$, forkPath, forkAlias, {
+         keep,
+         bringAll: false,
+         interactive: false,
+      });
       if (result !== 0) return result;
    }
 
@@ -1304,7 +1714,7 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
    if (!ctx) return 1;
 
    // Parse arguments to separate alias from flags
-   const validFlags = ['--keep', '--all', '-r', '--recursive'];
+   const validFlags = ['--keep', '--all', '--interactive', '-i', '-r', '--recursive'];
    const flags: Set<string> = new Set();
    let targetAlias: string | null = null;
 
@@ -1323,10 +1733,20 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
 
    const keep = flags.has('--keep');
    const bringAll = flags.has('--all');
+   const interactive = flags.has('--interactive') || flags.has('-i');
    const recursive = flags.has('-r') || flags.has('--recursive');
 
    if (recursive && bringAll) {
       Logger.error('Recursive join does not support --all. Join forks individually.', 'parallel');
+      showUsage();
+      return 1;
+   }
+
+   if (recursive && interactive) {
+      Logger.error(
+         'Recursive join does not support --interactive. Join forks individually.',
+         'parallel'
+      );
       showUsage();
       return 1;
    }
@@ -1383,7 +1803,7 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
             'parallel'
          );
          Logger.info(
-            'Usage: git parallel join [<alias>] [--keep|--all] | git parallel join -r [--keep]',
+            'Usage: git parallel join [<alias>] [--keep|--all|--interactive] | git parallel join -r [--keep]',
             'parallel'
          );
          return 1;
@@ -1393,7 +1813,7 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
       forkAlias = ctx.alias!;
    }
 
-   return await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll });
+   return await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll, interactive });
 }
 
 /**
@@ -1726,10 +2146,15 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
    }
 
    const inputCommand = args[1].toLowerCase();
-   const { match: subCommand, candidates } = progressiveMatch(
-      inputCommand,
-      ['fork', 'list', 'open', 'switch', 'join', 'remove', 'help']
-   );
+   const { match: subCommand, candidates } = progressiveMatch(inputCommand, [
+      'fork',
+      'list',
+      'open',
+      'switch',
+      'join',
+      'remove',
+      'help',
+   ]);
    const remaining = args.slice(2);
 
    switch (subCommand) {
@@ -1788,7 +2213,7 @@ getting the fork ready for work in no time.
 
 ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
-- ${cyan}join [<alias>] [--keep|--all]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes.
+- ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
 - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
 - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
@@ -1816,7 +2241,7 @@ ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [--move|--mirror] [--no-in
 ${cyan}${EXECUTABLE_NAME} parallel list${reset}
 ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
-${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all]${reset}
+${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all|-i|--interactive]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
 ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
@@ -1827,6 +2252,7 @@ Examples:
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
    ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${reset + dim}# Preview and pick commits${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}
    ${cyan}${EXECUTABLE_NAME} parallel remove -r ${reset + dim}# Remove all forks for this branch${reset}`,
          Math.min(100, global.terminalWidth - 4),

@@ -5,10 +5,10 @@ import { CheckCache, Err, yuString } from '@lib/Tools';
 
 import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
+import { stripAnsiColor } from '@/modules/graphics';
 
 import Logger from '../utils/logger';
 import { $, $inherit, createAbortableExec } from './shell';
-import { ExecaError } from 'execa';
 import { ArgsSet } from './arguments';
 import { Result } from '@/common/types';
 
@@ -1084,20 +1084,43 @@ export async function initSubmodules(git$: string | string[], worktreePath: stri
 /**
  * Determines if an error is due to an empty cherry-pick.
  *
- * This function expects an error object of type ExecaError from the 'execa' library.
+ * This function accepts either an ExecaError or a raw error/string output.
  *
  * @param err - The error to evaluate.
  * @returns True if the error indicates an empty cherry-pick, false otherwise.
  */
 export function isEmptyCherryPickError(err: unknown): boolean {
-   if (!(err instanceof ExecaError)) return false;
-   const message = `${err.stderr || ''}\n${err.stdout || ''}\n${err.message || ''}`.toLowerCase();
+   const message = normalizeGitErrorText(err);
+   if (!message) return false;
    return (
       message.includes('the previous cherry-pick is now empty') ||
-      message.includes('the patch is empty') ||
+      message.includes('the previous cherry-pick is empty') ||
       message.includes('previous cherry-pick is now empty') ||
-      message.includes('cherry-pick is now empty')
+      message.includes('previous cherry-pick is empty') ||
+      message.includes('cherry-pick is now empty') ||
+      message.includes('cherry-pick is empty') ||
+      message.includes('the patch is empty') ||
+      message.includes('patch is empty')
    );
+}
+
+function normalizeGitErrorText(err: unknown): string {
+   if (!err) return '';
+   if (typeof err === 'string') return stripAnsiColor(err).toLowerCase();
+   const typedErr = err as { stdout?: unknown; stderr?: unknown; message?: unknown } | null;
+   const parts = [typedErr?.stderr, typedErr?.stdout, typedErr?.message]
+      .map((part) => formatGitOutput(part))
+      .filter((part) => part.length > 0);
+   if (parts.length === 0) return '';
+   const combined = parts.join('\n');
+   return stripAnsiColor(combined).toLowerCase();
+}
+
+function formatGitOutput(output: unknown): string {
+   if (!output) return '';
+   if (typeof output === 'string') return output;
+   if (output instanceof Uint8Array) return new TextDecoder().decode(output);
+   return String(output);
 }
 
 /**

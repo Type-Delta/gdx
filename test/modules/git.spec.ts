@@ -2,7 +2,7 @@ import { afterAll, describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { deinitSubmodules, getMainWorktreeRoot } from '@/modules/git';
+import { deinitSubmodules, getMainWorktreeRoot, isEmptyCherryPickError } from '@/modules/git';
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 
 describe('git module', async () => {
@@ -61,5 +61,26 @@ describe('git module', async () => {
 
       const entries = await fs.readdir(submodulePath);
       expect(entries.length).toBe(0);
+   });
+
+   it('should detect empty cherry-pick errors from output text', async () => {
+      const err = {
+         stderr: 'The previous cherry-pick is now empty, possibly due to conflict resolution.',
+      };
+      expect(isEmptyCherryPickError(err)).toBe(true);
+   });
+
+   it('should detect empty cherry-pick errors with ANSI output', async () => {
+      const err = {
+         stderr: '\u001b[31mThe previous cherry-pick is now empty\u001b[0m',
+      };
+      expect(isEmptyCherryPickError(err)).toBe(true);
+   });
+
+   it('should not treat conflict guidance as empty cherry-pick', async () => {
+      const err = {
+         stderr: 'After resolving the conflicts, mark the corrected paths with git add',
+      };
+      expect(isEmptyCherryPickError(err)).toBe(false);
    });
 });

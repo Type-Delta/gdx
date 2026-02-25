@@ -1,4 +1,4 @@
-import { Err, ncc, strWrap } from '@lib/Tools';
+import { Err, ncc, strJustify, strWrap } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
 import * as fs from '@/modules/fs';
 
@@ -10,6 +10,7 @@ import {
    getTerminalHeight,
    clearTerminalCache,
    pager,
+   PagerActionResult,
 } from './pager';
 import { bgRgb, colorMix, fgRgb, getDisplayWidth, RgbVec, stripAnsiColor } from './graphics';
 import Logger from '@/utils/logger';
@@ -354,9 +355,40 @@ export class DiffViewerRenderer implements PagerRenderer {
          wrapLines: true,
          showStatus: true,
          theme: TUI_THEME,
-         statusFormat: (current, total) => {
+         statusFormat: (current, total, termWidth, context) => {
+            const bright = ncc('Bright');
+            const normal = ncc('Normal');
+            const dim = ncc('Dim');
             const endLine = Math.min(current + getTerminalHeight() - 2, total);
-            return `lines ${current}-${endLine} of ${total}`;
+            const statusText =
+               typeof context?.statusText === 'function'
+                  ? context.statusText()
+                  : context?.statusText;
+            const actionHint = context?.actions
+               ? context.actions
+                    .map((action) => {
+                       const keys = Array.isArray(action.key) ? action.key : [action.key];
+                       const keyLabel = keys[0] ?? '';
+                       if (!keyLabel) return '';
+                       return `${bright}${keyLabel}${normal} ${action.label}`;
+                    })
+                    .filter(Boolean)
+                    .join(` ${dim}|${normal} `)
+               : '';
+            const navHint = `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} to quit`;
+            const leftParts = [statusText, navHint, actionHint].filter(Boolean);
+            return strJustify(
+               [
+                  `  ${leftParts.join('  ')}`,
+                  `lines ${bright}${current}-${endLine}${normal} of ${bright}${total}${endLine === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `,
+               ],
+               termWidth,
+               {
+                  align: 'spacebetween',
+                  filler: ' ',
+                  redundancyLv: 0,
+               }
+            );
          },
          backgroundColor: CATPPUCCIN_VPALETTE.mantle,
          workingDir: undefined,
@@ -593,7 +625,10 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 }
 
-export async function viewDiff(diffText: string, options: DiffViewerOptions = {}): Promise<void> {
+export async function viewDiff(
+   diffText: string,
+   options: DiffViewerOptions = {}
+): Promise<PagerActionResult | void> {
    if (!canUseDiffViewer()) {
       Logger.warn(
          'Diff viewer is not supported in this environment. Falling back to plain output.',
