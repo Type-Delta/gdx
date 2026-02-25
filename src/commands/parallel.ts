@@ -18,7 +18,13 @@ import {
 import { normalizePath, progressiveMatch, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE, CATPPUCCIN_VPALETTE } from '@/consts';
+import {
+   EXECUTABLE_NAME,
+   GDX_RESULT_FILE,
+   TEMP_DIR,
+   GDX_VPALETTE,
+   CATPPUCCIN_VPALETTE,
+} from '@/consts';
 import { _2PointGradient, fgRgb } from '@/modules/graphics';
 import global from '@/global';
 import { viewDiff } from '@/modules/diff-viewer';
@@ -77,6 +83,11 @@ interface CommitGroup {
    commits: string[];
    totalCount: number;
    moreCount: number;
+}
+
+interface ConflictInfo {
+   files: string[];
+   counts?: Record<string, number>;
 }
 
 interface InteractiveDecisionContext {
@@ -860,25 +871,25 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1035,6 +1046,7 @@ async function getCherryPickPreview(options: {
    isEmpty: boolean;
    warning?: string;
    appliedPatch?: boolean;
+   conflictInfo?: ConflictInfo;
 }> {
    const { gitExec, originRepoPath, forkRepoPath, commit, spinner } = options;
 
@@ -1058,6 +1070,12 @@ async function getCherryPickPreview(options: {
          })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
          appliedPatch = true;
       } catch {
+         // Ignore here; we'll fall back to showing the original commit diff below.
+      }
+
+      const conflictInfo = await getIndexConflictInfo(gitExec, originRepoPath, env);
+
+      if (!appliedPatch) {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
             .stdout;
          const stat = (
@@ -1070,6 +1088,7 @@ async function getCherryPickPreview(options: {
             warning:
                'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.',
             appliedPatch: false,
+            conflictInfo,
          };
       }
 
@@ -1078,10 +1097,76 @@ async function getCherryPickPreview(options: {
       const stat = (
          await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
       ).stdout;
-      return { diff, stat, isEmpty: diff.trim().length === 0, appliedPatch };
+      return {
+         diff,
+         stat,
+         isEmpty: diff.trim().length === 0,
+         appliedPatch,
+         conflictInfo,
+      };
    } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
    }
+}
+
+async function getIndexConflictInfo(
+   gitExec: string,
+   repoPath: string,
+   env: NodeJS.ProcessEnv
+): Promise<ConflictInfo | undefined> {
+   let output = '';
+   try {
+      output = (
+         await $({ env })`${gitExec} -C ${repoPath} diff --cached --name-only --diff-filter=U`
+      ).stdout.trim();
+   } catch {
+      return undefined;
+   }
+
+   const files = output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+   if (files.length === 0) return undefined;
+
+   let counts: Record<string, number> | undefined;
+   try {
+      const combinedDiff = (
+         await $({ env })`${gitExec} -C ${repoPath} diff --cached --cc --no-color`
+      ).stdout;
+      counts = parseCombinedConflictCounts(combinedDiff);
+   } catch {
+      counts = undefined;
+   }
+
+   if (counts) {
+      const hasCounts = files.every((file) => typeof counts?.[file] === 'number');
+      if (!hasCounts) counts = undefined;
+   }
+
+   return { files, counts };
+}
+
+function parseCombinedConflictCounts(diffText: string): Record<string, number> {
+   const counts: Record<string, number> = {};
+   let currentFile: string | null = null;
+   const lines = diffText.split('\n');
+
+   for (const line of lines) {
+      if (line.startsWith('diff --cc ')) {
+         currentFile = line.slice('diff --cc '.length).trim();
+         continue;
+      }
+      if (line.startsWith('diff --combined ')) {
+         currentFile = line.slice('diff --combined '.length).trim();
+         continue;
+      }
+      if (line.startsWith('@@@') && currentFile) {
+         counts[currentFile] = (counts[currentFile] || 0) + 1;
+      }
+   }
+
+   return counts;
 }
 
 function buildCommitPreamble(options: {
@@ -1097,8 +1182,9 @@ function buildCommitPreamble(options: {
    isEmpty: boolean;
    isSubmodule: boolean;
    submodulePath?: string;
+   conflictInfo?: ConflictInfo;
 }): string[] {
-   const { commitInfo, stat, warning, isEmpty, isSubmodule, submodulePath } = options;
+   const { commitInfo, stat, warning, isEmpty, isSubmodule, submodulePath, conflictInfo } = options;
    const lines: string[] = [];
    lines.push(`Commit: ${commitInfo.hash}`);
    lines.push(`Author: ${commitInfo.authorName} <${commitInfo.authorEmail}>`);
@@ -1109,7 +1195,8 @@ function buildCommitPreamble(options: {
    lines.push('');
    lines.push(...commitInfo.message.split('\n').map((line) => `  ${line}`));
 
-   const trimmedStat = stat.trimEnd()
+   const trimmedStat = stat
+      .trimEnd()
       .replace(/(\++)/g, `${ncc('Green')}$1${ncc()}`)
       .replace(/(-+)/g, `${ncc('Red')}$1${ncc()}`);
    if (trimmedStat.length > 0) {
@@ -1119,12 +1206,46 @@ function buildCommitPreamble(options: {
 
    if (warning) {
       lines.push('');
-      lines.push(`  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`); // TODO: make a theme service to handle this kind of thing
+      lines.push(
+         `  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+      ); // TODO: make a theme service to handle this kind of thing
+   }
+
+   const conflictLines = formatConflictSummary(conflictInfo);
+   if (conflictLines.length > 0) {
+      lines.push('');
+      lines.push(...conflictLines);
    }
 
    if (isEmpty) {
       lines.push('');
-      lines.push(`  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
+      lines.push(
+         `  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+      );
+   }
+
+   return lines;
+}
+
+function formatConflictSummary(conflictInfo?: ConflictInfo): string[] {
+   if (!conflictInfo || conflictInfo.files.length === 0) return [];
+
+   const lines: string[] = ['Conflicts:'];
+   const { files, counts } = conflictInfo;
+   const hasCounts = counts && files.every((file) => typeof counts?.[file] === 'number');
+
+   if (hasCounts && counts) {
+      const maxNameLength = Math.max(...files.map((file) => file.length));
+      for (const file of files) {
+         const count = counts[file] ?? 0;
+         const label = count === 1 ? 'conflict' : 'conflicts';
+         lines.push(`  ${padEnd(file, maxNameLength)} | ${count} ${label}`);
+      }
+      return lines;
+   }
+
+   for (const file of files) {
+      lines.push(`  ${file}`);
    }
 
    return lines;
@@ -1153,6 +1274,7 @@ async function interactiveCherryPickDecision(
       isEmpty: preview.isEmpty,
       isSubmodule,
       submodulePath,
+      conflictInfo: preview.conflictInfo,
    });
    const actions = [
       { key: 'a', label: 'apply', action: 'apply' },
@@ -1160,13 +1282,10 @@ async function interactiveCherryPickDecision(
       { key: 'u', label: 'undo', action: 'undo' },
       { key: 'q', label: 'abort', action: 'abort' },
    ];
-   let statusText = preview.isEmpty
-      ? 'Empty diff: choose skip to continue'
-      : '';
+   let statusText = preview.isEmpty ? 'Empty diff: choose skip to continue' : '';
    if (preview.appliedPatch) {
       statusText = ncc('Green') + ncc('White') + ncc('Bright') + ' CLEAN ' + ncc();
-   }
-   else {
+   } else {
       statusText = ncc('BgRed') + ncc('White') + ncc('Bright') + ' CONFLICT ' + ncc();
    }
 
@@ -1343,9 +1462,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1478,9 +1597,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => c)
+                 .split('\n')
+                 .map((c) => c.trim())
+                 .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -1931,7 +2050,12 @@ async function applyCherryPick(
                   printGitResult(result);
                   return true;
                } catch (continueErr) {
-                  const shouldSkip = await skipEmptyCherryPick(git$, originRepoPath, continueErr, contextLabel);
+                  const shouldSkip = await skipEmptyCherryPick(
+                     git$,
+                     originRepoPath,
+                     continueErr,
+                     contextLabel
+                  );
                   if (shouldSkip) return false;
 
                   printGitResult(getGitErrorOutput(continueErr));
