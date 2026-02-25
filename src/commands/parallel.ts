@@ -831,7 +831,10 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    for (const wt of worktrees) {
       const wtPath = path.join(ctx.parallelRoot, wt.name);
       const meta = getParallelMetadata(wtPath);
-      if (!meta) continue; // Skip invalid worktrees
+      if (!meta) {
+         Logger.debug(`Skipping worktree at '${wtPath}' due to missing or invalid metadata.`, 'parallel');
+         continue;
+      }
 
       const aliasLabel = meta?.alias || wt.name;
       const baseCommit = meta.baseCommit?.trim();
@@ -850,7 +853,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             ? getCommitRangeLog({
                gitExec,
                repoPath: wtPath,
-               range: `${baseCommit}..HEAD`,
+               range: `${meta.joinCursor ?? baseCommit}..HEAD`,
                maxCount: maxLogCount,
                formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
             })
@@ -861,8 +864,9 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
                   git$,
                   gitExec,
                   worktreePath: wtPath,
-                  baseCommit,
+                  baseCommit: meta.joinCursor ?? baseCommit,
                   maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
                },
                spinnerCtrl
             )
@@ -870,7 +874,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       ]);
 
       const isDirty = statusOutput.length > 0;
-      const baseShort = baseCommit ? baseCommit.slice(0, 7) : 'unknown';
+      const baseShort = baseCommit ? (meta.joinCursor ?? baseCommit).slice(0, 7) : 'unknown';
 
       const submoduleCount = submoduleLog.totalCount;
       const hasAhead = comparison.ahead > 0 || submoduleCount > 0;
@@ -907,7 +911,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          if (submoduleLog.groups.length > 0) {
             const groups: CommitGroup[] = [
                {
-                  label: 'main',
+                  label: ncc('Dim') + '[main]' + ncc(),
                   commits: mainLog.commits,
                   totalCount: mainLog.totalCount,
                   moreCount: mainLog.moreCount,
@@ -2028,10 +2032,11 @@ async function getSubmoduleCommitGroups(
       worktreePath: string;
       baseCommit: string;
       maxCount?: number;
+      submoduleCursors?: Record<string, string>;
    },
    spinner?: SpinnerContoller
 ): Promise<{ groups: CommitGroup[]; totalCount: number }> {
-   const { git$, gitExec, worktreePath, baseCommit, maxCount } = options;
+   const { git$, gitExec, worktreePath, baseCommit, maxCount, submoduleCursors } = options;
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return { groups: [], totalCount: 0 };
 
@@ -2044,7 +2049,8 @@ async function getSubmoduleCommitGroups(
       if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
 
       if (spinner) spinner.options.message = `Collecting submodule '${submodule.path}'...`;
-      const baseSha = await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
+      const baseSha = submoduleCursors?.[submodule.path] ??
+         await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
       if (!baseSha) continue;
 
       const range = `${baseSha}..HEAD`;
