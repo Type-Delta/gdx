@@ -22,7 +22,7 @@ import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE } from '@/cons
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { viewDiff } from '@/modules/diff-viewer';
-import { pager, PagerActionResult } from '@/modules/pager';
+import { PagerActionResult } from '@/modules/pager';
 import {
    deinitSubmodules,
    getDirtySubmodules,
@@ -832,13 +832,22 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const wtPath = path.join(ctx.parallelRoot, wt.name);
       const meta = getParallelMetadata(wtPath);
       if (!meta) {
-         Logger.debug(`Skipping worktree at '${wtPath}' due to missing or invalid metadata.`, 'parallel');
+         Logger.debug(
+            `Skipping worktree at '${wtPath}' due to missing or invalid metadata.`,
+            'parallel'
+         );
          continue;
       }
 
       const aliasLabel = meta?.alias || wt.name;
       const baseCommit = meta.baseCommit?.trim();
+      const joinCursor = meta.joinCursor?.trim();
       hasAnyWt = true;
+
+      const mainRangeStart =
+         baseCommit && (await isUsableJoinCursor(gitExec, wtPath, baseCommit, joinCursor))
+            ? joinCursor!
+            : baseCommit;
 
       const spinnerCtrl = spinner({ message: `Gatering information for ${aliasLabel}...` });
       const maxLogCount = isShortOutput ? 3 : undefined;
@@ -849,11 +858,11 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          ),
          // Get commit comparison with origin
          getCommitComparison(git$, wtPath, ctx.originPath),
-         baseCommit
+         mainRangeStart
             ? getCommitRangeLog({
                gitExec,
                repoPath: wtPath,
-               range: `${meta.joinCursor ?? baseCommit}..HEAD`,
+               range: `${mainRangeStart}..HEAD`,
                maxCount: maxLogCount,
                formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
             })
@@ -864,7 +873,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
                   git$,
                   gitExec,
                   worktreePath: wtPath,
-                  baseCommit: meta.joinCursor ?? baseCommit,
+                  baseCommit,
                   maxCount: maxLogCount,
                   submoduleCursors: meta.submoduleCursors,
                },
@@ -874,7 +883,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       ]);
 
       const isDirty = statusOutput.length > 0;
-      const baseShort = baseCommit ? (meta.joinCursor ?? baseCommit).slice(0, 7) : 'unknown';
+      const baseShort = mainRangeStart ? mainRangeStart.slice(0, 7) : 'unknown';
 
       const submoduleCount = submoduleLog.totalCount;
       const hasAhead = comparison.ahead > 0 || submoduleCount > 0;
@@ -911,7 +920,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          if (submoduleLog.groups.length > 0) {
             const groups: CommitGroup[] = [
                {
-                  label: ncc('Dim') + '[main]' + ncc(),
+                  label: `${ncc('Dim')}[main]${ncc()}`,
                   commits: mainLog.commits,
                   totalCount: mainLog.totalCount,
                   moreCount: mainLog.moreCount,
@@ -1019,7 +1028,13 @@ async function getCherryPickPreview(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
-}): Promise<{ diff: string; stat: string; isEmpty: boolean; warning?: string }> {
+}): Promise<{
+   diff: string;
+   stat: string;
+   isEmpty: boolean;
+   warning?: string;
+   appliedPatch?: boolean;
+}> {
    const { gitExec, originRepoPath, forkRepoPath, commit } = options;
    const patch = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
       .stdout;
@@ -1032,11 +1047,13 @@ async function getCherryPickPreview(options: {
 
    try {
       await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+      let appliedPatch = false;
       try {
          await $({
             env,
             input: patch,
          })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
+         appliedPatch = true;
       } catch {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
             .stdout;
@@ -1049,6 +1066,7 @@ async function getCherryPickPreview(options: {
             isEmpty: diff.trim().length === 0,
             warning:
                'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.',
+            appliedPatch: false,
          };
       }
 
@@ -1057,7 +1075,7 @@ async function getCherryPickPreview(options: {
       const stat = (
          await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
       ).stdout;
-      return { diff, stat, isEmpty: diff.trim().length === 0 };
+      return { diff, stat, isEmpty: diff.trim().length === 0, appliedPatch };
    } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
    }
@@ -1132,19 +1150,17 @@ async function interactiveCherryPickDecision(
       { key: 'u', label: 'undo', action: 'undo' },
       { key: 'q', label: 'abort', action: 'abort' },
    ];
-   const statusText = preview.isEmpty
+   let statusText = preview.isEmpty
       ? 'Empty diff: choose skip to continue'
       : 'Select apply/skip/undo/abort';
-
-   const diffText = preview.diff.trimEnd();
-   if (diffText.length > 0) {
-      const content = [...preambleLines, '', diffText].join('\n');
-      const result = await viewDiff(content, { statusText, actions });
-      return normalizePagerResult(result);
+   if (preview.appliedPatch === false) {
+      statusText = 'Preview may conflict with origin HEAD';
    }
 
-   const content = preambleLines.join('\n');
-   const result = await pager(content, { statusText, actions, showLineNumbers: false });
+   const diffText = preview.diff.trimEnd();
+   const content =
+      diffText.length > 0 ? [...preambleLines, '', diffText].join('\n') : preambleLines.join('\n');
+   const result = await viewDiff(content, { statusText, actions });
    return normalizePagerResult(result);
 }
 
@@ -1406,9 +1422,9 @@ async function joinWorktree(
             if (appliedResult) {
                appliedCommits.push(commit);
                appliedIndices.push(index);
+               meta.joinCursor = commit;
+               writeParallelMetadata(forkPath, meta);
             }
-            meta.joinCursor = commit;
-            writeParallelMetadata(forkPath, meta);
          } else if (skipped) {
             meta.joinCursor = commit;
             writeParallelMetadata(forkPath, meta);
@@ -2049,11 +2065,22 @@ async function getSubmoduleCommitGroups(
       if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
 
       if (spinner) spinner.options.message = `Collecting submodule '${submodule.path}'...`;
-      const baseSha = submoduleCursors?.[submodule.path] ??
-         await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
+      const baseSha = await getSubmoduleBaseSha(gitExec, worktreePath, baseCommit, submodule.path);
       if (!baseSha) continue;
 
-      const range = `${baseSha}..HEAD`;
+      let rangeStart = baseSha;
+      const subCursor = submoduleCursors?.[submodule.path];
+      if (subCursor) {
+         const isCursorValid = await isUsableJoinCursor(
+            gitExec,
+            submoduleRepoPath,
+            baseSha,
+            subCursor
+         );
+         if (isCursorValid) rangeStart = subCursor;
+      }
+
+      const range = `${rangeStart}..HEAD`;
       const logResult = await getCommitRangeLog({
          gitExec,
          repoPath: submoduleRepoPath,
