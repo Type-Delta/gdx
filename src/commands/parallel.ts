@@ -860,25 +860,25 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${mainRangeStart}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${mainRangeStart}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                    submoduleCursors: meta.submoduleCursors,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1028,6 +1028,7 @@ async function getCherryPickPreview(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
+   spinner?: SpinnerContoller;
 }): Promise<{
    diff: string;
    stat: string;
@@ -1035,7 +1036,9 @@ async function getCherryPickPreview(options: {
    warning?: string;
    appliedPatch?: boolean;
 }> {
-   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   const { gitExec, originRepoPath, forkRepoPath, commit, spinner } = options;
+
+   if (spinner) spinner.options.message = 'Emulating cherry-pick...';
    const patch = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
       .stdout;
 
@@ -1058,7 +1061,7 @@ async function getCherryPickPreview(options: {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
             .stdout;
          const stat = (
-            await $`${gitExec} -C ${forkRepoPath} show --stat --format= --no-color ${commit}`
+            await $`${gitExec} -C ${forkRepoPath} ${forceColorArgs()} show --stat --format= ${commit}`
          ).stdout;
          return {
             diff,
@@ -1073,7 +1076,7 @@ async function getCherryPickPreview(options: {
       const diff = (await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --no-color`)
          .stdout;
       const stat = (
-         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
+         await $({ env })`${gitExec} -C ${originRepoPath} ${forceColorArgs()} diff --cached --stat`
       ).stdout;
       return { diff, stat, isEmpty: diff.trim().length === 0, appliedPatch };
    } finally {
@@ -1109,17 +1112,17 @@ function buildCommitPreamble(options: {
    const trimmedStat = stat.trimEnd();
    if (trimmedStat.length > 0) {
       lines.push('');
-      lines.push(...trimmedStat.split('\n').map((line) => `  ${line}`));
+      lines.push(...trimmedStat.split('\n').map((line) => `   ${line}`));
    }
 
    if (warning) {
       lines.push('');
-      lines.push(`Warning: ${warning}`);
+      lines.push(`  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc()}`);
    }
 
    if (isEmpty) {
       lines.push('');
-      lines.push('Note: No changes against origin. This commit will be skipped unless applied.');
+      lines.push(`  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc()}`);
    }
 
    return lines;
@@ -1129,13 +1132,18 @@ async function interactiveCherryPickDecision(
    options: InteractiveDecisionContext
 ): Promise<PagerActionResult> {
    const { gitExec, originRepoPath, forkRepoPath, commit, isSubmodule, submodulePath } = options;
+
+   const spinnerCtrl = spinner({ message: 'Preparing cherry-pick preview...' });
    const commitInfo = await getCommitInfo(gitExec, forkRepoPath, commit);
    const preview = await getCherryPickPreview({
       gitExec,
       originRepoPath,
       forkRepoPath,
       commit,
+      spinner: spinnerCtrl,
    });
+   spinnerCtrl.stop();
+
    const preambleLines = buildCommitPreamble({
       commitInfo,
       stat: preview.stat,
@@ -1152,9 +1160,12 @@ async function interactiveCherryPickDecision(
    ];
    let statusText = preview.isEmpty
       ? 'Empty diff: choose skip to continue'
-      : 'Select apply/skip/undo/abort';
-   if (preview.appliedPatch === false) {
-      statusText = 'Preview may conflict with origin HEAD';
+      : '';
+   if (preview.appliedPatch) {
+      statusText = ncc('Green') + ncc('White') + ncc('Bright') + ' CLEAN ' + ncc();
+   }
+   else {
+      statusText = ncc('BgRed') + ncc('White') + ncc('Bright') + ' CONFLICT ' + ncc();
    }
 
    const diffText = preview.diff.trimEnd();
@@ -1330,9 +1341,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1465,9 +1476,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-                 .split('\n')
-                 .map((c) => c.trim())
-                 .filter((c) => c)
+               .split('\n')
+               .map((c) => c.trim())
+               .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -1863,8 +1874,8 @@ async function applyCherryPick(
       printGitResult(result);
       return true;
    } catch (err) {
-      const didSkip = await skipEmptyCherryPick(git$, originRepoPath, err, contextLabel);
-      if (didSkip) return false;
+      const shouldSkip = await skipEmptyCherryPick(git$, originRepoPath, err, contextLabel);
+      if (shouldSkip) return false;
 
       printGitResult(getGitErrorOutput(err));
 
@@ -1890,54 +1901,72 @@ async function applyCherryPick(
       );
 
       while (true) {
-         const response = (await $prompt('Type c to continue, a to abort (c|a): ')).toLowerCase();
+         const response = (
+            await $prompt('Type c to continue, a to abort, s to skip (c|a|s): ')
+         ).toLowerCase();
 
-         if (
-            response === 'c' ||
-            response === 'continue' ||
-            response === 'y' ||
-            response === 'yes'
-         ) {
-            try {
-               await stageResolvedConflicts(git$, originRepoPath);
-               const result =
-                  await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --continue`;
-               printGitResult(result);
-               return true;
-            } catch (continueErr) {
-               printGitResult(getGitErrorOutput(continueErr));
-               const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
-               if (stillInProgress) {
-                  quickPrint(
-                     `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
-                  );
-                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+         switch (response) {
+            case 's':
+            case 'skip':
+               try {
+                  await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --skip`;
+                  Logger.debug(`Skipped commit ${commit} for ${contextLabel}.`, 'parallel');
+                  return false;
+               } catch (skipErr) {
+                  printGitResult(getGitErrorOutput(skipErr));
+                  Logger.error(`Failed to skip commit ${commit} for ${contextLabel}.`, 'parallel');
+                  Logger.debug(yuString(skipErr, { color: true }), 'parallel');
                   continue;
                }
+            case 'c':
+            case 'continue':
+            case 'y':
+            case 'yes':
+               try {
+                  await stageResolvedConflicts(git$, originRepoPath);
+                  const result =
+                     await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --continue`;
+                  printGitResult(result);
+                  return true;
+               } catch (continueErr) {
+                  const shouldSkip = await skipEmptyCherryPick(git$, originRepoPath, continueErr, contextLabel);
+                  if (shouldSkip) return false;
 
-               Logger.error(
-                  'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
-                  'parallel'
-               );
-               Logger.debug(yuString(continueErr, { color: true }), 'parallel');
-               throw continueErr;
-            }
-         }
+                  printGitResult(getGitErrorOutput(continueErr));
 
-         if (response === 'a' || response === 'abort' || response === 'n' || response === 'no') {
-            try {
-               const result =
-                  await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --abort`;
-               printGitResult(result);
-            } catch (abortErr) {
-               printGitResult(getGitErrorOutput(abortErr));
-               Logger.error('Failed to abort cherry-pick.', 'parallel');
-               Logger.debug(yuString(abortErr, { color: true }), 'parallel');
-               throw abortErr;
-            }
+                  const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
+                  if (stillInProgress) {
+                     quickPrint(
+                        `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
+                     );
+                     Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+                     continue;
+                  }
 
-            Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
-            throw err;
+                  Logger.error(
+                     'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
+                     'parallel'
+                  );
+                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
+                  throw continueErr;
+               }
+            case 'a':
+            case 'abort':
+            case 'n':
+            case 'no':
+               try {
+                  const result =
+                     await $`${git$} ${colorArgs} -C ${originRepoPath} cherry-pick --abort`;
+                  printGitResult(result);
+               } catch (abortErr) {
+                  printGitResult(getGitErrorOutput(abortErr));
+                  Logger.error('Failed to abort cherry-pick.', 'parallel');
+                  Logger.debug(yuString(abortErr, { color: true }), 'parallel');
+                  throw abortErr;
+               }
+
+               Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
+               throw err;
          }
       }
    }

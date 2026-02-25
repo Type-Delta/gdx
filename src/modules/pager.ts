@@ -82,30 +82,42 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
       const normal = ncc('Normal');
       const dim = ncc('Dim');
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
-      const statusText =
+      let statusText =
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
       const actionHint = context?.actions
          ? context.actions
-              .map((action) => {
-                 const keys = Array.isArray(action.key) ? action.key : [action.key];
-                 const keyLabel = keys[0] ?? '';
-                 if (!keyLabel) return '';
-                 return `${bright}${keyLabel}${normal} ${action.label}`;
-              })
-              .filter(Boolean)
-              .join(` ${dim}|${normal} `)
+            .map((action) => {
+               const keys = Array.isArray(action.key) ? action.key : [action.key];
+               const keyLabel = keys[0] ?? '';
+               if (!keyLabel) return '';
+               return `${bright}${keyLabel}${normal} ${action.label}`;
+            })
+            .filter(Boolean)
+            .join(`${dim},${normal} `)
          : '';
-      const navHint = `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} to quit`;
+      const navHint = actionHint
+         ? `${bright}↑ ↓ b n${normal} navigate, ${bright}q${normal} quit`
+         : `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} quit`;
+      const locationInfo = actionHint
+         ? `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `
+         : `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}  `;
+
+      if (statusText) {
+         statusText += ` ${dim}|${normal}`;
+      }
+
       const leftParts = [statusText, navHint, actionHint].filter(Boolean);
       return strJustify(
          [
             `  ${leftParts.join('  ')}`,
-            `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `,
+            locationInfo,
          ],
          termWidth,
          {
             align: 'spacebetween',
             filler: ' ',
+            overflow: 'collapse',
+            collapseLocation: 'mid',
             redundancyLv: 0,
          }
       );
