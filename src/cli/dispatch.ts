@@ -301,7 +301,7 @@ export async function dispatch(
                argEscIdx = argEscIdx >= 0 ? argEscIdx : args.length;
                let hasSubCmd = false;
                for (let i = 1; i < argEscIdx; i++) {
-                  if (subCommands.includes(args[i])) {
+                  if (subCommands.includes(args[i]) || args[i] === '-h' || args[i] === '--help') {
                      hasSubCmd = true;
                      break;
                   }

@@ -21,17 +21,10 @@ This repo commonly uses an emoji + Conventional Commits-style subject line, plus
 **Common emojis/types used in this repo:**
 
 - `💫 feat(<scope>): ...`
-- `🛠️ refactor(<scope>): ...`
-- `🔧 fix(<scope>): ...`
+- `🔧 refactor(<scope>): ...`
+- `🛠️ fix(<scope>): ...`
 - `🧹 chore(<scope>): ...`
-- `🛠️ ci(<scope>): ...`
-
-**Body guidelines:**
-
-- Start with 1-3 sentences describing intent/why (not just what).
-- Optionally follow with a short bullet list of key changes.
-- Keep lines reasonably wrapped (project uses Prettier print width 100).
-- Prefer consistent bullets (no trailing periods is common in this repo).
+- `⚙️ ci(<scope>): ...` (or other)
 
 ---
 
@@ -40,72 +33,22 @@ This repo commonly uses an emoji + Conventional Commits-style subject line, plus
 ### Development Setup
 
 ```bash
-# Install dependencies and prepare dev environment
+# Install dependencies and transpile library code
+# Always run this when made changes to package.json or anything under lib/
 bun run prepare-dev
-
-# Install dependencies only
-bun install
 ```
 
 ### Running the Application
 
 ```bash
 # Run with Bun (recommended for development)
-bun run start
+bun start -- [args]
 
-# Run with Node.js (using tsx)
-bun run start:node
-
-# Run with CPU profiling
-bun run start:profile
-```
-
-### Build Commands
-
-```bash
-# Type check only (no emit)
-bun run ts-check
-
-# Transpile to ESM (lib/esm/)
-bun run transpile-esm
-
-# Build native binary (bin/gdx)
-bun run build
-
-# Build Node.js package (dist/)
-bun run package:node
-```
-
-### Linting and Formatting
-
-```bash
-# Run type check and ESLint with auto-fix
-bun run lint
-
-# Format with Prettier
-bun run prettier
+# example:
+bun start -- commit auto # equal to `gdx commit auto`
 ```
 
 ### Testing
-
-```bash
-# Run all tests
-bun test
-
-# Run specific test file
-bun test test/commands/commit.spec.ts
-
-# Run tests matching a pattern
-bun test --test-name-pattern="should generate commit message"
-
-# Run tests in watch mode
-bun test --watch
-
-# Run with coverage
-bun test --coverage
-```
-
-**Note on Test Files:**
 
 - Tests use Bun's built-in test runner
 - Test files are named `*.spec.ts` and located in `test/`
@@ -182,11 +125,6 @@ import cmd from './commands';
 
 - Use camelCase: `quickPrint`, `createGdxContext`, `progressiveMatch`
 - Boolean variables: Use descriptive prefixes (`is`, `has`, `should`)
-   ```typescript
-   const hasReceivedContent = false;
-   const isReasoning = false;
-   const shouldWriteLogs = true;
-   ```
 
 **Constants:**
 
@@ -199,91 +137,9 @@ import cmd from './commands';
 - Prefer interfaces for object shapes
 - Use type aliases for unions/intersections
 
-**Classes:**
-
-- Use PascalCase: `Logger`, `ArgsSet`, `TestEnvTracker`
-
 **Logging:**
 
 - `console.log` in production is NOT ALLOWED; use `Logger` for production logging and `quickPrint` for user output
-
-### Function Patterns
-
-**Async Functions:**
-
-```typescript
-async function autoCommit(ctx: GdxContext): Promise<number> {
-   // Always return status codes: 0 = success, 1 = error
-   try {
-      // ... implementation
-      return 0;
-   } catch (error) {
-      Logger.error(yuString(error));
-      return 1;
-   }
-}
-```
-
-**Helper Functions:**
-
-```typescript
-export function quickPrint(msg: string, end: string = '\n'): void {
-   process.stdout.write(msg + end);
-}
-```
-
-### Error Handling
-
-**Use the `Err` class from @lib/Tools:**
-
-```typescript
-import { Err } from '@lib/Tools';
-
-throw new Err('Git is not installed or not found in PATH.', 'GIT_NOT_FOUND');
-```
-
-**Use Logger for user-facing errors:**
-
-```typescript
-import Logger from '@/utils/logger';
-
-Logger.error('No staged changes found.', 'commit');
-Logger.warn('Configuration file not found, using defaults.');
-Logger.info('Successfully generated commit message.');
-Logger.debug('Cache hit for git version.');
-```
-
-**Status Codes:**
-
-- Command functions should return `Promise<number>`
-- Return `0` for success, `1` (or other non-zero) for errors
-
-### Types and Interfaces
-
-**Define context types:**
-
-```typescript
-export interface GdxContext {
-   args: ArgsSet;
-   git$: string | string[]; // Git executable path or command array
-}
-```
-
-**Use strong typing:**
-
-```typescript
-// Good - explicit types
-async function getLLMProvider(): Promise<LLMAdapter> { ... }
-
-// Avoid - implicit any
-async function getData() { ... }
-```
-
-**Optional parameters:**
-
-```typescript
-function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) { ... }
-```
 
 ### Comments and Documentation
 
@@ -307,64 +163,9 @@ export function progressiveMatch(
 ): ProgressiveMatchResult { ... }
 ```
 
-**Inline comments for complex logic:**
-
-Use this only for confusing or non-obvious code sections.
-
-```typescript
-// Filter out gdx-specific flags to get pass-through args
-const gdxFlags = ['auto', '--no-commit', '-nc', '--copy', '-cp'];
-const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
-```
-
 ---
 
-## Project Structure
-
-```
-gdx/
-├── src/
-│   ├── commands/         # Command implementations (commit, stash, graph, etc.)
-│   ├── common/           # Shared types, config, cache, adapters
-│   ├── modules/          # Core modules (shell, git, fs, spellcheck, etc.)
-│   ├── templates/        # Shell init scripts and prompts
-│   ├── utils/            # Utilities (logger, testHelper, utilities)
-│   ├── index.ts          # Main entry point
-│   ├── consts.ts         # Global constants
-│   └── global.ts         # Global state
-├── test/
-│   ├── commands/         # Command tests (*.spec.ts)
-│   ├── modules/          # Module tests
-│   ├── common/           # Common tests
-│   └── env/              # Temporary test environments (git ignored)
-├── lib/
-│   └── esm/              # Transpiled library code (@lib/*)
-├── scripts/              # Build and utility scripts
-├── dist/                 # Node.js package output
-└── bin/                  # Compiled binary output
-```
-
----
-
-## Testing Best Practices
-
-**Use test helpers:**
-
-```typescript
-import { createTestEnv, createGdxContext } from '@/utils/testHelper';
-
-describe('gdx commit auto', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
-   const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
-   afterAll(cleanup);
-
-   it('should generate commit message', async () => {
-      // Test implementation
-      expect(result).toBe(0);
-      expect(buffer.stdout).toContain('Generated Commit Message');
-   });
-});
-```
+## Testing Guidelines
 
 **Test isolation:**
 
@@ -380,9 +181,20 @@ describe('gdx commit auto', async () => {
 
 ---
 
+## Implementation Checklist
+
+### Implemanting a new command
+
+1. consider implementation location: if the command is simple implement it directly in `dispatch.ts`, otherwise create a new file under `src/commands/` with the command name and export the command function as default export.
+2. add and export command structure for completion in the same file (for simple commands add this in `__completion.structure.ts`)
+3. [complex command] add and export help messages
+4. [complex command] add the command to `src/commands/index.ts` for export
+5. add tests for the command in `test/` (if it's a simple command, you can add the test in `dispatch.spec.ts`, otherwise create a new test file with the same name as the command under `test/commands/`)
+6. [simple command] update global help message in `help.ts` to include the new command
+
 ## Common Patterns
 
-### Shell Execution
+### Shell Execution Patterns
 
 ```typescript
 import { $, $inherit } from '@/modules/shell';
@@ -391,12 +203,14 @@ import { $, $inherit } from '@/modules/shell';
 const result = await $`${git$} status --porcelain`;
 const output = result.stdout;
 
-// Inherit stdio (for interactive commands)
+// Inherit stdio
 await $inherit`${git$} commit`;
 
-// With custom working directory
-const _$ = $({ cwd: tmpDir });
-await _$`${git$} init`;
+// Abortable execution
+const exec = createAbortableExec();
+const $ = exec.$;
+const result = await $`${git$} long-running-command`;
+exec.abort(); // to abort if needed
 ```
 
 ### Command Arguments
@@ -416,40 +230,7 @@ args.some((arg) => arg === '--option' || arg.startsWith('--option='));
 const hasOption = args.hasOption('--option'); // true
 ```
 
-### Context Usage
-
-```typescript
-async function myCommand(ctx: GdxContext): Promise<number> {
-   const { git$, args } = ctx;
-
-   // Access arguments
-   const flag = args.popValue('--flag');
-   const hasOption = args.includes('--option');
-
-   return 0;
-}
-```
-
-### Configuration
-
-```typescript
-import { getConfig } from '@/common/config';
-
-const config = await getConfig();
-const value = config.get<boolean>('llm.showThinking', true); // with default
-```
-
----
-
-## Key Principles
-
-1. **Return status codes** - Commands return `0` for success, `1` for errors
-2. **Use path aliases** - `@/*` and `@lib/*` over relative imports
-3. **Type everything** - Leverage TypeScript's strict mode
-4. **Test in isolation** - Use `createTestEnv()` for clean test environments
-5. **Log appropriately** - Use `Logger` for errors/warnings, `quickPrint` for output
-6. **Handle errors gracefully** - Catch errors, log them, return non-zero status
-7. **Follow conventions** - Consistent naming, formatting, and structure
+If `ArgsSet` can not provide the necessary functionality for your use case, it is encouraged to extend/modify it to include the needed features, so that future commands can also benefit from it.
 
 ---
 
@@ -471,15 +252,11 @@ These worktrees are often in a detached HEAD state.
 - Avoid `git push` from temporary worktrees,
   let humans handle pushing changes unless explicitly instructed otherwise.
 
-**Environment Variables (Testing):**
+### Caveats
 
-- `GDX_CONFIG_PATH` - Custom config location
-- `GDX_TEMP_DIR` - Custom temp directory
-- `GIT_CONFIG_NOSYSTEM` - Disable system git config
-- `GIT_CONFIG_GLOBAL` - Custom global git config
-- `NODE_ENV=test` - Enables test mode
-
----
-
-**Version:** 0.2.0
-**Last Updated:** 2026-02-02
+> The role of this section is to describe common mistakes and
+> confusion points that agents might encounter as they work in
+> this project. If you ever encounter something in the project
+> that surprises you, please alert the developer working with you
+> and indicate that this is the case in this section to help
+> prevent future agents from having the same issue.
