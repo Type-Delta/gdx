@@ -18,8 +18,8 @@ import {
 import { normalizePath, progressiveMatch, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { createOptionChildren, createOptionChildrenWithFlags } from '@/utils/structure';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE } from '@/consts';
-import { _2PointGradient } from '@/modules/graphics';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, TEMP_DIR, GDX_VPALETTE, CATPPUCCIN_VPALETTE } from '@/consts';
+import { _2PointGradient, fgRgb } from '@/modules/graphics';
 import global from '@/global';
 import { viewDiff } from '@/modules/diff-viewer';
 import { PagerActionResult } from '@/modules/pager';
@@ -920,7 +920,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          if (submoduleLog.groups.length > 0) {
             const groups: CommitGroup[] = [
                {
-                  label: `${ncc('Dim')}[main]${ncc()}`,
+                  label: `. ${ncc('Dim')}[main]${ncc()}`,
                   commits: mainLog.commits,
                   totalCount: mainLog.totalCount,
                   moreCount: mainLog.moreCount,
@@ -1061,7 +1061,7 @@ async function getCherryPickPreview(options: {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
             .stdout;
          const stat = (
-            await $`${gitExec} -C ${forkRepoPath} ${forceColorArgs()} show --stat --format= ${commit}`
+            await $`${gitExec} -C ${forkRepoPath} show --stat --format= --no-color ${commit}`
          ).stdout;
          return {
             diff,
@@ -1076,7 +1076,7 @@ async function getCherryPickPreview(options: {
       const diff = (await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --no-color`)
          .stdout;
       const stat = (
-         await $({ env })`${gitExec} -C ${originRepoPath} ${forceColorArgs()} diff --cached --stat`
+         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
       ).stdout;
       return { diff, stat, isEmpty: diff.trim().length === 0, appliedPatch };
    } finally {
@@ -1109,7 +1109,9 @@ function buildCommitPreamble(options: {
    lines.push('');
    lines.push(...commitInfo.message.split('\n').map((line) => `  ${line}`));
 
-   const trimmedStat = stat.trimEnd();
+   const trimmedStat = stat.trimEnd()
+      .replace(/(\++)/g, `${ncc('Green')}$1${ncc()}`)
+      .replace(/(-+)/g, `${ncc('Red')}$1${ncc()}`);
    if (trimmedStat.length > 0) {
       lines.push('');
       lines.push(...trimmedStat.split('\n').map((line) => `   ${line}`));
@@ -1117,12 +1119,12 @@ function buildCommitPreamble(options: {
 
    if (warning) {
       lines.push('');
-      lines.push(`  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc()}`);
+      lines.push(`  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`); // TODO: make a theme service to handle this kind of thing
    }
 
    if (isEmpty) {
       lines.push('');
-      lines.push(`  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc()}`);
+      lines.push(`  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
    }
 
    return lines;

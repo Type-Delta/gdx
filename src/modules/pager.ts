@@ -82,7 +82,7 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
       const normal = ncc('Normal');
       const dim = ncc('Dim');
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
-      let statusText =
+      const statusText =
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
       const actionHint = context?.actions
          ? context.actions
@@ -99,20 +99,16 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
          ? `${bright}↑ ↓ b n${normal} navigate, ${bright}q${normal} quit`
          : `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} quit`;
       const locationInfo = actionHint
-         ? `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `
-         : `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}  `;
-
-      if (statusText) {
-         statusText += ` ${dim}|${normal}`;
-      }
+         ? `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`
+         : `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`;
 
       const leftParts = [statusText, navHint, actionHint].filter(Boolean);
-      return strJustify(
+      return '  ' + strJustify(
          [
-            `  ${leftParts.join('  ')}`,
+            leftParts.join('  '),
             locationInfo,
          ],
-         termWidth,
+         termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
          {
             align: 'spacebetween',
             filler: ' ',
@@ -120,7 +116,7 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
             collapseLocation: 'mid',
             redundancyLv: 0,
          }
-      );
+      ) + '  ';
    },
    backgroundColor: CATPPUCCIN_VPALETTE.base,
    scrollSensitivity: 3,
