@@ -8,7 +8,7 @@ import { inferBool } from './utils/utilities';
 
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 
-export const EXECUTABLE_NAME = exeBasename.startsWith('bun') ? 'gdx' : exeBasename;
+export const EXECUTABLE_NAME = exeBasename.startsWith('bun') || exeBasename.startsWith('node') ? 'gdx' : exeBasename;
 export const TEMP_DIR = process.env.GDX_TEMP_DIR || os.tmpdir();
 export const CURRENT_DIR = process.env.GDX_CURRENT_DIR || process.cwd();
 export const CONFIG_FILE_NAME = '.gdxrc.toml';
@@ -28,7 +28,7 @@ export const KEYCHAIN_SERVICE = 'gdx-cli';
 export const SECURE_CONF_KEYS = ['llm.apiKey'];
 export const CACHE_FILE_NAME = 'cache.json';
 export const MACRO_FILE_NAME = 'macro.json';
-export const TUI_THEME = 'catppuccin-mocha'; // TUI theme, can not be overridden by anthing, Im lazy :)
+export const TUI_THEME = 'catppuccin-mocha'; // TUI theme, can not be overwritten by anthing, Im lazy :)
 
 export const GDX_COMMANDS = [
    // original git commands
@@ -57,7 +57,6 @@ export const GDX_COMMANDS = [
    'init',
    'config',
    // gdx custom commands
-   // custom commands
    'parallel',
    'nocap',
    // 'stats',

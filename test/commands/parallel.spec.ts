@@ -72,6 +72,33 @@ describe('gdx parallel', async () => {
       expect(exists).toBe(true);
    });
 
+   it('should fork from a specific ref', async () => {
+      await $`${git$} commit --allow-empty -m ${'Ref base'} `;
+      const refCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-ref', refCommit]);
+      const result = await parallel(forkCtx);
+
+      expect(result).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, 'feature-ref');
+      const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+
+      expect(forkHead).toBe(refCommit);
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-ref']);
+      await parallel(removeCtx);
+   });
+
    it('should fork and join a branch-tracked worktree', async () => {
       await $`${git$} commit --allow-empty -m ${'Branch base'}`;
 

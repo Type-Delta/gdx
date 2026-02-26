@@ -572,14 +572,23 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    const moveMode = parsedArgs.includes('--move') || parsedArgs.includes('-mv');
    const mirrorMode = parsedArgs.includes('--mirror') || parsedArgs.includes('-mr');
 
-   const unknownArgs = parsedArgs.filter(
+   const remainingArgs = parsedArgs.filter(
       (arg) => !['--move', '--mirror', '-mv', '-mr'].includes(arg)
    );
+   const unknownArgs = remainingArgs.filter((arg) => arg.startsWith('-'));
    if (unknownArgs.length > 0) {
       Logger.error(`Unknown option '${unknownArgs[0]}'.`, 'parallel');
       showUsage();
       return 1;
    }
+
+   const refArgs = remainingArgs.filter((arg) => !arg.startsWith('-'));
+   if (refArgs.length > 1) {
+      Logger.error('Too many refs provided. Specify a single ref after the alias.', 'parallel');
+      showUsage();
+      return 1;
+   }
+   const forkRef = refArgs[0] || null;
 
    if (fs.existsSync(targetPath)) {
       Logger.error(`Worktree alias '${alias}' already exists for this branch.`, 'parallel');
@@ -603,7 +612,13 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    // Get base commit
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    let baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
-   if (forkBranch) {
+   if (forkRef) {
+      try {
+         baseCommit = (await $`${git$} rev-parse ${forkRef}`).stdout.trim() || baseCommit;
+      } catch {
+         // ignore and keep origin HEAD
+      }
+   } else if (forkBranch) {
       try {
          baseCommit = (await $`${git$} rev-parse ${forkBranch}`).stdout.trim() || baseCommit;
       } catch {
@@ -639,10 +654,11 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
 
    // Create worktree
    try {
+      const targetRef = forkRef || 'HEAD';
       if (forkBranch && forkBranchFlag) {
-         await $inherit`${git$} worktree add ${forkBranchFlag} ${forkBranch} ${targetPath} HEAD`;
+         await $inherit`${git$} worktree add ${forkBranchFlag} ${forkBranch} ${targetPath} ${targetRef}`;
       } else {
-         await $inherit`${git$} worktree add --detach ${targetPath} HEAD`;
+         await $inherit`${git$} worktree add --detach ${targetPath} ${targetRef}`;
       }
    } catch {
       Logger.error('Failed to create the parallel worktree.', 'parallel');
@@ -2884,7 +2900,7 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
       const reset = ncc();
       return strWrap(
          `
- ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
+ ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel list${reset}
 ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
@@ -2895,8 +2911,9 @@ ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
 
 Examples:
     ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
-    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
-    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
+    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
    ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
