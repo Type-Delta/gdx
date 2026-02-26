@@ -4,6 +4,7 @@ import path from 'path';
 
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
+import { resetConfig } from '@/common/config';
 import { normalizePath } from '@/utils/utilities';
 import { stripAnsiColor } from '@/modules/graphics';
 
@@ -72,8 +73,102 @@ describe('gdx parallel', async () => {
       expect(exists).toBe(true);
    });
 
+   it('should copy env files from .gitignore and envPaths', async () => {
+      const configPath = process.env.GDX_CONFIG_PATH || '';
+      const originalConfig = await fs.readFile(configPath, 'utf-8').catch(() => '');
+
+      await fs.writeFile(path.join(tmpDir, '.env'), 'env');
+      await fs.writeFile(path.join(tmpDir, '.env.local'), 'env-local');
+      await fs.writeFile(path.join(tmpDir, 'notes.txt'), 'notes');
+      await fs.mkdir(path.join(tmpDir, 'config'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, 'config', 'app.env'), 'config-env');
+      await fs.mkdir(path.join(tmpDir, 'secrets', 'nested'), { recursive: true });
+      await fs.writeFile(path.join(tmpDir, 'secrets', 'token.txt'), 'token');
+      await fs.writeFile(path.join(tmpDir, 'secrets', 'nested', 'inner.txt'), 'inner');
+      await fs.writeFile(path.join(tmpDir, '.gitignore'), '.env\n# comment\nnotes*.txt\n');
+      await $`${git$} -C ${tmpDir} add .gitignore`;
+      await $`${git$} -C ${tmpDir} commit -m ${'Add gitignore for env'} `;
+
+      await fs.writeFile(
+         configPath,
+         '[parallel]\ninit = "env"\nenvPaths = ".env.local:config/*.env:secrets"\n',
+         'utf-8'
+      );
+
+      resetConfig();
+      resetCache();
+
+      try {
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-env']);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, 'feature-env');
+
+         const envExists = await fs
+            .stat(path.join(forkPath, '.env'))
+            .then(() => true)
+            .catch(() => false);
+         const envLocalExists = await fs
+            .stat(path.join(forkPath, '.env.local'))
+            .then(() => true)
+            .catch(() => false);
+         const notesExists = await fs
+            .stat(path.join(forkPath, 'notes.txt'))
+            .then(() => true)
+            .catch(() => false);
+         const configEnvExists = await fs
+            .stat(path.join(forkPath, 'config', 'app.env'))
+            .then(() => true)
+            .catch(() => false);
+         const secretsTokenExists = await fs
+            .stat(path.join(forkPath, 'secrets', 'token.txt'))
+            .then(() => true)
+            .catch(() => false);
+         const secretsInnerExists = await fs
+            .stat(path.join(forkPath, 'secrets', 'nested', 'inner.txt'))
+            .then(() => true)
+            .catch(() => false);
+
+         expect(envExists).toBe(true);
+         expect(envLocalExists).toBe(true);
+         expect(notesExists).toBe(true);
+         expect(configEnvExists).toBe(true);
+         expect(secretsTokenExists).toBe(true);
+         expect(secretsInnerExists).toBe(true);
+
+         await fs.rm(path.join(forkPath, '.env.local'), { force: true });
+         await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
+         await fs.rm(path.join(forkPath, 'config'), { recursive: true, force: true });
+         await fs.rm(path.join(forkPath, 'secrets'), { recursive: true, force: true });
+
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-env']);
+         expect(await parallel(removeCtx)).toBe(0);
+      } finally {
+         await fs.rm(path.join(tmpDir, '.env'), { force: true });
+         await fs.rm(path.join(tmpDir, '.env.local'), { force: true });
+         await fs.rm(path.join(tmpDir, 'notes.txt'), { force: true });
+         await fs.rm(path.join(tmpDir, 'config'), { recursive: true, force: true });
+         await fs.rm(path.join(tmpDir, 'secrets'), { recursive: true, force: true });
+         await fs.rm(path.join(tmpDir, '.gitignore'), { force: true });
+         await resetRepo();
+         await $`${git$} -C ${tmpDir} clean -fd`;
+         await fs.writeFile(configPath, originalConfig, 'utf-8');
+         resetConfig();
+         resetCache();
+      }
+   });
+
    it('should fork from a specific ref', async () => {
-      await $`${git$} commit --allow-empty -m ${'Ref base'} `;
+      await $`${git$} commit --allow-empty -m ${'Ref base'}`;
       const refCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-ref', refCommit]);
@@ -95,6 +190,7 @@ describe('gdx parallel', async () => {
 
       expect(forkHead).toBe(refCommit);
 
+      await resetRepo();
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-ref']);
       await parallel(removeCtx);
    });
@@ -127,6 +223,9 @@ describe('gdx parallel', async () => {
       await fs.writeFile(path.join(forkPath, 'branch-file.txt'), 'branch');
       await $`${git$} -C ${forkPath} add branch-file.txt`;
       await $`${git$} -C ${forkPath} commit -m ${'Branch change'}`;
+
+      await fs.rm(path.join(forkPath, '.env.local'), { force: true });
+      await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
       const joinResult = await parallel(joinCtx);
@@ -224,6 +323,9 @@ describe('gdx parallel', async () => {
          await $`${forkGit$} add ${filename}`;
          await $`${forkGit$} commit -m ${`Add short hint ${i}`}`;
       }
+
+      await fs.rm(path.join(forkPath, '.env.local'), { force: true });
+      await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
 
       resetCache();
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list', '-s']);
@@ -335,6 +437,9 @@ describe('gdx parallel', async () => {
          await $`${forkGit$} add ${filename}`;
          await $`${forkGit$} commit -m ${`Add short ${i}`}`;
       }
+
+      await fs.rm(path.join(forkPath, '.env.local'), { force: true });
+      await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
 
       resetCache();
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);

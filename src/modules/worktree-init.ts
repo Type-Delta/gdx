@@ -8,16 +8,17 @@ import Logger from '@/utils/logger';
 import { getConfig } from '@/common/config';
 import { initSubmodules } from '@/modules/git';
 
-export type WorktreeInitBehavior = 'submodule' | 'pkg';
+export type WorktreeInitBehavior = 'submodule' | 'pkg' | 'env';
 
 export interface WorktreeInitOptions {
    git$: string | string[];
    worktreePath: string;
+   originPath?: string;
    noInitAll?: boolean;
    noInitList?: string | null;
 }
 
-const INIT_BEHAVIOR_SET = new Set<WorktreeInitBehavior>(['submodule', 'pkg']);
+const INIT_BEHAVIOR_SET = new Set<WorktreeInitBehavior>(['submodule', 'pkg', 'env']);
 
 interface ParsedBehaviorList {
    values: WorktreeInitBehavior[];
@@ -38,12 +39,12 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
    try {
       const config = await getConfig();
 
-      const configValue = config.get('parallel.init', 'submodule');
+      const configValue = config.get('parallel.init', 'submodule,env');
       const parsedConfig = parseBehaviorList(configValue);
       if (parsedConfig.invalid.length > 0) {
          warnings.push(
             `Unknown parallel.init values: ${parsedConfig.invalid.join(', ')}. ` +
-               'Valid values: submodule, pkg.'
+               'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -51,7 +52,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
       if (parsedNoInit.invalid.length > 0) {
          warnings.push(
             `Unknown --no-init values: ${parsedNoInit.invalid.join(', ')}. ` +
-               'Valid values: submodule, pkg.'
+               'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -78,6 +79,11 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
          }
       }
 
+      if (!shouldSkip && behaviors.includes('env')) {
+         const result = await initEnvFiles(options.worktreePath, options.originPath, warnings);
+         warnings.push(...result.warnings);
+      }
+
       if (!shouldSkip && behaviors.includes('pkg')) {
          const result = await initPackages(options.worktreePath);
          warnings.push(...result.warnings);
@@ -87,6 +93,16 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
    }
 
    flushWarnings(warnings);
+}
+
+interface EnvInitResult {
+   copied: number;
+   warnings: string[];
+}
+
+interface EnvPatternSet {
+   rootFiles: string[];
+   envPaths: string[];
 }
 
 function flushWarnings(warnings: string[]): void {
@@ -143,6 +159,365 @@ async function initPackages(worktreePath: string): Promise<PackageInitResult> {
    }
 
    return { ran, warnings };
+}
+
+/**
+ * Copies ignored env-like files from the origin worktree into the fork.
+ * Root file patterns come from the origin .gitignore and envPaths are glob-like paths.
+ */
+async function initEnvFiles(
+   worktreePath: string,
+   originPath: string | undefined,
+   warnings: string[]
+): Promise<EnvInitResult> {
+   const envWarnings: string[] = [];
+   let copied = 0;
+   try {
+      const config = await getConfig();
+      const sourcePath = originPath || worktreePath;
+      const { rootFiles, envPaths } = await collectEnvPatterns(sourcePath, config, envWarnings);
+      if (rootFiles.length === 0 && envPaths.length === 0) {
+         return { copied: 0, warnings: envWarnings };
+      }
+
+      if (rootFiles.length > 0) {
+         const includeMatchers = rootFiles.map((pattern) => buildGitignoreMatcher(pattern));
+         const rootEntries = await listRootFiles(sourcePath, envWarnings);
+
+         for (const fileName of rootEntries) {
+            if (!fileName) continue;
+            if (includeMatchers.some((matcher) => matcher(fileName))) {
+               if (
+                  await copyEnvFileIfNeeded({
+                     sourceRoot: sourcePath,
+                     targetRoot: worktreePath,
+                     relativePath: fileName,
+                     warnings: envWarnings,
+                  })
+               ) {
+                  copied++;
+               }
+            }
+         }
+      }
+
+      if (envPaths.length > 0) {
+         copied += await copyEnvPathsFromPatterns({
+            sourceRoot: sourcePath,
+            targetRoot: worktreePath,
+            patterns: envPaths,
+            warnings: envWarnings,
+         });
+      }
+   } catch (err) {
+      envWarnings.push(`Env init failed. ${yuString(err, { color: true })}`);
+   }
+
+   warnings.push(...envWarnings);
+   return { copied, warnings: envWarnings };
+}
+
+/**
+ * Collects file patterns to copy based on origin .gitignore and parallel.envPaths.
+ */
+async function collectEnvPatterns(
+   worktreePath: string,
+   config: Awaited<ReturnType<typeof getConfig>>,
+   warnings: string[]
+): Promise<EnvPatternSet> {
+   const rootFiles = new Set<string>();
+   const envPaths = new Set<string>();
+   const gitignorePath = path.join(worktreePath, '.gitignore');
+   if (fs.existsSync(gitignorePath)) {
+      try {
+         const raw = await fs.readFile(gitignorePath, 'utf-8');
+         const lines = raw.split(/\r?\n/);
+         for (const line of lines) {
+            const normalized = line.trim();
+            if (!normalized || normalized.startsWith('#')) continue;
+            if (normalized.startsWith('!')) continue;
+            if (normalized.endsWith('/')) continue;
+
+            const stripped = normalized.startsWith('/') ? normalized.slice(1) : normalized;
+            if (stripped.includes('/')) continue;
+            rootFiles.add(stripped);
+         }
+      } catch (err) {
+         warnings.push(`Failed to read .gitignore. ${yuString(err, { color: true })}`);
+      }
+   }
+
+   const envPathsRaw = config.get('parallel.envPaths', '');
+   if (typeof envPathsRaw === 'string') {
+      const extraPatterns = envPathsRaw
+         .split(':')
+         .map((entry) => entry.trim())
+         .filter((entry) => entry.length > 0);
+      for (const pattern of extraPatterns) {
+         envPaths.add(pattern);
+      }
+   }
+
+   return {
+      rootFiles: Array.from(rootFiles),
+      envPaths: Array.from(envPaths),
+   };
+}
+
+/**
+ * Lists files at the repo root (no subdirectories).
+ */
+async function listRootFiles(worktreePath: string, warnings: string[]): Promise<string[]> {
+   try {
+      const entries = await fs.readdir(worktreePath, { withFileTypes: true });
+      return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+   } catch (err) {
+      warnings.push(`Failed to list root files. ${yuString(err, { color: true })}`);
+      return [];
+   }
+}
+
+/**
+ * Copies a file from source root to target root if missing in target.
+ */
+async function copyEnvFileIfNeeded(options: {
+   sourceRoot: string;
+   targetRoot: string;
+   relativePath: string;
+   warnings: string[];
+}): Promise<boolean> {
+   const { sourceRoot, targetRoot, relativePath, warnings } = options;
+   if (path.resolve(sourceRoot) === path.resolve(targetRoot)) return false;
+   const sourcePath = resolveEnvPath(sourceRoot, relativePath);
+   const targetPath = resolveEnvPath(targetRoot, relativePath);
+   if (!fs.existsSync(sourcePath)) return false;
+   if (fs.existsSync(targetPath)) return false;
+   try {
+      const stats = await fs.stat(sourcePath);
+      if (!stats.isFile()) return false;
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      const content = await fs.readFile(sourcePath);
+      await fs.writeFile(targetPath, content);
+      return true;
+   } catch (err) {
+      warnings.push(`Failed to copy env file '${relativePath}'. ${yuString(err, { color: true })}`);
+      return false;
+   }
+}
+
+/**
+ * Copies a directory from source root to target root if missing in target.
+ */
+async function copyEnvDirectoryIfNeeded(options: {
+   sourceRoot: string;
+   targetRoot: string;
+   relativePath: string;
+   warnings: string[];
+}): Promise<boolean> {
+   const { sourceRoot, targetRoot, relativePath, warnings } = options;
+   if (path.resolve(sourceRoot) === path.resolve(targetRoot)) return false;
+   const sourcePath = resolveEnvPath(sourceRoot, relativePath);
+   const targetPath = resolveEnvPath(targetRoot, relativePath);
+   if (!fs.existsSync(sourcePath)) return false;
+   if (fs.existsSync(targetPath)) return false;
+   try {
+      const stats = await fs.stat(sourcePath);
+      if (!stats.isDirectory()) return false;
+      await copyEnvDirectoryRecursive(sourcePath, targetPath, warnings);
+      return true;
+   } catch (err) {
+      warnings.push(
+         `Failed to copy env directory '${relativePath}'. ${yuString(err, { color: true })}`
+      );
+      return false;
+   }
+}
+
+async function copyEnvDirectoryRecursive(
+   sourceDir: string,
+   targetDir: string,
+   warnings: string[]
+): Promise<void> {
+   try {
+      await fs.mkdir(targetDir, { recursive: true });
+      const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+      for (const entry of entries) {
+         const sourcePath = path.join(sourceDir, entry.name);
+         const targetPath = path.join(targetDir, entry.name);
+         if (entry.isDirectory()) {
+            await copyEnvDirectoryRecursive(sourcePath, targetPath, warnings);
+         } else if (entry.isFile()) {
+            const content = await fs.readFile(sourcePath);
+            await fs.writeFile(targetPath, content);
+         }
+      }
+   } catch (err) {
+      warnings.push(`Failed to copy env directory. ${yuString(err, { color: true })}`);
+   }
+}
+
+/**
+ * Copies env paths that match glob-like patterns.
+ */
+async function copyEnvPathsFromPatterns(options: {
+   sourceRoot: string;
+   targetRoot: string;
+   patterns: string[];
+   warnings: string[];
+}): Promise<number> {
+   const { sourceRoot, targetRoot, patterns, warnings } = options;
+   if (patterns.length === 0) return 0;
+
+   const matchers = patterns
+      .map((pattern) => buildEnvPathMatcher(pattern))
+      .filter((matcher): matcher is (value: string) => boolean => Boolean(matcher));
+   if (matchers.length === 0) return 0;
+
+   let copied = 0;
+
+   const walk = async (currentPath: string, relativePrefix: string): Promise<void> => {
+      let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> = [];
+      try {
+         entries = await fs.readdir(currentPath, { withFileTypes: true });
+      } catch (err) {
+         warnings.push(`Failed to read env paths. ${yuString(err, { color: true })}`);
+         return;
+      }
+
+      for (const entry of entries) {
+         const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
+         const matches = matchers.some((matcher) => matcher(relativePath));
+
+         if (matches && entry.isDirectory()) {
+            const didCopy = await copyEnvDirectoryIfNeeded({
+               sourceRoot,
+               targetRoot,
+               relativePath,
+               warnings,
+            });
+            if (didCopy) {
+               copied++;
+               continue;
+            }
+         }
+
+         if (matches && entry.isFile()) {
+            if (
+               await copyEnvFileIfNeeded({
+                  sourceRoot,
+                  targetRoot,
+                  relativePath,
+                  warnings,
+               })
+            ) {
+               copied++;
+            }
+         }
+
+         if (entry.isDirectory()) {
+            await walk(path.join(currentPath, entry.name), relativePath);
+         }
+      }
+   };
+
+   await walk(sourceRoot, '');
+   return copied;
+}
+
+/**
+ * Normalizes env path patterns to a consistent relative format.
+ */
+function normalizeEnvPathPattern(pattern: string): string {
+   let normalized = pattern.trim().replace(/\\/g, '/');
+   while (normalized.startsWith('./')) {
+      normalized = normalized.slice(2);
+   }
+   if (normalized.startsWith('/')) {
+      normalized = normalized.slice(1);
+   }
+   normalized = normalized.replace(/\/+$/, '');
+   return normalized;
+}
+
+/**
+ * Builds a glob-like matcher for env path patterns.
+ */
+function buildEnvPathMatcher(pattern: string): ((value: string) => boolean) | null {
+   const normalized = normalizeEnvPathPattern(pattern);
+   if (!normalized) return null;
+
+   let regex = '^';
+   let index = 0;
+   while (index < normalized.length) {
+      const char = normalized[index];
+      if (char === '*') {
+         const nextChar = normalized[index + 1];
+         if (nextChar === '*') {
+            const afterNext = normalized[index + 2];
+            if (afterNext === '/') {
+               regex += '(?:.*/)?';
+               index += 3;
+               continue;
+            }
+            regex += '.*';
+            index += 2;
+            continue;
+         }
+         regex += '[^/]*';
+         index += 1;
+         continue;
+      }
+      if (char === '?') {
+         regex += '[^/]';
+         index += 1;
+         continue;
+      }
+      if (char === '/') {
+         regex += '/';
+         index += 1;
+         continue;
+      }
+      regex += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+      index += 1;
+   }
+   regex += '$';
+
+   const matcher = new RegExp(regex);
+   return (value: string) => matcher.test(value.replace(/\\/g, '/'));
+}
+
+/**
+ * Resolves a forward-slash relative path under the given root.
+ */
+function resolveEnvPath(root: string, relativePath: string): string {
+   const parts = relativePath.split('/').filter(Boolean);
+   return path.join(root, ...parts);
+}
+
+/**
+ * Builds a matcher for .gitignore-like patterns (single path segment).
+ */
+export function buildGitignoreMatcher(pattern: string): (value: string) => boolean {
+   const trimmed = pattern.trim();
+   if (!trimmed) return () => false;
+   if (trimmed === '*') return () => true;
+
+   const escaped = trimmed
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\?/g, '.')
+      .replace(/\*/g, '[^/]*');
+
+   const matcher = new RegExp(`^${escaped}$`);
+   return (value: string) => matcher.test(value);
+}
+
+/**
+ * Gets env copy patterns from the origin .gitignore and parallel.envPaths.
+ */
+export async function getEnvCopyPatterns(originPath: string): Promise<string[]> {
+   const config = await getConfig();
+   const patterns = await collectEnvPatterns(originPath, config, []);
+   return [...patterns.rootFiles, ...patterns.envPaths];
 }
 
 function detectJsPackageManager(worktreePath: string, warnings: string[]): PackageManager | null {

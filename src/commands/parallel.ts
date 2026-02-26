@@ -714,6 +714,7 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    await runWorktreeInit({
       git$,
       worktreePath: targetPath,
+      originPath: ctx.repoRoot,
       noInitAll,
       noInitList,
    });
@@ -922,7 +923,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       const spinnerCtrl = spinner({ message: `Gatering information for ${aliasLabel}...` });
       const maxLogCount = isShortOutput ? 3 : undefined;
-      const [statusOutput, comparison, mainLog, submoduleLog] = await Promise.all([
+      const [statusOutputRaw, comparison, mainLog, submoduleLog] = await Promise.all([
          // get dirty status
          $`${git$} -C ${wtPath} status --porcelain=v1 --untracked-files=normal`.then((r) =>
             r.stdout.trim()
@@ -931,29 +932,29 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${mainRangeStart}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${mainRangeStart}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                    submoduleCursors: meta.submoduleCursors,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
-      const isDirty = statusOutput.length > 0;
+      const isDirty = statusOutputRaw.length > 0;
       const baseShort = mainRangeStart ? mainRangeStart.slice(0, 7) : 'unknown';
 
       const mainCount = comparison.ahead;
@@ -1714,14 +1715,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ]
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ]
       : [
-           { key: 'a', label: 'apply', action: 'apply' },
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ];
+         { key: 'a', label: 'apply', action: 'apply' },
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -1826,9 +1827,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-                 .split('\n')
-                 .map((line) => line.trim())
-                 .filter((line) => line.length > 0)
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -1932,9 +1933,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2067,9 +2068,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-                 .split('\n')
-                 .map((c) => c.trim())
-                 .filter((c) => c)
+               .split('\n')
+               .map((c) => c.trim())
+               .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -2869,13 +2870,13 @@ Manage parallel (forked) worktrees for iterative development.
 ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 \`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
-Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules and
-install dependencies using detected package managers (currently supports npm, pnpm, bun, and uv)
-if configured (see \`${cyan}parallel.init${reset}\` config for options),
-getting the fork ready for work in no time.
+Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules,
+copy ignored env files, and install dependencies using detected package managers (currently supports
+npm, pnpm, bun, and uv) if configured (see \`${cyan}parallel.init${reset}\` and
+\`${cyan}parallel.envPaths${reset}\` config for options), getting the fork ready for work in no time.
 
 ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
- - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
+- ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${cyan}--no-init${reset}\`.
 - ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
 - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
@@ -2900,7 +2901,7 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
       const reset = ncc();
       return strWrap(
          `
- ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
+${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,env,pkg]]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel list${reset}
 ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
@@ -2910,12 +2911,13 @@ ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
 ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
 
 Examples:
-    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
-    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
+   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=env ${reset + dim}# Skip env file copy${reset}
    ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
    ${cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${reset + dim}# Preview and pick commits${reset}

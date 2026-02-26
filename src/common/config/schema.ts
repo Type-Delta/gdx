@@ -27,6 +27,7 @@ export interface GdxConfig {
    };
    parallel?: {
       init?: string;
+      envPaths?: string;
    };
    defaultEditor: string;
    enhancedOutput?: boolean;
@@ -58,7 +59,8 @@ export const DEFAULT_CONFIG: GdxConfig = {
       maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
    },
    parallel: {
-      init: 'submodule',
+      init: 'submodule,env',
+      envPaths: '',
    },
    defaultEditor: 'code',
    enhancedOutput: true,
@@ -83,6 +85,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'cache.enabled': 'GDX_CACHE_ENABLED',
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    'parallel.init': 'GDX_PARALLEL_INIT',
+   'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
 };
@@ -110,7 +113,11 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'cache.maxAgeMinutes':
       'Default maximum age of cache entries in minutes (some cache ignore this)',
    parallel: 'Configuration for parallel worktree automation',
-   'parallel.init': 'Comma-separated list specifying what to init for new forks (submodule, pkg)',
+   'parallel.init':
+      'Comma-separated list specifying what to init for new forks (submodule, env, pkg)',
+   'parallel.envPaths':
+      'Colon-separated list of .gitignore patterns for env files to copy into new forks',
    defaultEditor: 'Default code editor to open files with',
-   enhancedOutput: 'Whether to enhanced Git\'s output (modify the output of some git commands when conditions are met)',
+   enhancedOutput:
+      "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",
 };
