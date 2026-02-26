@@ -85,8 +85,8 @@ export async function getStashEntry(
 
    try {
       const ref = `stash@{${index}}`;
-      const { stdout: sha } = await $`${git$} rev-parse ${ref}`;
-      const { stdout: message } = await $`${git$} log -1 --format=%s ${ref}`;
+      const { stdout: sha } = await $`${git$} rev-parse -- ${ref}`;
+      const { stdout: message } = await $`${git$} log -1 --format=%s -- ${ref}`;
       const result = { sha: sha.trim(), message: message.trim() };
       await cache.setOneOff(cacheKey, result);
       return result;
@@ -707,7 +707,7 @@ export async function getGitPath(
 
    try {
       const output = (
-         await $`${git$} -C ${worktreePath} rev-parse --git-path ${gitPath}`
+         await $`${git$} -C ${worktreePath} rev-parse --git-path -- ${gitPath}`
       ).stdout.trim();
       if (!output) {
          await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
@@ -716,7 +716,8 @@ export async function getGitPath(
       const resolved = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
       await cache.set(cacheKey, resolved, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
       return resolved;
-   } catch {
+   } catch (err) {
+      Logger.debug(yuString(err, { color: true }), 'git');
       await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
       return null;
    }

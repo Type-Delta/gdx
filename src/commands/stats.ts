@@ -144,7 +144,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       // Parallel execution for branches
       const branchCounts = await Promise.all(
          branches.map(async (branch) => {
-            const { stdout } = await $`${git$} rev-list --count --author=${email} ${branch}`;
+            const { stdout } = await $`${git$} rev-list --count --author=${email} -- ${branch}`;
             return { branch, count: parseInt(stdout.trim(), 10) };
          })
       );
