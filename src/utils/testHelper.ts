@@ -181,8 +181,36 @@ function overrideModules(
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
+      const inherited$ = original.$({ stdin: 'inherit' });
+      const $inherit = (strings: TemplateStringsArray, ...values: unknown[]) => {
+         const subprocess = inherited$(strings, ...values);
+         if (subprocess?.stdout) {
+            subprocess.stdout.on('data', (chunk: Buffer | string) => {
+               const text = typeof chunk === 'string' ? chunk : chunk.toString();
+               const store = stdioStore.getStore();
+               if (store) {
+                  store.buffer.stdout += text;
+               } else if (originalStdoutWrite) {
+                  originalStdoutWrite(text);
+               }
+            });
+         }
+         if (subprocess?.stderr) {
+            subprocess.stderr.on('data', (chunk: Buffer | string) => {
+               const text = typeof chunk === 'string' ? chunk : chunk.toString();
+               const store = stdioStore.getStore();
+               if (store) {
+                  store.buffer.stderr += text;
+               } else if (originalStderrWrite) {
+                  originalStderrWrite(text);
+               }
+            });
+         }
+         return subprocess;
+      };
       return {
          ...original,
+         $inherit,
          copyToClipboard: async (content: string) => {
             tracker.sysClipboard.push(content);
             return true;
@@ -324,6 +352,8 @@ function ensureStdIoHooked() {
    stdioHookInstalled = true;
    originalStdoutWrite = process.stdout.write.bind(process.stdout);
    originalStderrWrite = process.stderr.write.bind(process.stderr);
+   const originalStdoutIsTTY = process.stdout.isTTY;
+   const originalStdinIsTTY = process.stdin.isTTY;
 
    process.stdout.write = (msg: string) => {
       const store = stdioStore.getStore();
@@ -333,6 +363,20 @@ function ensureStdIoHooked() {
       }
       return originalStdoutWrite ? originalStdoutWrite(msg) : true;
    };
+
+   Object.defineProperty(process.stdout, 'isTTY', {
+      configurable: true,
+      get() {
+         return stdioStore.getStore() ? true : originalStdoutIsTTY;
+      },
+   });
+
+   Object.defineProperty(process.stdin, 'isTTY', {
+      configurable: true,
+      get() {
+         return stdioStore.getStore() ? true : originalStdinIsTTY;
+      },
+   });
 
    process.stderr.write = (msg: string) => {
       const store = stdioStore.getStore();

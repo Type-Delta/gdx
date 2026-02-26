@@ -4,7 +4,7 @@ import { createInterface } from 'readline';
 
 import { CheckCache, Err, ncc, yuString } from '@lib/Tools';
 
-import { isExecutable } from '../utils/utilities';
+import { isExecutable, noop } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER } from '@/consts';
@@ -344,7 +344,7 @@ export async function openInEditor(filePath: string): Promise<void> {
  */
 export async function scheduleChangeDir(targetDir?: string): Promise<void> {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(() => { });
+      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(noop);
       global.exitCodeOverride = -1;
       return;
    }
@@ -421,7 +421,11 @@ export async function execGit(
          exitCode = eCode;
       }
    } catch (_err) {
-      const err = Err.from(_err, undefined, (_err as ExecaError).signal);
+      const err = Err.from(_err);
+      const signal = (_err as ExecaError).signal;
+      if (signal) {
+         (err as { code?: string | number }).code = signal;
+      }
       if (
          err.code === 'SIGINT' ||
          err.code === 'SIGTERM' ||
