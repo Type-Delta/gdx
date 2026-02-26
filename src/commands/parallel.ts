@@ -871,25 +871,25 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1044,6 +1044,7 @@ async function getCherryPickPreview(options: {
    diff: string;
    stat: string;
    isEmpty: boolean;
+   hasConflicts: boolean;
    warning?: string;
    appliedPatch?: boolean;
    conflictInfo?: ConflictInfo;
@@ -1053,6 +1054,16 @@ async function getCherryPickPreview(options: {
    if (spinner) spinner.options.message = 'Emulating cherry-pick...';
    const patch = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
       .stdout;
+
+   if (patch.trim().length === 0) {
+      return {
+         diff: '',
+         stat: '',
+         isEmpty: true,
+         hasConflicts: false,
+         appliedPatch: true,
+      };
+   }
 
    const tempRoot = path.join(TEMP_DIR, 'parallel-join-preview');
    fs.mkdirSync(tempRoot, { recursive: true });
@@ -1064,6 +1075,8 @@ async function getCherryPickPreview(options: {
       await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
       let appliedPatch = false;
       let applyConflictInfo: ConflictInfo | undefined;
+      let checkResult: { applies: boolean; conflictInfo?: ConflictInfo } | undefined;
+      let patchConflictInfo: ConflictInfo | undefined;
       try {
          await $({
             env,
@@ -1074,11 +1087,95 @@ async function getCherryPickPreview(options: {
          applyConflictInfo = parseApplyConflictInfo(err);
       }
 
+      if (!appliedPatch) {
+         checkResult = await checkApplyPatch({ gitExec, originRepoPath, patch, env });
+         if (checkResult.applies) {
+            try {
+               await $({
+                  env,
+                  input: patch,
+               })`${gitExec} -C ${originRepoPath} apply --cached --whitespace=nowarn`;
+               appliedPatch = true;
+               applyConflictInfo = undefined;
+            } catch (err) {
+               applyConflictInfo = mergeConflictInfo(
+                  applyConflictInfo,
+                  parseApplyConflictInfo(err)
+               );
+            }
+         } else {
+            try {
+               await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+               await $({
+                  env,
+                  input: patch,
+               })`${gitExec} -C ${originRepoPath} apply --cached --whitespace=nowarn`;
+               appliedPatch = true;
+               applyConflictInfo = undefined;
+               checkResult = { applies: true };
+            } catch (err) {
+               applyConflictInfo = mergeConflictInfo(
+                  applyConflictInfo,
+                  mergeConflictInfo(checkResult.conflictInfo, parseApplyConflictInfo(err))
+               );
+            }
+         }
+      }
+
       const indexConflictInfo = await getIndexConflictInfo(gitExec, originRepoPath, env);
       let conflictInfo = mergeConflictInfo(indexConflictInfo, applyConflictInfo);
-      if (!conflictInfo && !appliedPatch) {
-         conflictInfo = parsePatchConflictInfo(patch);
+      if (!conflictInfo && !appliedPatch && checkResult && !checkResult.applies) {
+         const conflictEnv = {
+            ...process.env,
+            GIT_INDEX_FILE: path.join(tempDir, 'index-conflict'),
+         };
+         patchConflictInfo = await getPatchConflictInfoByApply({
+            gitExec,
+            originRepoPath,
+            patch,
+            env: conflictEnv,
+         });
+         if (patchConflictInfo && patchConflictInfo.files.length > 0) {
+            const totalFiles = splitPatchByFile(patch).length;
+            conflictInfo =
+               patchConflictInfo.files.length < totalFiles ? patchConflictInfo : undefined;
+         }
       }
+
+      let mergeTreeConflicts = false;
+      if (!conflictInfo?.files?.length && !appliedPatch) {
+         mergeTreeConflicts = await hasMergeTreeConflicts({
+            gitExec,
+            originRepoPath,
+            forkRepoPath,
+            commit,
+         });
+         if (mergeTreeConflicts && !conflictInfo) {
+            if (patchConflictInfo?.files?.length) {
+               conflictInfo = patchConflictInfo;
+            } else {
+               const fallbackInfo = parsePatchConflictInfo(patch);
+               if (fallbackInfo?.files?.length) {
+                  conflictInfo = fallbackInfo;
+               }
+            }
+         }
+      } else if (conflictInfo?.files?.length) {
+         mergeTreeConflicts = true;
+      }
+
+      let overlapConflicts = false;
+      if (!conflictInfo?.files?.length && !appliedPatch && !mergeTreeConflicts) {
+         overlapConflicts = await hasOverlapConflicts({
+            gitExec,
+            originRepoPath,
+            forkRepoPath,
+            commit,
+         });
+      }
+
+      const hasConflicts =
+         Boolean(conflictInfo?.files?.length) || mergeTreeConflicts || overlapConflicts;
 
       if (!appliedPatch) {
          const diff = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
@@ -1086,12 +1183,15 @@ async function getCherryPickPreview(options: {
          const stat = (
             await $`${gitExec} -C ${forkRepoPath} show --stat --format= --no-color ${commit}`
          ).stdout;
+         const warning = hasConflicts
+            ? 'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.'
+            : undefined;
          return {
             diff,
             stat,
             isEmpty: diff.trim().length === 0,
-            warning:
-               'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.',
+            hasConflicts,
+            warning,
             appliedPatch: false,
             conflictInfo,
          };
@@ -1106,11 +1206,71 @@ async function getCherryPickPreview(options: {
          diff,
          stat,
          isEmpty: diff.trim().length === 0,
+         hasConflicts,
          appliedPatch,
          conflictInfo,
       };
    } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
+   }
+}
+
+async function hasMergeTreeConflicts(options: {
+   gitExec: string;
+   originRepoPath: string;
+   forkRepoPath: string;
+   commit: string;
+}): Promise<boolean> {
+   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   try {
+      const parent = (await $`${gitExec} -C ${forkRepoPath} rev-parse ${commit}^`).stdout.trim();
+      if (!parent) return false;
+      const originHead = (await $`${gitExec} -C ${originRepoPath} rev-parse HEAD`).stdout.trim();
+      if (!originHead) return false;
+      const output = (
+         await $`${gitExec} -C ${originRepoPath} merge-tree ${parent} ${originHead} ${commit}`
+      ).stdout;
+      return /^(<{7}|	<{7})/m.test(output);
+   } catch {
+      return false;
+   }
+}
+
+async function hasOverlapConflicts(options: {
+   gitExec: string;
+   originRepoPath: string;
+   forkRepoPath: string;
+   commit: string;
+}): Promise<boolean> {
+   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   try {
+      const parent = (await $`${gitExec} -C ${forkRepoPath} rev-parse ${commit}^`).stdout.trim();
+      if (!parent) return false;
+      const originHead = (await $`${gitExec} -C ${originRepoPath} rev-parse HEAD`).stdout.trim();
+      if (!originHead) return false;
+
+      const forkFilesOutput = (
+         await $`${gitExec} -C ${forkRepoPath} show --name-only --format= ${commit}`
+      ).stdout.trim();
+      if (!forkFilesOutput) return false;
+      const forkFiles = new Set(
+         forkFilesOutput
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+      );
+
+      const originFilesOutput = (
+         await $`${gitExec} -C ${originRepoPath} diff --name-only ${parent} ${originHead}`
+      ).stdout.trim();
+      if (!originFilesOutput) return false;
+      const originFiles = originFilesOutput
+         .split('\n')
+         .map((line) => line.trim())
+         .filter((line) => line.length > 0);
+      return originFiles.some((file) => forkFiles.has(file));
+   } catch {
+      return false;
    }
 }
 
@@ -1150,6 +1310,85 @@ async function getIndexConflictInfo(
    }
 
    return { files, counts };
+}
+
+async function checkApplyPatch(options: {
+   gitExec: string;
+   originRepoPath: string;
+   patch: string;
+   env: NodeJS.ProcessEnv;
+}): Promise<{ applies: boolean; conflictInfo?: ConflictInfo }> {
+   const { gitExec, originRepoPath, patch, env } = options;
+   try {
+      await $({
+         env,
+         input: patch,
+      })`${gitExec} -C ${originRepoPath} apply --check --whitespace=nowarn`;
+      return { applies: true };
+   } catch (err) {
+      return { applies: false, conflictInfo: parseApplyConflictInfo(err) };
+   }
+}
+
+async function getPatchConflictInfoByApply(options: {
+   gitExec: string;
+   originRepoPath: string;
+   patch: string;
+   env: NodeJS.ProcessEnv;
+}): Promise<ConflictInfo | undefined> {
+   const { gitExec, originRepoPath, patch, env } = options;
+   const sections = splitPatchByFile(patch);
+   if (sections.length === 0) return undefined;
+
+   const files: string[] = [];
+   const counts: Record<string, number> = {};
+
+   for (const section of sections) {
+      try {
+         await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+         await $({
+            env,
+            input: section.patch,
+         })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
+      } catch (err) {
+         if (!files.includes(section.file)) files.push(section.file);
+         const parsed = parseApplyConflictInfo(err);
+         const count = parsed?.counts?.[section.file];
+         if (typeof count === 'number') counts[section.file] = count;
+      }
+   }
+
+   if (files.length === 0) return undefined;
+   const hasCounts = files.every((file) => typeof counts[file] === 'number');
+   return { files, counts: hasCounts ? counts : undefined };
+}
+
+function splitPatchByFile(patch: string): { file: string; patch: string }[] {
+   const sections: { file: string; lines: string[] }[] = [];
+   let current: { file: string; lines: string[] } | null = null;
+   const lines = patch.split('\n');
+
+   for (const line of lines) {
+      if (line.startsWith('diff --git ')) {
+         if (current) sections.push(current);
+         const match = line.match(/diff --git a\/(.+?) b\/(.+)/);
+         const file = match?.[2]?.trim() || 'unknown';
+         current = { file, lines: [line] };
+         continue;
+      }
+      if (line.startsWith('diff --cc ') || line.startsWith('diff --combined ')) {
+         if (current) sections.push(current);
+         const file = line.replace(/^diff --(?:cc|combined)\s+/, '').trim() || 'unknown';
+         current = { file, lines: [line] };
+         continue;
+      }
+      if (current) current.lines.push(line);
+   }
+
+   if (current) sections.push(current);
+   return sections
+      .filter((section) => section.lines.length > 0)
+      .map((section) => ({ file: section.file, patch: section.lines.join('\n') }));
 }
 
 function parseApplyConflictInfo(error: unknown): ConflictInfo | undefined {
@@ -1298,7 +1537,7 @@ function buildCommitPreamble(options: {
 
    const trimmedStat = stat
       .trimEnd()
-      .replace(/(?:\W)(\++)/g, `${ncc('Green')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
+      .replace(/(\W)(\++)/g, `$1${ncc('Green')}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
       .replace(/(-+)/g, `${ncc('Red')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
    if (trimmedStat.length > 0) {
       lines.push('');
@@ -1308,7 +1547,7 @@ function buildCommitPreamble(options: {
    if (warning) {
       lines.push('');
       lines.push(
-         `  Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+         `Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
       ); // TODO: make a theme service to handle this kind of thing
    }
 
@@ -1326,6 +1565,41 @@ function buildCommitPreamble(options: {
    }
 
    return lines;
+}
+
+function getInteractiveStatusText(options: { isEmpty: boolean; hasConflicts: boolean }): string {
+   const { isEmpty, hasConflicts } = options;
+   if (isEmpty) {
+      return (
+         ncc('BgWhite') +
+         ncc('Black') +
+         ncc('Bright') +
+         ' EMPTY ' +
+         ncc() +
+         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+         bgRgb(CATPPUCCIN_VPALETTE.base)
+      );
+   }
+   if (hasConflicts) {
+      return (
+         ncc('BgRed') +
+         ncc('White') +
+         ncc('Bright') +
+         ' CONFLICT ' +
+         ncc() +
+         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+         bgRgb(CATPPUCCIN_VPALETTE.base)
+      );
+   }
+   return (
+      ncc('Green') +
+      ncc('White') +
+      ncc('Bright') +
+      ' CLEAN ' +
+      ncc() +
+      fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
+      bgRgb(CATPPUCCIN_VPALETTE.base)
+   );
 }
 
 function formatConflictSummary(conflictInfo?: ConflictInfo): string[] {
@@ -1379,44 +1653,19 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ]
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ]
       : [
-         { key: 'a', label: 'apply', action: 'apply' },
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ];
+           { key: 'a', label: 'apply', action: 'apply' },
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ];
 
-   let statusText: string;
-   if (preview.appliedPatch) {
-      statusText =
-         ncc('Green') +
-         ncc('White') +
-         ncc('Bright') +
-         ' CLEAN ' +
-         ncc() +
-         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
-         bgRgb(CATPPUCCIN_VPALETTE.base);
-   } else if (preview.isEmpty) {
-      statusText =
-         ncc('BgWhite') +
-         ncc('Black') +
-         ncc('Bright') +
-         ' EMPTY ' +
-         ncc() +
-         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
-         bgRgb(CATPPUCCIN_VPALETTE.base);
-   } else {
-      statusText =
-         ncc('BgRed') +
-         ncc('White') +
-         ncc('Bright') +
-         ' CONFLICT ' +
-         ncc() +
-         fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
-         bgRgb(CATPPUCCIN_VPALETTE.base);
-   }
+   const statusText = getInteractiveStatusText({
+      isEmpty: preview.isEmpty,
+      hasConflicts: preview.hasConflicts,
+   });
 
    const diffText = preview.diff.trimEnd();
    const content =
@@ -1591,9 +1840,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -1726,9 +1975,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => c)
+                 .split('\n')
+                 .map((c) => c.trim())
+                 .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
