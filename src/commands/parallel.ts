@@ -60,6 +60,8 @@ interface ParallelMetadata {
    safeProject: string;
    originPath: string;
    baseCommit: string;
+   forkBranch?: string;
+   forkBranchTracked?: boolean;
    createdAt: string;
    updatedAt?: string;
    joinCursor?: string;
@@ -535,6 +537,30 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    let noInitAll = false;
    let noInitList: string | null = null;
 
+   const wantsBranchCreate = parsedArgs.hasOption('-b');
+   const wantsBranchReset = parsedArgs.hasOption('-B');
+   if (wantsBranchCreate && wantsBranchReset) {
+      Logger.error("Use either '-b' or '-B' to create a branch, not both.", 'parallel');
+      showUsage();
+      return 1;
+   }
+
+   let forkBranch: string | null = null;
+   let forkBranchFlag: '-b' | '-B' | null = null;
+   if (wantsBranchCreate) {
+      forkBranch = parsedArgs.popValue('-b');
+      forkBranchFlag = '-b';
+   } else if (wantsBranchReset) {
+      forkBranch = parsedArgs.popValue('-B');
+      forkBranchFlag = '-B';
+   }
+
+   if ((wantsBranchCreate || wantsBranchReset) && !forkBranch) {
+      Logger.error("Missing branch name for '-b'/'-B'.", 'parallel');
+      showUsage();
+      return 1;
+   }
+
    if (parsedArgs.hasOption('--no-init')) {
       noInitList = parsedArgs.popValue('--no-init', 0, true);
       if (noInitList === null) {
@@ -576,7 +602,14 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
 
    // Get base commit
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   const baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
+   let baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
+   if (forkBranch) {
+      try {
+         baseCommit = (await $`${git$} rev-parse ${forkBranch}`).stdout.trim() || baseCommit;
+      } catch {
+         // ignore and keep origin HEAD
+      }
+   }
 
    // Check for changes
    const statusOutput = (
@@ -606,7 +639,11 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
 
    // Create worktree
    try {
-      await $inherit`${git$} worktree add --detach ${targetPath} HEAD`;
+      if (forkBranch && forkBranchFlag) {
+         await $inherit`${git$} worktree add ${forkBranchFlag} ${forkBranch} ${targetPath} HEAD`;
+      } else {
+         await $inherit`${git$} worktree add --detach ${targetPath} HEAD`;
+      }
    } catch {
       Logger.error('Failed to create the parallel worktree.', 'parallel');
       if (stashRef) {
@@ -633,6 +670,11 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    }
 
    // Write metadata
+   let forkBranchTracked = false;
+   if (forkBranch) {
+      forkBranchTracked = true;
+   }
+
    const metadata: ParallelMetadata = {
       alias,
       branch: ctx.branchName,
@@ -641,6 +683,8 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
       safeProject: ctx.safeProjectName,
       originPath: ctx.repoRoot,
       baseCommit,
+      forkBranch: forkBranch || undefined,
+      forkBranchTracked: forkBranchTracked || undefined,
       createdAt: new Date().toISOString(),
    };
 
@@ -914,6 +958,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
       const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
+      const branchInfo = meta.forkBranch ? `${ncc('Dim')}(branch:${meta.forkBranch})${ncc()}` : '';
 
       let displayPath = wtPath;
       if (isShortOutput) {
@@ -924,7 +969,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       spinnerCtrl.stop();
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${displayPath}`
+         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${displayPath}${branchInfo ? ` ${branchInfo}` : ''}`
       );
 
       if (baseCommit) {
@@ -1757,6 +1802,37 @@ async function joinWorktree(
          'parallel'
       );
       return 1;
+   }
+
+   if (meta.forkBranch && meta.forkBranchTracked) {
+      const forkBranchRef = meta.forkBranch.trim();
+      if (forkBranchRef) {
+         const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
+         const remotes = remotesOutput
+            ? remotesOutput
+                 .split('\n')
+                 .map((line) => line.trim())
+                 .filter((line) => line.length > 0)
+            : [];
+         if (remotes.length > 0) {
+            for (const remote of remotes) {
+               try {
+                  const remoteOutput = (
+                     await $`${git$} -C ${forkPath} ls-remote --heads ${remote} ${forkBranchRef}`
+                  ).stdout.trim();
+                  if (remoteOutput.length > 0) {
+                     Logger.error(
+                        `Fork branch '${forkBranchRef}' exists on remote '${remote}'. Use standard git commands to merge it.`,
+                        'parallel'
+                     );
+                     return 1;
+                  }
+               } catch {
+                  // ignore remote lookup failures
+               }
+            }
+         }
+      }
    }
 
    const spinnerCtrl = spinner({ message: `Checking worktree status` });
@@ -2783,7 +2859,7 @@ if configured (see \`${cyan}parallel.init${reset}\` config for options),
 getting the fork ready for work in no time.
 
 ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-- ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
+ - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors are controlled by config and \`${cyan}--no-init${reset}\`.
 - ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
 - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
 - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
@@ -2808,7 +2884,7 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
       const reset = ncc();
       return strWrap(
          `
-${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
+ ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,pkg]]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel list${reset}
 ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
 ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
@@ -2818,7 +2894,9 @@ ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
 ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
 
 Examples:
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
+    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
+    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
+    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
    ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
    ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
@@ -2838,7 +2916,7 @@ Examples:
 
 export const structure = {
    $root: {
-      fork: ['--move', '--mirror', '--no-init'],
+      fork: ['--move', '--mirror', '--no-init', '-b', '-B'],
       list: {},
       open: parallelOpenStructure,
       switch: parallelSwitchStructure,

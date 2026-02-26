@@ -72,6 +72,53 @@ describe('gdx parallel', async () => {
       expect(exists).toBe(true);
    });
 
+   it('should fork and join a branch-tracked worktree', async () => {
+      await $`${git$} commit --allow-empty -m ${'Branch base'}`;
+
+      const alias = 'feature-branch';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias]);
+      const forkResult = await parallel(forkCtx);
+
+      expect(forkResult).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, alias);
+      const forkBranch = (
+         await $`${git$} -C ${forkPath} rev-parse --abbrev-ref HEAD`
+      ).stdout.trim();
+
+      expect(forkBranch).toBe(alias);
+
+      await fs.writeFile(path.join(forkPath, 'branch-file.txt'), 'branch');
+      await $`${git$} -C ${forkPath} add branch-file.txt`;
+      await $`${git$} -C ${forkPath} commit -m ${'Branch change'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(0);
+
+      const joinedFile = await fs
+         .stat(path.join(tmpDir, 'branch-file.txt'))
+         .then(() => true)
+         .catch(() => false);
+      expect(joinedFile).toBe(true);
+
+      const forkStillExists = await fs
+         .stat(forkPath)
+         .then(() => true)
+         .catch(() => false);
+      expect(forkStillExists).toBe(false);
+   });
+
    it('should list active worktrees', async () => {
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
       const result = await parallel(listCtx);
@@ -107,6 +154,22 @@ describe('gdx parallel', async () => {
 
       const markerMatch = output.match(/^([●○])\s+feature-1\b/m);
       expect(markerMatch?.[1]).toBe('●');
+   });
+
+   it('should show branch info for branch-tracked worktrees', async () => {
+      const alias = 'feature-branch-list';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias]);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      resetCache();
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
+      const result = await parallel(listCtx);
+
+      expect(result).toBe(0);
+      expect(stripAnsiColor(buffer.stdout)).toContain(`(branch:${alias})`);
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      await parallel(removeCtx);
    });
 
    it('should show commit hint in short list output', async () => {
