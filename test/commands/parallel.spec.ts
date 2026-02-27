@@ -1151,6 +1151,116 @@ describe('gdx parallel', async () => {
       expect(forkExists).toBe(false);
    });
 
+   it('should not attempt to join commits already in origin', async () => {
+      resetCache();
+      const alias = 'feature-join-skip';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, alias);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const forkGit$ = [gitExec, '-C', forkPath];
+
+      fs.writeFileSync(path.join(forkPath, 'join-skip.txt'), 'join-skip');
+      await $`${forkGit$} add join-skip.txt`;
+      await $`${forkGit$} commit -m ${'Join skip commit'}`;
+
+      const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+      await $`${git$} -C ${tmpDir} merge --no-edit ${forkHead}`;
+
+      resetCache();
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
+      expect(await parallel(listCtx)).toBe(0);
+      const listOutput = stripAnsiColor(buffer.stdout.replace(/\r/g, ''));
+      expect(listOutput).toContain('up-to-date');
+      expect(listOutput).not.toContain('Join skip commit');
+
+      buffer.stdout = '';
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
+      const joinResult = await parallel(joinCtx);
+
+      expect(joinResult).toBe(0);
+      expect(buffer.stdout).toContain('No new commits to cherry-pick');
+      expect(buffer.stdout).not.toContain('Join skip commit');
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   });
+
+   it(
+      'should apply submodule commits in non-interactive join for branch worktree',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-branch-join');
+         fs.mkdirSync(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submodulePath = 'deps/submodule-branch-join';
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         const originSubmodulePath = path.join(tmpDir, submodulePath);
+         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+
+         const alias = 'feature-branch-sub-join';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias]);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, alias);
+
+         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         const forkSubmodulePath = path.join(forkPath, submodulePath);
+
+         fs.writeFileSync(path.join(forkSubmodulePath, 'branch-join.txt'), 'sub-join');
+         await $`${gitExe} -C ${forkSubmodulePath} add branch-join.txt`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule branch join change'}`;
+
+         await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule for branch join'}`;
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+         expect(await parallel(joinCtx)).toBe(0);
+
+         const submoduleLog = (
+            await $`${gitExe} -C ${originSubmodulePath} log -1 --format=%s`
+         ).stdout.trim();
+         expect(submoduleLog).toBe('Submodule branch join change');
+
+         const originLog = (await $`${gitExe} -C ${tmpDir} log --format=%s`).stdout.trim();
+         expect(originLog).toContain('Bump submodule for branch join');
+
+         await resetRepo();
+         await $`${gitExe} -C ${tmpDir} clean -fd`;
+      },
+      { timeout: 20000 }
+   );
+
    it('should treat empty cherry-pick as non-conflict', async () => {
       resetCache();
       const alias = 'feature-empty-status';

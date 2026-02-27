@@ -1905,6 +1905,7 @@ async function joinWorktree(
 
    const shouldUseCursor = await isUsableJoinCursor(gitExec, forkPath, baseCommit, joinCursor);
    const mainRangeStart = shouldUseCursor ? joinCursor! : baseCommit;
+   const originHead = (await getRevParseCached(gitExec, originPath, 'HEAD')).trim();
 
    let stashRef: string | null = null;
    if (forkDirty && bringAll) {
@@ -1932,9 +1933,17 @@ async function joinWorktree(
    );
    spinnerCtrl.options.message = `Enumerating commits to join`;
    try {
-      const output = (
-         await $`${git$} -C ${forkPath} rev-list --reverse ${mainRangeStart}..${forkHead}`
-      ).stdout.trim();
+      const revListArgs = [
+         '-C',
+         forkPath,
+         'rev-list',
+         '--reverse',
+         `${mainRangeStart}..${forkHead}`,
+      ];
+      if (originHead) {
+         revListArgs.push('--not', originHead);
+      }
+      const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
       commitList = output
          ? output
               .split('\n')
@@ -2067,9 +2076,18 @@ async function joinWorktree(
       let subCommitList: string[] = [];
       try {
          const subHead = (await getRevParseCached(gitExec, forkSubPath, 'HEAD')).trim();
-         const output = (
-            await $`${git$} -C ${forkSubPath} rev-list --reverse ${subRangeStart}..${subHead}`
-         ).stdout.trim();
+         const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
+         const subRevListArgs = [
+            '-C',
+            forkSubPath,
+            'rev-list',
+            '--reverse',
+            `${subRangeStart}..${subHead}`,
+         ];
+         if (originSubHead) {
+            subRevListArgs.push('--not', originSubHead);
+         }
+         const output = (await $`${gitExec} ${subRevListArgs}`).stdout.trim();
          subCommitList = output
             ? output
                  .split('\n')
