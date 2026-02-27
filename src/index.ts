@@ -12,12 +12,15 @@ import { dispatch } from './cli/dispatch';
 
 const _args = process.argv.slice(2);
 
+Logger.debug(`Raw arguments: ${yuString(process.argv)}`, 'gdx');
+
 async function main(): Promise<number> {
    const ctx: GdxContext = {
       args: new ArgsSet(_args),
       git$: '',
    };
    const args = ctx.args;
+   Logger.debug(`Parsed arguments: ${yuString(args.toArray())}`, 'gdx');
 
    if (args[0] === '--init') {
       const shell = args.popValue('--shell') || args.popValue('--init');

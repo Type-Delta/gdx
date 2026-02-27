@@ -1,7 +1,7 @@
 import { afterAll, describe, expect } from 'bun:test';
-import fs from 'fs/promises';
 import path from 'path';
 
+import * as fs from '@/modules/fs';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { resetConfig } from '@/common/config';
@@ -77,19 +77,19 @@ describe('gdx parallel', async () => {
       const configPath = process.env.GDX_CONFIG_PATH || '';
       const originalConfig = await fs.readFile(configPath, 'utf-8').catch(() => '');
 
-      await fs.writeFile(path.join(tmpDir, '.env'), 'env');
-      await fs.writeFile(path.join(tmpDir, '.env.local'), 'env-local');
-      await fs.writeFile(path.join(tmpDir, 'notes.txt'), 'notes');
-      await fs.mkdir(path.join(tmpDir, 'config'), { recursive: true });
-      await fs.writeFile(path.join(tmpDir, 'config', 'app.env'), 'config-env');
-      await fs.mkdir(path.join(tmpDir, 'secrets', 'nested'), { recursive: true });
-      await fs.writeFile(path.join(tmpDir, 'secrets', 'token.txt'), 'token');
-      await fs.writeFile(path.join(tmpDir, 'secrets', 'nested', 'inner.txt'), 'inner');
-      await fs.writeFile(path.join(tmpDir, '.gitignore'), '.env\n# comment\nnotes*.txt\n');
+      fs.writeFileSync(path.join(tmpDir, '.env'), 'env');
+      fs.writeFileSync(path.join(tmpDir, '.env.local'), 'env-local');
+      fs.writeFileSync(path.join(tmpDir, 'notes.txt'), 'notes');
+      fs.mkdirSync(path.join(tmpDir, 'config'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'config', 'app.env'), 'config-env');
+      fs.mkdirSync(path.join(tmpDir, 'secrets', 'nested'), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, 'secrets', 'token.txt'), 'token');
+      fs.writeFileSync(path.join(tmpDir, 'secrets', 'nested', 'inner.txt'), 'inner');
+      fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.env\n# comment\nnotes*.txt\n');
       await $`${git$} -C ${tmpDir} add .gitignore`;
       await $`${git$} -C ${tmpDir} commit -m ${'Add gitignore for env'} `;
 
-      await fs.writeFile(
+      fs.writeFileSync(
          configPath,
          '[parallel]\ninit = "env"\nenvPaths = ".env.local:config/*.env:secrets"\n',
          'utf-8'
@@ -145,23 +145,28 @@ describe('gdx parallel', async () => {
          expect(secretsTokenExists).toBe(true);
          expect(secretsInnerExists).toBe(true);
 
-         await fs.rm(path.join(forkPath, '.env.local'), { force: true });
-         await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
-         await fs.rm(path.join(forkPath, 'config'), { recursive: true, force: true });
-         await fs.rm(path.join(forkPath, 'secrets'), { recursive: true, force: true });
+         await Promise.all([
+            fs.rm(path.join(forkPath, '.env.local'), { force: true }),
+            fs.rm(path.join(forkPath, 'notes.txt'), { force: true }),
+            fs.rm(path.join(forkPath, 'config'), { recursive: true, force: true }),
+            fs.rm(path.join(forkPath, 'secrets'), { recursive: true, force: true }),
+         ]);
 
          const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-env']);
          expect(await parallel(removeCtx)).toBe(0);
       } finally {
-         await fs.rm(path.join(tmpDir, '.env'), { force: true });
-         await fs.rm(path.join(tmpDir, '.env.local'), { force: true });
-         await fs.rm(path.join(tmpDir, 'notes.txt'), { force: true });
-         await fs.rm(path.join(tmpDir, 'config'), { recursive: true, force: true });
-         await fs.rm(path.join(tmpDir, 'secrets'), { recursive: true, force: true });
-         await fs.rm(path.join(tmpDir, '.gitignore'), { force: true });
+         await Promise.all([
+            fs.rm(path.join(tmpDir, '.env.local'), { force: true }),
+            fs.rm(path.join(tmpDir, 'notes.txt'), { force: true }),
+            fs.rm(path.join(tmpDir, 'config'), { recursive: true, force: true }),
+            fs.rm(path.join(tmpDir, 'secrets'), { recursive: true, force: true }),
+            fs.rm(path.join(tmpDir, '.env'), { force: true }),
+            fs.rm(path.join(tmpDir, '.gitignore'), { force: true }),
+         ]);
+
          await resetRepo();
          await $`${git$} -C ${tmpDir} clean -fd`;
-         await fs.writeFile(configPath, originalConfig, 'utf-8');
+         fs.writeFileSync(configPath, originalConfig, 'utf-8');
          resetConfig();
          resetCache();
       }
@@ -172,11 +177,12 @@ describe('gdx parallel', async () => {
       const refCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-ref', refCommit]);
-      const result = await parallel(forkCtx);
+      const [forkResult, branchName] = await Promise.all([
+         parallel(forkCtx),
+         $`${git$} rev-parse --abbrev-ref HEAD`.then((child) => child.stdout.trim()),
+      ]);
+      expect(forkResult).toBe(0);
 
-      expect(result).toBe(0);
-
-      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
       const projectName = path.basename(tmpDir);
       const worktreeRoot = path.join(
          tmpRootDir,
@@ -200,11 +206,12 @@ describe('gdx parallel', async () => {
 
       const alias = 'feature-branch';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias]);
-      const forkResult = await parallel(forkCtx);
-
+      const [forkResult, branchName] = await Promise.all([
+         parallel(forkCtx),
+         $`${git$} rev-parse --abbrev-ref HEAD`.then((child) => child.stdout.trim()),
+      ]);
       expect(forkResult).toBe(0);
 
-      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
       const projectName = path.basename(tmpDir);
       const worktreeRoot = path.join(
          tmpRootDir,
@@ -220,7 +227,7 @@ describe('gdx parallel', async () => {
 
       expect(forkBranch).toBe(alias);
 
-      await fs.writeFile(path.join(forkPath, 'branch-file.txt'), 'branch');
+      fs.writeFileSync(path.join(forkPath, 'branch-file.txt'), 'branch');
       await $`${git$} -C ${forkPath} add branch-file.txt`;
       await $`${git$} -C ${forkPath} commit -m ${'Branch change'}`;
 
@@ -319,7 +326,7 @@ describe('gdx parallel', async () => {
 
       for (let i = 1; i <= 4; i++) {
          const filename = `short-hint-${i}.txt`;
-         await fs.writeFile(path.join(forkPath, filename), `short-hint-${i}`);
+         fs.writeFileSync(path.join(forkPath, filename), `short-hint-${i}`);
          await $`${forkGit$} add ${filename}`;
          await $`${forkGit$} commit -m ${`Add short hint ${i}`}`;
       }
@@ -433,7 +440,7 @@ describe('gdx parallel', async () => {
 
       for (let i = 1; i <= 4; i++) {
          const filename = `short-${i}.txt`;
-         await fs.writeFile(path.join(forkPath, filename), `short-${i}`);
+         fs.writeFileSync(path.join(forkPath, filename), `short-${i}`);
          await $`${forkGit$} add ${filename}`;
          await $`${forkGit$} commit -m ${`Add short ${i}`}`;
       }
@@ -457,25 +464,75 @@ describe('gdx parallel', async () => {
       expect(await parallel(removeCtx)).toBe(0);
    });
 
+   it('should not list commits already merged into origin', async () => {
+      const alias = 'feature-merged-list';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const projectName = path.basename(tmpDir);
+      const worktreeRoot = path.join(
+         tmpRootDir,
+         'tmp',
+         'worktrees',
+         normalizePath(projectName),
+         normalizePath(branchName)
+      );
+      const forkPath = path.join(worktreeRoot, alias);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const forkGit$ = [gitExec, '-C', forkPath];
+
+      const commitMessages = ['Merged list 1', 'Merged list 2', 'Merged list 3'];
+      for (const message of commitMessages) {
+         const filename = `${message.replace(/\s+/g, '-').toLowerCase()}.txt`;
+         fs.writeFileSync(path.join(forkPath, filename), message);
+         await $`${forkGit$} add ${filename}`;
+         await $`${forkGit$} commit -m ${message}`;
+      }
+
+      await fs.rm(path.join(forkPath, '.env.local'), { force: true });
+      await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
+
+      const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+      await $`${git$} -C ${tmpDir} merge --no-edit ${forkHead}`;
+
+      resetCache();
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
+      const listResult = await parallel(listCtx);
+
+      expect(listResult).toBe(0);
+      const output = stripAnsiColor(buffer.stdout.replace(/\r/g, ''));
+      expect(output).toContain(alias);
+      expect(output).toContain('up-to-date');
+      for (const message of commitMessages) {
+         expect(output).not.toContain(message);
+      }
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   });
+
    it(
       'should block removal when submodules are dirty',
       async () => {
          resetCache();
          const submoduleRoot = path.join(tmpRootDir, 'submodule');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${git$} -C ${submoduleRoot} init`;
          await $`${git$} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${git$} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${git$} -C ${submoduleRoot} add README.md`;
          await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
          const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
          const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
          const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
-         await fs.writeFile(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
-         await $`${git$} -C ${tmpDir} add .gitmodules`;
-         await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
+         fs.writeFileSync(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
+         await Promise.all([
+            $`${git$} -C ${tmpDir} add .gitmodules`,
+            $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`,
+         ]);
          await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
@@ -491,10 +548,10 @@ describe('gdx parallel', async () => {
                .then(() => true)
                .catch(() => false);
             if (!submoduleExists) {
-               await fs.mkdir(path.join(forkPath, 'deps'), { recursive: true });
+               fs.mkdirSync(path.join(forkPath, 'deps'), { recursive: true });
                await $`${git$} -C ${forkPath} -c protocol.file.allow=always clone ${submoduleRoot} ${'deps/submodule'}`;
             }
-            await fs.writeFile(path.join(submodulePath, 'dirty.txt'), 'dirty');
+            fs.writeFileSync(path.join(submodulePath, 'dirty.txt'), 'dirty');
 
             // Mark submodule folder as unchanged to avoid dirty detection from working tree
             await $`${git$} -C ${forkPath} update-index --assume-unchanged ${'deps/submodule'}`;
@@ -521,11 +578,11 @@ describe('gdx parallel', async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
          const submoduleRoot = path.join(tmpRootDir, 'submodule-deinit');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
          await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
@@ -652,11 +709,11 @@ describe('gdx parallel', async () => {
       const forkOnePath = path.join(worktreeRoot, 'feature-1');
       const forkTwoPath = path.join(worktreeRoot, 'feature-2');
 
-      await fs.writeFile(path.join(forkOnePath, 'feature-one.txt'), 'one');
+      fs.writeFileSync(path.join(forkOnePath, 'feature-one.txt'), 'one');
       await $`${git$} -C ${forkOnePath} add feature-one.txt`;
       await $`${git$} -C ${forkOnePath} commit -m ${'Add feature one'}`;
 
-      await fs.writeFile(path.join(forkTwoPath, 'feature-two.txt'), 'two');
+      fs.writeFileSync(path.join(forkTwoPath, 'feature-two.txt'), 'two');
       await $`${git$} -C ${forkTwoPath} add feature-two.txt`;
       await $`${git$} -C ${forkTwoPath} commit -m ${'Add feature two'}`;
 
@@ -734,11 +791,11 @@ describe('gdx parallel', async () => {
       const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
       const forkPath = path.join(worktreeRoot, 'feature-conflict');
 
-      await fs.writeFile(path.join(tmpDir, 'conflict.txt'), 'origin-change');
+      fs.writeFileSync(path.join(tmpDir, 'conflict.txt'), 'origin-change');
       await $`${git$} -C ${tmpDir} add conflict.txt`;
       await $`${git$} -C ${tmpDir} commit -m ${'Origin change'}`;
 
-      await fs.writeFile(path.join(forkPath, 'conflict.txt'), 'fork-change');
+      fs.writeFileSync(path.join(forkPath, 'conflict.txt'), 'fork-change');
       await $`${git$} -C ${forkPath} add conflict.txt`;
       await $`${git$} -C ${forkPath} commit -m ${'Fork change'}`;
 
@@ -760,11 +817,11 @@ describe('gdx parallel', async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
          const submoduleRoot = path.join(tmpRootDir, 'submodule-list');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
          await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
@@ -773,15 +830,21 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
-         const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-list');
-         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
 
          const alias = 'feature-sub-list';
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
-         expect(await parallel(forkCtx)).toBe(0);
 
-         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const [forkResult, branchName] = await Promise.all([
+            parallel(forkCtx),
+            $`${git$} rev-parse --abbrev-ref HEAD`.then((child) => child.stdout.trim()),
+            async () => {
+               const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-list');
+               await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
+               await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+            },
+         ]);
+         expect(forkResult).toBe(0);
+
          const projectName = path.basename(tmpDir);
          const worktreeRoot = path.join(
             tmpRootDir,
@@ -795,14 +858,14 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-list');
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'change.txt'), 'sub-change');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'change.txt'), 'sub-change');
          await $`${gitExe} -C ${forkSubmodulePath} add change.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
          await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule'}`;
 
-         await fs.writeFile(path.join(forkPath, 'main.txt'), 'main');
+         fs.writeFileSync(path.join(forkPath, 'main.txt'), 'main');
          await $`${gitExe} -C ${forkPath} add main.txt`;
          await $`${gitExe} -C ${forkPath} commit -m ${'Main change'}`;
 
@@ -832,11 +895,11 @@ describe('gdx parallel', async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
          const submoduleRoot = path.join(tmpRootDir, 'submodule-list-cursor');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
          await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
@@ -848,9 +911,12 @@ describe('gdx parallel', async () => {
 
          const alias = 'feature-sub-list-cursor';
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
-         expect(await parallel(forkCtx)).toBe(0);
+         const [forkResult, branchName] = await Promise.all([
+            parallel(forkCtx),
+            $`${git$} rev-parse --abbrev-ref HEAD`.then((child) => child.stdout.trim()),
+         ]);
+         expect(forkResult).toBe(0);
 
-         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
          const projectName = path.basename(tmpDir);
          const worktreeRoot = path.join(
             tmpRootDir,
@@ -864,18 +930,18 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-list-cursor');
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
          await $`${gitExe} -C ${forkSubmodulePath} add change-1.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 1'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
          await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 1'}`;
 
-         await fs.writeFile(path.join(forkPath, 'main-1.txt'), 'main-1');
+         fs.writeFileSync(path.join(forkPath, 'main-1.txt'), 'main-1');
          await $`${gitExe} -C ${forkPath} add main-1.txt`;
          await $`${gitExe} -C ${forkPath} commit -m ${'Main change 1'}`;
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
          await $`${gitExe} -C ${forkSubmodulePath} add change-2.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 2'}`;
 
@@ -883,10 +949,10 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 2'}`;
 
          const metaPath = path.join(forkPath, '.git-parallel.json');
-         const metaRaw = await fs.readFile(metaPath, 'utf-8');
+         const metaRaw = fs.readFileSync(metaPath, 'utf-8');
          const metaObj = JSON.parse(metaRaw) as { joinCursor?: string };
          metaObj.joinCursor = (await $`${gitExe} -C ${forkPath} rev-parse HEAD~1`).stdout.trim();
-         await fs.writeFile(metaPath, JSON.stringify(metaObj, null, 2), 'utf-8');
+         fs.writeFileSync(metaPath, JSON.stringify(metaObj, null, 2), 'utf-8');
 
          resetCache();
          const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
@@ -914,11 +980,11 @@ describe('gdx parallel', async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
          const submoduleRoot = path.join(tmpRootDir, 'submodule-counter');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
          await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
@@ -946,14 +1012,14 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-counter');
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
          await $`${gitExe} -C ${forkSubmodulePath} add change-1.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 1'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
          await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 1'}`;
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
          await $`${gitExe} -C ${forkSubmodulePath} add change-2.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 2'}`;
 
@@ -987,11 +1053,11 @@ describe('gdx parallel', async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
          const submoduleRoot = path.join(tmpRootDir, 'submodule-join');
-         await fs.mkdir(submoduleRoot, { recursive: true });
+         fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
          await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
          await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
@@ -1022,7 +1088,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-join');
 
-         await fs.writeFile(path.join(forkSubmodulePath, 'join-change.txt'), 'sub-join');
+         fs.writeFileSync(path.join(forkSubmodulePath, 'join-change.txt'), 'sub-join');
          await $`${gitExe} -C ${forkSubmodulePath} add join-change.txt`;
          await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule join change'}`;
 
@@ -1065,12 +1131,12 @@ describe('gdx parallel', async () => {
       const gitExec = Array.isArray(git$) ? git$[0] : git$;
       const forkGit$ = [gitExec, '-C', forkPath];
 
-      await fs.writeFile(path.join(forkPath, 'duplicate.txt'), 'duplicate');
+      fs.writeFileSync(path.join(forkPath, 'duplicate.txt'), 'duplicate');
       await $`${forkGit$} add duplicate.txt`;
       await $`${forkGit$} commit -m ${'Duplicate change'}`;
       await $`${forkGit$} reset --hard HEAD`;
 
-      await fs.writeFile(path.join(tmpDir, 'duplicate.txt'), 'duplicate');
+      fs.writeFileSync(path.join(tmpDir, 'duplicate.txt'), 'duplicate');
       await $`${git$} -C ${tmpDir} add duplicate.txt`;
       await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate change origin'}`;
 
@@ -1104,12 +1170,12 @@ describe('gdx parallel', async () => {
       const gitExec = Array.isArray(git$) ? git$[0] : git$;
       const forkGit$ = [gitExec, '-C', forkPath];
 
-      await fs.writeFile(path.join(forkPath, 'duplicate-status.txt'), 'duplicate');
+      fs.writeFileSync(path.join(forkPath, 'duplicate-status.txt'), 'duplicate');
       await $`${forkGit$} add duplicate-status.txt`;
       await $`${forkGit$} commit -m ${'Duplicate status change'}`;
       await $`${forkGit$} reset --hard HEAD`;
 
-      await fs.writeFile(path.join(tmpDir, 'duplicate-status.txt'), 'duplicate');
+      fs.writeFileSync(path.join(tmpDir, 'duplicate-status.txt'), 'duplicate');
       await $`${git$} -C ${tmpDir} add duplicate-status.txt`;
       await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate status change origin'}`;
 

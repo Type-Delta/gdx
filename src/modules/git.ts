@@ -85,8 +85,8 @@ export async function getStashEntry(
 
    try {
       const ref = `stash@{${index}}`;
-      const { stdout: sha } = await $`${git$} rev-parse -- ${ref}`;
-      const { stdout: message } = await $`${git$} log -1 --format=%s -- ${ref}`;
+      const { stdout: sha } = await $`${git$} rev-parse ${ref}`;
+      const { stdout: message } = await $`${git$} log -1 --format=%s ${ref}`;
       const result = { sha: sha.trim(), message: message.trim() };
       await cache.setOneOff(cacheKey, result);
       return result;
@@ -707,7 +707,7 @@ export async function getGitPath(
 
    try {
       const output = (
-         await $`${git$} -C ${worktreePath} rev-parse --git-path -- ${gitPath}`
+         await $`${git$} -C ${worktreePath} rev-parse --git-path ${gitPath}`
       ).stdout.trim();
       if (!output) {
          await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
@@ -1191,6 +1191,7 @@ export async function isCherryPickEmpty(
  * @param options.range - The commit range (e.g., "HEAD~5..HEAD").
  * @param options.maxCount - Optional maximum number of commits to retrieve.
  * @param options.format - Optional git log format string. [IMPORTANT: Must not contain newlines]
+ * @param options.excludeRefs - Optional refs to exclude from the range (e.g. origin HEAD)
  * @returns An object containing the commit log entries and counts.
  */
 export async function getCommitRangeLog(options: {
@@ -1199,11 +1200,16 @@ export async function getCommitRangeLog(options: {
    range: string;
    maxCount?: number;
    formatTemplate?: string;
+   excludeRefs?: string[];
 }): Promise<CommitLogResult> {
-   const { gitExec, repoPath, range, maxCount, formatTemplate: format } = options;
+   const { gitExec, repoPath, range, maxCount, formatTemplate: format, excludeRefs } = options;
    let logOutput = '';
    try {
       const logArgs = ['-C', repoPath, 'log', `--pretty=format:${format || '%h %s'}`, range];
+      const excludes = excludeRefs?.filter((ref) => ref && ref.trim().length > 0) ?? [];
+      if (excludes.length > 0) {
+         logArgs.push('--not', ...excludes);
+      }
       logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
    } catch {
       logOutput = '';

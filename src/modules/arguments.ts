@@ -118,6 +118,16 @@ export class ArgsSet extends Array<string> {
       // Override to return ArgsSet instead of Array<string>
       return new ArgsSet(super.slice(start, end));
    }
+
+   /**
+    * Converts the ArgsSet to a regular array of strings.
+    *
+    * This method shallow clones the ArgsSet into a new array.
+    * @returns An array of strings representing the arguments.
+    */
+   toArray(): string[] {
+      return super.slice(0);
+   }
 }
 
 /**

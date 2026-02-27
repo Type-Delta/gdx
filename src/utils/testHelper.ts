@@ -5,11 +5,11 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 import { CheckCache, ncc, strWrap } from '@lib/Tools';
 
-import { GdxContext } from '@/common/types';
+import { GdxContext, SpinnerOptions } from '@/common/types';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { resetCache } from '@/common/cache';
-import { $, whichExec } from '@/modules/shell';
+import { $, SpinnerContoller, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
 import { setQuickPrintWriter } from '@/utils/utilities';
@@ -221,7 +221,6 @@ function overrideModules(
          },
          $prompt: async () => 'y', // Auto-confirm prompts
          spinner: () => {
-            tracker.spinnerStatus = 'started';
             return {
                start: () => {
                   tracker.spinnerStatus = 'started';
@@ -229,8 +228,9 @@ function overrideModules(
                stop: () => {
                   tracker.spinnerStatus = 'stopped';
                },
-               options: {},
-            };
+               setMessage: () => { },
+               options: {} as Required<SpinnerOptions>,
+            } satisfies SpinnerContoller;
          },
          isTTY: () => envController.isTTY,
          scheduleChangeDir: async (targetDir?: string) => {

@@ -922,6 +922,8 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             : baseCommit;
 
       const spinnerCtrl = spinner({ message: `Gatering information for ${aliasLabel}...` });
+      const originHead = await getRevParseCached(gitExec, ctx.originPath, 'HEAD');
+      const originHeadRef = originHead.trim() ? [originHead.trim()] : [];
       const maxLogCount = isShortOutput ? 3 : undefined;
       const [statusOutputRaw, comparison, mainLog, submoduleLog] = await Promise.all([
          // get dirty status
@@ -932,25 +934,27 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+                 excludeRefs: originHeadRef,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    originPath: ctx.originPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1715,14 +1719,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ]
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ]
       : [
-         { key: 'a', label: 'apply', action: 'apply' },
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ];
+           { key: 'a', label: 'apply', action: 'apply' },
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -1827,9 +1831,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0)
+                 .split('\n')
+                 .map((line) => line.trim())
+                 .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -1933,9 +1937,9 @@ async function joinWorktree(
       ).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2068,9 +2072,9 @@ async function joinWorktree(
          ).stdout.trim();
          subCommitList = output
             ? output
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => c)
+                 .split('\n')
+                 .map((c) => c.trim())
+                 .filter((c) => c)
             : [];
       } catch (err) {
          spinnerCtrl.stop();
@@ -2677,13 +2681,15 @@ async function getSubmoduleCommitGroups(
       git$: string | string[];
       gitExec: string;
       worktreePath: string;
+      originPath: string;
       baseCommit: string;
       maxCount?: number;
       submoduleCursors?: Record<string, string>;
    },
    spinner?: SpinnerContoller
 ): Promise<{ groups: CommitGroup[]; totalCount: number }> {
-   const { git$, gitExec, worktreePath, baseCommit, maxCount, submoduleCursors } = options;
+   const { git$, gitExec, worktreePath, originPath, baseCommit, maxCount, submoduleCursors } =
+      options;
    const submodules = await getSubmodules(git$, worktreePath);
    if (submodules.length === 0) return { groups: [], totalCount: 0 };
 
@@ -2692,7 +2698,9 @@ async function getSubmoduleCommitGroups(
 
    for (const submodule of submodules) {
       const submoduleRepoPath = path.resolve(worktreePath, submodule.path);
+      const originSubPath = path.resolve(originPath, submodule.path);
       const gitMarker = path.join(submoduleRepoPath, '.git');
+      const originGitMarker = path.join(originSubPath, '.git');
       if (!fs.existsSync(submoduleRepoPath) || !fs.existsSync(gitMarker)) continue;
 
       if (spinner) spinner.options.message = `Collecting submodule '${submodule.path}'...`;
@@ -2712,12 +2720,17 @@ async function getSubmoduleCommitGroups(
       }
 
       const range = `${rangeStart}..HEAD`;
+      const originSubHead =
+         fs.existsSync(originSubPath) && fs.existsSync(originGitMarker)
+            ? (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim()
+            : '';
       const logResult = await getCommitRangeLog({
          gitExec,
          repoPath: submoduleRepoPath,
          range,
          maxCount,
          formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+         excludeRefs: originSubHead ? [originSubHead] : undefined,
       });
 
       if (logResult.totalCount === 0) continue;

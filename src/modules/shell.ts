@@ -19,6 +19,7 @@ import { MinimalVerboseObject } from 'execa/types/verbose';
 export interface SpinnerContoller {
    stop: () => void;
    start: (newline?: boolean) => void;
+   setMessage: (msg: string) => void;
    options: Required<SpinnerOptions>;
 }
 
@@ -225,6 +226,8 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
          start: (newline = true) => {
             if (newline) process.stdout.write('\n');
          },
+         // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         setMessage: (msg: string) => { },
          options: options as Required<SpinnerOptions>,
       };
    }
@@ -307,6 +310,10 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
             isRunning = true;
             intervalId = setInterval(render, options.interval);
          }
+      },
+      setMessage: (msg: string) => {
+         options.message = msg;
+         render(); // Force re-render to update message immediately
       },
       /**
        * Spinner options reference
@@ -473,10 +480,10 @@ export async function execGit(
 /**
  * Custom logger function for execa verbose output.
  * Logs only duration events with command details.
- * @param verboseLine - The verbose line (unused).
+ * @param _verboseLine - The verbose line (unused).
  * @param verboseObject - The verbose object containing event details.
  */
-function execaCustomLogger(verboseLine: string, verboseObject: MinimalVerboseObject) {
+function execaCustomLogger(_verboseLine: string, verboseObject: MinimalVerboseObject) {
    if (verboseObject.type !== 'duration') return;
    let exitType = 'done';
    // @ts-expect-error -- known property

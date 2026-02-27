@@ -1,7 +1,7 @@
 import { ncc, strWrap, toShortNum } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { createAbortableExec } from '../modules/shell';
+import { createAbortableExec, spinner } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree } from '@/modules/git';
@@ -17,12 +17,16 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    if (!(await assertInGitWorktree(git$))) return 1;
 
+   const spinnerCtrl = spinner({
+      message: 'Initializing library...'
+   });
    const { spellCheckDocument, prettyFormatIssues, getBundledDictionaryNames } =
       await import('@/modules/spellcheck');
 
    const config = await getConfig();
    const maxFileSizeKb = config.get<number>('lint.maxFileSizeKb') || 1024;
 
+   spinnerCtrl.options.message = 'Scanning commits...';
    let upstream = '';
    try {
       const { stdout } = await $`${git$} rev-parse --abbrev-ref --symbolic-full-name @{u}`;
@@ -35,8 +39,10 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    if (upstream) {
       range = `${upstream}..HEAD`;
    } else {
+      spinnerCtrl.stop();
       Logger.warn('No upstream configured. Checking last commit only.', 'lint');
       range = 'HEAD^..HEAD';
+      spinnerCtrl.start();
    }
 
    let errors = 0;
@@ -53,11 +59,13 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    // 1. Commit Message Spelling
    if (logOutput) {
+      spinnerCtrl.options.message = 'Checking commit message spelling...';
       const bundledDictionaries = await getBundledDictionaryNames();
       // eslint-disable-next-line no-useless-escape
       const commits = logOutput.split('$$\$___SEP___\$$$').filter((c) => c.trim());
 
       for (const [index, commitMsg] of commits.entries()) {
+         spinnerCtrl.start(false);
          // Check spelling with cspell
          const result = await spellCheckDocument(
             { uri: 'commit-message', text: commitMsg, languageId: 'plaintext', locale: 'en' },
@@ -72,6 +80,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          );
          if (result.issues.length === 0) continue;
 
+         spinnerCtrl.stop();
          warnings += result.issues.length;
          printLWarning(
             'Spelling',
@@ -80,6 +89,8 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          );
       }
    }
+
+   spinnerCtrl.stop();
 
    // 2. Sensitive Content & Conflict Markers
    if (diffOutput) {
