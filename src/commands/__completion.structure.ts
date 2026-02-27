@@ -84,3 +84,22 @@ export const GDX_SHORTHANDS = [
 ] as const;
 
 export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass', '--no-enhance'] as const;
+
+export const GDX_OPTIONS_WITH_VALUES = ['--loglevel', '--init', '--shell', '--cmd'] as const;
+export const GDX_OPTIONS_NO_VALUES = ['--ghelp', '--bypass', '--no-enhance', '-gh'] as const;
+export const GIT_GLOBAL_OPTIONS_WITH_VALUES = [
+   '-C',
+   '-c',
+   '--git-dir',
+   '--work-tree',
+   '--namespace',
+   '--config-env',
+] as const;
+export const GIT_GLOBAL_OPTIONS_NO_VALUES = [
+   '--no-pager',
+   '--no-optional-locks',
+   '--literal-pathspecs',
+   '--glob-pathspecs',
+   '--noglob-pathspecs',
+   '--icase-pathspecs',
+] as const;

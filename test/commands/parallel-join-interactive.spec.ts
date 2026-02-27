@@ -1,3 +1,10 @@
+/**
+ * NOTE: To my future self:
+ * Normally, each test would be in its own file, but this specifc test suite
+ * requires spacial mock setup that would break other tests if placed in a shared file.
+ * This is why I separate this suite into its own file.
+ */
+
 import { afterAll, describe, expect, mock } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';

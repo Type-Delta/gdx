@@ -3,7 +3,7 @@ import { Err, yuString } from '../lib/esm/Tools';
 import cmd from './commands';
 import { execGit, whichExec } from './modules/shell';
 import { quickPrint } from './utils/utilities';
-import { ArgsSet } from './modules/arguments';
+import { ArgsSet, stripGitGlobalArgs } from './modules/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';
@@ -15,8 +15,9 @@ const _args = process.argv.slice(2);
 Logger.debug(`Raw arguments: ${yuString(process.argv)}`, 'gdx');
 
 async function main(): Promise<number> {
+   const gitGlobalParse = stripGitGlobalArgs(_args);
    const ctx: GdxContext = {
-      args: new ArgsSet(_args),
+      args: new ArgsSet(gitGlobalParse.args),
       git$: '',
    };
    const args = ctx.args;
@@ -53,7 +54,7 @@ async function main(): Promise<number> {
       throw new Err('Git is not installed or not found in PATH.', 'GIT_NOT_FOUND');
    }
 
-   ctx.git$ = git$;
+   ctx.git$ = gitGlobalParse.gitArgs.length ? [git$, ...gitGlobalParse.gitArgs] : git$;
 
    if (args[0] === '--bypass') {
       // Bypass gdx and execute git directly

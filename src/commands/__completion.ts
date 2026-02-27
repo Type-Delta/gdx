@@ -1,5 +1,6 @@
 import { suggestArgs } from '@/modules/completion';
 import { GdxContext } from '@/common/types';
+import { stripGitGlobalArgs } from '@/modules/arguments';
 import global from '@/global';
 import { GDX_COMMANDS } from '@/consts';
 import Logger from '@/utils/logger';
@@ -43,17 +44,26 @@ export default async function completion(ctx: GdxContext): Promise<number> {
    global.logLevel = 'off';
 
    try {
-      const allArgs = [...ctx.args];
+      const rawArgs = [...ctx.args];
+      const {
+         args: allArgs,
+         cursorIndex,
+         cursorInGitGlobal,
+      } = stripGitGlobalArgs(rawArgs, parseIndex(rawArgs.length));
       if (allArgs[0] === '__completion') {
          allArgs.shift();
       }
 
-      const cmpIndex = parseIndex(allArgs.length);
+      const cmpIndex = cursorIndex ?? parseIndex(allArgs.length);
 
       Logger.debug(
          `Completion invoked with args: ${allArgs.join(' ')} (idx=${cmpIndex})`,
          'completion'
       );
+
+      if (cursorInGitGlobal) {
+         return 0;
+      }
 
       // Handle root-level completion (no command chosen yet)
       if (allArgs.length === 0 || cmpIndex === 0) {
