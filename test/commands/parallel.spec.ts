@@ -528,11 +528,9 @@ describe('gdx parallel', async () => {
          const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
          const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
          const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
+         await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
          fs.writeFileSync(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
-         await Promise.all([
-            $`${git$} -C ${tmpDir} add .gitmodules`,
-            $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`,
-         ]);
+         await $`${git$} -C ${tmpDir} add .gitmodules`;
          await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
