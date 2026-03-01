@@ -5,52 +5,52 @@
  * This is why I separate this suite into its own file.
  */
 
-import { afterAll, describe, expect, mock } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { normalizePath } from '@/utils/utilities';
 import { stripAnsiColor } from '@/modules/graphics';
-import { CheckCache } from '@lib/Tools';
 
 let capturedPreviews: string[] = [];
 let statusFormatCalls: string[] = [];
 
-mock.module('@/modules/pager', () => ({
-   pager: async () => ({ action: 'skip', key: 's' }),
-}));
-
-mock.module('@/modules/diff-viewer', () => ({
-   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-   viewDiff: async (diffText: string, options: any) => {
-      const preambleLines =
-         options?.preambleLines ??
-         diffText.split('\n').filter((line) => !line.startsWith('diff --'));
-      if (preambleLines.length > 0) {
-         capturedPreviews.push(preambleLines.join('\n'));
-      }
-      if (typeof options?.statusText === 'string') {
-         statusFormatCalls.push(options.statusText);
-      }
-      return { action: 'skip', key: 's' };
-   },
-}));
-
-mock.module('@shikijs/cli', () => ({
-   codeToANSI: async (code: string) => code,
-}));
+let parallel: typeof import('@/commands/parallel').default;
+let actualPager: typeof import('@/modules/pager');
 
 describe('gdx parallel join conflict preview', async () => {
    const { tmpDir, tmpRootDir, $, cleanup, it, env } = await createTestEnv({
       autoResetBuffer: true,
    });
    const { git$ } = createGdxContext(tmpDir);
-   const { default: parallel } = await import('@/commands/parallel');
+   beforeAll(async () => {
+      actualPager = await import('../../src/modules/pager');
 
-   afterAll(cleanup);
+      mock.module('@/modules/pager', () => ({
+         ...actualPager,
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         pager: async (content: string, options: any) => {
+            if (content) capturedPreviews.push(content);
+            if (typeof options?.statusText === 'string') {
+               statusFormatCalls.push(options.statusText);
+            }
+            return { action: 'skip', key: 's' };
+         },
+      }));
 
-   CheckCache.supportsColor = 3;
+      mock.module('@shikijs/cli', () => ({
+         codeToANSI: async (code: string) => code,
+      }));
+
+      ({ default: parallel } = await import('@/commands/parallel'));
+   });
+
+   afterAll(() => {
+      mock.restore();
+      cleanup();
+   });
+
    env.isTTY = true;
 
    it('should include only conflicting files in preview', async () => {
