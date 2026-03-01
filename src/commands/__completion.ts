@@ -2,11 +2,11 @@ import { suggestArgs } from '@/modules/completion';
 import { GdxContext } from '@/common/types';
 import { stripGitGlobalArgs } from '@/modules/arguments';
 import global from '@/global';
-import { GDX_COMMANDS } from '@/consts';
+import { GDX_COMMANDS, GDX_GLOBAL_FLAGS, GDX_SHORTHANDS } from '@/consts';
 import Logger from '@/utils/logger';
 import { progressiveMatch } from '@/utils/utilities';
 
-import { GDX_GLOBAL_FLAGS, GDX_SHORTHANDS, STRUCTURE_MAP } from './__completion.structure';
+import { STRUCTURE_MAP } from './__completion.structure';
 
 const COMMAND_ALIASES: Record<string, string> = {
    s: 'status',

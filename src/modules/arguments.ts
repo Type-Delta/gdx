@@ -3,7 +3,7 @@ import {
    GDX_OPTIONS_WITH_VALUES,
    GIT_GLOBAL_OPTIONS_NO_VALUES,
    GIT_GLOBAL_OPTIONS_WITH_VALUES,
-} from '@/commands/__completion.structure';
+} from '@/consts';
 
 const GDX_OPTIONS_WITH_VALUES_LIST = [...GDX_OPTIONS_WITH_VALUES] as string[];
 const GDX_OPTIONS_NO_VALUES_LIST = [...GDX_OPTIONS_NO_VALUES] as string[];
