@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `gdx parallel join -i` interactive cherry-pick workflow with preview, undo support, cursor navigation, and skip options.
+- Improved `gdx parallel fork` capabilities: branch tracking, forking from a specific ref, environment file copying, and smarter origin-commit filtering.
+- `gdx parallel remove -r` recursive worktree removal support.
+- `gdx submodule switch` command.
+- Progressive command matching/alias improvements for completion and subcommands.
+- Git global option extraction/handling in argument parsing.
+- `gdx commit auto --yes` for immediate, non-interactive commit confirmation.
+- Cache runtime schema validation.
+- Combined diff mode support in diff viewer.
+- Spinner gradient interval control with prerendered frame usage.
+
+### Changed
+
+- Refactored parallel join/rev-list/cursor internals for better maintainability and clearer conflict/status rendering.
+- Improved visual feedback and spinner lifecycle behavior across parallel/git command flows.
+- Enhanced doctor debug output and minor output formatting.
+- Optimized text wrapping internals and `strWrap()` behavior/performance.
+
+### Fixed
+
+- Fixed parallel join edge cases in interactive conflict flows and cherry-pick skip behavior.
+- Fixed exclusion logic to better avoid already-merged commits in parallel workflows.
+- Fixed git command execution robustness with improved `--` separator usage and shell/execa error handling.
+- Fixed ambiguous ref handling in stats commit counting.
+- Fixed import-related runtime errors.
+- Fixed test instability from parallel git process behavior.
+- Fixed keytar module validation reliability.
+
 ## Version 0.4.0 - 2026-02-15
 
 ### Added
