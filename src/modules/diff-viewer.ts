@@ -1,4 +1,4 @@
-import { Err, ncc, strJustify, strWrap } from '@lib/Tools';
+import { Err, estimateStrComplexity, ex_length, ncc, strWrap, yuString } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
 import * as fs from '@/modules/fs';
 
@@ -11,8 +11,9 @@ import {
    clearTerminalCache,
    pager,
    PagerActionResult,
+   PAGER_DEFAULT_OPTIONS,
 } from './pager';
-import { bgRgb, colorMix, fgRgb, getDisplayWidth, RgbVec, stripAnsiColor } from './graphics';
+import { bgRgb, colorMix, fgRgb, RgbVec } from './graphics';
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
 import { CATPPUCCIN_VPALETTE, TUI_THEME } from '@/consts';
@@ -119,6 +120,7 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
    let oldLineNum = 0;
    let newLineNum = 0;
    let isCombinedDiff = false;
+   let combinedPrefixLength = 2;
 
    for (const line of lines) {
       if (DIFF_HEADER_LINE_REGEX.test(line)) {
@@ -133,9 +135,11 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
                lines: [],
             };
             isCombinedDiff = diffHeader.isCombined;
+            combinedPrefixLength = 2;
          } else {
             currentDiff = null;
             isCombinedDiff = false;
+            combinedPrefixLength = 2;
          }
          continue;
       }
@@ -151,6 +155,9 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
          if (oldMatch) oldLineNum = parseInt(oldMatch[1], 10);
          if (newMatch) newLineNum = parseInt(newMatch[1], 10);
          currentDiff.lines.push({ type: 'hunk', content: line });
+         isCombinedDiff = true;
+         const parentMatches = line.match(/-\d+(?:,\d+)?/g);
+         combinedPrefixLength = Math.max(parentMatches?.length ?? 2, 2);
          continue;
       }
       if (line.startsWith('@@ ')) {
@@ -163,26 +170,26 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
          continue;
       }
       if (isCombinedDiff) {
-         const combinedLineMatch = line.match(/^([ +-]{2,})(.*)$/);
-         if (combinedLineMatch) {
-            const prefix = combinedLineMatch[1];
-            const content = combinedLineMatch[2];
-            const hasPlus = prefix.includes('+');
-            const hasMinus = prefix.includes('-');
-            const type: DiffLine['type'] =
-               hasPlus && !hasMinus ? 'add' : hasMinus && !hasPlus ? 'delete' : 'context';
-            const parsedLine: DiffLine = {
-               type,
-               content,
-            };
-            if (type === 'add') parsedLine.newLineNum = newLineNum++;
-            else if (type === 'delete') parsedLine.oldLineNum = oldLineNum++;
-            else {
-               parsedLine.oldLineNum = oldLineNum++;
-               parsedLine.newLineNum = newLineNum++;
+         if (line.length >= combinedPrefixLength) {
+            const prefix = line.slice(0, combinedPrefixLength);
+            if (/^[ +-]+$/.test(prefix)) {
+               const content = line.slice(combinedPrefixLength);
+               const hasPlus = prefix.includes('+');
+               const hasMinus = prefix.includes('-');
+               const type: DiffLine['type'] = hasPlus ? 'add' : hasMinus ? 'delete' : 'context';
+               const parsedLine: DiffLine = {
+                  type,
+                  content,
+               };
+               if (type === 'add') parsedLine.newLineNum = newLineNum++;
+               else if (type === 'delete') parsedLine.oldLineNum = oldLineNum++;
+               else {
+                  parsedLine.oldLineNum = oldLineNum++;
+                  parsedLine.newLineNum = newLineNum++;
+               }
+               currentDiff.lines.push(parsedLine);
+               continue;
             }
-            currentDiff.lines.push(parsedLine);
-            continue;
          }
       }
       if (line[0] === '+') {
@@ -265,12 +272,14 @@ async function highlightDiffWithContext(
 
          const fileContext = await readFileContext(diff.newFileName, changedLines, 20, workingDir);
 
+         const hasUsableContext = isFileContextCompatible(newLines, fileContext);
+
          Logger.debug(
             `Highlighting diff for ${diff.newFileName} with ${codeLines.length} changed lines and ${fileContext.size} lines of context from FS`,
             'diff-viewer'
          );
 
-         if (fileContext.size > 0) {
+         if (fileContext.size > 0 && hasUsableContext) {
             const minLine = Math.min(...fileContext.keys());
             const maxLine = Math.max(...fileContext.keys());
             const contextArray: string[] = [];
@@ -324,13 +333,28 @@ async function highlightDiffWithContext(
    return result;
 }
 
+function isFileContextCompatible(lines: DiffLine[], fileContext: Map<number, string>): boolean {
+   if (fileContext.size === 0) return false;
+
+   let checked = 0;
+
+   for (const line of lines) {
+      if (line.newLineNum === undefined) continue;
+      const contextLine = fileContext.get(line.newLineNum);
+      if (contextLine === undefined || contextLine !== line.content) return false;
+      checked++;
+   }
+
+   return checked > 0;
+}
+
 export class DiffViewerRenderer implements PagerRenderer {
    private parsedDiffs: ParsedDiff[] = [];
    private renderedLines: string[] = [];
-   private exitLines: string[] = [];
    private options: Required<DiffViewerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
+   private redundancyLv: number = 0;
    private logger = new Logger('diff-renderer');
 
    /** Blended background colors for diff lines (translucent effect) */
@@ -348,58 +372,24 @@ export class DiffViewerRenderer implements PagerRenderer {
    );
 
    constructor(diffText: string, options: DiffViewerOptions = {}) {
-      this.logger.debug('Initializing DiffViewerRenderer with options: ' + JSON.stringify(options));
       this.options = {
+         ...PAGER_DEFAULT_OPTIONS,
          showLineNumbers: true,
+         theme: TUI_THEME,
          lineNumberWidth: 5,
          wrapLines: true,
          showStatus: true,
-         theme: TUI_THEME,
-         statusFormat: (current, total, termWidth, context) => {
-            const bright = ncc('Bright');
-            const normal = ncc('Normal');
-            const dim = ncc('Dim');
-            const endLine = Math.min(current + getTerminalHeight() - 2, total);
-            const statusText =
-               typeof context?.statusText === 'function'
-                  ? context.statusText()
-                  : context?.statusText;
-            const actionHint = context?.actions
-               ? context.actions
-                    .map((action) => {
-                       const keys = Array.isArray(action.key) ? action.key : [action.key];
-                       const keyLabel = keys[0] ?? '';
-                       if (!keyLabel) return '';
-                       return `${bright}${keyLabel}${normal} ${action.label}`;
-                    })
-                    .filter(Boolean)
-                    .join(` ${dim}|${normal} `)
-               : '';
-            const navHint = `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} to quit`;
-            const leftParts = [statusText, navHint, actionHint].filter(Boolean);
-            return strJustify(
-               [
-                  `  ${leftParts.join('  ')}`,
-                  `lines ${bright}${current}-${endLine}${normal} of ${bright}${total}${endLine === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}  `,
-               ],
-               termWidth,
-               {
-                  align: 'spacebetween',
-                  filler: ' ',
-                  redundancyLv: 0,
-               }
-            );
-         },
-         backgroundColor: CATPPUCCIN_VPALETTE.mantle,
-         workingDir: undefined,
-         preambleLines: [],
          ...options,
       } as Required<DiffViewerOptions>;
+      this.logger.debug('Initializing DiffViewerRenderer with options: ' + yuString(this.options));
 
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
+      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(diffText);
+
+      this.logger.debug(`Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}`);
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
-      this.updateRenderedLines();
+
    }
 
    async prepareHighlighting(): Promise<void> {
@@ -419,6 +409,8 @@ export class DiffViewerRenderer implements PagerRenderer {
          });
       }
       this.updateRenderedLines();
+      fs.writeFileSync('.pager_debug_h.log', JSON.stringify(this.renderedLines, null, 2), 'utf-8'); // Debug log
+
    }
 
    private renderLine(line: DiffLine, width: number, blockBg: RgbVec): string[] {
@@ -463,8 +455,11 @@ export class DiffViewerRenderer implements PagerRenderer {
          lineNum !== undefined ? String(lineNum).padStart(lineNumWidth) : ' '.repeat(lineNumWidth);
       const gutter = `${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `;
 
-      if (this.options.wrapLines && getDisplayWidth(displayContent) > contentWidth) {
-         const wrapped = strWrap(displayContent, contentWidth, { mode: 'softboundary' });
+      if (this.options.wrapLines && ex_length(displayContent, this.redundancyLv) > contentWidth) {
+         const wrapped = strWrap(displayContent, contentWidth, {
+            mode: 'softboundary',
+            redundancyLv: this.redundancyLv,
+         });
          const splitted = wrapped.split('\n');
          for (let i = 0; i < splitted.length; i++) {
             const g = i === 0 ? gutter : ' '.repeat(lineNumWidth + 3);
@@ -479,8 +474,7 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    private padLineWithBg(str: string, width: number, bgColor: RgbVec): string {
-      const stripped = stripAnsiColor(str);
-      const padding = Math.max(0, width - stripped.length);
+      const padding = Math.max(0, width - ex_length(str, this.redundancyLv));
       return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${ncc()}`;
    }
 
@@ -529,10 +523,11 @@ export class DiffViewerRenderer implements PagerRenderer {
       const contentWidth = width;
       const color = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
 
-      if (this.options.wrapLines && getDisplayWidth(line) > contentWidth) {
+      if (this.options.wrapLines && ex_length(line, this.redundancyLv) > contentWidth) {
          const wrapped = strWrap(line, contentWidth, {
             mode: 'softboundary',
             indent: leftPadding,
+            redundancyLv: Math.max(0, this.redundancyLv),
          });
          return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
       }
@@ -542,21 +537,16 @@ export class DiffViewerRenderer implements PagerRenderer {
 
    private updateRenderedLines(): void {
       this.renderedLines = [];
-      this.exitLines = [];
       const width = this.lastWidth;
-      const reset = ncc();
       const baseBlockBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
 
       if (this.options.preambleLines.length > 0) {
          for (const line of this.options.preambleLines) {
             this.renderedLines.push(...this.renderPreambleLine(line, width, baseBlockBg, 3));
-            if (line.length === 0) this.exitLines.push('');
-            else this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${line}${reset}`);
          }
 
          if (this.parsedDiffs.length > 0) {
             this.renderedLines.push(this.padLineWithBg(' ', width, baseBlockBg));
-            this.exitLines.push('');
          }
       }
 
@@ -576,17 +566,9 @@ export class DiffViewerRenderer implements PagerRenderer {
             );
          }
          this.renderedLines.push(this.renderFileName(diff.oldFileName, diff.newFileName, width));
-         this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.lavender)}${diff.newFileName}${reset}`);
 
          for (const line of diff.lines) {
             this.renderedLines.push(...this.renderLine(line, width, blockBg));
-            if (line.type === 'add')
-               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.green)}+ ${line.content}${reset}`);
-            else if (line.type === 'delete')
-               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.red)}- ${line.content}${reset}`);
-            else if (line.type === 'context') this.exitLines.push(`  ${line.content}`);
-            else if (line.type === 'hunk')
-               this.exitLines.push(`${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${line.content}${reset}`);
          }
       }
    }
@@ -619,10 +601,6 @@ export class DiffViewerRenderer implements PagerRenderer {
          this.updateRenderedLines();
       }
    }
-
-   getExitLines(): string[] {
-      return this.exitLines;
-   }
 }
 
 export async function viewDiff(
@@ -637,20 +615,15 @@ export async function viewDiff(
       return pager(diffText, { ...options, showLineNumbers: false });
    }
 
-   const lines = diffText.split('\n');
-   const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
-   const preambleLines =
-      firstDiffIndex > 0 ? lines.slice(0, firstDiffIndex) : firstDiffIndex === -1 ? lines : [];
-   const diffBody =
-      firstDiffIndex === -1 ? '' : lines.slice(Math.max(firstDiffIndex, 0)).join('\n');
-
    const spinnerCtrl =
       diffText.length > 10000
          ? spinner({
-              message: 'Preparing diff viewer...',
-              interval: 10,
-           })
+            message: 'Preparing diff viewer...',
+            interval: 10,
+         })
          : undefined;
+
+   const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);
 
    Logger.time('Preparing diff highlighting');
    const renderer = new DiffViewerRenderer(diffBody, { ...options, preambleLines });
@@ -693,5 +666,15 @@ function parseDiffHeader(
       oldFileName: combinedMatch[1],
       newFileName: combinedMatch[1],
       isCombined: true,
+   };
+}
+
+function separatePreamble(diffText: string): { body: string; preamble: string[] } {
+   const lines = diffText.split('\n');
+   const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
+   if (firstDiffIndex === -1) return { body: diffText, preamble: [] };
+   return {
+      body: lines.slice(firstDiffIndex).join('\n'),
+      preamble: lines.slice(0, firstDiffIndex),
    };
 }

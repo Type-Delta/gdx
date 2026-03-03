@@ -182,6 +182,50 @@ index e69de29,1b2c3d4..5e6f7g8
          const addLines = result[0].lines.filter((l) => l.type === 'add');
          expect(addLines.length).toBe(2);
       });
+
+      it('should parse combined diff with multi-parent prefixes', () => {
+         const diffText = `diff --cc file.txt
+index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
+--- a/file.txt
++++ b/file.txt
+@@@ -1,1 -1,1 -1,1 +1,1 @@@
++++line one
+---line two
+   line three`;
+
+         const result = parseDiffOutput(diffText);
+
+         expect(result.length).toBe(1);
+         const addLines = result[0].lines.filter((l) => l.type === 'add');
+         const deleteLines = result[0].lines.filter((l) => l.type === 'delete');
+         const contextLines = result[0].lines.filter((l) => l.type === 'context');
+         expect(addLines[0]?.content).toBe('line one');
+         expect(deleteLines[0]?.content).toBe('line two');
+         expect(contextLines[0]?.content).toBe('line three');
+      });
+   });
+
+   describe('highlighting with context', () => {
+      it('should fall back to diff content when FS does not match', async () => {
+         const filePath = path.join(tmpDir, 'mismatch.ts');
+         await fs.writeFile(filePath, 'alpha\nbeta\ngamma\n', 'utf-8');
+
+         const diffText = `diff --git a/mismatch.ts b/mismatch.ts
+--- a/mismatch.ts
++++ b/mismatch.ts
+@@ -1,2 +1,2 @@
+-alpha
++delta
+ beta`;
+
+         const renderer = new DiffViewerRenderer(diffText, { workingDir: tmpDir });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
+         expect(addLine?.highlightedContent).toBe('delta');
+      });
    });
 
    describe('DiffViewerRenderer', () => {
@@ -211,6 +255,22 @@ index e69de29,1b2c3d4..5e6f7g8
 
          expect(Array.isArray(lines)).toBe(true);
          expect(lines.length).toBe(5);
+      });
+
+      it('should not add trailing ghost content for fullwidth', () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1 +1 @@
+-A
++漢`;
+
+         const renderer = new DiffViewerRenderer(diffText, { wrapLines: true });
+         const rendered = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            stripAnsiColor(renderer.getLine(i))
+         );
+         const addLine = rendered.find((line) => line.includes('漢')) ?? '';
+         expect(addLine.trimEnd().endsWith('漢')).toBeTrue();
       });
 
       it('should keep deleted line content when line numbers overlap', async () => {

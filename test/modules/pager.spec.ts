@@ -117,4 +117,29 @@ describe('pager module', async () => {
 
       expect(renderer.getLineCount()).toBeGreaterThanOrEqual(1);
    });
+
+   it('should auto-detect redundancy level for fullwidth content', () => {
+      const content = 'alpha 漢字 beta';
+      const renderer = new SimplePagerRenderer(content, {
+         wrapLines: true,
+         lineNumberWidth: 4,
+      });
+
+      renderer.onResize(12, 10);
+      const lines = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+         stripAnsiColor(renderer.getLine(i)).trimEnd()
+      );
+
+      expect(lines.some((line) => line.includes('漢字'))).toBeTrue();
+   });
+
+   it('should use lowest redundancy for plain content', () => {
+      const content = 'alpha beta gamma';
+      const renderer = new SimplePagerRenderer(content, { wrapLines: true });
+      const lines = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+         stripAnsiColor(renderer.getLine(i)).trimEnd()
+      );
+
+      expect(lines.some((line) => line.includes('alpha'))).toBeTrue();
+   });
 });

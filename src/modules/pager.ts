@@ -1,8 +1,10 @@
-import { maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
+import { estimateStrComplexity, ex_length, maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
 
 import Logger from '@/utils/logger';
-import { bgRgb, fgRgb, getDisplayWidth, RgbVec, stripAnsiColor } from './graphics';
+import { bgRgb, fgRgb, RgbVec, stripAnsiColor } from './graphics';
 import { CATPPUCCIN_VPALETTE } from '@/consts';
+
+import * as fs from './fs';
 
 /**
  * Options for configuring pager behavior.
@@ -19,6 +21,7 @@ export interface PagerAction {
 export interface PagerStatusContext {
    statusText?: string | (() => string);
    actions?: PagerAction[];
+   redundancyLv?: number;
 }
 
 export interface PagerActionResult {
@@ -48,6 +51,8 @@ export interface PagerOptions {
    actions?: PagerAction[];
    /** Background color for the pager (24-bit RGB as [r, g, b]) */
    backgroundColor?: RgbVec;
+   /** Redundancy level for string width calculations */
+   redundancyLv?: number;
    /**
     * How much to scroll when navigating by line. Can be increased for faster scrolling.
     */
@@ -67,12 +72,10 @@ export interface PagerRenderer {
    render: (startLine: number, height: number, width: number) => string[];
    /** Called when terminal is resized */
    onResize?: (width: number, height: number) => void;
-   /** Called to get lines for scroll buffer on exit */
-   getExitLines?: () => string[];
 }
 
 /** Default pager configuration */
-const DEFAULT_OPTIONS: Required<PagerOptions> = {
+export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'> = {
    showLineNumbers: false,
    lineNumberWidth: 4,
    wrapLines: true,
@@ -99,24 +102,25 @@ const DEFAULT_OPTIONS: Required<PagerOptions> = {
          ? `${bright}↑ ↓ b n${normal} navigate, ${bright}q${normal} quit`
          : `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} quit`;
       const locationInfo = actionHint
-         ? `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`
-         : `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`;
+         ? `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`
+         : `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`;
 
       const leftParts = [statusText, navHint, actionHint].filter(Boolean);
-      return '  ' + strJustify(
-         [
-            leftParts.join('  '),
-            locationInfo,
-         ],
-         termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
-         {
-            align: 'spacebetween',
-            filler: ' ',
-            overflow: 'collapse',
-            collapseLocation: 'mid',
-            redundancyLv: 0,
-         }
-      ) + '  ';
+      return (
+         '  ' +
+         strJustify(
+            [leftParts.join('  '), locationInfo],
+            termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
+            {
+               align: 'spacebetween',
+               filler: ' ',
+               overflow: 'collapse',
+               collapseLocation: 'mid',
+               redundancyLv: context?.redundancyLv ?? 0,
+            }
+         ) +
+         '  '
+      );
    },
    backgroundColor: CATPPUCCIN_VPALETTE.base,
    scrollSensitivity: 3,
@@ -167,13 +171,19 @@ export class SimplePagerRenderer implements PagerRenderer {
    private options: Required<PagerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
+   private redundancyLv: number = 0;
 
    constructor(content: string, options: PagerOptions = {}) {
-      this.options = { ...DEFAULT_OPTIONS, ...options };
+      this.options = {
+         ...PAGER_DEFAULT_OPTIONS,
+         ...options
+      } as Required<PagerOptions>;
+      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(content);
       this.lines = content.split('\n');
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
       this.updateWrappedLines();
+      fs.writeFileSync('.pager_debug.log', JSON.stringify(this.wrappedLines, null, 2), 'utf-8'); // Debug log
    }
 
    private updateWrappedLines(): void {
@@ -187,8 +197,11 @@ export class SimplePagerRenderer implements PagerRenderer {
       for (let i = 0; i < this.lines.length; i++) {
          const line = this.lines[i];
 
-         if (this.options.wrapLines && line.length > contentWidth) {
-            const wrapped = strWrap(line, contentWidth, { mode: 'softboundary' });
+         if (this.options.wrapLines && ex_length(line, this.redundancyLv) > contentWidth) {
+            const wrapped = strWrap(line, contentWidth, {
+               mode: 'softboundary',
+               redundancyLv: Math.max(0, this.redundancyLv),
+            });
             const wrappedParts = wrapped.split('\n');
             wrappedParts.forEach((part, idx) => {
                if (this.options.showLineNumbers && idx === 0) {
@@ -231,7 +244,7 @@ export class SimplePagerRenderer implements PagerRenderer {
          if (lineIndex < this.wrappedLines.length) {
             const line = this.wrappedLines[lineIndex];
             const stripped = stripAnsiColor(line);
-            const padding = Math.max(0, width - stripped.length);
+            const padding = Math.max(0, width - ex_length(stripped, this.redundancyLv));
             result.push(`${bgColor}${line}${' '.repeat(padding)}${reset}`);
          } else {
             result.push(`${bgColor}${' '.repeat(width)}${reset}`);
@@ -247,10 +260,6 @@ export class SimplePagerRenderer implements PagerRenderer {
          this.lastHeight = height;
          this.updateWrappedLines();
       }
-   }
-
-   getExitLines(): string[] {
-      return this.wrappedLines;
    }
 }
 
@@ -276,7 +285,8 @@ export async function pagerWithRenderer(
    renderer: PagerRenderer,
    options: PagerOptions = {}
 ): Promise<PagerActionResult | void> {
-   const opts = { ...DEFAULT_OPTIONS, ...options };
+   const opts = { ...PAGER_DEFAULT_OPTIONS, ...options };
+   const resolvedRedundancy = opts.redundancyLv ?? 0;
 
    // Non-TTY fallback: just print all lines
    if (!process.stdout.isTTY || !process.stdin.isTTY) {
@@ -321,8 +331,12 @@ export async function pagerWithRenderer(
          const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
             statusText: opts.statusText,
             actions: opts.actions,
+            redundancyLv: resolvedRedundancy,
          });
-         const padding = Math.max(0, currentWidth - getDisplayWidth(statusLine));
+         const padding = Math.max(
+            0,
+            currentWidth - ex_length(stripAnsiColor(statusLine), resolvedRedundancy)
+         );
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
          process.stdout.write(
