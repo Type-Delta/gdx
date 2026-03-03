@@ -10,7 +10,7 @@ import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
 import { getGitVersionCached, getGitConfigCached, expandRelativeRef } from '@/modules/git';
-import { canUseDiffViewer, isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
+import { canUseDiffViewer, isGitDiffOutput, parseDiffOutput, viewDiff } from '@/modules/diff-viewer';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -142,9 +142,16 @@ export async function dispatch(
                !args.includes('--name-status')
             ) {
                const diffArgs = args.slice(1);
+               const asJson = diffArgs.popOption('--json');
+
                try {
                   const result = await $`${ctx.git$} -c color.ui=never diff ${diffArgs}`;
                   if (result.stdout) {
+                     if (asJson) {
+                        const parsed = parseDiffOutput(result.stdout);
+                        quickPrint(JSON.stringify(parsed, null, 2));
+                        return 0;
+                     }
                      await viewDiff(result.stdout);
                      return 0;
                   }
@@ -175,9 +182,17 @@ export async function dispatch(
                !args.hasOption('--format')
             ) {
                const showArgs = args.slice(1);
+               const asJson = showArgs.popOption('--json');
+
                try {
                   const result = await $`${ctx.git$} -c color.ui=never show ${showArgs}`;
                   if (result.stdout && isGitDiffOutput(result.stdout)) {
+                     if (asJson) {
+                        const parsed = parseDiffOutput(result.stdout);
+                        quickPrint(JSON.stringify(parsed, null, 2));
+                        return 0;
+                     }
+
                      await viewDiff(result.stdout);
                      return 0;
                   }

@@ -46,6 +46,16 @@ export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
          $anyOf: ['--author', '--relative'],
       },
    },
+   diff: {
+      $root: {
+         $anyOf: ['--json'],
+      },
+   },
+   show: {
+      $root: {
+         $anyOf: ['--json'],
+      },
+   }
 };
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
