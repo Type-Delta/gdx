@@ -1110,6 +1110,80 @@ describe('gdx parallel', async () => {
       { timeout: 20000 }
    );
 
+   it(
+      'should ignore missing origin submodule head during join preview',
+      async () => {
+         resetCache();
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-missing-origin');
+         fs.mkdirSync(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+
+         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submodulePath = 'deps/submodule-missing-origin';
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+
+         const originSubmodulePath = path.join(tmpDir, submodulePath);
+         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+
+         const alias = 'feature-missing-origin';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+         expect(await parallel(forkCtx)).toBe(0);
+
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         const projectName = path.basename(tmpDir);
+         const worktreeRoot = path.join(
+            tmpRootDir,
+            'tmp',
+            'worktrees',
+            normalizePath(projectName),
+            normalizePath(branchName)
+         );
+         const forkPath = path.join(worktreeRoot, alias);
+
+         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+
+         const altRepoRoot = path.join(tmpRootDir, 'submodule-missing-origin-alt');
+         fs.mkdirSync(altRepoRoot, { recursive: true });
+         await $`${gitExe} -C ${altRepoRoot} init`;
+         await $`${gitExe} -C ${altRepoRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${altRepoRoot} config user.email ${'test@example.com'}`;
+         fs.writeFileSync(path.join(altRepoRoot, 'ALT.md'), 'alt');
+         await $`${gitExe} -C ${altRepoRoot} add ALT.md`;
+         await $`${gitExe} -C ${altRepoRoot} commit -m ${'Alt commit'}`;
+         const altGitDirRaw = (
+            await $`${gitExe} -C ${altRepoRoot} rev-parse --git-dir`
+         ).stdout.trim();
+         const altGitDir = path.isAbsolute(altGitDirRaw)
+            ? altGitDirRaw
+            : path.join(altRepoRoot, altGitDirRaw);
+         const originGitMarker = path.join(originSubmodulePath, '.git');
+         const originGitMarkerContent = fs.readFileSync(originGitMarker, 'utf-8');
+         fs.writeFileSync(originGitMarker, `gitdir: ${altGitDir.replace(/\\/g, '/')}`);
+
+         buffer.stdout = '';
+         env.isTTY = false;
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
+         expect(await parallel(joinCtx)).toBe(0);
+         env.isTTY = true;
+
+         expect(buffer.stdout).not.toContain('Unable to enumerate submodule commits');
+         fs.writeFileSync(originGitMarker, originGitMarkerContent, 'utf-8');
+
+         await resetRepo();
+         await $`${gitExe} -C ${tmpDir} clean -fd`;
+      },
+      { timeout: 20000 }
+   );
+
    it('should skip empty cherry-picks during join', async () => {
       resetCache();
       const alias = 'feature-empty';

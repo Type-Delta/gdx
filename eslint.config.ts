@@ -11,7 +11,8 @@ export default [
          parserOptions: {
             project: false,
             sourceType: 'module',
-            ecmaVersion: 'latest'
+            ecmaVersion: 'latest',
+            tsconfigRootDir: __dirname,
          }
       },
       rules: {
