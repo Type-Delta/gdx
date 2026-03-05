@@ -8,7 +8,8 @@ import { inferBool } from './utils/utilities';
 
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 
-export const EXECUTABLE_NAME = exeBasename.startsWith('bun') || exeBasename.startsWith('node') ? 'gdx' : exeBasename;
+export const EXECUTABLE_NAME =
+   exeBasename.startsWith('bun') || exeBasename.startsWith('node') ? 'gdx' : exeBasename;
 export const TEMP_DIR = process.env.GDX_TEMP_DIR || os.tmpdir();
 export const CURRENT_DIR = process.env.GDX_CURRENT_DIR || process.cwd();
 export const CONFIG_FILE_NAME = '.gdxrc.toml';
@@ -70,8 +71,22 @@ export const CATPPUCCIN_VPALETTE = {
 
 // from unicode-animations package. value prerendered for performance
 export const DEFAULT_SPINNER: readonly string[] = [
-   "⠁⠀", "⠋⠀", "⠟⠁", "⡿⠋", "⣿⠟", "⣿⡿", "⣿⣿", "⣿⣿", "⣾⣿", "⣴⣿",
-   "⣠⣾", "⢀⣴", "⠀⣠", "⠀⢀", "⠀⠀", "⠀⠀"
+   '⠁⠀',
+   '⠋⠀',
+   '⠟⠁',
+   '⡿⠋',
+   '⣿⠟',
+   '⣿⡿',
+   '⣿⣿',
+   '⣿⣿',
+   '⣾⣿',
+   '⣴⣿',
+   '⣠⣾',
+   '⢀⣴',
+   '⠀⣠',
+   '⠀⢀',
+   '⠀⠀',
+   '⠀⠀',
 ];
 
 export const STATS_EST = {
@@ -123,13 +138,13 @@ export const GDX_COMMANDS = [
    'fetch',
    'remote',
    'show',
-   'init',
    'config',
    // gdx custom commands
    'parallel',
    'nocap',
    // 'stats',
    'clear',
+   'reword',
    'gdx-config',
    'graph',
    'macro',

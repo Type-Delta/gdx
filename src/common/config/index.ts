@@ -164,11 +164,20 @@ export class ConfigService {
 
       // Validate type against default config
       const defaultValue = this.get(keyPath);
-      if (defaultValue !== undefined && typeof value !== typeof defaultValue) {
-         this.logger.warn(
-            `Type mismatch for '${keyPath}'. Expected ${typeof defaultValue}, got ${typeof value}. Ignoring value.`
-         );
-         return;
+      if (defaultValue !== undefined) {
+         if (defaultValue === null) {
+            if (value !== null && typeof value !== 'string') {
+               this.logger.warn(
+                  `Type mismatch for '${keyPath}'. Expected string or null, got ${typeof value}. Ignoring value.`
+               );
+               return;
+            }
+         } else if (typeof value !== typeof defaultValue) {
+            this.logger.warn(
+               `Type mismatch for '${keyPath}'. Expected ${typeof defaultValue}, got ${typeof value}. Ignoring value.`
+            );
+            return;
+         }
       }
 
       // If this is a secure key, store it in keychain
@@ -265,7 +274,15 @@ export class ConfigService {
                   );
                }
             } else {
-               if (typeof sourceValue !== typeof targetValue) {
+               if (targetValue === null) {
+                  if (sourceValue === null || typeof sourceValue === 'string') {
+                     target[key] = sourceValue;
+                  } else {
+                     this.logger.warn(
+                        `Type mismatch for '${currentPath}'. Expected string or null, got ${typeof sourceValue}. Ignoring value.`
+                     );
+                  }
+               } else if (typeof sourceValue !== typeof targetValue) {
                   this.logger.warn(
                      `Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got ${typeof sourceValue}. Ignoring value.`
                   );
@@ -329,7 +346,9 @@ export class ConfigService {
             let parsedValue: any = envValue;
 
             // Try to parse based on expected type
-            if (typeof defaultValue === 'number') {
+            if (defaultValue === null) {
+               parsedValue = envValue;
+            } else if (typeof defaultValue === 'number') {
                const num = Number(envValue);
                if (!isNaN(num)) {
                   parsedValue = num;

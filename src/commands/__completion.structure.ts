@@ -14,6 +14,7 @@ import { structure as statsStructure } from './stats';
 import { structure as statusStructure } from './status';
 import { structure as macroStructure } from './macro';
 import { structure as submoduleStructure } from './submodule';
+import { structure as rewordStructure } from './reword';
 
 /**
  * command structure for command extensions that doesn't a dedicated source file
@@ -55,7 +56,7 @@ export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
       $root: {
          $anyOf: ['--json'],
       },
-   }
+   },
 };
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {
@@ -74,4 +75,5 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    status: statusStructure,
    macro: macroStructure,
    submodule: submoduleStructure,
+   reword: rewordStructure,
 };

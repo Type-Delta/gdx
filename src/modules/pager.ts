@@ -4,8 +4,6 @@ import Logger from '@/utils/logger';
 import { bgRgb, fgRgb, RgbVec, stripAnsiColor } from './graphics';
 import { CATPPUCCIN_VPALETTE } from '@/consts';
 
-import * as fs from './fs';
-
 /**
  * Options for configuring pager behavior.
  */
@@ -183,7 +181,6 @@ export class SimplePagerRenderer implements PagerRenderer {
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
       this.updateWrappedLines();
-      fs.writeFileSync('.pager_debug.log', JSON.stringify(this.wrappedLines, null, 2), 'utf-8'); // Debug log
    }
 
    private updateWrappedLines(): void {

@@ -1,6 +1,7 @@
 import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
+import { rewordCommitEditor, rewordSequenceEditor } from '@/commands/reword';
 import { GDX_COMMANDS } from '@/consts';
 import { $, execGit } from '@/modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
@@ -10,7 +11,12 @@ import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
 import { getGitVersionCached, getGitConfigCached, expandRelativeRef } from '@/modules/git';
-import { canUseDiffViewer, isGitDiffOutput, parseDiffOutput, viewDiff } from '@/modules/diff-viewer';
+import {
+   canUseDiffViewer,
+   isGitDiffOutput,
+   parseDiffOutput,
+   viewDiff,
+} from '@/modules/diff-viewer';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -48,9 +54,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-            ncc('Magenta') +
-            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-            ncc()
+               ncc('Magenta') +
+               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+               ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -79,6 +85,10 @@ export async function dispatch(
       if (match) args[0] = match;
 
       switch (args[0]) {
+         case '__reword-sequence-editor':
+            return await rewordSequenceEditor(ctx);
+         case '__reword-editor':
+            return await rewordCommitEditor(ctx);
          case 's': // alias for 'status'
             args[0] = 'status';
          case 'status':
@@ -88,9 +98,7 @@ export async function dispatch(
             }
             break;
          case 'submodule': {
-            const subCommands = [
-               'switch',
-            ];
+            const subCommands = ['switch'];
             const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
             if (subCmdMatch.match !== 'switch') break;
             return await cmd.submodule.switch(ctx);
@@ -158,7 +166,7 @@ export async function dispatch(
                } catch (e) {
                   Logger.info(
                      'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
-                     Err.from(e)
+                        Err.from(e)
                   );
                }
             }
@@ -221,8 +229,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              ncc()
                         );
                      }
                   }
@@ -358,6 +366,8 @@ export async function dispatch(
             return cmd.doctor();
          case 'macro':
             return cmd.macro(ctx);
+         case 'reword':
+            return cmd.reword(ctx);
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
@@ -372,9 +382,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-         ncc()
+            ncc(rgbVec2decimal(colorVec), 'fg') +
+            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+            ncc()
       );
    }
 

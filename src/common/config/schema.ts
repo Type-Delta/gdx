@@ -21,6 +21,9 @@ export interface GdxConfig {
       commitPattern?: 'inherit' | 'comprehensive';
       guidelineCacheDays?: number;
    };
+   reword?: {
+      editor?: string | null;
+   };
    cache?: {
       enabled?: boolean;
       maxAgeMinutes?: number;
@@ -54,6 +57,9 @@ export const DEFAULT_CONFIG: GdxConfig = {
       commitPattern: 'inherit',
       guidelineCacheDays: 30,
    },
+   reword: {
+      editor: null,
+   },
    cache: {
       enabled: true,
       maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
@@ -82,6 +88,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
    'commit.commitPattern': 'GDX_COMMIT_PATTERN',
    'commit.guidelineCacheDays': 'GDX_COMMIT_GUIDELINE_CACHE_DAYS',
+   'reword.editor': 'GDX_REWORD_EDITOR',
    'cache.enabled': 'GDX_CACHE_ENABLED',
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    'parallel.init': 'GDX_PARALLEL_INIT',
@@ -108,6 +115,8 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'commit.commitPattern':
       'Commit message pattern (inherit: learn from repo, comprehensive: fixed format)',
    'commit.guidelineCacheDays': 'Days to cache learned commit guidelines per repository',
+   reword: 'Configuration for rewording commit messages',
+   'reword.editor': 'Editor command used by gdx reword (overrides global editor when set)',
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',
    'cache.enabled': 'Whether caching is enabled',
    'cache.maxAgeMinutes':

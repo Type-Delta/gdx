@@ -291,6 +291,9 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
 - [x] **Submodule dir switching**: extension of `git submodule`, `gdx submodule switch` to jump into a submodule's directory from the parent repo (requires shell integration)
 - [ ] **Snapshot**: `gdx snap` to create snapshot of current state of your working directory (including uncommitted changes, untracked files) that can be easily switched back to later (similar to a lightweight, temporary branch that doesn't clutter your branch list)
 - [ ] **Enhanced output for more commands**: Extend the "Git Output for Humans"
+- [ ] **Undo and Redo**: `gdx undo` and `gdx redo` to step backward and forward through git actions (reset, commit, stash, etc.) with safety nets.
+- [ ] **Edit commit history**: `gdx hist` for an intuitive interface to amend, reorder, squash commits without needing to remember complex rebase commands.
+- [ ] **Edit commit messages**: `gdx reword` to quickly reword the last commit message or a specific commit without needing to do an interactive rebase.
 
 ## License
 

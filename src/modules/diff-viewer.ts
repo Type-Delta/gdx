@@ -379,6 +379,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          lineNumberWidth: 5,
          wrapLines: true,
          showStatus: true,
+         preambleLines: [],
          ...options,
       } as Required<DiffViewerOptions>;
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + yuString(this.options));
@@ -389,7 +390,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       this.logger.debug(`Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}`);
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
-
+      this.updateRenderedLines();
    }
 
    async prepareHighlighting(): Promise<void> {
@@ -409,8 +410,6 @@ export class DiffViewerRenderer implements PagerRenderer {
          });
       }
       this.updateRenderedLines();
-      fs.writeFileSync('.pager_debug_h.log', JSON.stringify(this.renderedLines, null, 2), 'utf-8'); // Debug log
-
    }
 
    private renderLine(line: DiffLine, width: number, blockBg: RgbVec): string[] {

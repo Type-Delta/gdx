@@ -18,6 +18,7 @@ import { help as lintHelp } from './lint';
 import { help as statusHelp } from './status';
 import { help as doctorHelp } from './doctor';
 import { help as submoduleHelp } from './submodule';
+import { help as rewordHelp } from './reword';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 export default function help(name?: string): number {
@@ -41,6 +42,7 @@ export default function help(name?: string): number {
       status: statusHelp,
       doctor: doctorHelp,
       submodule: submoduleHelp,
+      reword: rewordHelp,
    };
 
    if (!name) {

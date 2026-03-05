@@ -13,6 +13,7 @@ import doctor from './doctor';
 import status from './status';
 import macro from './macro';
 import submodule from './submodule';
+import reword from './reword';
 import __completion from './__completion';
 
 export default {
@@ -32,4 +33,5 @@ export default {
    status,
    macro,
    submodule,
+   reword,
 };
