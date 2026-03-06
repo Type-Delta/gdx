@@ -4,6 +4,7 @@ import path from 'path';
 
 import { deinitSubmodules, getMainWorktreeRoot, isEmptyCherryPickError } from '@/modules/git';
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
+import { asUnixPath } from '@/utils/path';
 
 describe('git module', async () => {
    const { tmpDir, tmpRootDir, $, cleanup, it } = await createTestEnv();
@@ -20,7 +21,7 @@ describe('git module', async () => {
       const wtCtx = createGdxContext(worktreeDir, []);
       const mainRoot = await getMainWorktreeRoot(wtCtx.git$);
 
-      expect(mainRoot.replace(/\\/g, '/')).toBe(tmpDir.replace(/\\/g, '/'));
+      expect(asUnixPath(mainRoot)).toBe(asUnixPath(tmpDir));
    });
 
    it('should deinit submodules for a worktree', async () => {
@@ -35,7 +36,7 @@ describe('git module', async () => {
       await $`${gitExe} -C ${submoduleRoot} add README.md`;
       await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-      const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+      const submoduleUrl = asUnixPath(submoduleRoot);
       await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
       await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
       await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;

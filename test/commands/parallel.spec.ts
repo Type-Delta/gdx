@@ -7,6 +7,7 @@ import { resetCache } from '@/common/cache';
 import { resetConfig } from '@/common/config';
 import { normalizePath } from '@/utils/utilities';
 import { stripAnsiColor } from '@/modules/graphics';
+import { asUnixPath } from '@/utils/path';
 
 describe('gdx parallel', async () => {
    const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env, resetRepo, tracker } =
@@ -35,13 +36,13 @@ describe('gdx parallel', async () => {
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
       const result = await parallel(listCtx);
 
-      const output = buffer.stdout.replace(/\\/g, '/');
+      const output = asUnixPath(buffer.stdout);
 
       // LINK: iin2ya string literal in spec
       expect(result).toBe(0);
       expect(output).toContain(`Project: ${projectName}`);
       expect(output).toContain(`Branch: ${branchName}`);
-      expect(output).toContain(`Origin: ${tmpDir.replace(/\\/g, '/')}`);
+      expect(output).toContain(`Origin: ${asUnixPath(tmpDir)}`);
       expect(output).toMatch(/Current:\s+origin\b/);
    });
 
@@ -276,12 +277,12 @@ describe('gdx parallel', async () => {
       const listCtx = createGdxContext(forkPath, ['parallel', 'list']);
       const result = await parallel(listCtx);
 
-      const output = buffer.stdout.replace(/\\/g, '/');
+      const output = asUnixPath(buffer.stdout);
 
       expect(result).toBe(0);
       expect(output).toContain(`Project: ${projectName}`);
       expect(output).toContain(`Branch: ${branchName}`);
-      expect(output).toContain(`Origin: ${tmpDir.replace(/\\/g, '/')}`);
+      expect(output).toContain(`Origin: ${asUnixPath(tmpDir)}`);
       expect(output).toContain('Current: feature-1');
       expect(output).toContain('(use "origin" alias to refer to main worktree)');
 
@@ -365,9 +366,9 @@ describe('gdx parallel', async () => {
       const openOriginCtx = createGdxContext(forkPath, ['parallel', 'open', 'origin']);
       expect(await parallel(openOriginCtx)).toBe(0);
 
-      expect(tracker.openedPaths.map((value) => value.replace(/\\/g, '/'))).toEqual([
-         forkPath.replace(/\\/g, '/'),
-         tmpDir.replace(/\\/g, '/'),
+      expect(tracker.openedPaths.map((value) => asUnixPath(value))).toEqual([
+         asUnixPath(forkPath),
+         asUnixPath(tmpDir),
       ]);
 
       if (!GDX_RESULT_FILE) {
@@ -384,9 +385,9 @@ describe('gdx parallel', async () => {
       const switchOriginCtx = createGdxContext(forkPath, ['parallel', 'switch', 'origin']);
       expect(await parallel(switchOriginCtx)).toBe(0);
 
-      expect(tracker.scheduledDirs.map((value) => value.replace(/\\/g, '/'))).toEqual([
-         forkPath.replace(/\\/g, '/'),
-         tmpDir.replace(/\\/g, '/'),
+      expect(tracker.scheduledDirs.map((value) => asUnixPath(value))).toEqual([
+         asUnixPath(forkPath),
+         asUnixPath(tmpDir),
       ]);
    });
 
@@ -453,7 +454,7 @@ describe('gdx parallel', async () => {
       const listResult = await parallel(listCtx);
 
       expect(listResult).toBe(0);
-      const output = buffer.stdout.replace(/\\/g, '/');
+      const output = asUnixPath(buffer.stdout);
 
       expect(output).toContain('Add short 4');
       expect(output).toContain('Add short 3');
@@ -526,7 +527,7 @@ describe('gdx parallel', async () => {
          await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
          const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const gitmodulesContent = `[submodule "deps/submodule"]\n\tpath = deps/submodule\n\turl = ${submoduleUrl}\n`;
          await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
          fs.writeFileSync(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
@@ -584,7 +585,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
@@ -823,7 +824,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-list';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
@@ -901,7 +902,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-list-cursor';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
@@ -986,7 +987,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-counter';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
@@ -1059,7 +1060,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-join';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
@@ -1124,7 +1125,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-missing-origin';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
@@ -1167,7 +1168,7 @@ describe('gdx parallel', async () => {
             : path.join(altRepoRoot, altGitDirRaw);
          const originGitMarker = path.join(originSubmodulePath, '.git');
          const originGitMarkerContent = fs.readFileSync(originGitMarker, 'utf-8');
-         fs.writeFileSync(originGitMarker, `gitdir: ${altGitDir.replace(/\\/g, '/')}`);
+         fs.writeFileSync(originGitMarker, `gitdir: ${asUnixPath(altGitDir)}`);
 
          buffer.stdout = '';
          env.isTTY = false;
@@ -1282,7 +1283,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
-         const submoduleUrl = submoduleRoot.replace(/\\/g, '/');
+         const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-branch-join';
          await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;

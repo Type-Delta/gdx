@@ -6,6 +6,7 @@ import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
 import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
+import { asUnixPath } from '@/utils/path';
 import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
 import Logger from '@/utils/logger';
@@ -86,7 +87,7 @@ async function getCommitGuidelines(
    const cache = await getCache();
    const mainRepoRoot = await getMainWorktreeRoot(git$);
    const remoteUrl = await getNormalizedRemoteUrl(git$);
-   const normalizedRepoRoot = mainRepoRoot.replace(/\\/g, '/');
+   const normalizedRepoRoot = asUnixPath(mainRepoRoot);
    const cacheDays = config.get<number>('commit.guidelineCacheDays', 30);
    const cacheMinutes = cacheDays * 24 * 60;
 

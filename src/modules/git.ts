@@ -8,6 +8,7 @@ import * as fs from '@/modules/fs';
 import { stripAnsiColor } from '@/modules/graphics';
 
 import Logger from '../utils/logger';
+import { asUnixPath } from '@/utils/path';
 import { $, $inherit, createAbortableExec } from './shell';
 import { ArgsSet } from './arguments';
 import { Result } from '@/common/types';
@@ -256,7 +257,7 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
       const commonDirAbs = path.isAbsolute(commonDir)
          ? commonDir
          : path.resolve(repoRoot, commonDir);
-      const normalizedCommonDir = commonDirAbs.replace(/\\/g, '/');
+      const normalizedCommonDir = asUnixPath(commonDirAbs);
 
       if (normalizedCommonDir.includes('/.git/worktrees/')) {
          const gitDir = path.dirname(path.dirname(commonDirAbs));
@@ -278,7 +279,7 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
             const gitDirAbs = path.isAbsolute(gitDirRaw)
                ? gitDirRaw
                : path.resolve(repoRoot, gitDirRaw);
-            const normalizedGitDir = gitDirAbs.replace(/\\/g, '/');
+            const normalizedGitDir = asUnixPath(gitDirAbs);
 
             if (normalizedGitDir.includes('/.git/worktrees/')) {
                const gitDir = path.dirname(path.dirname(gitDirAbs));
@@ -577,7 +578,7 @@ export async function getRepoRootCached(git$: string | string[]): Promise<string
  * @returns A normalized path suitable for comparisons.
  */
 export function normalizeWorktreePath(inputPath: string): string {
-   const resolved = path.resolve(inputPath).replace(/\\/g, '/');
+   const resolved = asUnixPath(path.resolve(inputPath));
    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
@@ -588,7 +589,7 @@ export function normalizeWorktreePath(inputPath: string): string {
  */
 export function normalizeStatusPath(rawPath: string): string {
    const trimmed = rawPath.trim().replace(/^"|"$/g, '');
-   return trimmed.replace(/\\/g, '/');
+   return asUnixPath(trimmed);
 }
 
 /**
@@ -1054,7 +1055,7 @@ export async function deinitSubmodules(
          const gitDir = path.isAbsolute(gitDirRaw)
             ? gitDirRaw
             : path.resolve(worktreePath, gitDirRaw);
-         const normalizedGitDir = gitDir.replace(/\\/g, '/');
+         const normalizedGitDir = asUnixPath(gitDir);
          if (normalizedGitDir.includes('/.git/worktrees/')) {
             const modulesPath = path.join(gitDir, 'modules');
             if (fs.existsSync(modulesPath)) {

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { asUnixPath } from '@/utils/path';
 import fsp from 'fs/promises';
 
 export {
@@ -65,7 +66,7 @@ export function normalizeSync(inputPath: string): string {
       resolved = path.resolve(inputPath);
    }
 
-   return process.platform === 'win32' ? resolved.replace(/\\/g, '/').toLowerCase() : resolved;
+   return process.platform === 'win32' ? asUnixPath(resolved).toLowerCase() : resolved;
 }
 
 /**

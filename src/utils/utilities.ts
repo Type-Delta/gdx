@@ -121,6 +121,11 @@ export function normalizePath(pathStr: string): string {
  */
 export const noop = (): void => {};
 
+/**
+ * Infers a boolean value from a string. Recognizes '1', 'true', 'yes', and 'on' (case-insensitive) as true.
+ * @param value - The string to infer the boolean value from.
+ * @returns `true` if the string represents a true value, `false` otherwise.
+ */
 export function inferBool(value: string): boolean {
    const trueValues = ['1', 'true', 'yes', 'on'];
    return trueValues.includes(value.toLowerCase());

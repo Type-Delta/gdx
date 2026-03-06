@@ -5,10 +5,11 @@ import { ncc, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { EXECUTABLE_NAME, GDX_RESULT_FILE, GDX_VPALETTE } from '@/consts';
 import * as fs from '@/modules/fs';
-import { getRepoRootCached, getSubmodules } from '@/modules/git';
+import { getMainWorktreeRoot, getSubmodules } from '@/modules/git';
 import { _2PointGradient } from '@/modules/graphics';
 import { scheduleChangeDir } from '@/modules/shell';
 import Logger from '@/utils/logger';
+import { asUnixPath } from '@/utils/path';
 import { progressiveMatch } from '@/utils/utilities';
 import global from '@/global';
 
@@ -28,19 +29,24 @@ export async function switchSubmodule(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   const repoRoot = await getRepoRootCached(ctx.git$);
-   const submodules = await getSubmodules(ctx.git$, repoRoot);
+   const mainRoot = await getMainWorktreeRoot(ctx.git$);
+
+   const normalizedTarget = asUnixPath(target)
+      .replace(/^\.\/+/, '')
+      .replace(/\/+$/, '');
+
+   if (normalizedTarget === 'main') {
+      await scheduleChangeDir(mainRoot);
+      return 0;
+   }
+
+   const submodules = await getSubmodules(ctx.git$, mainRoot);
    if (submodules.length === 0) {
       Logger.error('No submodules found in this repository.', 'submodule');
       return 1;
    }
-
-   const normalizedTarget = target
-      .replace(/\\/g, '/')
-      .replace(/^\.\/+/, '')
-      .replace(/\/+$/, '');
    const candidatePaths = submodules.map((submodule) =>
-      submodule.path.replace(/\\/g, '/').replace(/\/+$/, '')
+      asUnixPath(submodule.path).replace(/\/+$/, '')
    );
 
    let selected: string | null = null;
@@ -82,7 +88,7 @@ export async function switchSubmodule(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   const destination = path.resolve(repoRoot, selected);
+   const destination = path.resolve(mainRoot, selected);
    if (!fs.existsSync(destination)) {
       Logger.error(
          `Submodule '${selected}' is not initialized. Run 'git submodule update --init ${selected}'.`,
@@ -107,7 +113,8 @@ Jump into a submodule directory from the parent repository.
 
 ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Resolve the target submodule by full path, unique prefix, or unique leaf name and then
-schedule an auto-cd into it. Requires shell integration to change directories.
+schedule an auto-cd into it. Use "main" to jump back to the parent repository root.
+Requires shell integration to change directories.
 
 ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Shell integration must be enabled using ${cyan}${EXECUTABLE_NAME} --init${reset}.
@@ -128,11 +135,12 @@ Submodules must be initialized (use ${cyan}git submodule update --init${reset}).
       const reset = ncc();
       return strWrap(
          `
-  ${cyan}${EXECUTABLE_NAME} submodule switch ${dim}<path|name>${reset}
+   ${cyan}${EXECUTABLE_NAME} submodule switch ${dim}<path|name|main>${reset}
 
 Examples:
    ${cyan}${EXECUTABLE_NAME} submodule switch vendor/sdk ${reset + dim}# Switch by full path${reset}
-   ${cyan}${EXECUTABLE_NAME} submodule switch sdk        ${reset + dim}# Switch by unique name${reset}`,
+   ${cyan}${EXECUTABLE_NAME} submodule switch sdk        ${reset + dim}# Switch by unique name${reset}
+   ${cyan}${EXECUTABLE_NAME} submodule switch main       ${reset + dim}# Back to parent repo${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

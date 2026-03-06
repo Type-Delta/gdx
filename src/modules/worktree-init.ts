@@ -6,6 +6,7 @@ import * as fs from '@/modules/fs';
 import { $, spinner, whichExec } from '@/modules/shell';
 import Logger from '@/utils/logger';
 import { getConfig } from '@/common/config';
+import { asUnixPath } from '@/utils/path';
 import { initSubmodules } from '@/modules/git';
 
 export type WorktreeInitBehavior = 'submodule' | 'pkg' | 'env';
@@ -428,7 +429,7 @@ async function copyEnvPathsFromPatterns(options: {
  * Normalizes env path patterns to a consistent relative format.
  */
 function normalizeEnvPathPattern(pattern: string): string {
-   let normalized = pattern.trim().replace(/\\/g, '/');
+   let normalized = asUnixPath(pattern.trim());
    while (normalized.startsWith('./')) {
       normalized = normalized.slice(2);
    }
@@ -483,7 +484,7 @@ function buildEnvPathMatcher(pattern: string): ((value: string) => boolean) | nu
    regex += '$';
 
    const matcher = new RegExp(regex);
-   return (value: string) => matcher.test(value.replace(/\\/g, '/'));
+   return (value: string) => matcher.test(asUnixPath(value));
 }
 
 /**
