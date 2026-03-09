@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.4.1 - 2026-03-02
 
 ### Added
 
@@ -14,6 +14,8 @@
 - Cache runtime schema validation.
 - Combined diff mode support in diff viewer.
 - Spinner gradient interval control with prerendered frame usage.
+- `--json` option for `gdx diff` and `gdx show` for structured output.
+- `gdx reword` command for quick commit message editing without interactive rebase.
 
 ### Changed
 
