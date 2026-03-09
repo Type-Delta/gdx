@@ -355,6 +355,7 @@ export class DiffViewerRenderer implements PagerRenderer {
    private lastWidth: number = 0;
    private lastHeight: number = 0;
    private redundancyLv: number = 0;
+   private widthRedundancyLv: number = 0;
    private logger = new Logger('diff-renderer');
 
    /** Blended background colors for diff lines (translucent effect) */
@@ -387,8 +388,11 @@ export class DiffViewerRenderer implements PagerRenderer {
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
       this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(diffText);
+      this.widthRedundancyLv = Math.max(0, this.redundancyLv);
 
-      this.logger.debug(`Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}`);
+      this.logger.debug(
+         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}`
+      );
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
       this.updateRenderedLines();
    }
@@ -454,10 +458,13 @@ export class DiffViewerRenderer implements PagerRenderer {
          lineNum !== undefined ? String(lineNum).padStart(lineNumWidth) : ' '.repeat(lineNumWidth);
       const gutter = `${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `;
 
-      if (this.options.wrapLines && ex_length(displayContent, this.redundancyLv) > contentWidth) {
+      if (
+         this.options.wrapLines &&
+         ex_length(displayContent, this.widthRedundancyLv) > contentWidth
+      ) {
          const wrapped = strWrap(displayContent, contentWidth, {
             mode: 'softboundary',
-            redundancyLv: this.redundancyLv,
+            redundancyLv: this.widthRedundancyLv,
          });
          const splitted = wrapped.split('\n');
          for (let i = 0; i < splitted.length; i++) {
@@ -473,7 +480,7 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    private padLineWithBg(str: string, width: number, bgColor: RgbVec): string {
-      const padding = Math.max(0, width - ex_length(str, this.redundancyLv));
+      const padding = Math.max(0, width - ex_length(str, this.widthRedundancyLv));
       return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${ncc()}`;
    }
 
@@ -522,11 +529,11 @@ export class DiffViewerRenderer implements PagerRenderer {
       const contentWidth = width;
       const color = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
 
-      if (this.options.wrapLines && ex_length(line, this.redundancyLv) > contentWidth) {
+      if (this.options.wrapLines && ex_length(line, this.widthRedundancyLv) > contentWidth) {
          const wrapped = strWrap(line, contentWidth, {
             mode: 'softboundary',
             indent: leftPadding,
-            redundancyLv: Math.max(0, this.redundancyLv),
+            redundancyLv: this.widthRedundancyLv,
          });
          return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
       }
@@ -617,9 +624,9 @@ export async function viewDiff(
    const spinnerCtrl =
       diffText.length > 10000
          ? spinner({
-            message: 'Preparing diff viewer...',
-            interval: 10,
-         })
+              message: 'Preparing diff viewer...',
+              interval: 10,
+           })
          : undefined;
 
    const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);

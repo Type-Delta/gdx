@@ -273,6 +273,25 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
          expect(addLine.trimEnd().endsWith('漢')).toBeTrue();
       });
 
+      it('should keep background padding for ascii-only diff lines', () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1 +1 @@
+-old value
++new value`;
+
+         const renderer = new DiffViewerRenderer(diffText, { wrapLines: true });
+         renderer.onResize(40, 20);
+
+         const addLine = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         ).find((line) => line.includes('new value'));
+
+         expect(addLine).toBeString();
+         expect(stripAnsiColor(addLine || '').length).toBe(40);
+      });
+
       it('should keep deleted line content when line numbers overlap', async () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts
