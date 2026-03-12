@@ -1,11 +1,13 @@
-import { maxFraction, ncc, toShortNum, yuString, strWrap } from '@lib/Tools';
+import * as path from 'path';
+
+import { maxFraction, ncc, toShortNum, yuString, strWrap, ex_length, strJustify } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec, spinner } from '../modules/shell';
-import { quickPrint } from '../utils/utilities';
+import { quickPrint, routeItems } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
-import { EXECUTABLE_NAME, STATS_EST, GDX_VPALETTE } from '../consts';
+import { EXECUTABLE_NAME, STATS_EST, GDX_VPALETTE, KNOWN_GIT_FAULT_FILE_HUBRISTICS } from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import Logger from '../utils/logger';
@@ -25,6 +27,7 @@ import {
 interface ParsedNumStat {
    totalAdded: number;
    totalRemoved: number;
+   totalRecords: number;
    changedFiles: Array<{ filePath: string; changedLines: number }>;
 }
 
@@ -102,7 +105,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             ? $`${git$} log --all --since=midnight --pretty=tformat:%h`
             : $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
          isAllScope
-            ? projectLineStatsPromise
+            ? Promise.resolve({ stdout: '' })
             : $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
          projectLineStatsPromise,
          getGitBranchesCached(git$),
@@ -127,7 +130,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          ? todayCommitsRes.stdout.trim().split('\n').length
          : 0;
 
-      const scopedNumStat = parseNumStat(scopedLogStatsRes.stdout);
+      const statParseStart = performance.now();
+      const projectNumStat = parseNumStat(projectLineStatsRes.stdout);
+      const scopedNumStat = isAllScope
+         ? projectNumStat :
+         parseNumStat(scopedLogStatsRes.stdout);
+
       const totalAdded = scopedNumStat.totalAdded;
       const totalRemoved = scopedNumStat.totalRemoved;
 
@@ -157,17 +165,18 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          0
       );
 
-      const projectNumStat = parseNumStat(projectLineStatsRes.stdout);
       const projAdded = projectNumStat.totalAdded;
       const projRemoved = projectNumStat.totalRemoved;
       const totalChanged = totalAdded + totalRemoved;
       const projChanged = projAdded + projRemoved;
       const contributionPct =
          projChanged > 0 ? maxFraction((totalChanged / projChanged) * 100, 2, true) : '0.00';
+      const parseDuration = toShortNum((performance.now() - statParseStart) / 1e3, 2) + 's';
 
       let maxCommits = 0;
       let topBranch = 'N/A';
 
+      spinnerCtrl.setMessage('Analyzing branch activity...');
       const branchCounts = await Promise.all(
          branches.map(async (branch) => {
             const { stdout } = isAllScope
@@ -185,15 +194,33 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       }
 
       const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
+      const numStatSize = Buffer.byteLength(projectLineStatsRes.stdout) + (isAllScope
+         ? 0
+         : Buffer.byteLength(scopedLogStatsRes.stdout));
+      const recordsParsed = projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
+      const header = [
+         `${ncc('Dim') + ncc('Italic')}Showing stats for ${scopeLabel} in ${projectName}${ncc()}`,
+         `${ncc('Dim')}Parsed ${toShortNum(numStatSize, 1, 1024)}iB of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${ncc()}`,
+      ];
+      const useInlineHeader = ex_length(header[0] + header[1]) + 7 < global.terminalWidth;
+      const headerText = useInlineHeader
+         ? '  ' + strJustify(header, global.terminalWidth - 4, { align: 'spacebetween' })
+         : header.map(line => '  ' + line).join('\n');
+      const linesAddedHint = global.terminalWidth > 100
+         ? `(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)`
+         : `(${addedSize}, ${addedFuncs} fns or ${addedFiles} files)`;
+      const linesRemovedHint = global.terminalWidth > 100
+         ? `(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)`
+         : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
 
       spinnerCtrl.stop();
-      quickPrint(`  ${ncc('Dim') + ncc('Italic')}Showing stats for ${scopeLabel} in ${projectName}${ncc()}
+      quickPrint(`${headerText}
 
   ─── ${username} Git Stats ───
   Project:             ${ncc('Cyan')}${projectName}${ncc()}
   Total Commits:       ${ncc('Green')}${scopedTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)
-  Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)${ncc()}
-  Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)${ncc()}
+  Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}${linesAddedHint + ncc()}
+  Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}${linesRemovedHint + ncc()}
   Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project
   Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
   Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`
@@ -297,8 +324,9 @@ function parseNumStat(raw: string): ParsedNumStat {
    let totalAdded = 0;
    let totalRemoved = 0;
    const changedFiles: Array<{ filePath: string; changedLines: number }> = [];
+   const lines = raw.split('\n');
 
-   for (const line of raw.split('\n')) {
+   for (const line of lines) {
       const parts = line.split('\t');
       if (parts.length < 3) continue;
 
@@ -310,10 +338,14 @@ function parseNumStat(raw: string): ParsedNumStat {
       const changed = added + removed;
       if (changed <= 0) continue;
 
+      const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
+      if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase()))
+         continue;
+
       totalAdded += added;
       totalRemoved += removed;
       changedFiles.push({
-         filePath: normalizeNumStatPath(parts.slice(2).join('\t').trim()),
+         filePath,
          changedLines: changed,
       });
    }
@@ -321,6 +353,7 @@ function parseNumStat(raw: string): ParsedNumStat {
    return {
       totalAdded,
       totalRemoved,
+      totalRecords: lines.length,
       changedFiles,
    };
 }
@@ -464,8 +497,15 @@ function renderLanguageUsageBar(
    const renderedBuckets = visibleBuckets
       .filter((bucket) => bucket.cols > 0)
       .sort((a, b) => b.lines - a.lines);
-   const topBucket = renderedBuckets[0];
-   const topBucketPct = maxFraction((topBucket.lines / totalChanged) * 100, 1, true);
+
+   const topThreshold = totalChanged * .18;
+   const [topBuckets, otherBuckets] = routeItems(renderedBuckets.slice(0, 6), (bucket, i) => {
+      if (bucket.lines >= topThreshold) return 0;
+      if (i === 0) return 0;
+      return 1;
+   });
+   const topBucketPcts = topBuckets!
+      .map((bucket) => maxFraction((bucket.lines / totalChanged) * 100, 1, true));
 
    const bar =
       renderedBuckets
@@ -473,10 +513,16 @@ function renderLanguageUsageBar(
          .join('') + ncc();
 
    const legend =
-      `${ncc(topBucket.color, 'fg')}●${ncc()} ${topBucketPct}% ${topBucket.name} ` +
-      ncc('Dim') + renderedBuckets.slice(1)
-         .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
-         .join('  ');
+      topBuckets!
+         .map(((bucket, i) => `${ncc(bucket.color, 'fg')}●${ncc()} ${topBucketPcts[i]}% ${bucket.name}`))
+         .join(' ') +
+      ncc('Dim') +
+      ' ' +
+      (otherBuckets
+         ? otherBuckets
+            .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
+            .join(' ')
+         : '');
 
    return { bar, legend };
 }

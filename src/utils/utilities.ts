@@ -119,7 +119,7 @@ export function normalizePath(pathStr: string): string {
 /**
  * No operation.
  */
-export const noop = (): void => {};
+export const noop = (): void => { };
 
 /**
  * Infers a boolean value from a string. Recognizes '1', 'true', 'yes', and 'on' (case-insensitive) as true.
@@ -148,4 +148,34 @@ export function compareVersions(v1: string, v2: string): number {
       if (num1 < num2) return -1;
    }
    return 0;
+}
+
+
+/**
+ * Routes items in an array into multiple arrays based on a sorting function.
+ * @param arr The array of items to be routed.
+ * @param sorter A function that determines the index of the sub-array for each item.
+ * @returns An array of arrays, where each sub-array contains items routed to that index.
+ */
+export function routeItems<T = unknown>(
+   arr: T[],
+   sorter: (item: T, index: number, array: T[]) => number,
+): (T[] | undefined)[] {
+   const result: T[][] = [];
+   let lastFilledIndex = -1;
+
+   for (let i = 0; i < arr.length; i++) {
+      const item = arr[i];
+      const index = sorter(item, i, arr);
+      if (!result[index]) {
+         result[index] = [];
+
+         if (lastFilledIndex + 1 < index) {
+            for (let j = lastFilledIndex + 1; j < index; j++) result[j] = [];
+         }
+         lastFilledIndex = index;
+      }
+      result[index].push(item);
+   }
+   return result;
 }

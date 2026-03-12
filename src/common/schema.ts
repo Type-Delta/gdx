@@ -20,6 +20,7 @@ export type CacheEntryMetadata = bd.Infer<typeof ZCacheEntryMetadata>;
 export const ZLanguageRecord = bd.object({
    name: bd.string(),
    extensions: bd.array(bd.string()),
+   filenames: bd.array(bd.string()),
    color: bd.number(),
    id: bd.number(),
 });

@@ -87,6 +87,13 @@ export function inferLanguageFromPath(
    filePath: string
 ): LanguageRecord | null {
    const extension = path.extname(filePath).toLowerCase();
+   const filename = path.basename(filePath);
+
+   // First check for exact filename match (e.g. "Makefile")
+   const byFilename = catalog.languages.find((lang) => lang.filenames.includes(filename));
+   if (byFilename) return byFilename;
+
+   // Then check for extension match (e.g. ".js")
    if (!extension) return null;
    return catalog.byExtension.get(extension) || null;
 }
@@ -104,8 +111,9 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
    for (const [name, rawValue] of Object.entries(parsed || {})) {
       if (!rawValue || typeof rawValue !== 'object') continue;
 
-      const value = rawValue as { extensions?: unknown; color?: unknown; type?: string, language_id: number };
+      const value = rawValue as { extensions?: unknown; color?: unknown; type?: string, language_id: number, filenames?: string };
       const extensions = normalizeExtensions(value.extensions);
+      if (!value.color) continue;
       if (value.type === 'data' && !LANGUAGE_WHITELIST.includes(value.language_id)) continue; // Skip pure data formats without syntax
       if (extensions.length === 0) continue;
 
@@ -114,6 +122,9 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
          name,
          extensions,
          color,
+         filenames: Array.isArray(value.filenames)
+            ? value.filenames.filter((f): f is string => typeof f === 'string')
+            : [],
          id: value.language_id,
       });
    }
@@ -205,10 +216,8 @@ function removeConflictingExtensions(languages: LanguageRecord[]): LanguageRecor
       );
       if (extensions.length === 0) continue;
       sanitized.push({
-         name: language.name,
-         color: language.color,
+         ...language,
          extensions,
-         id: language.id,
       });
    }
 

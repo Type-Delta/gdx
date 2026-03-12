@@ -173,6 +173,8 @@ export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass', '--no-enha
 
 export const GDX_OPTIONS_WITH_VALUES = ['--loglevel', '--init', '--shell', '--cmd'] as const;
 export const GDX_OPTIONS_NO_VALUES = ['--ghelp', '--bypass', '--no-enhance', '-gh'] as const;
+
+// Git stuff
 export const GIT_GLOBAL_OPTIONS_WITH_VALUES = [
    '-C',
    '-c',
@@ -189,6 +191,20 @@ export const GIT_GLOBAL_OPTIONS_NO_VALUES = [
    '--noglob-pathspecs',
    '--icase-pathspecs',
 ] as const;
+/**
+ * The list of files that git sometimes missinterprets as text and tries to diff, but are actually binary.
+ */
+export const KNOWN_GIT_FAULT_FILE_HUBRISTICS = [
+   '.pdf',
+   '.doc',
+   '.docx',
+   '.zip',
+   '.tar',
+   '.png',
+   '.jpg',
+   '.jpeg',
+   '.gif',
+]
 
 // Language catalog constants
 export const LANGUAGE_SOURCE_URL =
@@ -196,4 +212,5 @@ export const LANGUAGE_SOURCE_URL =
 export const LANGUAGE_CACHE_KEY = 'languages.catalog';
 export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS;
 export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
-export const LANGUAGE_WHITELIST = [163, 222];
+export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
+
