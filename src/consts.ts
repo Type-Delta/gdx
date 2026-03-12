@@ -196,3 +196,4 @@ export const LANGUAGE_SOURCE_URL =
 export const LANGUAGE_CACHE_KEY = 'languages.catalog';
 export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS;
 export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
+export const LANGUAGE_WHITELIST = [163, 222];

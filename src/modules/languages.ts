@@ -13,7 +13,8 @@ import {
    LANGUAGE_CACHE_KEY,
    LANGUAGE_FETCH_TIMEOUT_MS,
    LANGUAGE_REFRESH_INTERVAL_MS,
-   LANGUAGE_SOURCE_URL
+   LANGUAGE_SOURCE_URL,
+   LANGUAGE_WHITELIST
 } from '@/consts';
 import Logger from '@/utils/logger';
 import { SpinnerContoller } from './shell';
@@ -103,9 +104,9 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
    for (const [name, rawValue] of Object.entries(parsed || {})) {
       if (!rawValue || typeof rawValue !== 'object') continue;
 
-      const value = rawValue as { extensions?: unknown; color?: unknown; type?: string };
+      const value = rawValue as { extensions?: unknown; color?: unknown; type?: string, language_id: number };
       const extensions = normalizeExtensions(value.extensions);
-      if (value.type === 'data') continue; // Skip pure data formats without syntax
+      if (value.type === 'data' && !LANGUAGE_WHITELIST.includes(value.language_id)) continue; // Skip pure data formats without syntax
       if (extensions.length === 0) continue;
 
       const color = parseColorToDecimal(value.color) ?? DEFAULT_LANGUAGE_COLOR;
@@ -113,6 +114,7 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
          name,
          extensions,
          color,
+         id: value.language_id,
       });
    }
 
@@ -156,10 +158,9 @@ async function fetchLanguagesYaml(): Promise<string> {
  * @returns Runtime catalog with extension index.
  */
 function buildLanguageCatalog(stored: StoredLanguageCatalog): LanguageCatalog {
-   const languages = removeConflictingExtensions(stored.languages);
    const byExtension = new Map<string, LanguageRecord>();
 
-   for (const language of languages) {
+   for (const language of stored.languages) {
       for (const extension of language.extensions) {
          if (!byExtension.has(extension)) {
             byExtension.set(extension, language);
@@ -169,7 +170,7 @@ function buildLanguageCatalog(stored: StoredLanguageCatalog): LanguageCatalog {
 
    return {
       lastUpdatedAt: stored.lastUpdatedAt,
-      languages,
+      languages: stored.languages,
       byExtension,
    };
 }
@@ -194,6 +195,11 @@ function removeConflictingExtensions(languages: LanguageRecord[]): LanguageRecor
 
    const sanitized: LanguageRecord[] = [];
    for (const language of languages) {
+      if (LANGUAGE_WHITELIST.includes(language.id)) {
+         sanitized.push(language);
+         continue;
+      }
+
       const extensions = language.extensions.filter(
          (extension) => (extCount.get(extension) || 0) === 1
       );
@@ -202,6 +208,7 @@ function removeConflictingExtensions(languages: LanguageRecord[]): LanguageRecor
          name: language.name,
          color: language.color,
          extensions,
+         id: language.id,
       });
    }
 

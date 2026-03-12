@@ -21,6 +21,7 @@ export const ZLanguageRecord = bd.object({
    name: bd.string(),
    extensions: bd.array(bd.string()),
    color: bd.number(),
+   id: bd.number(),
 });
 export type LanguageRecord = bd.Infer<typeof ZLanguageRecord>;
 

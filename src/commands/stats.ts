@@ -22,8 +22,6 @@ import {
    type LanguageCatalog,
 } from '@/modules/languages';
 
-const LANGUAGE_BAR_PREFIX = '  Language Usage:      ';
-
 interface ParsedNumStat {
    totalAdded: number;
    totalRemoved: number;
@@ -202,6 +200,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       );
 
       if (languageCatalog) {
+         const LANGUAGE_BAR_PREFIX = '  Language Usage:      ';
          const languageBarWidth = Math.max(
             24,
             Math.min(56, global.terminalWidth - LANGUAGE_BAR_PREFIX.length - 2)
