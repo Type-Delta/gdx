@@ -5,8 +5,15 @@ import fs from 'fs/promises';
 
 import { getCache, resetCache, CacheService } from '@/common/cache';
 import { createTestEnv } from '@/utils/testHelper';
-import { CACHE_PRUNE_INTERVAL_DAYS, DEFAULT_CACHE_MAX_AGE, GDX_CACHE_SCHEMA_VERSION, ONE_DAY_MS, VERSION } from '@/consts';
+import {
+   CACHE_PRUNE_INTERVAL_DAYS,
+   DEFAULT_CACHE_MAX_AGE,
+   GDX_CACHE_SCHEMA_VERSION,
+   ONE_DAY_MS,
+   VERSION,
+} from '@/consts';
 import { CacheStructure } from '@/common/schema';
+import { languageConsts } from '@/modules/languages';
 
 describe('CacheService', async () => {
    const { tmpRootDir, cleanup, it } = await createTestEnv();
@@ -374,6 +381,20 @@ describe('CacheService', async () => {
       expect(defaultExpiry - now).toBeGreaterThan(5 * 60 * 1000); // > 5 min
    });
 
+   it('should support infinity TTL entries', async () => {
+      resetCache();
+      const cache = new CacheService(cacheFilePath);
+
+      await cache.set('ttl.infinity', 'forever', { maxAgeMinutes: Infinity });
+      const allData = await cache.getAll();
+      expect(allData.entryMeta['ttl.infinity'].expiresAt).toBe(
+         languageConsts.INFINITE_TTL_EXPIRES_AT
+      );
+
+      const value = await cache.get('ttl.infinity');
+      expect(value).toBe('forever');
+   });
+
    it('should initialize lastPruneAt on new cache', async () => {
       resetCache();
       const cacheFile9 = path.join(tmpRootDir, 'cache9.json');
@@ -510,7 +531,9 @@ describe('CacheService', async () => {
                expiresAt: Date.now() + 10000,
             },
          },
-      } satisfies Omit<CacheStructure, 'meta'> & { meta: Omit<CacheStructure['meta'], 'lastPruneAt'> };
+      } satisfies Omit<CacheStructure, 'meta'> & {
+         meta: Omit<CacheStructure['meta'], 'lastPruneAt'>;
+      };
 
       await fs.writeFile(cacheFile12, JSON.stringify(cacheData));
 

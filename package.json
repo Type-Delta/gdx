@@ -40,7 +40,7 @@
     "lint": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts --fix",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --format=esm --production --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --format=esm --production --keep-names",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
@@ -74,6 +74,7 @@
   "dependencies": {
     "@shikijs/cli": "^3.22.0",
     "cspell-lib": "9.4.0",
-    "keytar": "^7.9.0"
+    "keytar": "^7.9.0",
+    "yaml": "^2.8.2"
   }
 }

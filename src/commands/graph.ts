@@ -15,21 +15,28 @@ const MIN_TERM_WIDTH = 12;
 
 export default async function graph(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
-   let email = args.popValue('--email') || (await getGitConfigCached(git$, 'user.email'));
-   email = email ? email.trim().replace(/^["']|["']$/g, '') : email;
+   const isAllScope = !!args.popOption('--all') || !!args.popOption('-a');
 
-   if (!email) {
-      // LINK: uwnkd11 string literal in spec
-      Logger.error(
-         'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.',
-         'graph'
-      );
-      return 1;
+   let email = '';
+   if (!isAllScope) {
+      email = args.popValue('--email') || (await getGitConfigCached(git$, 'user.email'));
+      email = email ? email.trim().replace(/^["']|["']$/g, '') : email;
+
+      if (!email) {
+         // LINK: uwnkd11 string literal in spec
+         Logger.error(
+            'User email not configured. Please set it using "git config user.email <email>" or provide it with --email option.',
+            'graph'
+         );
+         return 1;
+      }
    }
 
    if (!args.includes('--quiet')) {
       quickPrint(
-         ncc('Cyan') + `Generating commit graph for user: ` + ncc('Yellow') + email + ncc()
+         isAllScope
+            ? ncc('Cyan') + 'Generating commit graph for all authors' + ncc()
+            : ncc('Cyan') + `Generating commit graph for user: ` + ncc('Yellow') + email + ncc()
       );
    }
 
@@ -54,7 +61,11 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    // Fetch commit data
    const strLog = (
-      await $`
+      isAllScope
+         ? await $`
+      ${git$} --no-pager log --all --since=${startDate.toISOString()} --date=short --format=%ad
+   `
+         : await $`
       ${git$} --no-pager log --all --author=${email} --since=${startDate.toISOString()} --date=short --format=%ad
    `
    ).stdout.trim();
@@ -78,7 +89,13 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    quickPrint(
       '\n  ' +
       ncc('Bright') +
-      _2PointGradient('Contribution Graph', GDX_VPALETTE.OceanDeepBlue, GDX_VPALETTE.OceanGreen, 0.12, 0.83) +
+      _2PointGradient(
+         'Contribution Graph',
+         GDX_VPALETTE.OceanDeepBlue,
+         GDX_VPALETTE.OceanGreen,
+         0.12,
+         0.83
+      ) +
       ` (Max: ${maxCommits} commits/day)\n`
    );
 
@@ -156,13 +173,13 @@ export const help = {
       return strWrap(
          `
 ${bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Render a calendar-style contribution graph for a repository author.
+Render a calendar-style contribution graph for a repository author or the whole repository.
 
 ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
 ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
+Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide commit graph across all authors. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
 
 ${bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
@@ -175,18 +192,19 @@ The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is t
          }
       );
    },
-   short: 'Render a calendar-style contribution graph for an author.',
+   short: 'Render a calendar-style contribution graph for an author or all authors.',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
          `
- ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--quiet]${reset}
+ ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--all|-a] [--quiet]${reset}
 
 Examples:
    ${cyan}${EXECUTABLE_NAME} graph ${reset + dim}# Graph for configured git user${reset}
-   ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}`,
+   ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}
+   ${cyan}${EXECUTABLE_NAME} graph --all ${reset + dim}# Graph for all authors${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -198,5 +216,5 @@ Examples:
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['--email', '--quiet'],
+   $root: ['--email', '--all', '-a', '--quiet'],
 } as const satisfies CommandStructure;

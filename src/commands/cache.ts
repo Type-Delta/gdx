@@ -121,7 +121,11 @@ async function listCache(): Promise<number> {
       if (!entry) continue;
 
       const ttlMs = entry.expiresAt - Date.now();
-      const ttlLabel = ttlMs <= 0 ? 'expired' : jsTime.getTimeFromMS(ttlMs).modern();
+      const ttlLabel = ttlMs <= 0
+         ? 'expired'
+         : entry.expiresAt >= Number.MAX_SAFE_INTEGER
+            ? 'N/A'
+            : jsTime.getTimeFromMS(ttlMs).modern();
       let ttlColor = ncc('Green');
       if (ttlMs <= 0) ttlColor = ncc('Dim');
       else if (ttlMs < 60 * 60 * 1000) ttlColor = ncc('Red');

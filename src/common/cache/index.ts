@@ -16,7 +16,6 @@ import Logger from '@/utils/logger';
 import { getConfig } from '../config';
 import { CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
 
-
 const DEFAULT_CACHE: CacheStructure = {
    meta: {
       version: VERSION,
@@ -28,6 +27,8 @@ const DEFAULT_CACHE: CacheStructure = {
    data: {},
    entryMeta: {},
 };
+
+export const INFINITE_TTL_EXPIRES_AT = Number.MAX_SAFE_INTEGER;
 
 export class CacheService {
    cachePath: string;
@@ -77,7 +78,7 @@ export class CacheService {
       // Find all expired entries
       const expiredKeys: string[] = [];
       for (const [keyPath, meta] of Object.entries(this.cache.entryMeta)) {
-         if (now > meta.expiresAt) {
+         if (meta.expiresAt !== INFINITE_TTL_EXPIRES_AT && now > meta.expiresAt) {
             expiredKeys.push(keyPath);
          }
       }
@@ -153,9 +154,10 @@ export class CacheService {
          try {
             // Check version mismatch (auto-invalidate on cache version & structure change)
             ZCacheStructure(parsed); // Validate structure and types
-         }
-         catch {
-            this.logger.warn('Cache file structure is outdated or invalid. Cache will be reset on next write.');
+         } catch {
+            this.logger.warn(
+               'Cache file structure is outdated or invalid. Cache will be reset on next write.'
+            );
             this.resetCache(false);
             this.loaded = true;
             return;
@@ -325,10 +327,13 @@ export class CacheService {
 
       // Update per-key metadata
       const now = Date.now();
+      const expiresAt = Number.isFinite(cacheMaxAge)
+         ? now + Math.max(cacheMaxAge, 0) * 60 * 1000
+         : INFINITE_TTL_EXPIRES_AT;
       this.cache.entryMeta[keyPath] = {
          createdAt: this.cache.entryMeta[keyPath]?.createdAt ?? now,
          updatedAt: now,
-         expiresAt: now + cacheMaxAge * 60 * 1000,
+         expiresAt,
       };
 
       // Update file-level metadata and mark dirty

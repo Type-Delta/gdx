@@ -189,3 +189,10 @@ export const GIT_GLOBAL_OPTIONS_NO_VALUES = [
    '--noglob-pathspecs',
    '--icase-pathspecs',
 ] as const;
+
+// Language catalog constants
+export const LANGUAGE_SOURCE_URL =
+   'https://github.com/github-linguist/linguist/raw/refs/heads/main/lib/linguist/languages.yml';
+export const LANGUAGE_CACHE_KEY = 'languages.catalog';
+export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS;
+export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;

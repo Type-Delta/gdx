@@ -52,6 +52,19 @@ describe('gdx graph', async () => {
       expect(buffer.stdout).toContain('other@example.com');
    });
 
+   it('should support --all flag without configured email', async () => {
+      await $`${git$} config user.email ${''}`;
+
+      try {
+         const allCtx = createGdxContext(tmpDir, ['graph', '--all']);
+         const result = await graph(allCtx);
+         expect(result).toBe(0);
+         expect(buffer.stdout).toContain('all authors');
+      } finally {
+         await $`${git$} config user.email "test@example.com"`;
+      }
+   });
+
    it('should verify graph layout and date placement', async () => {
       // Set "Today" to Friday, Dec 22, 2023
       const mockDate = new Date('2023-12-22T12:00:00Z');
