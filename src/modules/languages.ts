@@ -14,7 +14,7 @@ import {
    LANGUAGE_FETCH_TIMEOUT_MS,
    LANGUAGE_REFRESH_INTERVAL_MS,
    LANGUAGE_SOURCE_URL,
-   LANGUAGE_WHITELIST
+   LANGUAGE_WHITELIST,
 } from '@/consts';
 import Logger from '@/utils/logger';
 import { SpinnerContoller } from './shell';
@@ -111,7 +111,13 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
    for (const [name, rawValue] of Object.entries(parsed || {})) {
       if (!rawValue || typeof rawValue !== 'object') continue;
 
-      const value = rawValue as { extensions?: unknown; color?: unknown; type?: string, language_id: number, filenames?: string };
+      const value = rawValue as {
+         extensions?: unknown;
+         color?: unknown;
+         type?: string;
+         language_id: number;
+         filenames?: string;
+      };
       const extensions = normalizeExtensions(value.extensions);
       if (!value.color) continue;
       if (value.type === 'data' && !LANGUAGE_WHITELIST.includes(value.language_id)) continue; // Skip pure data formats without syntax
@@ -169,9 +175,10 @@ async function fetchLanguagesYaml(): Promise<string> {
  * @returns Runtime catalog with extension index.
  */
 function buildLanguageCatalog(stored: StoredLanguageCatalog): LanguageCatalog {
+   const languages = removeConflictingExtensions(stored.languages);
    const byExtension = new Map<string, LanguageRecord>();
 
-   for (const language of stored.languages) {
+   for (const language of languages) {
       for (const extension of language.extensions) {
          if (!byExtension.has(extension)) {
             byExtension.set(extension, language);
@@ -181,7 +188,7 @@ function buildLanguageCatalog(stored: StoredLanguageCatalog): LanguageCatalog {
 
    return {
       lastUpdatedAt: stored.lastUpdatedAt,
-      languages: stored.languages,
+      languages,
       byExtension,
    };
 }

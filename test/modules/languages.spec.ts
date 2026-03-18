@@ -18,7 +18,9 @@ describe('languages module', async () => {
                {
                   name: 'TypeScript',
                   extensions: ['.ts', '.tsx'],
+                  filenames: [],
                   color: parseInt('3178c6', 16),
+                  id: 378,
                },
             ],
          },
@@ -43,7 +45,9 @@ describe('languages module', async () => {
                {
                   name: 'Python',
                   extensions: ['.py'],
+                  filenames: [],
                   color: parseInt('3572A5', 16),
+                  id: 303,
                },
             ],
          },
@@ -74,12 +78,16 @@ describe('languages module', async () => {
                {
                   name: 'Lang A',
                   extensions: ['.x', '.a'],
+                  filenames: [],
                   color: 0x111111,
+                  id: 1001,
                },
                {
                   name: 'Lang B',
                   extensions: ['.x', '.b'],
+                  filenames: [],
                   color: 0x222222,
+                  id: 1002,
                },
             ],
          },
