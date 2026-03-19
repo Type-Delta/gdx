@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterAll, describe, expect } from 'bun:test';
 import path from 'path';
-import fs from 'fs/promises';
+import * as fs from '@/modules/fs';
 
 import { getCache, resetCache, CacheService } from '@/common/cache';
 import { createTestEnv } from '@/utils/testHelper';
@@ -26,7 +26,7 @@ describe('CacheService', async () => {
       const cache = new CacheService(cacheFilePath);
 
       // File doesn't exist yet; should not read until get/set
-      const cacheFileBefore = await fs.exists(cacheFilePath).catch(() => false);
+      const cacheFileBefore = fs.existsSync(cacheFilePath);
       expect(cacheFileBefore).toBe(false);
 
       // First access triggers load
@@ -34,7 +34,7 @@ describe('CacheService', async () => {
       expect(value).toBeUndefined();
 
       // Load should still be complete without writing
-      const cacheFileAfter = await fs.exists(cacheFilePath).catch(() => false);
+      const cacheFileAfter = fs.existsSync(cacheFilePath);
       expect(cacheFileAfter).toBe(false);
    });
 
@@ -83,7 +83,7 @@ describe('CacheService', async () => {
       await cache.flush();
 
       // Verify file was written
-      const fileExists = await fs.exists(cacheFilePath).catch(() => false);
+      const fileExists = fs.existsSync(cacheFilePath);
       expect(fileExists).toBe(true);
 
       // Read and verify content
@@ -103,7 +103,7 @@ describe('CacheService', async () => {
       await cache.flush();
 
       // File should not exist since nothing changed
-      const fileExists = await fs.exists(cacheFilePath2).catch(() => false);
+      const fileExists = fs.existsSync(cacheFilePath2);
       expect(fileExists).toBe(false);
    });
 

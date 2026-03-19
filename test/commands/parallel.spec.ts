@@ -846,6 +846,43 @@ describe('gdx parallel', async () => {
       expect(await parallel(removeCtx)).toBe(0);
    });
 
+   it('should sync detached fork even when origin worktree is dirty', async () => {
+      resetCache();
+      const alias = 'feature-sync-origin-dirty';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      const forkGit$ = [Array.isArray(git$) ? git$[0] : git$, '-C', forkPath];
+
+      fs.writeFileSync(path.join(forkPath, 'fork-sync-dirty.txt'), 'fork');
+      await $`${forkGit$} add fork-sync-dirty.txt`;
+      await $`${forkGit$} commit -m ${'Fork sync dirty commit'}`;
+
+      fs.writeFileSync(path.join(tmpDir, 'origin-sync-dirty.txt'), 'origin');
+      await $`${git$} add origin-sync-dirty.txt`;
+      await $`${git$} commit -m ${'Origin sync dirty commit'}`;
+      const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+
+      const dirtyFile = path.join(tmpDir, 'origin-untracked-sync.txt');
+      fs.writeFileSync(dirtyFile, 'origin is dirty');
+
+      const syncCtx = createGdxContext(tmpDir, ['parallel', 'sync', alias]);
+      expect(await parallel(syncCtx)).toBe(0);
+
+      const forkHead = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
+      expect(forkHead).toBe(originHead);
+
+      const originStatus = (await $`${git$} status --porcelain=v1 --untracked-files=normal`).stdout;
+      expect(originStatus).toContain('?? origin-untracked-sync.txt');
+
+      await fs.rm(dirtyFile, { force: true });
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   });
+
    it('should sync branch fork by merging origin and honoring hard clear', async () => {
       resetCache();
       const alias = 'feature-sync-branch';
@@ -1667,6 +1704,63 @@ describe('gdx parallel', async () => {
       expect(await dispatch(ctx)).toBe(0);
       expect(fs.readFileSync(path.join(forkPath, 'dispatch-pick.txt'), 'utf-8')).toBe('dispatch');
       expect(stripAnsiColor(buffer.stdout)).toContain("Cherry-picked 1 commit(s) from 'origin'");
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   });
+
+   it('routes top-level -C to parallel fork without changing cwd', async () => {
+      const { dispatch } = await import('@/cli/dispatch');
+
+      await $`${git$} commit --allow-empty -m ${'Dispatch fork base'}`;
+
+      const alias = 'dispatch-fork';
+      const parsed = stripGitGlobalArgs(['-C', tmpDir, 'parallel', 'fork', alias, '--no-init']);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const ctx = {
+         git$: [gitExec, ...parsed.gitArgs],
+         args: new ArgsSet(parsed.args),
+      };
+
+      expect(await dispatch(ctx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      expect(fs.existsSync(forkPath)).toBe(true);
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   });
+
+   it('routes top-level -C to parallel join without changing cwd', async () => {
+      const { dispatch } = await import('@/cli/dispatch');
+
+      await $`${git$} commit --allow-empty -m ${'Dispatch join base'}`;
+
+      const alias = 'dispatch-join';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      const forkGit$ = [Array.isArray(git$) ? git$[0] : git$, '-C', forkPath];
+
+      fs.writeFileSync(path.join(forkPath, 'dispatch-join.txt'), 'dispatch-join');
+      await $`${forkGit$} add dispatch-join.txt`;
+      await $`${forkGit$} commit -m ${'Dispatch join commit'}`;
+
+      const parsed = stripGitGlobalArgs(['-C', tmpDir, 'parallel', 'join', alias, '--keep']);
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const ctx = {
+         git$: [gitExec, ...parsed.gitArgs],
+         args: new ArgsSet(parsed.args),
+      };
+
+      expect(await dispatch(ctx)).toBe(0);
+      expect(stripAnsiColor(buffer.stdout)).toContain(`Fork '${alias}' merged into origin`);
+      expect(fs.readFileSync(path.join(tmpDir, 'dispatch-join.txt'), 'utf-8')).toBe(
+         'dispatch-join'
+      );
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       expect(await parallel(removeCtx)).toBe(0);

@@ -696,8 +696,16 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
  * Fork command - creates a new parallel worktree
  */
 async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> {
-   const ctx = await getParallelContext(git$);
-   if (!ctx) return 1;
+   let scope: Awaited<ReturnType<typeof getParallelScope>>;
+   try {
+      scope = await getParallelScope(git$);
+   } catch (err) {
+      Logger.error(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   const ctx = scope.parallelCtx;
+   const scopeGit$ = scope.scopeGit$;
 
    if (ctx.isParallelWorktree) {
       Logger.error(
@@ -802,17 +810,17 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    fs.mkdirSync(ctx.parallelRoot, { recursive: true });
 
    // Get base commit
-   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const gitExec = scope.gitExec;
    let baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
    if (forkRef) {
       try {
-         baseCommit = (await $`${git$} rev-parse ${forkRef}`).stdout.trim() || baseCommit;
+         baseCommit = (await $`${scopeGit$} rev-parse ${forkRef}`).stdout.trim() || baseCommit;
       } catch {
          // ignore and keep origin HEAD
       }
    } else if (forkBranch) {
       try {
-         baseCommit = (await $`${git$} rev-parse ${forkBranch}`).stdout.trim() || baseCommit;
+         baseCommit = (await $`${scopeGit$} rev-parse ${forkBranch}`).stdout.trim() || baseCommit;
       } catch {
          // ignore and keep origin HEAD
       }
@@ -820,7 +828,7 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
 
    // Check for changes
    const statusOutput = (
-      await $`${git$} status --porcelain=v1 --untracked-files=normal`
+      await $`${scopeGit$} status --porcelain=v1 --untracked-files=normal`
    ).stdout.trim();
    const hasChanges = statusOutput.length > 0;
    let stashRef: string | null = null;
@@ -830,11 +838,11 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
       const stashMessage = `git-parallel:${alias}`;
       try {
          if (mirrorMode) {
-            const hash = await $`${git$} stash create --include-untracked`;
-            await $`${git$} stash store -m ${stashMessage} ${hash}`;
+            const hash = await $`${scopeGit$} stash create --include-untracked`;
+            await $`${scopeGit$} stash store -m ${stashMessage} ${hash}`;
             changesOpt = 'mirrored';
          } else if (moveMode) {
-            await $`${git$} stash push --include-untracked -m ${stashMessage}`;
+            await $`${scopeGit$} stash push --include-untracked -m ${stashMessage}`;
             changesOpt = 'moved';
          }
          stashRef = 'stash@{0}';
@@ -848,14 +856,14 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    try {
       const targetRef = forkRef || 'HEAD';
       if (forkBranch && forkBranchFlag) {
-         await $inherit`${git$} worktree add ${forkBranchFlag} ${forkBranch} ${targetPath} ${targetRef}`;
+         await $inherit`${scopeGit$} worktree add ${forkBranchFlag} ${forkBranch} ${targetPath} ${targetRef}`;
       } else {
-         await $inherit`${git$} worktree add --detach ${targetPath} ${targetRef}`;
+         await $inherit`${scopeGit$} worktree add --detach ${targetPath} ${targetRef}`;
       }
    } catch {
       Logger.error('Failed to create the parallel worktree.', 'parallel');
       if (stashRef) {
-         await $`${git$} stash pop ${stashRef}`;
+         await $`${scopeGit$} stash pop ${stashRef}`;
          quickPrint(`${ncc('Yellow')}Stashed changes restored to the origin worktree.${ncc()}`);
       }
       return 1;
@@ -864,8 +872,8 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    // Apply stashed changes to the new worktree
    if (stashRef) {
       try {
-         await $`${git$} -C ${targetPath} stash apply --index ${stashRef}`;
-         await $`${git$} stash drop ${stashRef}`;
+         await $`${scopeGit$} -C ${targetPath} stash apply --index ${stashRef}`;
+         await $`${scopeGit$} stash drop ${stashRef}`;
       } catch {
          Logger.error('Failed to move local changes into the new worktree.', 'parallel');
          Logger.warn(
@@ -904,7 +912,7 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    }
 
    await runWorktreeInit({
-      git$,
+      git$: scopeGit$,
       worktreePath: targetPath,
       originPath: ctx.repoRoot,
       noInitAll,
@@ -1126,27 +1134,27 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-               excludeRefs: originHeadRef,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+                 excludeRefs: originHeadRef,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  originPath: ctx.originPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    originPath: ctx.originPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1911,14 +1919,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ]
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ]
       : [
-         { key: 'a', label: 'apply', action: 'apply' },
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ];
+           { key: 'a', label: 'apply', action: 'apply' },
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -2008,9 +2016,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0)
+                 .split('\n')
+                 .map((line) => line.trim())
+                 .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -2123,9 +2131,9 @@ async function joinWorktree(
       const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2275,12 +2283,12 @@ async function joinWorktree(
          const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
          const originSubHeadInFork = originSubHead
             ? (
-               await getRevParseCached(gitExec, forkSubPath, [
-                  '-q',
-                  '--verify',
-                  `${originSubHead}^{commit}`,
-               ])
-            ).trim()
+                 await getRevParseCached(gitExec, forkSubPath, [
+                    '-q',
+                    '--verify',
+                    `${originSubHead}^{commit}`,
+                 ])
+              ).trim()
             : '';
          const subRevListArgs = [
             '-C',
@@ -2573,8 +2581,16 @@ async function cmdJoinRecursive(
  * Join command - merges a parallel worktree back to origin
  */
 async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> {
-   const ctx = await getParallelContext(git$);
-   if (!ctx) return 1;
+   let scope: Awaited<ReturnType<typeof getParallelScope>>;
+   try {
+      scope = await getParallelScope(git$);
+   } catch (err) {
+      Logger.error(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   const ctx = scope.parallelCtx;
+   const scopeGit$ = scope.scopeGit$;
 
    // Parse arguments to separate alias from flags
    const validFlags = ['--keep', '--all', '--interactive', '-i', '-r', '--recursive'];
@@ -2626,7 +2642,7 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
    }
 
    if (recursive) {
-      return await cmdJoinRecursive(git$, ctx, keep);
+      return await cmdJoinRecursive(scopeGit$, ctx, keep);
    }
 
    // Determine which worktree to join
@@ -2660,7 +2676,7 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
       }
    } else {
       // No alias specified - must be run from within a fork
-      if (!ctx.isParallelWorktree) {
+      if (scope.currentLabel === 'origin') {
          Logger.error(
             'Either run join from inside a forked worktree, or specify which fork to join.',
             'parallel'
@@ -2672,11 +2688,11 @@ async function cmdJoin(git$: string | string[], args: ArgsSet): Promise<number> 
          return 1;
       }
 
-      forkPath = ctx.repoRoot;
-      forkAlias = ctx.alias!;
+      forkAlias = scope.currentLabel;
+      forkPath = resolveParallelWorktreePath(ctx, forkAlias);
    }
 
-   return await joinWorktree(git$, forkPath, forkAlias, { keep, bringAll, interactive });
+   return await joinWorktree(scopeGit$, forkPath, forkAlias, { keep, bringAll, interactive });
 }
 
 async function cmdSync(git$: string | string[], args: ArgsSet): Promise<number> {
@@ -2754,17 +2770,6 @@ async function cmdSync(git$: string | string[], args: ArgsSet): Promise<number> 
       return 1;
    }
 
-   const originStatus = (
-      await $`${scope.gitExec} -C ${originPath} status --porcelain=v1 --untracked-files=normal`
-   ).stdout.trim();
-   if (originStatus.length > 0) {
-      Logger.error(
-         'Origin worktree has uncommitted changes. Commit, stash, or clear them before syncing.',
-         'parallel'
-      );
-      return 1;
-   }
-
    const cleanTarget = await ensureCleanWorktreeOrClear(scope.gitExec, forkPath, hard);
    if (!cleanTarget) {
       Logger.error(
@@ -2818,7 +2823,6 @@ async function cmdSync(git$: string | string[], args: ArgsSet): Promise<number> 
    return 0;
 }
 
-// TODO: make this command support `-C` arguments to specify which worktree to pick from
 async function cmdPick(git$: string | string[], args: ArgsSet): Promise<number> {
    let scope: Awaited<ReturnType<typeof getParallelScope>>;
    try {

@@ -30,6 +30,11 @@ This repo commonly uses an emoji + Conventional Commits-style subject line, plus
 
 ## Build, Lint, and Test Commands
 
+```bash
+bun run check   # Runs lint, typecheck, and build checks
+bun test        # Runs tests with Bun's test runner
+```
+
 ### Development Setup
 
 ```bash
@@ -242,15 +247,6 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
-- **Quality Assurance:** Always run lint, typecheck, and tests after code changes. (you can do this mid development process so that you won't end up with a large number of errors at the end) Once you are done with all features run full test again to ensure everything is working as expected.
-
-### Working In Temporary Worktrees
-
-Agents may be running inside a temporary worktree under `TEMP_DIR` (used for parallel edits).
-These worktrees are often in a detached HEAD state.
-
-- Avoid `git push` from temporary worktrees,
-  let humans handle pushing changes unless explicitly instructed otherwise.
 
 ### Caveats
 
