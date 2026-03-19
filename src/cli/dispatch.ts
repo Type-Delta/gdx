@@ -1,7 +1,6 @@
 import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
-import { rewordCommitEditor, rewordSequenceEditor } from '@/commands/reword';
 import { GDX_COMMANDS } from '@/consts';
 import { $, execGit } from '@/modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
@@ -85,10 +84,6 @@ export async function dispatch(
       if (match) args[0] = match;
 
       switch (args[0]) {
-         case '__reword-sequence-editor':
-            return await rewordSequenceEditor(ctx);
-         case '__reword-editor':
-            return await rewordCommitEditor(ctx);
          case 's': // alias for 'status'
             args[0] = 'status';
          case 'status':

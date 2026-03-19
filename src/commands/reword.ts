@@ -7,32 +7,19 @@ import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit, tokenizeCommand, whichExec } from '@/modules/shell';
 import { getConfig } from '@/common/config';
 import { assertInGitWorktree, expandRelativeRef } from '@/modules/git';
-import { escapeCmdArgs, noop } from '@/utils/utilities';
+import { noop } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 
 /**
- * Resolves the CLI command used to invoke gdx again.
- * Falls back to the current runtime when no script entry is available.
+ * Git author metadata used when creating a rewritten commit.
  */
-function resolveSelfCommand(): string[] {
-   const override = process.env.GDX_SELF_COMMAND;
-   if (override) {
-      const tokens = tokenizeCommand(override).filter(Boolean);
-      if (tokens.length > 0) return tokens;
-   }
-
-   const argv0 = process.argv[0];
-   const argv1 = process.argv[1];
-   const scriptExt = argv1 ? path.extname(argv1).toLowerCase() : '';
-
-   if (argv1 && fs.existsSync(argv1) && ['.js', '.mjs', '.cjs', '.ts'].includes(scriptExt)) {
-      return [argv0, argv1];
-   }
-
-   return [argv0];
+interface CommitAuthor {
+   name: string;
+   email: string;
+   date: string;
 }
 
 /**
@@ -48,35 +35,30 @@ async function resolveCommitSha(git$: string | string[], ref: string): Promise<s
 }
 
 /**
- * Resolves the parent SHA for a commit, or null for root commits.
+ * Resolves the parent SHAs for a commit.
  */
-async function resolveParentSha(git$: string | string[], sha: string): Promise<string | null> {
-   try {
-      const { stdout } = await $`${git$} rev-parse ${sha}^`;
-      return stdout.trim();
-   } catch {
-      return null;
-   }
+async function resolveCommitParents(git$: string | string[], sha: string): Promise<string[]> {
+   const { stdout } = await $`${git$} rev-list --parents -n 1 ${sha}`;
+   const tokens = stdout.trim().split(/\s+/).filter(Boolean);
+   return tokens.slice(1);
 }
 
 /**
- * Ensures there are no tracked staged or unstaged changes.
+ * Resolves a commit tree SHA.
  */
-async function assertCleanTrackedState(git$: string | string[]): Promise<boolean> {
-   const [staged, unstaged] = await Promise.all([
-      $`${git$} diff --cached --name-only`.then((r) => r.stdout.trim()),
-      $`${git$} diff --name-only`.then((r) => r.stdout.trim()),
-   ]);
+async function resolveCommitTree(git$: string | string[], sha: string): Promise<string> {
+   const { stdout } = await $`${git$} show -s --format=%T ${sha}`;
+   return stdout.trim();
+}
 
-   if (staged || unstaged) {
-      Logger.error(
-         'Working tree has uncommitted changes. Please stash or commit them before rewording.',
-         'reword'
-      );
-      return false;
-   }
-
-   return true;
+/**
+ * Resolves the original author metadata for a commit.
+ */
+async function resolveCommitAuthor(git$: string | string[], sha: string): Promise<CommitAuthor> {
+   const format = '%an%x00%ae%x00%aI';
+   const { stdout } = await $`${git$} show -s --format=${format} ${sha}`;
+   const [name = '', email = '', date = ''] = stdout.trimEnd().split('\0');
+   return { name, email, date };
 }
 
 /**
@@ -118,74 +100,166 @@ async function resolveRewordEditor(): Promise<string> {
 }
 
 /**
- * Sequence editor for git rebase that marks the target commit as reword.
+ * Creates a commit from a tree/parents tuple and message file.
  */
-export async function rewordSequenceEditor(ctx: GdxContext): Promise<number> {
-   const targetSha = process.env.GDX_REWORD_TARGET_SHA?.trim();
-   const targetShort = process.env.GDX_REWORD_TARGET_SHORT?.trim();
-   const todoPath = ctx.args[1];
+async function createCommitFromTree(options: {
+   git$: string | string[];
+   treeSha: string;
+   parents: string[];
+   messageFile: string;
+   author: CommitAuthor;
+}): Promise<string> {
+   const { git$, treeSha, parents, messageFile, author } = options;
+   const args = [
+      'commit-tree',
+      treeSha,
+      ...parents.flatMap((parent) => ['-p', parent]),
+      '-F',
+      messageFile,
+   ];
+   const withAuthor = $({
+      env: {
+         GIT_AUTHOR_NAME: author.name,
+         GIT_AUTHOR_EMAIL: author.email,
+         GIT_AUTHOR_DATE: author.date,
+      },
+   });
 
-   if (!targetSha || !todoPath) {
-      Logger.error('Missing target commit or rebase todo file.', 'reword');
-      return 1;
+   const { stdout } = await withAuthor`${git$} ${args}`;
+   const nextSha = stdout.trim();
+   if (!nextSha) {
+      throw new Err('Failed to create rewritten commit.', 'REWORD_COMMIT_TREE_FAILED');
    }
 
-   try {
-      const content = await fs.readFile(todoPath, 'utf8');
-      const lines = content.split(/\r?\n/);
-      let updated = false;
-
-      const nextLines = lines.map((line) => {
-         if (updated) return line;
-         if (!line.trim() || line.trim().startsWith('#')) return line;
-
-         const match = /^(\s*)(\w+)(\s+)([0-9a-f]+)(.*)$/i.exec(line);
-         if (!match) return line;
-
-         const sha = match[4];
-         const matchesTarget =
-            targetSha.startsWith(sha) ||
-            (targetShort ? targetShort.startsWith(sha) : false) ||
-            sha.startsWith(targetSha);
-
-         if (!matchesTarget) return line;
-
-         updated = true;
-         return `${match[1]}reword${match[3]}${match[4]}${match[5]}`;
-      });
-
-      if (!updated) {
-         Logger.error('Target commit not found in rebase todo list.', 'reword');
-         return 1;
-      }
-
-      await fs.writeFile(todoPath, nextLines.join('\n'), 'utf8');
-      return 0;
-   } catch (err) {
-      Logger.error(yuString(err, { color: true }), 'reword');
-      return 1;
-   }
+   return nextSha;
 }
 
 /**
- * Commit message editor for git rebase that injects the new message.
+ * Resolves HEAD ref name for update-ref operations.
  */
-export async function rewordCommitEditor(ctx: GdxContext): Promise<number> {
-   const messageFile = process.env.GDX_REWORD_MESSAGE_FILE?.trim();
-   const targetFile = ctx.args[1];
+async function resolveHeadRef(git$: string | string[]): Promise<string> {
+   const symbolicRef = await $`${git$} symbolic-ref -q HEAD`
+      .then((result) => result.stdout.trim())
+      .catch(() => '');
+   return symbolicRef || 'HEAD';
+}
 
-   if (!messageFile || !targetFile) {
-      Logger.error('Missing commit message file for rewording.', 'reword');
-      return 1;
+/**
+ * Lists commits to replay after rewriting the target commit.
+ */
+async function listReplayCommits(
+   git$: string | string[],
+   targetSha: string,
+   headSha: string
+): Promise<string[]> {
+   const range = `${targetSha}..${headSha}`;
+   const { stdout } = await $`${git$} rev-list --reverse ${range}`;
+   return stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+}
+
+/**
+ * Resolves the git executable path from git$ context.
+ */
+function resolveGitExecutable(git$: string | string[]): string {
+   if (Array.isArray(git$)) {
+      return git$[0];
    }
+   return git$;
+}
+
+/**
+ * Rewrites the current HEAD commit message using commit-tree.
+ */
+async function rewriteHeadCommit(
+   git$: string | string[],
+   headSha: string,
+   messageFile: string
+): Promise<void> {
+   const [treeSha, parents, author] = await Promise.all([
+      resolveCommitTree(git$, headSha),
+      resolveCommitParents(git$, headSha),
+      resolveCommitAuthor(git$, headSha),
+   ]);
+
+   const rewrittenHead = await createCommitFromTree({
+      git$,
+      treeSha,
+      parents,
+      messageFile,
+      author,
+   });
+
+   const headRef = await resolveHeadRef(git$);
+   await $`${git$} update-ref ${headRef} ${rewrittenHead} ${headSha}`;
+}
+
+/**
+ * Rewrites a non-HEAD commit message using commit-tree + cherry-pick in a temporary worktree.
+ */
+async function rewriteOlderCommit(
+   git$: string | string[],
+   targetSha: string,
+   headSha: string,
+   messageFile: string
+): Promise<void> {
+   await fs.mkdir(TEMP_DIR, { recursive: true });
+
+   const worktreeDir = path.join(
+      TEMP_DIR,
+      `gdx_reword_worktree_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
+   );
+   let didCreateWorktree = false;
 
    try {
-      const content = await fs.readFile(messageFile, 'utf8');
-      await fs.writeFile(targetFile, content, 'utf8');
-      return 0;
-   } catch (err) {
-      Logger.error(yuString(err, { color: true }), 'reword');
-      return 1;
+      await $`${git$} worktree add --detach ${worktreeDir} ${headSha}`;
+      didCreateWorktree = true;
+
+      const worktreeGit: string[] = [resolveGitExecutable(git$), '-C', worktreeDir];
+      const [targetTree, targetParents, targetAuthor] = await Promise.all([
+         resolveCommitTree(git$, targetSha),
+         resolveCommitParents(git$, targetSha),
+         resolveCommitAuthor(git$, targetSha),
+      ]);
+
+      const rewrittenTarget = await createCommitFromTree({
+         git$: worktreeGit,
+         treeSha: targetTree,
+         parents: targetParents,
+         messageFile,
+         author: targetAuthor,
+      });
+
+      await $`${worktreeGit} checkout --detach ${rewrittenTarget}`;
+
+      const replayCommits = await listReplayCommits(git$, targetSha, headSha);
+      for (const commit of replayCommits) {
+         await $inherit`${worktreeGit} cherry-pick ${commit}`;
+      }
+
+      const rewrittenHead = (await $`${worktreeGit} rev-parse HEAD`).stdout.trim();
+      const [originalHeadTree, rewrittenHeadTree] = await Promise.all([
+         resolveCommitTree(git$, headSha),
+         resolveCommitTree(worktreeGit, rewrittenHead),
+      ]);
+
+      if (originalHeadTree !== rewrittenHeadTree) {
+         throw new Err(
+            'Reword aborted because rewritten history changed the HEAD tree.',
+            'REWORD_TREE_MISMATCH'
+         );
+      }
+
+      const headRef = await resolveHeadRef(git$);
+      await $`${git$} update-ref ${headRef} ${rewrittenHead} ${headSha}`;
+   } finally {
+      if (didCreateWorktree) {
+         await $`${git$} worktree remove --force ${worktreeDir}`.catch(noop);
+      }
+      await fs.rm(worktreeDir, { recursive: true, force: true }).catch(noop);
    }
 }
 
@@ -201,8 +275,6 @@ export default async function reword(ctx: GdxContext): Promise<number> {
       Logger.error(`Usage: ${EXECUTABLE_NAME} reword [<commit>]`, 'reword');
       return 1;
    }
-
-   if (!(await assertCleanTrackedState(git$))) return 1;
 
    const targetRef = args[1] || 'HEAD';
    const targetSha = await resolveCommitSha(git$, targetRef);
@@ -240,60 +312,9 @@ export default async function reword(ctx: GdxContext): Promise<number> {
       }
 
       if (isHead) {
-         await $inherit`${git$} commit --amend -F ${tempFile}`.catch(noop);
-         return 0;
-      }
-
-      const parentSha = await resolveParentSha(git$, targetSha);
-      const shortSha = (await $`${git$} rev-parse --short ${targetSha}`).stdout.trim();
-      const selfCommand = resolveSelfCommand();
-
-      const sequenceArgs = [...selfCommand, '__reword-sequence-editor'];
-      const editorArgs = [...selfCommand, '__reword-editor'];
-      const sequenceCommand = escapeCmdArgs(sequenceArgs).join(' ');
-      const editorCommand = escapeCmdArgs(editorArgs).join(' ');
-
-      const prevSequenceEditor = process.env.GIT_SEQUENCE_EDITOR;
-      const prevEditor = process.env.GIT_EDITOR;
-      const prevMessageFile = process.env.GDX_REWORD_MESSAGE_FILE;
-      const prevTargetSha = process.env.GDX_REWORD_TARGET_SHA;
-      const prevTargetShort = process.env.GDX_REWORD_TARGET_SHORT;
-
-      process.env.GIT_SEQUENCE_EDITOR = sequenceCommand;
-      process.env.GIT_EDITOR = editorCommand;
-      process.env.GDX_REWORD_MESSAGE_FILE = tempFile;
-      process.env.GDX_REWORD_TARGET_SHA = targetSha;
-      process.env.GDX_REWORD_TARGET_SHORT = shortSha;
-
-      try {
-         Logger.debug(
-            `Rewording commit ${shortSha} using ${escapeCmdArgs(sequenceArgs).join(' ')}`,
-            'reword'
-         );
-         if (parentSha) {
-            await $inherit`${git$} rebase -i ${parentSha}`;
-         } else {
-            await $inherit`${git$} rebase -i --root`;
-         }
-      } catch (err) {
-         Logger.error('Reword failed. Resolve the rebase and continue or abort.', 'reword');
-         Logger.error(yuString(err, { color: true }), 'reword');
-         return 1;
-      } finally {
-         if (prevSequenceEditor !== undefined) process.env.GIT_SEQUENCE_EDITOR = prevSequenceEditor;
-         else delete process.env.GIT_SEQUENCE_EDITOR;
-
-         if (prevEditor !== undefined) process.env.GIT_EDITOR = prevEditor;
-         else delete process.env.GIT_EDITOR;
-
-         if (prevMessageFile !== undefined) process.env.GDX_REWORD_MESSAGE_FILE = prevMessageFile;
-         else delete process.env.GDX_REWORD_MESSAGE_FILE;
-
-         if (prevTargetSha !== undefined) process.env.GDX_REWORD_TARGET_SHA = prevTargetSha;
-         else delete process.env.GDX_REWORD_TARGET_SHA;
-
-         if (prevTargetShort !== undefined) process.env.GDX_REWORD_TARGET_SHORT = prevTargetShort;
-         else delete process.env.GDX_REWORD_TARGET_SHORT;
+         await rewriteHeadCommit(git$, headSha, tempFile);
+      } else {
+         await rewriteOlderCommit(git$, targetSha, headSha, tempFile);
       }
 
       return 0;
@@ -313,7 +334,7 @@ export const help = {
       return strWrap(
          `
 ${bright + _2PointGradient('REWORD', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Update a commit message without editing an interactive rebase todo list.
+Update a commit message without rebase, no clean working directory required, and with safety checks to prevent history corruption. Ideal for quick fixes to recent commits.
 
 ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Opens the selected commit message in your editor, then rewrites history as needed. By default, it rewords HEAD. Provide a commit SHA or a relative ref (e.g. ${cyan}~2${reset}) to target older commits.
@@ -323,6 +344,7 @@ Set ${cyan}reword.editor${reset} to override the global editor. When unset, ${cy
 
 ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 Rewording rewrites commit history. Ensure you coordinate with collaborators before rewriting shared commits.
+If the commit you are rewording or later commits exist on a remote, you will need to force push after rewording. Always double-check the rewritten history before pushing.
 `,
          Math.min(100, global.terminalWidth - 4),
          {

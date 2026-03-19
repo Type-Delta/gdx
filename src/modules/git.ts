@@ -1278,7 +1278,7 @@ export function forceColorArgs(): string[] {
  * Expands relative ref notations in the provided arguments array.
  * Supports \~N and origin\~N formats, resolving them to absolute refs.
  *
- * For example, "HEAD~3" would be expanded to the commit SHA 3 ancestors before HEAD, and "origin~2" would resolve the upstream branch and then find the commit 2 ancestors before it.
+ * For example, "HEAD\~3" would be expanded to the commit SHA 3 ancestors before HEAD, and "origin~2" would resolve the upstream branch and then find the commit 2 ancestors before it.
  *
  * @param args - The array of arguments to process and expand.
  * @param git$ - Git executable reference, used for resolving upstream refs.

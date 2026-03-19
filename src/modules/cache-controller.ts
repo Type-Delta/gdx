@@ -23,7 +23,6 @@ export async function getWhichExecCached(
 
    const cached = await cache.get<string | null>(cacheKey);
    if (cached != null && fs.existsSync(cached)) {
-      Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
       return cached;
    }
 
@@ -32,8 +31,6 @@ export async function getWhichExecCached(
       if (!execPath) return null;
 
       await cache.set(cacheKey, execPath);
-      Logger.debug(`Cache store for ${cacheKey}: ${execPath}`, 'cache-ctrl');
-
       return execPath;
    } catch (err) {
       Logger.warn(`Failed to get which exec for ${cmd}: ${err}`, 'cache-ctrl');
