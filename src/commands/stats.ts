@@ -1,13 +1,27 @@
 import * as path from 'path';
 
-import { maxFraction, ncc, toShortNum, yuString, strWrap, ex_length, strJustify } from '@lib/Tools';
+import {
+   maxFraction,
+   ncc,
+   toShortNum,
+   yuString,
+   strWrap,
+   ex_length,
+   strJustify,
+   hyperlink,
+} from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec, spinner } from '../modules/shell';
 import { quickPrint, routeItems } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
-import { EXECUTABLE_NAME, STATS_EST, GDX_VPALETTE, KNOWN_GIT_FAULT_FILE_HUBRISTICS } from '../consts';
+import {
+   EXECUTABLE_NAME,
+   STATS_EST,
+   GDX_VPALETTE,
+   KNOWN_GIT_FAULT_FILE_HUBRISTICS,
+} from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
 import Logger from '../utils/logger';
@@ -16,6 +30,8 @@ import {
    getGitConfigCached,
    getGitBranchesCached,
    assertInGitWorktree,
+   getNormalizedRemoteUrl,
+   getSubmodules,
 } from '@/modules/git';
 import {
    DEFAULT_LANGUAGE_COLOR,
@@ -34,6 +50,18 @@ interface ParsedNumStat {
 interface LanguageUsageBar {
    bar: string;
    legend: string;
+}
+
+interface TopContributor {
+   email: string;
+   username: string;
+   contributionPct: string;
+}
+
+interface RemoteLinkInfo {
+   repoUrl: string | null;
+   host: string | null;
+   provider: 'github' | 'gitlab' | 'gitea' | null;
 }
 
 export default async function stats(ctx: GdxContext): Promise<number> {
@@ -57,7 +85,6 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          const emailArg = args.popValue('--author');
          if (emailArg) {
             email = emailArg.trim().replace(/^["']|["']$/g, '');
-            username = email.split('@')[0] + "'s";
          } else {
             email = await getGitConfigCached(git$, 'user.email');
             email = email ? email.trim().replace(/^["']|["']$/g, '') : email;
@@ -86,21 +113,36 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    try {
       const projectTotalCmiPromise = $`${git$} rev-list --all --count`;
+      const orphanCommitsPromise = $`${git$} rev-list --all --max-parents=0 --count`;
       const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
+      const firstCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
+      const lastCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
+      const topContributorRawPromise = isAllScope
+         ? $`${git$} log --all --format=%aN%x09%ae --numstat`
+         : Promise.resolve({ stdout: '' });
+      const scopedUsernamePromise = isAllScope
+         ? Promise.resolve({ stdout: '' })
+         : $`${git$} log --all --author=${email} -1 --format=%aN`;
 
+      const repoRoot = (await getRepoRootCached(git$)).trim();
       const [
-         repoRootRes,
          scopedTotalCmiRes,
          projectTotalCmiRes,
+         orphanCommitsRes,
          todayCommitsRes,
          scopedLogStatsRes,
          projectLineStatsRes,
+         topContributorRawRes,
+         scopedUsernameRes,
          branches,
+         firstCommitShasRes,
          lastCommitTimeRes,
+         normalizedRemoteUrl,
+         submodules,
       ] = await Promise.all([
-         getRepoRootCached(git$),
          isAllScope ? projectTotalCmiPromise : $`${git$} rev-list --all --count --author=${email}`,
          projectTotalCmiPromise,
+         orphanCommitsPromise,
          isAllScope
             ? $`${git$} log --all --since=midnight --pretty=tformat:%h`
             : $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
@@ -108,10 +150,17 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             ? Promise.resolve({ stdout: '' })
             : $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
          projectLineStatsPromise,
+         topContributorRawPromise,
+         scopedUsernamePromise,
          getGitBranchesCached(git$),
          isAllScope
-            ? $`${git$} log --all -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`
-            : $`${git$} log --all --author=${email} -1 --format=${`%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc()}`,
+            ? $`${git$} rev-list --all --reverse`
+            : $`${git$} rev-list --all --author=${email} --reverse`,
+         isAllScope
+            ? $`${git$} log --all -1 --format=${lastCommitFormat}`
+            : $`${git$} log --all --author=${email} -1 --format=${lastCommitFormat}`,
+         getNormalizedRemoteUrl(git$),
+         getSubmodules(git$, repoRoot),
       ]);
 
       let languageCatalog: LanguageCatalog | null = null;
@@ -123,18 +172,29 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          languageCatalog = null;
       }
 
-      const projectName = repoRootRes.split(/[\\/]/).pop();
+      const projectName = repoRoot.split(/[\\/]/).pop() || repoRoot;
+      const scopedUsername = scopedUsernameRes.stdout.trim();
+      if (!isAllScope && scopedUsername) username = `${scopedUsername}'s`;
       const scopedTotalCmi = scopedTotalCmiRes.stdout.trim();
       const projectTotalCmi = projectTotalCmiRes.stdout.trim();
+      const orphanCommits = parseInt(orphanCommitsRes.stdout.trim(), 10) || 0;
       const todayCommits = todayCommitsRes.stdout.trim()
          ? todayCommitsRes.stdout.trim().split('\n').length
          : 0;
 
+      spinnerCtrl.setMessage('Detecting repository details...');
+      const submoduleCount = submodules.length;
+      const projectSuffix =
+         submoduleCount > 0 ? ncc('Dim') + ncc('White') + ` (${submoduleCount} submodules)` : '';
+
+      const remoteLinkInfo = buildRemoteLinkInfo(normalizedRemoteUrl);
+      const linkedProjectName = remoteLinkInfo.repoUrl
+         ? `${hyperlink(projectName, remoteLinkInfo.repoUrl, false)}${projectSuffix}`
+         : `${projectName}${projectSuffix}`;
+
       const statParseStart = performance.now();
       const projectNumStat = parseNumStat(projectLineStatsRes.stdout);
-      const scopedNumStat = isAllScope
-         ? projectNumStat :
-         parseNumStat(scopedLogStatsRes.stdout);
+      const scopedNumStat = isAllScope ? projectNumStat : parseNumStat(scopedLogStatsRes.stdout);
 
       const totalAdded = scopedNumStat.totalAdded;
       const totalRemoved = scopedNumStat.totalRemoved;
@@ -169,8 +229,25 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const projRemoved = projectNumStat.totalRemoved;
       const totalChanged = totalAdded + totalRemoved;
       const projChanged = projAdded + projRemoved;
-      const contributionPct =
+      const scopedContributionPct =
          projChanged > 0 ? maxFraction((totalChanged / projChanged) * 100, 2, true) : '0.00';
+
+      const topContributor = isAllScope
+         ? parseTopContributor(topContributorRawRes.stdout, projChanged)
+         : null;
+      const contributionPct = isAllScope
+         ? topContributor
+            ? topContributor.contributionPct
+            : '0.00'
+         : scopedContributionPct;
+
+      const linkedTopContributor = topContributor
+         ? formatUsernameWithProfileLink(topContributor.username, remoteLinkInfo)
+         : 'N/A';
+      const usernameWithLink = !isAllScope
+         ? formatUsernameWithProfileLink(username, remoteLinkInfo)
+         : username;
+
       const parseDuration = toShortNum((performance.now() - statParseStart) / 1e3, 2) + 's';
 
       let maxCommits = 0;
@@ -193,11 +270,31 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          }
       }
 
+      spinnerCtrl.setMessage('Resolving commit timestamps...');
+      const firstCommitSha = firstCommitShasRes.stdout
+         .split('\n')
+         .map((line) => line.trim())
+         .find((line) => line.length > 0);
+      let firstCommitTime = 'Never';
+      if (firstCommitSha) {
+         const firstCommitTimeRes =
+            await $`${git$} show -s --format=${firstCommitFormat} ${firstCommitSha}`;
+         firstCommitTime = firstCommitTimeRes.stdout.trim() || 'Never';
+      }
       const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
-      const numStatSize = Buffer.byteLength(projectLineStatsRes.stdout) + (isAllScope
-         ? 0
-         : Buffer.byteLength(scopedLogStatsRes.stdout));
-      const recordsParsed = projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
+      const numStatSize =
+         Buffer.byteLength(projectLineStatsRes.stdout) +
+         (isAllScope ? 0 : Buffer.byteLength(scopedLogStatsRes.stdout));
+      const recordsParsed =
+         projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
+      const orphanColor = orphanCommits > 0 ? ncc('Red') : ncc('White') + ncc('Dim');
+      const orphanLabel = `${orphanCommits} ${ncc('White') + ncc('Dim')}orphan${orphanCommits === 1 ? '' : 's'}`;
+      const totalCommitsSuffix = isAllScope
+         ? ` / ${orphanColor}${orphanLabel}${ncc()}`
+         : ` / ${ncc('Yellow')}${projectTotalCmi}${ncc() + ncc('Dim')} all${ncc()} / ${orphanColor}${orphanLabel}${ncc()}`;
+      const contributionLine = isAllScope
+         ? `  Most Active User:    ${ncc('Cyan')}${linkedTopContributor}${ncc()} (${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project)`
+         : `  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project`;
       const header = [
          `${ncc('Dim') + ncc('Italic')}Showing stats for ${scopeLabel} in ${projectName}${ncc()}`,
          `${ncc('Dim')}Parsed ${toShortNum(numStatSize, 1, 1024)}iB of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${ncc()}`,
@@ -205,26 +302,28 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const useInlineHeader = ex_length(header[0] + header[1]) + 7 < global.terminalWidth;
       const headerText = useInlineHeader
          ? '  ' + strJustify(header, global.terminalWidth - 4, { align: 'spacebetween' })
-         : header.map(line => '  ' + line).join('\n');
-      const linesAddedHint = global.terminalWidth > 100
-         ? `(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)`
-         : `(${addedSize}, ${addedFuncs} fns or ${addedFiles} files)`;
-      const linesRemovedHint = global.terminalWidth > 100
-         ? `(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)`
-         : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
+         : header.map((line) => '  ' + line).join('\n');
+      const linesAddedHint =
+         global.terminalWidth > 100
+            ? `(roughly ${addedSize}, ${addedFuncs} functions or ${addedFiles} source files)`
+            : `(${addedSize}, ${addedFuncs} fns or ${addedFiles} files)`;
+      const linesRemovedHint =
+         global.terminalWidth > 100
+            ? `(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)`
+            : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
 
       spinnerCtrl.stop();
       quickPrint(`${headerText}
 
-  ─── ${username} Git Stats ───
-  Project:             ${ncc('Cyan')}${projectName}${ncc()}
-  Total Commits:       ${ncc('Green')}${scopedTotalCmi}${ncc()} (today: ${todayCommits}) / ${ncc('Yellow')}${projectTotalCmi}${ncc()} (all)
+  ─── ${usernameWithLink} Git Stats ───
+  Project:             ${ncc('Cyan')}${linkedProjectName}${ncc()}
+  Total Commits:       ${ncc('Green')}${scopedTotalCmi}${ncc()} (today: ${todayCommits})${totalCommitsSuffix}
   Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}${linesAddedHint + ncc()}
   Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}${linesRemovedHint + ncc()}
-  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project
+${contributionLine}
   Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
-  Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`
-      );
+  First Commit:        ${ncc('Yellow')}${firstCommitTime}${ncc()}
+  Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`);
 
       if (languageCatalog) {
          const LANGUAGE_BAR_PREFIX = '  Language Usage:      ';
@@ -258,6 +357,178 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       Logger.error(yuString(err, { color: true }));
       return 1;
    }
+}
+
+/**
+ * Parses repository remote metadata into link-ready information.
+ *
+ * @param normalizedRemoteUrl - Normalized remote URL in host/path form.
+ * @returns Derived host, provider, and canonical repository URL.
+ */
+function buildRemoteLinkInfo(normalizedRemoteUrl: string | null): RemoteLinkInfo {
+   if (!normalizedRemoteUrl) return { repoUrl: null, host: null, provider: null };
+
+   const normalized = normalizedRemoteUrl.trim();
+   if (!normalized) return { repoUrl: null, host: null, provider: null };
+
+   const firstSlash = normalized.indexOf('/');
+   const host = firstSlash === -1 ? normalized : normalized.slice(0, firstSlash);
+   const repoPath = firstSlash === -1 ? '' : normalized.slice(firstSlash + 1);
+
+   const isHostLike = host.includes('.') || host.includes(':') || host === 'localhost';
+   const remoteHost = isHostLike ? host : null;
+   const repoUrl = remoteHost && repoPath ? `https://${remoteHost}/${repoPath}` : null;
+   const loweredHost = remoteHost ? remoteHost.toLowerCase() : '';
+   let provider: RemoteLinkInfo['provider'] = null;
+   if (loweredHost.includes('github')) provider = 'github';
+   else if (loweredHost.includes('gitlab')) provider = 'gitlab';
+   else if (loweredHost.includes('gitea')) provider = 'gitea';
+
+   return {
+      repoUrl,
+      host: remoteHost,
+      provider,
+   };
+}
+
+/**
+ * Parses numstat output grouped by author identity and returns the top contributor.
+ *
+ * @param raw - Raw output from `git log --format=%aN%x09%ae --numstat`.
+ * @param projectChangedLines - Total changed lines across the project scope.
+ * @returns Top contributor metadata or null when unavailable.
+ */
+function parseTopContributor(raw: string, projectChangedLines: number): TopContributor | null {
+   if (!raw.trim()) return null;
+
+   const contributors = new Map<string, { name: string; email: string; lines: number }>();
+   let currentEmail = '';
+   let currentName = '';
+
+   for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const parts = line.split('\t');
+      if (parts.length >= 3) {
+         if (!/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1])) {
+            continue;
+         }
+
+         if (!currentEmail) continue;
+
+         const changedLines = parseInt(parts[0], 10) + parseInt(parts[1], 10);
+         if (changedLines <= 0) continue;
+
+         const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
+         if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase())) {
+            continue;
+         }
+
+         const identityKey = buildContributorIdentityKey(currentName, currentEmail);
+         const existing = contributors.get(identityKey);
+         if (existing) {
+            existing.lines += changedLines;
+            if (!existing.name && currentName) existing.name = currentName;
+            if (!existing.email && currentEmail) existing.email = currentEmail;
+         } else {
+            contributors.set(identityKey, {
+               name: currentName,
+               email: currentEmail,
+               lines: changedLines,
+            });
+         }
+
+         continue;
+      }
+
+      const tabIdx = line.lastIndexOf('\t');
+      if (tabIdx > 0) {
+         currentName = line.slice(0, tabIdx).trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+         currentEmail = line
+            .slice(tabIdx + 1)
+            .trim()
+            .replace(/^"|"$/g, '')
+            .replace(/^'|'$/g, '');
+      } else {
+         currentName = '';
+         currentEmail = trimmed.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+      }
+   }
+
+   let topEmail = '';
+   let topName = '';
+   let topLines = 0;
+   for (const [, contributor] of contributors.entries()) {
+      if (contributor.lines > topLines) {
+         topEmail = contributor.email;
+         topName = contributor.name;
+         topLines = contributor.lines;
+      }
+   }
+
+   if (!topEmail) return null;
+
+   return {
+      email: topEmail,
+      username: topName || topEmail,
+      contributionPct:
+         projectChangedLines > 0
+            ? maxFraction((topLines / projectChangedLines) * 100, 2, true)
+            : '0.00',
+   };
+}
+
+/**
+ * Builds a stable identity key for contributor grouping.
+ *
+ * @param authorName - Commit author name.
+ * @param authorEmail - Commit author email.
+ * @returns Canonical grouping key.
+ */
+function buildContributorIdentityKey(authorName: string, authorEmail: string): string {
+   const normalizedEmail = authorEmail.trim().toLowerCase();
+   if (normalizedEmail) return `email:${normalizedEmail}`;
+
+   const normalizedName = authorName.trim().toLowerCase();
+   if (normalizedName) return `name:${normalizedName}`;
+   return 'unknown';
+}
+
+/**
+ * Formats a displayed username as a terminal hyperlink when remote metadata allows it.
+ *
+ * @param displayName - Name text to display.
+ * @param remoteInfo - Parsed remote link metadata.
+ * @returns Hyperlinked display name when possible; otherwise plain text.
+ */
+function formatUsernameWithProfileLink(displayName: string, remoteInfo: RemoteLinkInfo): string {
+   const profileUsername = sanitizeDisplayUsername(displayName);
+   const profileUrl = buildUserProfileUrl(profileUsername, remoteInfo);
+   if (!profileUrl) return displayName;
+   return hyperlink(displayName, profileUrl, false);
+}
+
+/**
+ * Normalizes display text into a clean username token.
+ *
+ * @param value - Raw display value.
+ * @returns Username token suitable for profile URL paths.
+ */
+function sanitizeDisplayUsername(value: string): string {
+   return value.trim().replace(/"/g, '').replace(/'s$/i, '');
+}
+
+/**
+ * Builds a user profile URL for supported forge providers.
+ *
+ * @param username - Candidate username.
+ * @param remoteInfo - Parsed remote metadata.
+ * @returns Fully-qualified profile URL or null.
+ */
+function buildUserProfileUrl(username: string, remoteInfo: RemoteLinkInfo): string | null {
+   if (!username || !remoteInfo.host || !remoteInfo.provider) return null;
+   return `https://${remoteInfo.host}/${username}`;
 }
 
 export const help = {
@@ -339,8 +610,7 @@ function parseNumStat(raw: string): ParsedNumStat {
       if (changed <= 0) continue;
 
       const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
-      if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase()))
-         continue;
+      if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase())) continue;
 
       totalAdded += added;
       totalRemoved += removed;
@@ -498,14 +768,15 @@ function renderLanguageUsageBar(
       .filter((bucket) => bucket.cols > 0)
       .sort((a, b) => b.lines - a.lines);
 
-   const topThreshold = totalChanged * .18;
+   const topThreshold = totalChanged * 0.18;
    const [topBuckets, otherBuckets] = routeItems(renderedBuckets.slice(0, 6), (bucket, i) => {
       if (bucket.lines >= topThreshold) return 0;
       if (i === 0) return 0;
       return 1;
    });
-   const topBucketPcts = topBuckets!
-      .map((bucket) => maxFraction((bucket.lines / totalChanged) * 100, 1, true));
+   const topBucketPcts = topBuckets!.map((bucket) =>
+      maxFraction((bucket.lines / totalChanged) * 100, 1, true)
+   );
 
    const bar =
       renderedBuckets
@@ -514,14 +785,16 @@ function renderLanguageUsageBar(
 
    const legend =
       topBuckets!
-         .map(((bucket, i) => `${ncc(bucket.color, 'fg')}●${ncc()} ${topBucketPcts[i]}% ${bucket.name}`))
+         .map(
+            (bucket, i) => `${ncc(bucket.color, 'fg')}●${ncc()} ${topBucketPcts[i]}% ${bucket.name}`
+         )
          .join(' ') +
       ncc('Dim') +
       ' ' +
       (otherBuckets
          ? otherBuckets
-            .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
-            .join(' ')
+              .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
+              .join(' ')
          : '');
 
    return { bar, legend };

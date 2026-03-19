@@ -1,4 +1,4 @@
-import { hyperLink, ncc, strJustify, strWrap } from '@lib/Tools';
+import { hyperlink, ncc, strJustify, strWrap } from '@lib/Tools';
 
 import { GDX_VPALETTE, EXECUTABLE_NAME, REPO_README_URL, VERSION } from '@/consts';
 import { quickPrint } from '@/utils/utilities';
@@ -156,7 +156,7 @@ ${bright + _2PointGradient('NOTES & SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.
 - If you rely on advanced argument parsing or unusual ${EXECUTABLE_NAME} flags, you can
    bypass expansions by using the full command name
    so they are not recognized as shorthand triggers.
-- For more infomation, see ${hyperLink('README.md', REPO_README_URL)}.`,
+- For more infomation, see ${hyperlink('README.md', REPO_README_URL)}.`,
             Math.min(100, global.terminalWidth - 4),
             {
                firstIndent: '  ',

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 
-import { ncc, arrToString, yuString, strWrap, remap, Err, hyperLink, CheckCache } from '@lib/Tools';
+import { ncc, arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, VERSION } from '../consts';
@@ -95,11 +95,11 @@ export default async function doctor(): Promise<number> {
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
 
-   quickPrint(`Log file path: ${ncc('Cyan') + hyperLink(Logger.logFile, Logger.logFile) + ncc()}`);
+   quickPrint(`Log file path: ${ncc('Cyan') + hyperlink(Logger.logFile, Logger.logFile) + ncc()}`);
 
    const cache = await getCache();
    quickPrint(
-      `Cache file path: ${ncc('Cyan') + hyperLink(cache.cachePath, cache.cachePath) + ncc()}`
+      `Cache file path: ${ncc('Cyan') + hyperlink(cache.cachePath, cache.cachePath) + ncc()}`
    );
 
    // Detect git

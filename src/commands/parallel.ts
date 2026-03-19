@@ -2,7 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { ExecaError } from 'execa';
 
-import { ncc, yuString, hyperLink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
+import { ncc, yuString, hyperlink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
 
 import {
    $,
@@ -1177,7 +1177,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       if (isShortOutput) {
          // Format path with hyperlink and clamp it to reasonable length
          const clampedPath = strClamp(wtPath, 50, 'mid', -1);
-         displayPath = hyperLink(clampedPath, `file://${asUnixPath(wtPath)}`);
+         displayPath = hyperlink(clampedPath, `file://${asUnixPath(wtPath)}`);
       }
 
       spinnerCtrl.stop();
