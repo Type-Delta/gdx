@@ -2,7 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import crypto from 'crypto';
 
-import { ncc, strWrap, yuString } from '@lib/Tools';
+import { Err, ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
 import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
@@ -69,9 +69,11 @@ async function learnCommitGuidelines(
 
       spin.stop();
       return { guideline: guideline.trim(), historyCount: samplesToUse.length };
-   } catch (err) {
+   } catch (error) {
       spin.stop();
-      Logger.warn(`Failed to learn commit guidelines: ${yuString(err)}`, 'commit');
+      const err = Err.from(error);
+      Logger.warn(`Failed to learn commit guidelines: ${err.message}`, 'commit');
+      Logger.debug(`LLM error details: ${err}`, 'commit');
       return { guideline: null, historyCount: 0 };
    }
 }
@@ -200,7 +202,11 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       for await (const response of connection) {
          if (response.error) {
             spin.stop();
-            Logger.error(response.error.message, 'commit');
+            Logger.error(
+               response.error.message + (response.error.cause ? ': ' + response.error.cause : ''),
+               'commit'
+            );
+            Logger.debug(`LLM error details: ${Err.from(response.error)}`, 'commit');
             return 1;
          }
 
