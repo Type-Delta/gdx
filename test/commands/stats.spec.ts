@@ -98,7 +98,7 @@ describe('gdx stats', async () => {
             .find((line) => line.includes('Total Commits'));
          expect(totalCommitsLine).toBeTruthy();
          expect(totalCommitsLine).not.toContain('(all)');
-         expect(totalCommitsLine).toContain('orphan');
+         expect(totalCommitsLine).toContain('0 orphan');
 
          expect(buffer.stdout).toContain('Most Active User');
          expect(buffer.stdout).toContain('First Commit');

@@ -113,7 +113,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    try {
       const projectTotalCmiPromise = $`${git$} rev-list --all --count`;
-      const orphanCommitsPromise = $`${git$} rev-list --all --max-parents=0 --count`;
+      const orphanCommitsPromise = $`${git$} fsck --unreachable --no-reflogs --no-progress --full`;
       const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
       const firstCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
       const lastCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
@@ -177,7 +177,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       if (!isAllScope && scopedUsername) username = `${scopedUsername}'s`;
       const scopedTotalCmi = scopedTotalCmiRes.stdout.trim();
       const projectTotalCmi = projectTotalCmiRes.stdout.trim();
-      const orphanCommits = parseInt(orphanCommitsRes.stdout.trim(), 10) || 0;
+      const orphanCommits = countOrphanCommits(orphanCommitsRes.stdout, orphanCommitsRes.stderr);
       const todayCommits = todayCommitsRes.stdout.trim()
          ? todayCommitsRes.stdout.trim().split('\n').length
          : 0;
@@ -642,6 +642,29 @@ function normalizeNumStatPath(filePath: string): string {
    if (normalized.startsWith('{')) normalized = normalized.slice(1);
    if (normalized.endsWith('}')) normalized = normalized.slice(0, -1);
    return normalized.trim();
+}
+
+/**
+ * Counts orphan commits from `git fsck` output.
+ *
+ * Orphan commits are considered commits that are unreachable from refs
+ * (branches, tags, and HEAD), excluding root commits that are still referenced.
+ *
+ * @param fsckStdout - Standard output from `git fsck`.
+ * @param fsckStderr - Standard error from `git fsck`.
+ * @returns Number of unique orphan commit hashes detected.
+ */
+function countOrphanCommits(fsckStdout: string, fsckStderr: string): number {
+   const orphanCommits = new Set<string>();
+   const fsckOutput = `${fsckStdout}\n${fsckStderr}`;
+
+   for (const line of fsckOutput.split('\n')) {
+      const matched = line.trim().match(/^(?:unreachable|dangling) commit ([0-9a-f]{40})$/i);
+      if (!matched) continue;
+      orphanCommits.add(matched[1].toLowerCase());
+   }
+
+   return orphanCommits.size;
 }
 
 /**
