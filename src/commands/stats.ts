@@ -64,6 +64,19 @@ interface RemoteLinkInfo {
    provider: 'github' | 'gitlab' | 'gitea' | null;
 }
 
+interface GarbageObjectStats {
+   total: number;
+   commit: number;
+   objectIds: Set<string>;
+}
+
+interface ObjectInventoryStats {
+   totalObjects: number;
+   totalBytes: number;
+   garbageObjects: number;
+   garbageBytes: number;
+}
+
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
    const $ = exec.$;
@@ -113,7 +126,10 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    try {
       const projectTotalCmiPromise = $`${git$} rev-list --all --count`;
-      const orphanCommitsPromise = $`${git$} fsck --unreachable --no-reflogs --no-progress --full`;
+      const garbageObjPromise = $`${git$} fsck --unreachable --no-reflogs --no-progress --full`;
+      const objectInventoryPromise = isAllScope
+         ? $`${git$} cat-file --batch-all-objects --batch-check=%(objectname):%(objectsize)`
+         : Promise.resolve({ stdout: '' });
       const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
       const firstCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
       const lastCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
@@ -128,7 +144,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const [
          scopedTotalCmiRes,
          projectTotalCmiRes,
-         orphanCommitsRes,
+         garbageObjRes,
          todayCommitsRes,
          scopedLogStatsRes,
          projectLineStatsRes,
@@ -139,10 +155,11 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          lastCommitTimeRes,
          normalizedRemoteUrl,
          submodules,
+         objectInventoryRes,
       ] = await Promise.all([
          isAllScope ? projectTotalCmiPromise : $`${git$} rev-list --all --count --author=${email}`,
          projectTotalCmiPromise,
-         orphanCommitsPromise,
+         garbageObjPromise,
          isAllScope
             ? $`${git$} log --all --since=midnight --pretty=tformat:%h`
             : $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
@@ -161,6 +178,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             : $`${git$} log --all --author=${email} -1 --format=${lastCommitFormat}`,
          getNormalizedRemoteUrl(git$),
          getSubmodules(git$, repoRoot),
+         objectInventoryPromise,
       ]);
 
       let languageCatalog: LanguageCatalog | null = null;
@@ -175,9 +193,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const projectName = repoRoot.split(/[\\/]/).pop() || repoRoot;
       const scopedUsername = scopedUsernameRes.stdout.trim();
       if (!isAllScope && scopedUsername) username = `${scopedUsername}'s`;
-      const scopedTotalCmi = scopedTotalCmiRes.stdout.trim();
-      const projectTotalCmi = projectTotalCmiRes.stdout.trim();
-      const orphanCommits = countOrphanCommits(orphanCommitsRes.stdout, orphanCommitsRes.stderr);
+      const scopedTotalCmi = parseInt(scopedTotalCmiRes.stdout.trim());
+      const projectTotalCmi = parseInt(projectTotalCmiRes.stdout.trim());
+      const garbageObjCounts = countGarbageObjects(garbageObjRes.stdout, garbageObjRes.stderr);
+      const objectInventoryStats = isAllScope
+         ? summarizeObjectInventory(objectInventoryRes.stdout, garbageObjCounts.objectIds)
+         : null;
       const todayCommits = todayCommitsRes.stdout.trim()
          ? todayCommitsRes.stdout.trim().split('\n').length
          : 0;
@@ -287,11 +308,11 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          (isAllScope ? 0 : Buffer.byteLength(scopedLogStatsRes.stdout));
       const recordsParsed =
          projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
-      const orphanColor = orphanCommits > 0 ? ncc('Red') : ncc('White') + ncc('Dim');
-      const orphanLabel = `${orphanCommits} ${ncc('White') + ncc('Dim')}orphan${orphanCommits === 1 ? '' : 's'}`;
+      const orphanColor = garbageObjCounts.commit > 0 ? ncc('Red') : ncc('White') + ncc('Dim');
+      const orphanLabel = `${garbageObjCounts.commit} ${ncc('White') + ncc('Dim')}orphan${garbageObjCounts.commit === 1 ? '' : 's'}`;
       const totalCommitsSuffix = isAllScope
          ? ` / ${orphanColor}${orphanLabel}${ncc()}`
-         : ` / ${ncc('Yellow')}${projectTotalCmi}${ncc() + ncc('Dim')} all${ncc()} / ${orphanColor}${orphanLabel}${ncc()}`;
+         : ` / ${ncc('Yellow')}${formatInteger(projectTotalCmi)}${ncc() + ncc('Dim')} all${ncc()} / ${orphanColor}${orphanLabel}${ncc()}`;
       const contributionLine = isAllScope
          ? `  Most Active User:    ${ncc('Cyan')}${linkedTopContributor}${ncc()} (${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project)`
          : `  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project`;
@@ -311,15 +332,20 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          global.terminalWidth > 100
             ? `(roughly ${removedSize}, ${removedFuncs} functions or ${removedFiles} source files)`
             : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
+      const objectInventoryLine =
+         isAllScope && objectInventoryStats
+            ? `  Object Inventory:    ${ncc('Cyan')}${formatInteger(objectInventoryStats.totalObjects)}${ncc()} total ${ncc('Dim')}(${toShortNum(objectInventoryStats.totalBytes, 1, 1024)}iB)${ncc()} / ${ncc('Yellow')}${formatInteger(objectInventoryStats.garbageObjects)}${ncc()} garbage ${ncc('Dim')}(${toShortNum(objectInventoryStats.garbageBytes, 1, 1024)}iB)${ncc()}`
+            : '';
+      const objectStatsBlock = objectInventoryLine ? `\n${objectInventoryLine}` : '';
 
       spinnerCtrl.stop();
       quickPrint(`${headerText}
 
   ─── ${usernameWithLink} Git Stats ───
   Project:             ${ncc('Cyan')}${linkedProjectName}${ncc()}
-  Total Commits:       ${ncc('Green')}${scopedTotalCmi}${ncc()} (today: ${todayCommits})${totalCommitsSuffix}
-  Total Lines Added:   ${ncc('Green')}+ ${totalAdded} lines ${ncc()}${ncc('Dim')}${linesAddedHint + ncc()}
-  Total Lines Removed: ${ncc('Red')}- ${totalRemoved} lines ${ncc()}${ncc('Dim')}${linesRemovedHint + ncc()}
+  Total Commits:       ${ncc('Green')}${formatInteger(scopedTotalCmi)}${ncc()} (today: ${todayCommits})${totalCommitsSuffix}${objectStatsBlock}
+  Total Lines Added:   ${ncc('Green')}+ ${formatInteger(totalAdded)} lines ${ncc()}${ncc('Dim')}${linesAddedHint + ncc()}
+  Total Lines Removed: ${ncc('Red')}- ${formatInteger(totalRemoved)} lines ${ncc()}${ncc('Dim')}${linesRemovedHint + ncc()}
 ${contributionLine}
   Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
   First Commit:        ${ncc('Yellow')}${firstCommitTime}${ncc()}
@@ -542,7 +568,7 @@ ${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 
 Gather detailed contribution statistics for a git author in this repository.
 
 ${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language usage by modified lines, and time of the last commit.
+Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language usage by modified lines, and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
 
 ${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
@@ -645,26 +671,83 @@ function normalizeNumStatPath(filePath: string): string {
 }
 
 /**
- * Counts orphan commits from `git fsck` output.
+ * Counts garbage objects from `git fsck` output.
  *
- * Orphan commits are considered commits that are unreachable from refs
- * (branches, tags, and HEAD), excluding root commits that are still referenced.
+ * Garbage objects are unreachable or dangling objects that are candidates for pruning by `git gc`.
  *
  * @param fsckStdout - Standard output from `git fsck`.
  * @param fsckStderr - Standard error from `git fsck`.
- * @returns Number of unique orphan commit hashes detected.
+ * @returns Total garbage object metadata and IDs.
  */
-function countOrphanCommits(fsckStdout: string, fsckStderr: string): number {
-   const orphanCommits = new Set<string>();
+function countGarbageObjects(fsckStdout: string, fsckStderr: string): GarbageObjectStats {
+   const objectIds: Set<string> = new Set();
    const fsckOutput = `${fsckStdout}\n${fsckStderr}`;
+   const objectCounts: Record<string, number> = {};
 
    for (const line of fsckOutput.split('\n')) {
-      const matched = line.trim().match(/^(?:unreachable|dangling) commit ([0-9a-f]{40})$/i);
+      const matched = line.trim().match(/^(?:unreachable|dangling) (\w+) ([0-9a-f]{40})$/i);
       if (!matched) continue;
-      orphanCommits.add(matched[1].toLowerCase());
+
+      const objectId = matched[2].toLowerCase();
+      if (!objectIds.has(objectId)) {
+         objectIds.add(objectId);
+         const type = matched[1].toLowerCase();
+         objectCounts[type] = (objectCounts[type] || 0) + 1;
+      }
    }
 
-   return orphanCommits.size;
+   return {
+      total: objectIds.size,
+      commit: objectCounts.commit || 0,
+      objectIds,
+   };
+}
+
+/**
+ * Summarizes all object sizes and intersects them with garbage object IDs.
+ *
+ * @param raw - Output from `git cat-file --batch-all-objects --batch-check`.
+ * @param garbageObjectIds - Set of garbage object IDs from fsck.
+ * @returns Object counts and byte sizes for total and garbage subsets.
+ */
+function summarizeObjectInventory(
+   raw: string,
+   garbageObjectIds: Set<string>
+): ObjectInventoryStats {
+   let totalObjects = 0;
+   let totalBytes = 0;
+   let garbageBytes = 0;
+
+   for (const line of raw.split('\n')) {
+      const matched = line.trim().match(/^([0-9a-f]{40}):(\d+)$/i);
+      if (!matched) continue;
+
+      const objectId = matched[1].toLowerCase();
+      const objectSize = parseInt(matched[2], 10);
+      totalObjects += 1;
+      totalBytes += objectSize;
+
+      if (garbageObjectIds.has(objectId)) {
+         garbageBytes += objectSize;
+      }
+   }
+
+   return {
+      totalObjects,
+      totalBytes,
+      garbageObjects: garbageObjectIds.size,
+      garbageBytes,
+   };
+}
+
+/**
+ * Formats integer values with US separators for stats output.
+ *
+ * @param value - Numeric value to format.
+ * @returns String representation using grouped thousands.
+ */
+function formatInteger(value: number): string {
+   return Math.max(0, Math.trunc(value)).toLocaleString('en-US');
 }
 
 /**
@@ -816,8 +899,8 @@ function renderLanguageUsageBar(
       ' ' +
       (otherBuckets
          ? otherBuckets
-              .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
-              .join(' ')
+            .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
+            .join(' ')
          : '');
 
    return { bar, legend };

@@ -99,12 +99,21 @@ describe('gdx stats', async () => {
          expect(totalCommitsLine).toBeTruthy();
          expect(totalCommitsLine).not.toContain('(all)');
          expect(totalCommitsLine).toContain('0 orphan');
+         expect(buffer.stdout).toContain('Object Inventory:');
 
          expect(buffer.stdout).toContain('Most Active User');
          expect(buffer.stdout).toContain('First Commit');
       } finally {
          await $`${git$} config user.email "test@example.com"`;
       }
+   });
+
+   it('should hide object inventory rows in author scope', async () => {
+      await seedLanguageCatalog();
+
+      const result = await stats(ctx);
+      expect(result).toBe(0);
+      expect(buffer.stdout).not.toContain('Object Inventory:');
    });
 
    it('should report the top contributor in --all mode', async () => {
