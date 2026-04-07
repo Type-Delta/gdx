@@ -13,7 +13,7 @@ import {
    PagerActionResult,
    PAGER_DEFAULT_OPTIONS,
 } from './pager';
-import { bgRgb, colorMix, fgRgb, RgbVec } from './graphics';
+import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
 import { CATPPUCCIN_VPALETTE, TUI_THEME } from '@/consts';
@@ -466,10 +466,24 @@ export class DiffViewerRenderer implements PagerRenderer {
             mode: 'softboundary',
             redundancyLv: this.widthRedundancyLv,
          });
+
+         if (wrapped.length < 2) {
+            Logger.warn(
+               `Expected wrapped content to have multiple lines but got: "${wrapped}". Original content length: ${displayContent.length}, wrapped length: ${wrapped.length}, content width: ${contentWidth}`,
+               'diff-renderer'
+            );
+         }
+
          const splitted = wrapped.split('\n');
+         let lastStyles;
          for (let i = 0; i < splitted.length; i++) {
             const g = i === 0 ? gutter : ' '.repeat(lineNumWidth + 3);
+
+            if (lastStyles)
+               splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
             results.push(this.padLineWithBg(g + bgRgb(bgCode) + splitted[i], width, gutterBgCode));
+            if (i !== splitted.length - 1)
+               lastStyles = inferAnsiStyles(splitted[i]);
          }
       } else {
          results.push(
@@ -624,9 +638,9 @@ export async function viewDiff(
    const spinnerCtrl =
       diffText.length > 10000
          ? spinner({
-              message: 'Preparing diff viewer...',
-              interval: 10,
-           })
+            message: 'Preparing diff viewer...',
+            interval: 10,
+         })
          : undefined;
 
    const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);

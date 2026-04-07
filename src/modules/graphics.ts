@@ -1,4 +1,7 @@
-import { CheckCache, MathKit } from '@lib/Tools';
+import { CheckCache, CONSTS, MathKit, REGEXP } from '@lib/Tools';
+
+const _4bitColorMap = Object.entries(CONSTS.AnsiColorCodes);
+const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'] as const;
 
 /**
  * A 3- or 4-element tuple representing a color in 8-bit RGB(A) components.
@@ -350,3 +353,106 @@ export const Easing = {
    /** Bounce effect */
    bounce: (t: number) => cubicBezier(t, 0.68, -0.55, 0.265, 1.55),
 } as const;
+
+/**
+ * Helper function to get 4-bit color name from ANSI code. Returns null if not found.
+ * This is used to map ANSI SGR codes back to their color/style names for style inference.
+ */
+export function get4bitColorName(code: string): string | null {
+   for (const [name, value] of _4bitColorMap) {
+      if (value === code) {
+         return name;
+      }
+   }
+   return null;
+}
+
+/**
+ * Infers the effective foreground and background colors from ANSI SGR codes in a string.
+ * It processes ANSI codes in reverse order to determine the final styles, stopping at the first reset code.
+ * Supports 4-bit color names and 24-bit RGB codes. Hyperlink and other non-color SGR codes are ignored.
+ *
+ * NOTE: This implementation still missing 8bit 256-color support
+ *
+ * @param str - The input string containing ANSI escape codes.
+ * @returns An object with optional `fg` and `bg` properties representing the inferred foreground and background colors, `sp` for styles.
+ * Colors can be returned as 4-bit color names (e.g., 'red', 'bgBlue') or as RGB tuples ([r, g, b]).
+ */
+export function inferAnsiStyles(str: string) {
+   const style: { fg?: RgbVec | string; bg?: RgbVec | string, sp?: string[] } = {};
+   const matches = [...str.matchAll(REGEXP.ANSICode)].reverse();
+
+   for (const match of matches) {
+      const code = match[1];
+      const _4bitColor = get4bitColorName('\x1b' + code);
+      if (_4bitColor) {
+         if (_4bitColor === 'reset')
+            break; // stop processing on reset
+         else if (!style.bg && _4bitColor.startsWith('bg')) {
+            style.bg = _4bitColor;
+         }
+         else if (_4bitStyles.includes(_4bitColor as typeof _4bitStyles[number])) {
+            // prepend style to preserve order
+            if (!style.sp) style.sp = [];
+            style.sp.unshift(_4bitColor);
+         }
+         else {
+            if (style.fg) continue; // already have a foreground color, skip
+            style.fg = _4bitColor;
+         }
+      }
+      else if (!style.fg && code.startsWith('[38;2;')) {
+         const [r, g, b] = code
+            .slice(6)
+            .split(';')
+            .map((n) => parseInt(n, 10));
+         style.fg = [r, g, b];
+      } else if (!style.bg && code.startsWith('[48;2;')) {
+         const [r, g, b] = code
+            .slice(6)
+            .split(';')
+            .map((n) => parseInt(n, 10));
+         style.bg = [r, g, b];
+      }
+      // NOTE: hyperlinks and other non-color SGR codes are ignored for style inference
+   }
+
+   return style;
+}
+
+/**
+ * Serializes a style object containing foreground/background colors and text styles into a string of ANSI escape codes.
+ * - `fg` and `bg` can be either 4-bit color names (e.g., 'red', 'bgBlue') or RGB tuples ([r, g, b]).
+ * - `sp` is a string of text styles (e.g., 'bright', 'underline') that will be applied in order.
+ *
+ * @param styles - An object with optional `fg`, `bg`, and `sp` properties representing the desired styles.
+ * @returns A string containing the ANSI escape codes corresponding to the provided styles.
+ */
+export function serializeAnsiStyles(
+   styles: { fg?: RgbVec | string; bg?: RgbVec | string, sp?: string[] }
+): string {
+   let result = '';
+   if (styles.sp) {
+      for (const style of styles.sp) {
+         const code = CONSTS.AnsiColorCodes[style as keyof typeof CONSTS.AnsiColorCodes];
+         if (code) result += code;
+      }
+   }
+   if (styles.fg) {
+      if (typeof styles.fg === 'string') {
+         const code = CONSTS.AnsiColorCodes[styles.fg as keyof typeof CONSTS.AnsiColorCodes];
+         if (code) result += code;
+      } else {
+         result += fgRgb(styles.fg);
+      }
+   }
+   if (styles.bg) {
+      if (typeof styles.bg === 'string') {
+         const code = CONSTS.AnsiColorCodes[styles.bg as keyof typeof CONSTS.AnsiColorCodes];
+         if (code) result += code;
+      } else {
+         result += bgRgb(styles.bg);
+      }
+   }
+   return result;
+}

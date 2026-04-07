@@ -1,7 +1,7 @@
 import { estimateStrComplexity, ex_length, maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
 
 import Logger from '@/utils/logger';
-import { bgRgb, fgRgb, RgbVec, stripAnsiColor } from './graphics';
+import { bgRgb, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles, stripAnsiColor } from './graphics';
 import { CATPPUCCIN_VPALETTE } from '@/consts';
 
 /**
@@ -199,16 +199,20 @@ export class SimplePagerRenderer implements PagerRenderer {
                mode: 'softboundary',
                redundancyLv: Math.max(0, this.redundancyLv),
             });
-            const wrappedParts = wrapped.split('\n');
-            wrappedParts.forEach((part, idx) => {
-               if (this.options.showLineNumbers && idx === 0) {
-                  this.wrappedLines.push(this.formatLineNumber(i + 1) + part);
-               } else if (this.options.showLineNumbers) {
-                  this.wrappedLines.push(' '.repeat(this.options.lineNumberWidth + 1) + part);
-               } else {
-                  this.wrappedLines.push(part);
-               }
-            });
+            const splitted = wrapped.split('\n');
+            const gutter = this.options.showLineNumbers ? this.formatLineNumber(i + 1) : '';
+            let lastStyles;
+            for (let i = 0; i < splitted.length; i++) {
+               const g = i === 0 ? gutter : ' '.repeat(this.options.lineNumberWidth + 1);
+
+               if (lastStyles)
+                  splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
+
+               this.wrappedLines.push(g + splitted[i]);
+
+               if (i != splitted.length - 1)
+                  lastStyles = inferAnsiStyles(splitted[i]);
+            }
          } else {
             if (this.options.showLineNumbers) {
                this.wrappedLines.push(this.formatLineNumber(i + 1) + line);
@@ -308,6 +312,10 @@ export async function pagerWithRenderer(
    process.stdout.write('\x1b[?25l');
    process.stdout.write('\x1b[2J\x1b[H');
 
+   // Disable Logger output while pager is active
+   const originalLogLevel = Logger.logLevel;
+   Logger.logLevel = -1;
+
    /**
     * Renders the current viewport to the terminal.
     */
@@ -348,6 +356,10 @@ export async function pagerWithRenderer(
     * Cleans up terminal state, leaving content in scroll buffer.
     */
    function cleanup(): void {
+      // Remove event listeners
+      process.stdin.off('data', keyHandler);
+      process.stdout.off('resize', resizeHandler);
+
       // Show cursor
       process.stdout.write('\x1b[?25h');
 
@@ -360,6 +372,7 @@ export async function pagerWithRenderer(
 
       process.stdin.setRawMode(false);
       process.stdin.pause();
+      Logger.logLevel = originalLogLevel;
       Logger.debug(
          `Pager performance: ${performanceSamples.length > 0 ? maxFraction(performanceSamples.reduce((a, b) => a + b, 0) / performanceSamples.length, 4) : 'N/A'}ms average over ${performanceSamples.length} renders`,
          'pager'
@@ -380,9 +393,6 @@ export async function pagerWithRenderer(
 
       render();
    }
-
-   const resizeHandler = (): void => handleResize();
-   process.stdout.on('resize', resizeHandler);
 
    /**
     * Handles keyboard input for navigation.
@@ -454,16 +464,16 @@ export async function pagerWithRenderer(
       }
    }
 
+   const resizeHandler = (): void => handleResize();
    const keyHandler = (chunk: Buffer): void => {
       handleKey(chunk.toString());
 
       if (!isRunning) {
-         process.stdin.off('data', keyHandler);
-         process.stdout.off('resize', resizeHandler);
          cleanup();
       }
    };
 
+   process.stdout.on('resize', resizeHandler);
    process.stdin.on('data', keyHandler);
 
    // Initial render

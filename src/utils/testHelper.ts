@@ -12,7 +12,7 @@ import { resetCache } from '@/common/cache';
 import { $, SpinnerContoller, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
-import { setQuickPrintWriter } from '@/utils/utilities';
+import { noop, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
 
 let testEnvCleared = false;
@@ -30,7 +30,16 @@ interface TestSystem {
 }
 
 interface TestEnvOptions {
+   /**
+    * Automatically reset the captured stdout, stderr, and logs buffers before each test.
+    * Set to false to preserve the buffers across tests, which can be useful for debugging.
+    * Default is true (buffers will be reset before each test).
+    */
    autoResetBuffer?: boolean;
+   /**
+    * If true, creates a lighter test environment by skipping git repository initialization and global git config setup.
+    */
+   liteMode?: boolean;
 }
 
 interface EnvController {
@@ -68,8 +77,8 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
    } satisfies GdxContext;
 }
 
-export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true }) {
-   console.time('createTestEnv');
+export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true, liteMode: false }) {
+   console.time('createTestEnv' + (options.liteMode ? ' (lite)' : ''));
    await clearTestEnvs();
 
    if (!gitExePath) await findGitExecutable();
@@ -112,8 +121,8 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
 
    const setupTasks = [
-      initGitRepo(_$), // Initialize a git repository
-      fs.writeFile(globalConfigPath, ''), // Empty global git config
+      (options.liteMode ? Promise.resolve(noop) : initGitRepo(_$)), // Initialize a git repository
+      (options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, '')), // Empty global git config
    ];
 
    if (gdxConfigDir) {
@@ -138,7 +147,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
 
    attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
    const it = defineBunIt(tracker);
-   console.timeEnd('createTestEnv');
+   console.timeEnd('createTestEnv' + (options.liteMode ? ' (lite)' : ''));
 
    return {
       tmpDir: tmpMockProjDir, // Project directory
