@@ -74,6 +74,7 @@
   "dependencies": {
     "@shikijs/cli": "^4.0.2",
     "cspell-lib": "9.4.0",
+    "diff": "^8.0.4",
     "keytar": "^7.9.0",
     "yaml": "^2.8.2"
   }

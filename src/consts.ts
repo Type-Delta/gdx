@@ -216,3 +216,5 @@ export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS;
 export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
 export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
 
+// Diff viewer constants
+export const INLINE_DIFF_MERGE_DISTANCE = 7;

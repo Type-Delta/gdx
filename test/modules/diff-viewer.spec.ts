@@ -223,8 +223,10 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
 
          const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
             .parsedDiffs;
-         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
-         expect(addLine?.highlightedContent).toBe('delta');
+         const changedLine = parsed[0]?.lines.find(
+            (line) => line.type === 'modify' || line.type === 'add'
+         );
+         expect(changedLine?.highlightedContent).toBe('delta');
       });
    });
 
@@ -298,19 +300,157 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
 +++ b/test.ts
 @@ -1,1 +1,1 @@
 -import { ncc } from '@lib/Tools';
-+import { Err, ncc } from '@lib/Tools';`;
++import { Err, ncd } from '@lib/Tools';`;
 
-         fs.writeFileSync(path.join(tmpDir, 'test.ts'), `import { Err, ncc } from '@lib/Tools';\n`);
+         fs.writeFileSync(path.join(tmpDir, 'test.ts'), `import { Err, ncd } from '@lib/Tools';\n`);
 
          const renderer = new DiffViewerRenderer(diffText, { workingDir: tmpDir });
+         await renderer.prepareHighlighting();
+
+         const renderedRaw = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         ).join('\n');
+         const rendered = stripAnsiColor(renderedRaw);
+
+         expect(rendered).toContain('~ import { Err, n');
+         expect(rendered).toContain("} from '@lib/Tools';");
+         expect(renderedRaw).toContain('\x1b[9m');
+         expect(renderedRaw).toContain('\x1b[48;2;90;61;80m');
+         expect(renderedRaw).toContain('\x1b[48;2;68;85;78m');
+      });
+
+      it('should keep large replacement hunks split and style changed chars on each side', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,2 +1,2 @@
+-const alpha = one + two;
+-const beta = oldValue;
++const alpha = one + two + three;
++const beta = newValue;`;
+
+         const renderer = new DiffViewerRenderer(diffText);
+         await renderer.prepareHighlighting();
+
+         const renderedLines = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         );
+         const plainRendered = renderedLines.map((line) => stripAnsiColor(line)).join('\n');
+
+         expect(plainRendered).toContain('- const alpha = one + two;');
+         expect(plainRendered).toContain('+ const alpha = one + two + three;');
+
+         const deleteLine =
+            renderedLines.find((line) =>
+               stripAnsiColor(line).includes('- const beta = oldValue;')
+            ) || '';
+         const addLine =
+            renderedLines.find((line) =>
+               stripAnsiColor(line).includes('+ const beta = newValue;')
+            ) || '';
+
+         expect(deleteLine).toContain('\x1b[48;2;90;61;80m');
+         expect(deleteLine).not.toContain('\x1b[9m');
+         expect(addLine).toContain('\x1b[48;2;68;85;78m');
+      });
+
+      it('should merge nearby inline change groups with small gaps', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,1 +1,1 @@
+-abcdefghij
++abXdeYghij`;
+
+         const renderer = new DiffViewerRenderer(diffText);
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify');
+
+         expect(
+            modifyLine?.inlineSegments?.some((seg) => seg.type === 'same' && seg.value === 'de')
+         ).toBe(false);
+      });
+
+      it('should preserve unmatched remaining deleted and added lines in large replacement block', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,6 +1,3 @@
+-const a = 1;
+-const b = 2;
+-const c = 3;
+-const d = 4;
+-const e = 5;
+-const f = 6;
++const a = 10;
++const b = 20;
++const c = 30;`;
+
+         const renderer = new DiffViewerRenderer(diffText);
          await renderer.prepareHighlighting();
 
          const rendered = Array.from({ length: renderer.getLineCount() }, (_, i) =>
             stripAnsiColor(renderer.getLine(i))
          ).join('\n');
 
-         expect(rendered).toContain("- import { ncc } from '@lib/Tools';");
-         expect(rendered).toContain("+ import { Err, ncc } from '@lib/Tools';");
+         expect(rendered).toContain('- const f = 6;');
+         expect(rendered).toContain('+ const c = 30;');
+      });
+
+      it('should merge nearby inline changes across adjacent lines', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,2 +1,2 @@
+-abcdefghijklmno
+-uvwxyz
++abcdefghijklmXo
++uvQxyz`;
+
+         const renderer = new DiffViewerRenderer(diffText);
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const addLines = parsed[0]?.lines.filter((line) => line.type === 'add') || [];
+
+         expect(addLines.length).toBe(2);
+         expect(addLines[0]?.inlineSegments?.[addLines[0].inlineSegments.length - 1]?.type).toBe(
+            'add'
+         );
+         expect(addLines[1]?.inlineSegments?.[0]?.type).toBe('add');
+      });
+
+      it('should preserve syntax highlight while overlaying inline diff backgrounds', async () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1,1 +1,1 @@
+-const alpha = oldValue;
++const alpha = newValue;`;
+
+         const renderer = new DiffViewerRenderer(diffText);
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify');
+         expect(modifyLine).toBeDefined();
+
+         if (!modifyLine) throw new Error('Expected modify line');
+
+         modifyLine.highlightedContent = `\x1b[38;2;166;227;161m${modifyLine.content}\x1b[0m`;
+         (renderer as unknown as { updateRenderedLines: () => void }).updateRenderedLines();
+
+         const renderedRaw = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         ).join('\n');
+
+         expect(renderedRaw).toContain('\x1b[38;2;166;227;161m');
+         expect(renderedRaw).toContain('\x1b[48;2;68;85;78m');
       });
 
       it('should handle resize', () => {
