@@ -16,7 +16,7 @@ import { CacheStructure } from '@/common/schema';
 import { languageConsts } from '@/modules/languages';
 
 describe('CacheService', async () => {
-   const { tmpRootDir, cleanup, it } = await createTestEnv();
+   const { tmpRootDir, cleanup, it } = await createTestEnv({ liteMode: true });
    afterAll(cleanup);
 
    const cacheFilePath = path.join(tmpRootDir, 'cache.json');

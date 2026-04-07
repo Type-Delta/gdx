@@ -10,7 +10,7 @@ import { createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
 
 describe('pager module', async () => {
-   const { cleanup, it } = await createTestEnv();
+   const { cleanup, it } = await createTestEnv({ liteMode: true });
    afterAll(cleanup);
 
    it('should create SimplePagerRenderer with content', () => {

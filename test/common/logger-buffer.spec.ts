@@ -1,10 +1,10 @@
 import { afterAll, describe, expect } from 'bun:test';
 import Logger from '@/utils/logger';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createTestEnv } from '@/utils/testHelper';
 import global from '@/global';
 
 describe('Logger buffer capture', async () => {
-   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
+   const { buffer, cleanup, it } = await createTestEnv({ liteMode: true });
    afterAll(cleanup);
 
    it('should respect log level for stdout/stderr but capture all logs in buffer.logs', async () => {

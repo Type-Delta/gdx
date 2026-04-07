@@ -1,3 +1,4 @@
+/* eslint-disable no-control-regex */
 import { describe, expect, it } from 'bun:test';
 
 import { strWrap, ex_length } from '@lib/Tools';

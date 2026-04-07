@@ -16,7 +16,7 @@ mock.module('@shikijs/cli', () => ({
 }));
 
 describe('diff-viewer module', async () => {
-   const { cleanup, it, tmpDir } = await createTestEnv();
+   const { cleanup, it, tmpDir } = await createTestEnv({ liteMode: true });
    afterAll(cleanup);
 
    describe('parseDiffOutput', () => {
