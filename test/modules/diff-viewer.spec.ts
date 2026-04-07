@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, mock } from 'bun:test';
+import { describe, expect, mock } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
@@ -16,8 +16,7 @@ mock.module('@shikijs/cli', () => ({
 }));
 
 describe('diff-viewer module', async () => {
-   const { cleanup, it, tmpDir } = await createTestEnv({ liteMode: true });
-   afterAll(cleanup);
+   const { it, tmpDir } = await createTestEnv({ liteMode: true });
 
    describe('parseDiffOutput', () => {
       it('should parse a simple diff', () => {

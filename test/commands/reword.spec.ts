@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -33,9 +33,7 @@ await writeFile(targetFile, ${JSON.stringify(message)}, 'utf8');
 }
 
 describe('gdx reword', async () => {
-   const { tmpDir, $, tracker, cleanup, it, resetRepo } = await createTestEnv();
-
-   afterAll(cleanup);
+   const { tmpDir, $, tracker, it, resetRepo } = await createTestEnv();
 
    it('rewords the latest commit message exactly', async () => {
       await resetRepo();

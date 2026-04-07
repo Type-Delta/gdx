@@ -1,7 +1,8 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
+import { addSubmodule, updateSubmodules } from '@/modules/git';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { resetConfig } from '@/common/config';
@@ -28,14 +29,12 @@ function getParallelForkPath(
 }
 
 describe('gdx parallel', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, env, resetRepo, tracker } =
-      await createTestEnv({
-         autoResetBuffer: true,
-      });
+   const { tmpDir, tmpRootDir, $, buffer, it, env, resetRepo, tracker } = await createTestEnv({
+      autoResetBuffer: true,
+   });
    const { git$ } = createGdxContext(tmpDir);
    const { default: parallel } = await import('@/commands/parallel');
    const { GDX_RESULT_FILE } = await import('@/consts');
-   afterAll(cleanup);
 
    it('should list empty worktrees initially', async () => {
       resetCache();
@@ -604,7 +603,7 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule');
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -622,7 +621,7 @@ describe('gdx parallel', async () => {
                .then(() => true)
                .catch(() => false);
             if (!markerExists) {
-               await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+               await updateSubmodules(git$, forkPath, { recursive: true });
             }
 
             await $`${gitExe} -C ${submodulePath} reset --hard`;
@@ -972,7 +971,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-pick';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -982,7 +981,7 @@ describe('gdx parallel', async () => {
 
          const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
          const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
 
          const forkSubmodulePath = path.join(forkPath, submodulePath);
          const originSubmodulePath = path.join(tmpDir, submodulePath);
@@ -1121,7 +1120,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-list';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -1149,7 +1148,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-list');
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change.txt'), 'sub-change');
@@ -1199,7 +1198,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-list-cursor';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -1221,7 +1220,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-list-cursor');
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
@@ -1284,7 +1283,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-counter';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -1303,7 +1302,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-counter');
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
@@ -1357,7 +1356,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-join';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
          const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-join');
@@ -1379,7 +1378,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
          const forkSubmodulePath = path.join(forkPath, 'deps', 'submodule-join');
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'join-change.txt'), 'sub-join');
@@ -1422,7 +1421,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-missing-origin';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -1445,7 +1444,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
 
          const altRepoRoot = path.join(tmpRootDir, 'submodule-missing-origin-alt');
          fs.mkdirSync(altRepoRoot, { recursive: true });
@@ -1462,6 +1461,8 @@ describe('gdx parallel', async () => {
             ? altGitDirRaw
             : path.join(altRepoRoot, altGitDirRaw);
          const originGitMarker = path.join(originSubmodulePath, '.git');
+         const markerStat = await fs.stat(originGitMarker);
+         expect(markerStat.isFile()).toBe(true);
          const originGitMarkerContent = fs.readFileSync(originGitMarker, 'utf-8');
          fs.writeFileSync(originGitMarker, `gitdir: ${asUnixPath(altGitDir)}`);
 
@@ -1583,7 +1584,7 @@ describe('gdx parallel', async () => {
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-branch-join';
-         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${submodulePath}`;
+         await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
          const originSubmodulePath = path.join(tmpDir, submodulePath);
@@ -1605,7 +1606,7 @@ describe('gdx parallel', async () => {
          );
          const forkPath = path.join(worktreeRoot, alias);
 
-         await $`${gitExe} -C ${forkPath} -c protocol.file.allow=always submodule update --init --recursive`;
+         await updateSubmodules(git$, forkPath, { recursive: true });
          const forkSubmodulePath = path.join(forkPath, submodulePath);
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'branch-join.txt'), 'sub-join');

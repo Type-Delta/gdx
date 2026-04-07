@@ -1,4 +1,4 @@
-import { describe, expect, afterAll } from 'bun:test';
+import { describe, expect } from 'bun:test';
 
 import {
    SimplePagerRenderer,
@@ -10,8 +10,7 @@ import { createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
 
 describe('pager module', async () => {
-   const { cleanup, it } = await createTestEnv({ liteMode: true });
-   afterAll(cleanup);
+   const { it } = await createTestEnv({ liteMode: true });
 
    it('should create SimplePagerRenderer with content', () => {
       const content = 'line1\nline2\nline3';

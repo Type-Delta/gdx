@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import path from 'path';
 import * as fs from '@/modules/fs';
 
@@ -16,8 +16,7 @@ import { CacheStructure } from '@/common/schema';
 import { languageConsts } from '@/modules/languages';
 
 describe('CacheService', async () => {
-   const { tmpRootDir, cleanup, it } = await createTestEnv({ liteMode: true });
-   afterAll(cleanup);
+   const { tmpRootDir, it } = await createTestEnv({ liteMode: true });
 
    const cacheFilePath = path.join(tmpRootDir, 'cache.json');
 

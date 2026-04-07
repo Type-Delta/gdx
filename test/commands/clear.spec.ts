@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -6,9 +6,8 @@ import clear from '@/commands/clear';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx clear', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv();
    const { git$ } = createGdxContext(tmpDir);
-   afterAll(cleanup);
 
    it('should create a backup containing untracked files and clean the directory', async () => {
       // Create a file and stage it

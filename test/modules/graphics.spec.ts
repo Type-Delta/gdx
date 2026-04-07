@@ -20,12 +20,11 @@ import {
 import { CheckCache, ncc } from '@lib/Tools';
 
 describe('graphics module', async () => {
-   const { cleanup, it } = await createTestEnv({ liteMode: true });
+   const { it } = await createTestEnv({ liteMode: true });
    const originalSupportsColor = CheckCache.supportsColor;
    CheckCache.supportsColor = 3;
    afterAll(() => {
       CheckCache.supportsColor = originalSupportsColor;
-      return cleanup();
    });
 
    describe('inferAnsiStyles', () => {

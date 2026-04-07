@@ -1,11 +1,10 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import help from '@/commands/help';
 import { createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx help', async () => {
-   const { buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { buffer, it } = await createTestEnv({ liteMode: true });
 
    it('should print help message', async () => {
       // help command doesn't take context, it takes an optional string name

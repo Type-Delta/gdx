@@ -1,13 +1,12 @@
-import { afterAll, describe, expect, setSystemTime } from 'bun:test';
+import { describe, expect, setSystemTime } from 'bun:test';
 import graph from '@/commands/graph';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx graph', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
+   const { tmpDir, $, buffer, it } = await createTestEnv({ autoResetBuffer: true });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
-   afterAll(cleanup);
 
    it('should fail if no email configured (and not provided)', async () => {
       // Unset email

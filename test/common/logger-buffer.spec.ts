@@ -1,11 +1,10 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import Logger from '@/utils/logger';
 import { createTestEnv } from '@/utils/testHelper';
 import global from '@/global';
 
 describe('Logger buffer capture', async () => {
-   const { buffer, cleanup, it } = await createTestEnv({ liteMode: true });
-   afterAll(cleanup);
+   const { buffer, it } = await createTestEnv({ liteMode: true });
 
    it('should respect log level for stdout/stderr but capture all logs in buffer.logs', async () => {
       // Set log level to 'warn' (so debug and info are hidden from stdout)
@@ -50,8 +49,8 @@ describe('Logger buffer capture', async () => {
       expect(buffer.logs).not.toContain('warn message');
    });
 
-   it('should capture logs even when SHOULD_WRITE_LOGS is false', async () => {
-      // Tests have SHOULD_WRITE_LOGS=false by default (mocked in testHelper)
+   it('should capture logs even when regardles of SHOULD_WRITE_LOGS', async () => {
+      // Tests may have SHOULD_WRITE_LOGS=false (mocked in testHelper)
       // but buffer.logs should still capture everything
 
       Logger.warn('test warning', 'test-module');

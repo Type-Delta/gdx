@@ -1,14 +1,82 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { deinitSubmodules, getMainWorktreeRoot, isEmptyCherryPickError } from '@/modules/git';
+import {
+   addSubmodule,
+   deinitSubmodules,
+   getMainWorktreeRoot,
+   updateSubmodules,
+   isEmptyCherryPickError,
+} from '@/modules/git';
+import { getConfig, resetConfig } from '@/common/config';
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 import { asUnixPath } from '@/utils/path';
 
 describe('git module', async () => {
-   const { tmpDir, tmpRootDir, $, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, tmpRootDir, $, it } = await createTestEnv();
+
+   async function withInlineSubmoduleMode(
+      mode: 'off' | 'internal' | 'all',
+      fn: () => Promise<void>
+   ): Promise<void> {
+      const previous = process.env.GDX_USE_INLINE_SUBMODULE;
+      process.env.GDX_USE_INLINE_SUBMODULE = mode;
+      resetConfig();
+      try {
+         await fn();
+      } finally {
+         if (previous === undefined) {
+            delete process.env.GDX_USE_INLINE_SUBMODULE;
+         } else {
+            process.env.GDX_USE_INLINE_SUBMODULE = previous;
+         }
+         resetConfig();
+      }
+   }
+
+   async function createParityRepos(suffix: string): Promise<{
+      git$: string | string[];
+      gitExe: string;
+      sourceRepo: string;
+      internalRepo: string;
+      nativeRepo: string;
+      submodulePath: string;
+   }> {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const submodulePath = 'deps/compare';
+      const sourceRepo = path.join(tmpRootDir, `submodule-compare-${suffix}-source`);
+      const internalRepo = path.join(tmpRootDir, `submodule-compare-${suffix}-internal`);
+      const nativeRepo = path.join(tmpRootDir, `submodule-compare-${suffix}-native`);
+
+      await fs.mkdir(sourceRepo, { recursive: true });
+      await $`${gitExe} -C ${sourceRepo} init`;
+      await $`${gitExe} -C ${sourceRepo} config user.name ${'Test User'}`;
+      await $`${gitExe} -C ${sourceRepo} config user.email ${'test@example.com'}`;
+      await fs.writeFile(path.join(sourceRepo, 'README.md'), 'source');
+      await $`${gitExe} -C ${sourceRepo} add README.md`;
+      await $`${gitExe} -C ${sourceRepo} commit -m ${'init source repo'}`;
+
+      for (const repoPath of [internalRepo, nativeRepo]) {
+         await fs.mkdir(repoPath, { recursive: true });
+         await $`${gitExe} -C ${repoPath} init`;
+         await $`${gitExe} -C ${repoPath} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${repoPath} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(repoPath, 'ROOT.md'), 'root');
+         await $`${gitExe} -C ${repoPath} add ROOT.md`;
+         await $`${gitExe} -C ${repoPath} commit -m ${'init root repo'}`;
+      }
+
+      return {
+         git$,
+         gitExe,
+         sourceRepo,
+         internalRepo,
+         nativeRepo,
+         submodulePath,
+      };
+   }
 
    it('should resolve main worktree root from .git file worktree', async () => {
       const worktreeDir = path.join(tmpRootDir, 'wt-case');
@@ -37,7 +105,7 @@ describe('git module', async () => {
       await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
 
       const submoduleUrl = asUnixPath(submoduleRoot);
-      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule'}`;
+      await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule');
       await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
       await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
@@ -64,6 +132,41 @@ describe('git module', async () => {
       expect(entries.length).toBe(0);
    });
 
+   it('should honor useInlineSubmodule=off for add/update/deinit', async () => {
+      const config = await getConfig();
+      await config.set('useInlineSubmodule', 'off');
+      await config.save();
+      resetConfig();
+
+      try {
+         const { git$ } = createGdxContext(tmpDir, []);
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         const submoduleRoot = path.join(tmpRootDir, 'submodule-off-mode');
+         await fs.mkdir(submoduleRoot, { recursive: true });
+         await $`${gitExe} -C ${submoduleRoot} init`;
+         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
+         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule off mode');
+         await $`${gitExe} -C ${submoduleRoot} add README.md`;
+         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule off mode'}`;
+
+         const submoduleUrl = asUnixPath(submoduleRoot);
+         await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule-off');
+         await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule-off'}`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule off mode'}`;
+
+         await deinitSubmodules(git$, tmpDir);
+
+         const statusOutput = (await $`${gitExe} -C ${tmpDir} submodule status`).stdout.trim();
+         expect(statusOutput.startsWith('-')).toBe(true);
+      } finally {
+         const restoredConfig = await getConfig();
+         await restoredConfig.set('useInlineSubmodule', 'internal');
+         await restoredConfig.save();
+         resetConfig();
+      }
+   });
+
    it('should detect empty cherry-pick errors from output text', async () => {
       const err = {
          stderr: 'The previous cherry-pick is now empty, possibly due to conflict resolution.',
@@ -84,4 +187,147 @@ describe('git module', async () => {
       };
       expect(isEmptyCherryPickError(err)).toBe(false);
    });
+
+   it(
+      'should align internal and git-native behavior for addSubmodule',
+      async () => {
+         const { git$, gitExe, sourceRepo, internalRepo, nativeRepo, submodulePath } =
+            await createParityRepos('add');
+         const sourceUrl = asUnixPath(sourceRepo);
+
+         await withInlineSubmoduleMode('internal', async () => {
+            await addSubmodule(git$, internalRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+         await withInlineSubmoduleMode('off', async () => {
+            await addSubmodule(git$, nativeRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+
+         const internalGitmodules = await fs.readFile(
+            path.join(internalRepo, '.gitmodules'),
+            'utf-8'
+         );
+         const nativeGitmodules = await fs.readFile(path.join(nativeRepo, '.gitmodules'), 'utf-8');
+         expect(internalGitmodules).toBe(nativeGitmodules);
+
+         const internalGitlink = (
+            await $`${gitExe} -C ${internalRepo} ls-files --stage -- ${submodulePath}`
+         ).stdout.trim();
+         const nativeGitlink = (
+            await $`${gitExe} -C ${nativeRepo} ls-files --stage -- ${submodulePath}`
+         ).stdout.trim();
+         expect(internalGitlink).toBe(nativeGitlink);
+      },
+      { timeout: 30000 }
+   );
+
+   it(
+      'should align internal and git-native behavior for updateSubmodules',
+      async () => {
+         const { git$, gitExe, sourceRepo, internalRepo, nativeRepo, submodulePath } =
+            await createParityRepos('update');
+         const sourceUrl = asUnixPath(sourceRepo);
+
+         await withInlineSubmoduleMode('internal', async () => {
+            await addSubmodule(git$, internalRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+         await withInlineSubmoduleMode('off', async () => {
+            await addSubmodule(git$, nativeRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+
+         await $`${gitExe} -C ${internalRepo} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${internalRepo} commit -m ${'add compare submodule internal'}`;
+         await $`${gitExe} -C ${nativeRepo} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${nativeRepo} commit -m ${'add compare submodule native'}`;
+
+         await fs.writeFile(path.join(sourceRepo, 'SECOND.md'), 'second');
+         await $`${gitExe} -C ${sourceRepo} add SECOND.md`;
+         await $`${gitExe} -C ${sourceRepo} commit -m ${'second source commit'}`;
+         const sourceHead = (await $`${gitExe} -C ${sourceRepo} rev-parse HEAD`).stdout.trim();
+
+         await $`${gitExe} -C ${internalRepo} update-index --cacheinfo ${'160000'} ${sourceHead} ${submodulePath}`;
+         await $`${gitExe} -C ${nativeRepo} update-index --cacheinfo ${'160000'} ${sourceHead} ${submodulePath}`;
+
+         await withInlineSubmoduleMode('internal', async () => {
+            await updateSubmodules(git$, internalRepo, {
+               recursive: true,
+               allowFileProtocol: true,
+            });
+         });
+         await withInlineSubmoduleMode('off', async () => {
+            await updateSubmodules(git$, nativeRepo, {
+               recursive: true,
+               allowFileProtocol: true,
+            });
+         });
+
+         const internalHead = (
+            await $`${gitExe} -C ${path.join(internalRepo, submodulePath)} rev-parse HEAD`
+         ).stdout.trim();
+         const nativeHead = (
+            await $`${gitExe} -C ${path.join(nativeRepo, submodulePath)} rev-parse HEAD`
+         ).stdout.trim();
+         expect(internalHead).toBe(sourceHead);
+         expect(nativeHead).toBe(sourceHead);
+      },
+      { timeout: 30000 }
+   );
+
+   it(
+      'should align internal and git-native behavior for deinitSubmodules',
+      async () => {
+         const { git$, gitExe, sourceRepo, internalRepo, nativeRepo, submodulePath } =
+            await createParityRepos('deinit');
+         const sourceUrl = asUnixPath(sourceRepo);
+
+         await withInlineSubmoduleMode('internal', async () => {
+            await addSubmodule(git$, internalRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+         await withInlineSubmoduleMode('off', async () => {
+            await addSubmodule(git$, nativeRepo, sourceUrl, submodulePath, {
+               allowFileProtocol: true,
+            });
+         });
+
+         await $`${gitExe} -C ${internalRepo} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${internalRepo} commit -m ${'add compare submodule internal'}`;
+         await $`${gitExe} -C ${nativeRepo} add .gitmodules ${submodulePath}`;
+         await $`${gitExe} -C ${nativeRepo} commit -m ${'add compare submodule native'}`;
+
+         await withInlineSubmoduleMode('internal', async () => {
+            await deinitSubmodules(git$, internalRepo);
+         });
+         await withInlineSubmoduleMode('off', async () => {
+            await deinitSubmodules(git$, nativeRepo);
+         });
+
+         const internalStatus = (
+            await $`${gitExe} -C ${internalRepo} submodule status`
+         ).stdout.trim();
+         const nativeStatus = (await $`${gitExe} -C ${nativeRepo} submodule status`).stdout.trim();
+         expect(internalStatus.startsWith('-')).toBe(true);
+         expect(nativeStatus.startsWith('-')).toBe(true);
+
+         const internalMarkerExists = await fs
+            .stat(path.join(internalRepo, submodulePath, '.git'))
+            .then(() => true)
+            .catch(() => false);
+         const nativeMarkerExists = await fs
+            .stat(path.join(nativeRepo, submodulePath, '.git'))
+            .then(() => true)
+            .catch(() => false);
+         expect(internalMarkerExists).toBe(false);
+         expect(nativeMarkerExists).toBe(false);
+      },
+      { timeout: 30000 }
+   );
 });

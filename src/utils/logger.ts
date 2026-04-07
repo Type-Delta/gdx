@@ -1,10 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 
 import { cleanString, jsTime, ncc, strWrap } from '@lib/Tools';
 
-import { LOG_FILE_SIZE_LIMIT, SHOULD_WRITE_LOGS, VERSION } from '@/consts';
+import { LOG_FILE_SIZE_LIMIT, LOG_PATH, SHOULD_WRITE_LOGS, VERSION } from '@/consts';
 import global from '@/global';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
@@ -65,7 +64,7 @@ const MessageColors = {
 } as const satisfies Record<LogLevel, string>;
 
 class Logger {
-   static logFile: string = path.join(os.tmpdir(), 'gdx', 'gdx.log');
+   static logFile: string = LOG_PATH;
    static logLevel: number = LogLevelMap[global.logLevel];
    static timeLabels: Map<string, number> = new Map();
 

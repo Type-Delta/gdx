@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 import dedent from 'dedent';
@@ -8,10 +8,9 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
 
 describe('gdx lint', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir, ['lint']);
    const { git$ } = ctx;
-   afterAll(cleanup);
 
    it('should pass on clean commit', async () => {
       // Initial commit

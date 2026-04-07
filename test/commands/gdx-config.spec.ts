@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import gdxConfig from '@/commands/gdx-config';
@@ -6,8 +6,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
 
 describe('gdx gdx-config', async () => {
-   const { tmpDir, tmpRootDir, buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({ liteMode: true });
 
    it('should list configuration', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'list']);
@@ -45,6 +44,25 @@ describe('gdx gdx-config', async () => {
 
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('openai');
+   });
+
+   it('should set experimental useInlineSubmodule value', async () => {
+      const setCtx = createGdxContext(tmpDir, ['gdx-config', 'useInlineSubmodule', 'off']);
+      expect(await gdxConfig(setCtx)).toBe(0);
+
+      const getCtx = createGdxContext(tmpDir, ['gdx-config', 'useInlineSubmodule']);
+      expect(await gdxConfig(getCtx)).toBe(0);
+      expect(buffer.stdout).toContain('off');
+   });
+
+   it('should reject invalid useInlineSubmodule value', async () => {
+      const invalidCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         'useInlineSubmodule',
+         'invalid-value',
+      ]);
+      expect(await gdxConfig(invalidCtx)).toBe(1);
+      expect(buffer.stderr).toContain('Expected one of off, internal, all');
    });
 
    it('should handle invalid keys gracefully', async () => {

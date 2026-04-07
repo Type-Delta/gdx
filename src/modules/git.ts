@@ -4,6 +4,7 @@ import path from 'path';
 import { CheckCache, Err, yuString } from '@lib/Tools';
 
 import { getCache } from '@/common/cache';
+import { getConfig } from '@/common/config';
 import * as fs from '@/modules/fs';
 import { stripAnsiColor } from '@/modules/graphics';
 
@@ -24,6 +25,18 @@ export interface SubmoduleEntry {
    path: string;
    status: string;
    initialized: boolean;
+}
+
+interface GitmodulesEntry {
+   name: string;
+   path: string;
+   url: string;
+}
+
+type InlineSubmoduleMode = 'off' | 'internal' | 'all';
+
+interface SubmoduleCommandOptions {
+   allowFileProtocol?: boolean;
 }
 
 /**
@@ -840,6 +853,320 @@ export async function getWorktreeOperations(
 }
 
 /**
+ * Normalizes a submodule relative path.
+ * @param submodulePath - Raw submodule path.
+ * @returns Normalized unix-style relative path.
+ */
+function normalizeSubmodulePath(submodulePath: string): string {
+   return asUnixPath(submodulePath.trim()).replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+/**
+ * Normalizes a submodule URL/path value.
+ * @param submoduleUrl - Raw submodule URL/path.
+ * @returns Normalized URL/path string.
+ */
+function normalizeSubmoduleUrl(submoduleUrl: string): string {
+   return submoduleUrl.trim().replace(/\\/g, '/');
+}
+
+/**
+ * Reads submodule implementation mode from config.
+ * @returns Resolved submodule mode.
+ */
+async function getInlineSubmoduleMode(): Promise<InlineSubmoduleMode> {
+   const config = await getConfig();
+   const value = config.get<InlineSubmoduleMode>('useInlineSubmodule', 'internal');
+   if (value === 'off' || value === 'internal' || value === 'all') return value;
+   return 'internal';
+}
+
+function shouldAllowFileProtocol(options?: SubmoduleCommandOptions): boolean {
+   return options?.allowFileProtocol !== false;
+}
+
+function withFileProtocolFlag(args: string[], allowFileProtocol: boolean): string[] {
+   if (!allowFileProtocol) return args;
+   return ['-c', 'protocol.file.allow=always', ...args];
+}
+
+/**
+ * Parses .gitmodules into a path-keyed map.
+ * @param worktreePath - The worktree root path.
+ * @returns Map of submodule path to config entry.
+ */
+function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntry> {
+   const entries = new Map<string, GitmodulesEntry>();
+   const gitmodulesPath = path.join(worktreePath, '.gitmodules');
+   if (!fs.existsSync(gitmodulesPath)) return entries;
+
+   let content = '';
+   try {
+      content = fs.readFileSync(gitmodulesPath, 'utf-8');
+   } catch {
+      return entries;
+   }
+
+   const lines = content.split(/\r?\n/);
+   let currentName = '';
+   let currentPath = '';
+   let currentUrl = '';
+
+   const commitCurrent = () => {
+      if (!currentPath) return;
+      entries.set(currentPath, {
+         name: currentName || currentPath,
+         path: currentPath,
+         url: currentUrl,
+      });
+   };
+
+   for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+
+      const sectionMatch = line.match(/^\[submodule\s+"(.+)"\]$/i);
+      if (sectionMatch) {
+         commitCurrent();
+         currentName = sectionMatch[1]?.trim() || '';
+         currentPath = '';
+         currentUrl = '';
+         continue;
+      }
+
+      const kvMatch = line.match(/^([a-zA-Z0-9._-]+)\s*=\s*(.*)$/);
+      if (!kvMatch) continue;
+
+      const key = kvMatch[1]?.trim().toLowerCase();
+      const value = kvMatch[2]?.trim() || '';
+      if (key === 'path') currentPath = normalizeSubmodulePath(value);
+      else if (key === 'url') currentUrl = value;
+   }
+
+   commitCurrent();
+   return entries;
+}
+
+/**
+ * Appends a submodule entry to .gitmodules when missing.
+ * @param worktreePath - The worktree root path.
+ * @param submodulePath - Submodule path in the superproject.
+ * @param submoduleUrl - Submodule URL.
+ */
+function ensureGitmodulesEntry(
+   worktreePath: string,
+   submodulePath: string,
+   submoduleUrl: string
+): void {
+   const normalizedPath = normalizeSubmodulePath(submodulePath);
+   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const existing = readGitmodulesEntries(worktreePath);
+   const current = existing.get(normalizedPath);
+   if (current && current.url.trim() === normalizedUrl) return;
+
+   existing.set(normalizedPath, {
+      name: current?.name || normalizedPath,
+      path: normalizedPath,
+      url: normalizedUrl,
+   });
+
+   const gitmodulesPath = path.join(worktreePath, '.gitmodules');
+   const rendered = Array.from(existing.values())
+      .map((entry) => {
+         return (
+            `[submodule "${entry.name}"]\n` + `\tpath = ${entry.path}\n` + `\turl = ${entry.url}`
+         );
+      })
+      .join('\n\n');
+   fs.writeFileSync(gitmodulesPath, rendered ? `${rendered}\n` : '', 'utf-8');
+}
+
+/**
+ * Reads gitlink SHAs from the index.
+ * @param gitExec - Git executable path.
+ * @param worktreePath - The worktree root path.
+ * @returns Map of submodule path to gitlink SHA.
+ */
+async function getSubmoduleGitlinks(
+   gitExec: string,
+   worktreePath: string
+): Promise<Map<string, string>> {
+   const map = new Map<string, string>();
+   let output = '';
+   try {
+      output = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
+   } catch {
+      return map;
+   }
+
+   for (const line of output.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('160000 ')) continue;
+      const match = trimmed.match(/^160000\s+([0-9a-f]{40})\s+(\d)\t(.+)$/i);
+      if (!match) continue;
+      if (match[2] !== '0') continue;
+      const submodulePath = normalizeSubmodulePath(match[3]);
+      if (!submodulePath) continue;
+      map.set(submodulePath, match[1]);
+   }
+
+   return map;
+}
+
+/**
+ * Resolves the HEAD commit of a submodule source URL/path.
+ * @param gitExec - Git executable path.
+ * @param submoduleUrl - Submodule URL/path.
+ * @returns Resolved commit SHA.
+ */
+async function resolveSubmoduleSourceHead(gitExec: string, submoduleUrl: string): Promise<string> {
+   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const maybeLocalPath = normalizedUrl.startsWith('file://')
+      ? path.resolve(normalizedUrl.replace(/^file:\/\//i, ''))
+      : normalizedUrl;
+   if (fs.existsSync(maybeLocalPath)) {
+      const localHead = (await $`${gitExec} -C ${maybeLocalPath} rev-parse HEAD`).stdout.trim();
+      if (localHead) return localHead;
+   }
+
+   const remoteHeadLine = (await $`${gitExec} ls-remote ${normalizedUrl} HEAD`).stdout
+      .trim()
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+   const remoteHead = remoteHeadLine?.split(/\s+/)[0]?.trim() || '';
+   if (!remoteHead) {
+      throw new Error(`Unable to resolve HEAD for submodule source '${normalizedUrl}'.`);
+   }
+   return remoteHead;
+}
+
+/**
+ * Resolves module gitdir root for a superproject worktree.
+ * @param gitExec - Git executable path.
+ * @param worktreePath - Superproject worktree path.
+ * @returns Absolute module root path.
+ */
+async function getSubmoduleGitRoot(gitExec: string, worktreePath: string): Promise<string> {
+   const gitDirRaw = (await $`${gitExec} -C ${worktreePath} rev-parse --git-dir`).stdout.trim();
+   const gitDir = path.isAbsolute(gitDirRaw) ? gitDirRaw : path.resolve(worktreePath, gitDirRaw);
+   return path.join(gitDir, 'modules');
+}
+
+/**
+ * Clones submodule worktree with a separate git-dir.
+ * @param gitExec - Git executable path.
+ * @param worktreePath - Superproject worktree path.
+ * @param submoduleUrl - Submodule source URL/path.
+ * @param submodulePath - Relative submodule path.
+ */
+async function cloneSubmoduleWithSeparateGitDir(
+   gitExec: string,
+   worktreePath: string,
+   submoduleUrl: string,
+   submodulePath: string,
+   allowFileProtocol: boolean
+): Promise<void> {
+   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const submoduleRepoPath = path.resolve(worktreePath, submodulePath);
+   if (fs.existsSync(submoduleRepoPath)) {
+      fs.rmSync(submoduleRepoPath, { recursive: true, force: true });
+   }
+   fs.mkdirSync(path.dirname(submoduleRepoPath), { recursive: true });
+
+   const modulesRoot = await getSubmoduleGitRoot(gitExec, worktreePath);
+   const moduleGitDir = path.join(modulesRoot, ...submodulePath.split('/').filter(Boolean));
+   fs.mkdirSync(path.dirname(moduleGitDir), { recursive: true });
+
+   const cloneArgs = withFileProtocolFlag(
+      [
+         '-C',
+         worktreePath,
+         'clone',
+         '--quiet',
+         '--no-checkout',
+         '--separate-git-dir',
+         moduleGitDir,
+         normalizedUrl,
+         submodulePath,
+      ],
+      allowFileProtocol
+   );
+   await $`${gitExec} ${cloneArgs}`;
+}
+
+/**
+ * Adds a submodule using a lightweight flow tailored for local/test repositories.
+ * @param git$ - Git executable path or command array.
+ * @param worktreePath - Superproject worktree path.
+ * @param submoduleUrl - Source URL/path for the submodule.
+ * @param submodulePath - Relative path of the submodule in the superproject.
+ */
+export async function addSubmodule(
+   git$: string | string[],
+   worktreePath: string,
+   submoduleUrl: string,
+   submodulePath: string,
+   options?: SubmoduleCommandOptions
+): Promise<void> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const normalizedPath = normalizeSubmodulePath(submodulePath);
+   const mode = await getInlineSubmoduleMode();
+   const allowFileProtocol = shouldAllowFileProtocol(options);
+   if (!normalizedPath) {
+      throw new Error('Submodule path cannot be empty.');
+   }
+
+   if (mode === 'off') {
+      const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+      const addArgs = withFileProtocolFlag(
+         ['-C', worktreePath, 'submodule', 'add', normalizedUrl, normalizedPath],
+         allowFileProtocol
+      );
+      await $`${gitExec} ${addArgs}`;
+      await invalidateSubmodulesCache(git$, worktreePath);
+      return;
+   }
+
+   const sourceHead = await resolveSubmoduleSourceHead(gitExec, submoduleUrl);
+   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   ensureGitmodulesEntry(worktreePath, normalizedPath, normalizedUrl);
+
+   const submoduleRepoPath = path.resolve(worktreePath, normalizedPath);
+   const gitMarker = path.join(submoduleRepoPath, '.git');
+   const markerIsDirectory = fs.existsSync(gitMarker)
+      ? await fs
+           .stat(gitMarker)
+           .then((stat) => stat.isDirectory())
+           .catch(() => false)
+      : false;
+   if (!fs.existsSync(gitMarker) || markerIsDirectory) {
+      await cloneSubmoduleWithSeparateGitDir(
+         gitExec,
+         worktreePath,
+         normalizedUrl,
+         normalizedPath,
+         allowFileProtocol
+      );
+   }
+
+   try {
+      await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${sourceHead}`;
+   } catch {
+      const fetchArgs = withFileProtocolFlag(
+         ['-C', submoduleRepoPath, 'fetch', '--quiet', 'origin', sourceHead],
+         allowFileProtocol
+      );
+      await $`${gitExec} ${fetchArgs}`;
+      await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${sourceHead}`;
+   }
+
+   await $`${gitExec} -C ${worktreePath} add .gitmodules`;
+   await $`${gitExec} -C ${worktreePath} update-index --add --cacheinfo 160000 ${sourceHead} ${normalizedPath}`;
+   await invalidateSubmodulesCache(git$, worktreePath);
+}
+
+/**
  * Collects submodule entries for a worktree.
  * @param git$ - Git executable path or command array.
  * @param worktreePath - The worktree root path.
@@ -1028,14 +1355,41 @@ export async function deinitSubmodules(
    worktreePath: string
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
+   const mode = await getInlineSubmoduleMode();
+   if (mode === 'off') {
+      await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
+      await invalidateSubmodulesCache(git$, worktreePath);
+   }
 
-   await invalidateSubmodulesCache(git$, worktreePath);
    const submodules = await getSubmodules(git$, worktreePath);
-   if (submodules.length === 0) return;
+   const gitmodulesEntries = readGitmodulesEntries(worktreePath);
+   const allPaths = new Set<string>([
+      ...submodules.map((submodule) => normalizeSubmodulePath(submodule.path)),
+      ...Array.from(gitmodulesEntries.keys()),
+   ]);
+   if (allPaths.size === 0) return;
 
-   for (const submodule of submodules) {
-      const submodulePath = path.resolve(worktreePath, submodule.path);
+   for (const submodulePathRaw of allPaths) {
+      if (!submodulePathRaw) continue;
+      const gitmodulesEntry = gitmodulesEntries.get(submodulePathRaw);
+      const sectionNames = new Set<string>([
+         normalizeSubmodulePath(submodulePathRaw),
+         normalizeSubmodulePath(gitmodulesEntry?.name || ''),
+      ]);
+
+      for (const sectionName of sectionNames) {
+         if (!sectionName) continue;
+         try {
+            await $`${gitExec} -C ${worktreePath} config --local --remove-section submodule.${sectionName}`;
+         } catch {
+            // ignore: section may not exist in local config
+         }
+      }
+   }
+
+   for (const submodulePathRaw of allPaths) {
+      if (!submodulePathRaw) continue;
+      const submodulePath = path.resolve(worktreePath, submodulePathRaw);
       try {
          if (fs.existsSync(submodulePath)) {
             fs.rmSync(submodulePath, { recursive: true, force: true });
@@ -1051,17 +1405,15 @@ export async function deinitSubmodules(
 
    try {
       const gitDirRaw = (await $`${gitExec} -C ${worktreePath} rev-parse --git-dir`).stdout.trim();
-      if (gitDirRaw) {
-         const gitDir = path.isAbsolute(gitDirRaw)
+
+      const gitDir = gitDirRaw
+         ? path.isAbsolute(gitDirRaw)
             ? gitDirRaw
-            : path.resolve(worktreePath, gitDirRaw);
-         const normalizedGitDir = asUnixPath(gitDir);
-         if (normalizedGitDir.includes('/.git/worktrees/')) {
-            const modulesPath = path.join(gitDir, 'modules');
-            if (fs.existsSync(modulesPath)) {
-               fs.rmSync(modulesPath, { recursive: true, force: true });
-            }
-         }
+            : path.resolve(worktreePath, gitDirRaw)
+         : '';
+      const worktreeModulesRoot = gitDir ? path.join(gitDir, 'modules') : '';
+      if (worktreeModulesRoot && fs.existsSync(worktreeModulesRoot)) {
+         fs.rmSync(worktreeModulesRoot, { recursive: true, force: true });
       }
    } catch (err) {
       Logger.debug(
@@ -1069,6 +1421,102 @@ export async function deinitSubmodules(
          'git'
       );
    }
+
+   await invalidateSubmodulesCache(git$, worktreePath);
+}
+
+/**
+ * Updates submodules to the gitlink SHAs from the superproject index.
+ * @param git$ - Git executable path or command array.
+ * @param worktreePath - The worktree root path.
+ * @param options - Update behavior options.
+ */
+export async function updateSubmodules(
+   git$: string | string[],
+   worktreePath: string,
+   options?: {
+      recursive?: boolean;
+      force?: boolean;
+      allowFileProtocol?: boolean;
+   }
+): Promise<void> {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const recursive = options?.recursive !== false;
+   const force = options?.force === true;
+   const allowFileProtocol = shouldAllowFileProtocol(options);
+   const mode = await getInlineSubmoduleMode();
+
+   if (mode === 'off') {
+      const args = ['-C', worktreePath, 'submodule', 'update'];
+      if (force) args.push('--force');
+      args.push('--init');
+      if (recursive) args.push('--recursive');
+      await $`${gitExec} ${withFileProtocolFlag(args, allowFileProtocol)}`;
+      await invalidateSubmodulesCache(git$, worktreePath);
+      return;
+   }
+
+   const gitlinks = await getSubmoduleGitlinks(gitExec, worktreePath);
+   if (gitlinks.size === 0) {
+      await invalidateSubmodulesCache(git$, worktreePath);
+      return;
+   }
+
+   const gitmodulesEntries = readGitmodulesEntries(worktreePath);
+
+   for (const [submodulePathRaw, targetSha] of gitlinks.entries()) {
+      const submodulePath = normalizeSubmodulePath(submodulePathRaw);
+      if (!submodulePath || !targetSha) continue;
+
+      const entry = gitmodulesEntries.get(submodulePath);
+      if (!entry?.url) continue;
+
+      const submoduleRepoPath = path.resolve(worktreePath, submodulePath);
+      const gitMarker = path.join(submoduleRepoPath, '.git');
+      const markerIsDirectory = fs.existsSync(gitMarker)
+         ? await fs
+              .stat(gitMarker)
+              .then((stat) => stat.isDirectory())
+              .catch(() => false)
+         : false;
+
+      if (!fs.existsSync(gitMarker) || markerIsDirectory) {
+         await cloneSubmoduleWithSeparateGitDir(
+            gitExec,
+            worktreePath,
+            entry.url,
+            submodulePath,
+            allowFileProtocol
+         );
+      }
+
+      const hasCommit = (
+         await getRevParseCached(gitExec, submoduleRepoPath, [
+            '-q',
+            '--verify',
+            `${targetSha}^{commit}`,
+         ])
+      ).trim();
+      if (!hasCommit) {
+         const fetchArgs = withFileProtocolFlag(
+            ['-C', submoduleRepoPath, 'fetch', '--quiet', 'origin', targetSha],
+            allowFileProtocol
+         );
+         await $`${gitExec} ${fetchArgs}`;
+      }
+
+      if (force) {
+         await $`${gitExec} -C ${submoduleRepoPath} checkout --force --detach ${targetSha}`;
+      } else {
+         await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${targetSha}`;
+      }
+
+      if (recursive) {
+         await updateSubmodules(git$, submoduleRepoPath, options);
+      }
+   }
+
+   await invalidateSubmodulesCache(git$, worktreePath);
 }
 
 /**
@@ -1077,10 +1525,9 @@ export async function deinitSubmodules(
  * @param worktreePath - The worktree root path.
  */
 export async function initSubmodules(git$: string | string[], worktreePath: string): Promise<void> {
-   const submodules = await getSubmodules(git$, worktreePath);
-   if (submodules.length === 0) return;
-   await $`${git$} -c protocol.file.allow=always -C ${worktreePath} submodule update --init --recursive`;
-   await invalidateSubmodulesCache(git$, worktreePath);
+   await updateSubmodules(git$, worktreePath, {
+      recursive: true,
+   });
 }
 
 /**

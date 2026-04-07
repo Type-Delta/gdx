@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 
 import cache from '@/commands/cache';
@@ -8,8 +8,7 @@ import { CACHE_PATH } from '@/consts';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx cache', async () => {
-   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, buffer, it } = await createTestEnv();
 
    it('should reset cache file', async () => {
       resetCache();

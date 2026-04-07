@@ -20,7 +20,7 @@ let parallel: typeof import('@/commands/parallel').default;
 let actualPager: typeof import('@/modules/pager');
 
 describe('gdx parallel join conflict preview', async () => {
-   const { tmpDir, tmpRootDir, $, cleanup, it, env } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, it, env } = await createTestEnv({
       autoResetBuffer: true,
    });
    const { git$ } = createGdxContext(tmpDir);
@@ -48,7 +48,6 @@ describe('gdx parallel join conflict preview', async () => {
 
    afterAll(() => {
       mock.restore();
-      cleanup();
    });
 
    env.isTTY = true;

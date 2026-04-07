@@ -1,4 +1,4 @@
-import { afterAll, describe } from 'bun:test';
+import { describe } from 'bun:test';
 import fs from 'fs/promises';
 import { expect } from 'chai';
 
@@ -7,10 +7,9 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { noop } from '@/utils/utilities';
 
 describe('gdx stash drop X..Y (stash.dropRange())', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
-   afterAll(cleanup);
 
    // create initial commits
    await $`${git$} commit --allow-empty -m ${'Initial commit'}`;
@@ -44,7 +43,7 @@ describe('gdx stash drop X..Y (stash.dropRange())', async () => {
 });
 
 describe('gdx stash drop pardon', async () => {
-   const { tmpDir, $, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 
@@ -59,8 +58,6 @@ describe('gdx stash drop pardon', async () => {
          await $`${git$} stash push -m ${`Stash ${i}`}`;
       }
    };
-
-   afterAll(cleanup);
 
    it('should drop a single stash and restore it with pardon', async () => {
       await setupStashes(3);

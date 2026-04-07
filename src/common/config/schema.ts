@@ -34,6 +34,7 @@ export interface GdxConfig {
    };
    defaultEditor: string;
    enhancedOutput?: boolean;
+   useInlineSubmodule?: 'off' | 'internal' | 'all';
 }
 
 export const DEFAULT_CONFIG: GdxConfig = {
@@ -70,6 +71,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    },
    defaultEditor: 'code',
    enhancedOutput: true,
+   useInlineSubmodule: 'internal',
 };
 
 export const ENV_PREFIX = 'GDX_';
@@ -95,6 +97,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
+   useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
 };
 
 // Configuration field descriptions
@@ -129,4 +132,6 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    defaultEditor: 'Default code editor to open files with',
    enhancedOutput:
       "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",
+   useInlineSubmodule:
+      '[Experimental] Select submodule implementation mode (off: git-only, internal: gdx internal flow, all: reserved for broader internal usage)',
 };

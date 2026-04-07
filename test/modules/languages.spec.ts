@@ -1,12 +1,11 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 
 import { getCache } from '@/common/cache';
 import { getLanguageCatalog, inferLanguageFromPath, languageConsts } from '@/modules/languages';
 import { createTestEnv } from '@/utils/testHelper';
 
 describe('languages module', async () => {
-   const { cleanup, it } = await createTestEnv({ autoResetBuffer: true, liteMode: true });
-   afterAll(cleanup);
+   const { it } = await createTestEnv({ autoResetBuffer: true, liteMode: true });
 
    it('should load catalog from cached value', async () => {
       const cache = await getCache();

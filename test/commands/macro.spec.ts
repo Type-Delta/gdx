@@ -1,4 +1,4 @@
-import { describe, afterAll, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 import macro from '@/commands/macro';
@@ -7,8 +7,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 
 describe('gdx macro', async () => {
-   const { tmpDir, tmpRootDir, buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv();
 
    it('should set a macro', async () => {
       const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'ad .', ';', 'cmi -m "$1"']);
@@ -232,8 +231,7 @@ describe('gdx macro', async () => {
 });
 
 describe('gdx macro storage', async () => {
-   const { tmpDir, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, it } = await createTestEnv();
 
    it('should store macro with placeholder substitution pattern', async () => {
       const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'ad . ; cmi -m "$1"']);
@@ -288,8 +286,7 @@ describe('gdx macro storage', async () => {
 });
 
 describe('gdx macro custom command execution', async () => {
-   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, buffer, it } = await createTestEnv();
 
    it('should route gdx commands through dispatch', async () => {
       // Create a macro that calls a gdx custom command
@@ -343,8 +340,7 @@ describe('gdx macro custom command execution', async () => {
 });
 
 describe('gdx macro recursion prevention', async () => {
-   const { tmpDir, buffer, cleanup, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, buffer, it } = await createTestEnv();
 
    it('should prevent macro-in-macro invocation', async () => {
       // Create two macros: a calls b

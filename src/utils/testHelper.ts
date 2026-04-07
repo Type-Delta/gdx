@@ -23,9 +23,19 @@ const stdioStore = new AsyncLocalStorage<{
 let stdioHookInstalled = false;
 let originalStdoutWrite: typeof process.stdout.write | null = null;
 let originalStderrWrite: typeof process.stderr.write | null = null;
+const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === 'off';
+
+if (USE_NATIVE_SUBMODULE_IN_TESTS) {
+   console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
+}
+
+export function shouldUseNativeSubmoduleInTests(): boolean {
+   return USE_NATIVE_SUBMODULE_IN_TESTS;
+}
 
 interface TestSystem {
    lastTestStatus: 'notrun' | 'passed' | 'failed';
+   lastTestName: string;
    buffer?: { stdout: string; stderr: string; logs: string };
 }
 
@@ -54,6 +64,7 @@ class TestEnvTracker {
    spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
    testSystem: TestSystem = {
       lastTestStatus: 'notrun',
+      lastTestName: '',
    };
 
    reset() {
@@ -77,17 +88,23 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
    } satisfies GdxContext;
 }
 
-export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer: true, liteMode: false }) {
-   console.time('createTestEnv' + (options.liteMode ? ' (lite)' : ''));
+export async function createTestEnv(
+   options: TestEnvOptions = { autoResetBuffer: true, liteMode: false }
+) {
+   const tmpDir = fs.mkdtempSync(path.join(process.cwd(), 'test/env/'));
+   const tmpDirName = path.basename(tmpDir);
+
+   console.time('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));
    await clearTestEnvs();
 
    if (!gitExePath) await findGitExecutable();
 
    fs.mkdirSync(path.join(process.cwd(), 'test/env'), { recursive: true });
-   const tmpDir = fs.mkdtempSync(path.join(process.cwd(), 'test/env/'));
    const tmpMockProjDir = path.join(tmpDir, 'project');
+   const testLogDir = path.join(tmpDir, '.gdx', 'logs');
    fs.mkdirSync(tmpMockProjDir, { recursive: true });
    fs.mkdirSync(path.join(tmpDir, 'tmp'), { recursive: true });
+   fs.mkdirSync(testLogDir, { recursive: true });
 
    let tracker = new TestEnvTracker();
    const envController = {
@@ -111,6 +128,7 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdx', '.gdxrc.toml');
    process.env.GDX_TEMP_DIR = tmpDir;
    process.env.GIT_CONFIG_NOSYSTEM = '1';
+   process.env.GDX_USE_INLINE_SUBMODULE = USE_NATIVE_SUBMODULE_IN_TESTS ? 'off' : 'internal';
    global.logLevel = 'warn';
 
    // Create an empty global config file
@@ -121,8 +139,8 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
 
    const setupTasks = [
-      (options.liteMode ? Promise.resolve(noop) : initGitRepo(_$)), // Initialize a git repository
-      (options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, '')), // Empty global git config
+      options.liteMode ? Promise.resolve(noop) : initGitRepo(_$), // Initialize a git repository
+      options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, ''), // Empty global git config
    ];
 
    if (gdxConfigDir) {
@@ -145,9 +163,9 @@ export async function createTestEnv(options: TestEnvOptions = { autoResetBuffer:
    process.env.NODE_ENV = 'test';
    ensureStdIoHooked();
 
-   attachTestLivecycleHook(buffer, tracker, options.autoResetBuffer);
+   attachTestLivecycleHook(buffer, tracker, testLogDir, options.autoResetBuffer);
    const it = defineBunIt(tracker);
-   console.timeEnd('createTestEnv' + (options.liteMode ? ' (lite)' : ''));
+   console.timeEnd('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));
 
    return {
       tmpDir: tmpMockProjDir, // Project directory
@@ -258,6 +276,7 @@ function overrideModules(
          CURRENT_DIR: path.join(tempDir, 'project'),
          CONFIG_PATH: path.join(tempDir, '.gdx', '.gdxrc.toml'),
          CACHE_PATH: path.join(tempTmpDir, 'gdx', 'cache.json'),
+         LOG_PATH: path.join(tempTmpDir, 'gdx', 'gdx.log'),
          MACRO_PATH: path.join(tempDir, '.gdx', 'macro.json'),
          get GDX_RESULT_FILE() {
             return process.env.GDX_RESULT;
@@ -307,8 +326,10 @@ function defineBunIt(tracker: TestEnvTracker) {
                      await fn();
                      done();
                      tracker.testSystem.lastTestStatus = 'passed';
+                     tracker.testSystem.lastTestName = name;
                   } catch (error) {
                      tracker.testSystem.lastTestStatus = 'failed';
+                     tracker.testSystem.lastTestName = name;
                      throw error;
                   }
                }
@@ -322,6 +343,7 @@ function defineBunIt(tracker: TestEnvTracker) {
 function attachTestLivecycleHook(
    buffer: { stdout: string; stderr: string; logs: string },
    tracker: TestEnvTracker,
+   testLogDir: string,
    autoResetBuffer: boolean = true
 ) {
    tracker.testSystem.buffer = buffer;
@@ -342,6 +364,19 @@ function attachTestLivecycleHook(
                strWrap(buffer.logs, 100, { indent: 2 })
             );
       }
+
+      // Write logs to a file for debugging.
+      const logFilePath = path.join(
+         testLogDir,
+         `test-${tracker.testSystem.lastTestName.replaceAll(/[^a-zA-Z0-9]/g, '_')}.log`
+      );
+      fs.writeFile(
+         logFilePath,
+         `STDOUT:\n${buffer.stdout}\n\nSTDERR:\n${buffer.stderr}\n\nLOGS:\n${buffer.logs}`,
+         'utf-8'
+      ).catch((err) => {
+         console.error(`Failed to write test logs to file: ${err}`);
+      });
 
       done();
    });

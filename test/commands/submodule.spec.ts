@@ -2,12 +2,13 @@ import { afterAll, describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
+import { addSubmodule } from '@/modules/git';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { asUnixPath } from '@/utils/path';
 
 describe('gdx submodule switch', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, tracker } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, it, tracker } = await createTestEnv({
       autoResetBuffer: true,
    });
    const previousGdxResult = process.env.GDX_RESULT;
@@ -23,7 +24,6 @@ describe('gdx submodule switch', async () => {
       } else {
          delete process.env.GDX_RESULT;
       }
-      cleanup();
    });
 
    it('should switch to another submodule from inside a submodule', async () => {
@@ -50,8 +50,8 @@ describe('gdx submodule switch', async () => {
 
       const submoduleUrl = asUnixPath(submoduleRoot);
       const otherSubmoduleUrl = asUnixPath(otherSubmoduleRoot);
-      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${submoduleUrl} ${'deps/submodule-one'}`;
-      await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule add ${otherSubmoduleUrl} ${'deps/submodule-two'}`;
+      await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule-one');
+      await addSubmodule(git$, tmpDir, otherSubmoduleUrl, 'deps/submodule-two');
       await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule-one'} ${'deps/submodule-two'}`;
       await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodules'}`;
 

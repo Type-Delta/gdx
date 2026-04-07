@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
@@ -8,8 +8,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import global from '@/global';
 
 describe('gdx __completion', async () => {
-   const { tmpDir, tmpRootDir, cleanup, buffer, it } = await createTestEnv();
-   afterAll(cleanup);
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv();
 
    it('suggests using command structure and preserves log level', async () => {
       const previous = global.logLevel;

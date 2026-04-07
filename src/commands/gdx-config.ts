@@ -136,6 +136,18 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
    const defaultValue = config.get(key);
    let parsedValue: any = value;
 
+   // TODO: make a proper schema validation
+   if (key === 'useInlineSubmodule') {
+      const allowed = ['off', 'internal', 'all'];
+      if (!allowed.includes(value)) {
+         Logger.error(
+            `Expected one of ${allowed.join(', ')} for '${key}', got '${value}'`,
+            'gdx-config'
+         );
+         return 1;
+      }
+   }
+
    if (typeof defaultValue === 'number') {
       const num = Number(value);
       if (isNaN(num)) {
@@ -161,10 +173,7 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
 
 export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
-   const { match: subcommand } = progressiveMatch(
-      inputCommand,
-      ['list', 'path']
-   );
+   const { match: subcommand } = progressiveMatch(inputCommand, ['list', 'path']);
 
    if (subcommand === 'list') {
       return await listConfig();

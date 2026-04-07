@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, describe, expect } from 'bun:test';
+import { beforeAll, describe, expect } from 'bun:test';
 import * as fs from '@/modules/fs';
 import path from 'path';
 
 import status from '@/commands/status';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
+import { addSubmodule } from '@/modules/git';
 
 describe('gdx status', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv();
 
    // Setup submodule for tests that need it
    let submoduleCreated = false;
@@ -24,8 +25,6 @@ describe('gdx status', async () => {
          // Ignore if config fails
       }
    });
-
-   afterAll(cleanup);
 
    it('should pass through to git status without recursive flag', async () => {
       // Create a file to show in status
@@ -61,7 +60,7 @@ describe('gdx status', async () => {
 
          // Add as submodule to main repo
          try {
-            await $`${git} submodule add ${submoduleDir} mysubmodule`;
+            await addSubmodule(git, tmpDir, submoduleDir, 'mysubmodule');
             await $`${git} add .gitmodules mysubmodule`;
             await $`${git} commit -m ${'Add submodule'}`;
             submoduleCreated = true;

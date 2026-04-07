@@ -1,10 +1,11 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import { CheckCache } from '@lib/Tools';
 
 import { getCache, resetCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
+import { addSubmodule } from '@/modules/git';
 import { stripAnsiColor } from '@/modules/graphics';
 import { languageConsts } from '@/modules/languages';
 
@@ -12,7 +13,7 @@ import stats from '@/commands/stats';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv({ autoResetBuffer: true });
+   const { tmpDir, $, buffer, it } = await createTestEnv({ autoResetBuffer: true });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 
@@ -40,8 +41,6 @@ describe('gdx stats', async () => {
    }
 
    await seedLanguageCatalog();
-
-   afterAll(cleanup);
 
    it('should fail if no email configured (and not provided)', async () => {
       await seedLanguageCatalog();
@@ -146,7 +145,7 @@ describe('gdx stats', async () => {
       await $`${git$} -C ${submoduleRepoPath} add README.md`;
       await $`${git$} -C ${submoduleRepoPath} commit -m ${'init submodule repo'}`;
 
-      await $`${git$} -c protocol.file.allow=always submodule add ${submoduleRepoPath} deps/sub-one`;
+      await addSubmodule(git$, tmpDir, submoduleRepoPath, 'deps/sub-one');
       await $`${git$} add .gitmodules deps/sub-one`;
       await $`${git$} commit -m ${'add submodule'}`;
 

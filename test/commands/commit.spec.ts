@@ -1,4 +1,4 @@
-import { afterAll, describe, expect } from 'bun:test';
+import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import { mkdirSync } from 'fs';
 import path from 'path';
@@ -24,11 +24,9 @@ describe('gdx commit auto', async () => {
    // Set comprehensive mode via env var before creating test env
    process.env.GDX_COMMIT_PATTERN = 'comprehensive';
 
-   const { tmpDir, $, buffer, cleanup, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv();
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
-
-   afterAll(cleanup);
 
    it('should fail if no staged changes', async () => {
       const result = await commit.auto(ctx);
@@ -103,11 +101,9 @@ describe('gdx commit auto - inherit mode', async () => {
    // Use inherit mode for these tests
    process.env.GDX_COMMIT_PATTERN = 'inherit';
 
-   const { tmpDir, tmpRootDir, $, buffer, cleanup, it, resetRepo } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv();
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
-
-   afterAll(cleanup);
 
    it('should cache commit guidelines when repo has sufficient history', async () => {
       // Reset cache to ensure clean state
