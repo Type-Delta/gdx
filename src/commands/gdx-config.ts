@@ -175,7 +175,7 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
    const { match: subcommand } = progressiveMatch(inputCommand, ['list', 'path']);
 
-   if (subcommand === 'list') {
+   if (subcommand === 'list' || !inputCommand) {
       return await listConfig();
    } else if (subcommand === 'path') {
       const config = await getConfig();

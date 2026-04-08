@@ -19,7 +19,7 @@ export function setQuickPrintWriter(writer: QuickPrintWriter | null): void {
    quickPrintWriter = writer;
 }
 
-export function quickPrint(msg: string, end: string = '\n'): void {
+export function quickPrint(msg: string = '', end: string = '\n'): void {
    if (quickPrintWriter) {
       quickPrintWriter(msg + end);
       return;

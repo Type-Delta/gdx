@@ -7,19 +7,22 @@ import { LLMProvider } from './types';
 import { MockLLMAdapter } from './mock';
 
 export async function getLLMProvider(): Promise<LLMProvider> {
-   if (process.env.NODE_ENV === 'test') {
-      return new MockLLMAdapter();
+   const config = await getConfig();
+   let providerType = config.get<string>('llm.provider') || 'openai';
+
+   if (process.env.NODE_ENV === 'test' || providerType === 'mock') {
+      return new MockLLMAdapter(providerType === 'mock' ? {
+         responseDelayMs: 2300,
+         streamDelayMs: 10,
+      } : {});
    }
 
-   const config = await getConfig();
-
-   let providerType = config.get<string>('llm.provider') || 'openai';
    const apiKey = await config.getSecure<string>('llm.apiKey');
    const model = config.get<string>('llm.model');
 
    if (!apiKey) {
       throw new Err(
-         'No API key found. Please set llm.apiKey in ~/.gdx/.gdxrc.toml or GDX_LLM_API_KEY env var.',
+         'No API key found. Please set llm.apiKey with gdx-config command or GDX_LLM_API_KEY env var.',
          'NO_API_KEY'
       );
    }

@@ -8,7 +8,7 @@ import Logger from '../utils/logger';
 import { nocapPrompt } from '../templates/prompts';
 import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
-import { _2PointGradient } from '@/modules/graphics';
+import { _2PointGradient, redrawText } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
@@ -53,7 +53,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
          reasoning: 'low',
       });
 
-      let res = '';
+      let generatedMsg = '';
       let hasReceivedContent = false;
 
       for await (const response of connection) {
@@ -72,16 +72,25 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
                spin.stop();
             }
             quickPrint(response.chunk, '');
-            res += response.chunk;
+            generatedMsg += response.chunk;
          }
       }
 
-      quickPrint('\n');
-
-      if (!res) {
+      if (!generatedMsg) {
+         quickPrint('\n');
          Logger.error('Unable to generate response (empty response).', 'nocap');
          return 1;
       }
+
+      const originalMsg = generatedMsg;
+      generatedMsg = generatedMsg.replace(/(^\s*["'`]*|["'`]*\s*$)/g, '');
+      generatedMsg = strWrap(generatedMsg, 72, {
+         mode: 'softboundary',
+         redundancyLv: 2,
+      });
+
+      redrawText(originalMsg, generatedMsg); // replace streaming prompt with wrapped version
+      quickPrint();
 
       return 0;
    } catch (err) {

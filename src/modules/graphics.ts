@@ -456,3 +456,22 @@ export function serializeAnsiStyles(
    }
    return result;
 }
+
+/**
+ * Redraws text in the terminal by moving the cursor up to the start of the previous text and overwriting it with new text.
+ * This is useful for updating progress messages or dynamic content without adding new lines.
+ */
+export function redrawText(prev: string, next: string): void {
+   const originalLnCount = prev.length - prev.replace(/\n/g, '').length + 1;
+
+   // Move cursor up to the start of the original message
+   process.stdout.write(`\x1b[${originalLnCount}F`);
+
+   // Clear from cursor to end of screen
+   process.stdout.write(`\x1b[0J`);
+
+   // Rewrite message line by line, clearing each line first
+   for (const line of next.split('\n')) {
+      process.stdout.write(`\x1b[2K${line}\n`);
+   }
+}

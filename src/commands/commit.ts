@@ -16,7 +16,7 @@ import {
    guidelineLearningPrompt,
 } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, GDX_VPALETTE } from '@/consts';
-import { _2PointGradient } from '@/modules/graphics';
+import { _2PointGradient, redrawText } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
@@ -237,13 +237,13 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          }
       }
 
-      quickPrint('\n'); // 2 Final newline after message output
-
       if (!generatedMsg) {
+         quickPrint('\n'); // 2 Final newline after message output
          Logger.error('Unable to generate commit message (empty response).', 'commit');
          return 1;
       }
 
+      const originalMsg = generatedMsg;
       generatedMsg = generatedMsg.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
 
       const titleBodySplit = generatedMsg.indexOf('\n');
@@ -258,6 +258,9 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
                redundancyLv: -1,
             }); // Wrap at 72 chars
       }
+
+      redrawText(originalMsg, generatedMsg); // replace streaming prompt with wrapped version
+      quickPrint();
 
       const shouldNoCommit = args.includes('--no-commit') || args.includes('-nc');
       const shouldYes = args.includes('--yes') || args.includes('-y');
