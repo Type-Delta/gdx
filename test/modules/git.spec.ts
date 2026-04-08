@@ -8,6 +8,8 @@ import {
    getMainWorktreeRoot,
    updateSubmodules,
    isEmptyCherryPickError,
+   revParseCached,
+   hasCherryPickInProgress,
 } from '@/modules/git';
 import { getConfig, resetConfig } from '@/common/config';
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
@@ -172,6 +174,53 @@ describe('git module', async () => {
          stderr: 'The previous cherry-pick is now empty, possibly due to conflict resolution.',
       };
       expect(isEmptyCherryPickError(err)).toBe(true);
+   });
+
+   it('should resolve rev-parse through wrapper with -C scope', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const branch = (await revParseCached(git$, '--abbrev-ref HEAD')).trim();
+      expect(branch).toBe('master');
+
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const scoped = [gitExe, '-C', tmpDir];
+      const headFromScoped = (await revParseCached(scoped, 'HEAD')).trim();
+      const headFromDirect = (await revParseCached(git$, 'HEAD', tmpDir)).trim();
+      expect(headFromScoped).toBe(headFromDirect);
+   });
+
+   it('should detect cherry-pick in progress via git-path check', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const forkPath = path.join(tmpRootDir, 'cherry-pick-check');
+
+      await $`${gitExe} -C ${tmpDir} commit --allow-empty -m ${'base for cherry-pick check'}`;
+      await $`${gitExe} -C ${tmpDir} worktree add ${forkPath} -b ${'cherry-pick-check'}`;
+
+      try {
+         await fs.writeFile(path.join(tmpDir, 'conflict-check.txt'), 'origin\n');
+         await $`${gitExe} -C ${tmpDir} add conflict-check.txt`;
+         await $`${gitExe} -C ${tmpDir} commit -m ${'origin change for cherry-pick check'}`;
+
+         await fs.writeFile(path.join(forkPath, 'conflict-check.txt'), 'fork\n');
+         await $`${gitExe} -C ${forkPath} add conflict-check.txt`;
+         await $`${gitExe} -C ${forkPath} commit -m ${'fork change for cherry-pick check'}`;
+
+         const forkHead = (await $`${gitExe} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+         let cherryPickFailed = false;
+         try {
+            await $`${gitExe} -C ${tmpDir} cherry-pick ${forkHead}`;
+         } catch {
+            cherryPickFailed = true;
+         }
+         expect(cherryPickFailed).toBe(true);
+
+         expect(await hasCherryPickInProgress(git$, tmpDir)).toBe(true);
+
+         await $`${gitExe} -C ${tmpDir} cherry-pick --abort`;
+         expect(await hasCherryPickInProgress(git$, tmpDir)).toBe(false);
+      } finally {
+         await $`${gitExe} worktree remove --force ${forkPath}`;
+      }
    });
 
    it('should detect empty cherry-pick errors with ANSI output', async () => {

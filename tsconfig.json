@@ -101,5 +101,5 @@
       }
    },
    "include": ["./src/**/*.ts", "./scripts/**/*.ts", "./test/**/*.ts"],
-   "exclude": ["./test/dev/**"]
+   "exclude": ["./test/dev/**", "./test/env/**"]
 }

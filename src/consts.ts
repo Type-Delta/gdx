@@ -90,6 +90,8 @@ export const DEFAULT_SPINNER: readonly string[] = [
    '⠀⠀',
    '⠀⠀',
    '⠀⠀',
+   '⠀⠀',
+   '⠀⠀',
 ];
 
 export const STATS_EST = {

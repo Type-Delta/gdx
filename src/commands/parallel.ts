@@ -48,6 +48,7 @@ import {
    getCommitRangeLog,
    forceColorArgs,
    getRevParseCached,
+   revParseCached,
 } from '@/modules/git';
 import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
@@ -109,6 +110,12 @@ const PARALLEL_CONTEXT_TTL_MS = 1000;
 let parallelContextCache: {
    cacheKey: string;
    context: ParallelContext | null;
+   expiresAt: number;
+} | null = null;
+
+let submoduleLocationCache: {
+   cacheKey: string;
+   value: { repoRoot: string; superprojectPath: string | null; submodulePath: string | null };
    expiresAt: number;
 } | null = null;
 
@@ -223,25 +230,42 @@ function resetParallelJoinState(meta: ParallelMetadata, baseCommit: string): voi
 async function getCurrentSubmodulePath(
    git$: string | string[]
 ): Promise<{ repoRoot: string; superprojectPath: string | null; submodulePath: string | null }> {
-   const repoRoot = await getRepoRootCached(git$);
-   let superprojectPath: string | null = null;
-
-   try {
-      const output = (await $`${git$} rev-parse --show-superproject-working-tree`).stdout.trim();
-      superprojectPath = output || null;
-   } catch {
-      superprojectPath = null;
+   const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
+   const cacheKey = `${gitKey}|${path.resolve(process.cwd())}`;
+   if (submoduleLocationCache && submoduleLocationCache.cacheKey === cacheKey) {
+      if (Date.now() <= submoduleLocationCache.expiresAt) {
+         return submoduleLocationCache.value;
+      }
+      submoduleLocationCache = null;
    }
+
+   const repoRoot = await getRepoRootCached(git$);
+   const superprojectOutput = (
+      await revParseCached(git$, '--show-superproject-working-tree')
+   ).trim();
+   const superprojectPath = superprojectOutput || null;
 
    if (!superprojectPath) {
-      return { repoRoot, superprojectPath: null, submodulePath: null };
+      const value = { repoRoot, superprojectPath: null, submodulePath: null };
+      submoduleLocationCache = {
+         cacheKey,
+         value,
+         expiresAt: Date.now() + PARALLEL_CONTEXT_TTL_MS,
+      };
+      return value;
    }
 
-   return {
+   const value = {
       repoRoot,
       superprojectPath,
       submodulePath: asUnixPath(path.relative(superprojectPath, repoRoot)),
    };
+   submoduleLocationCache = {
+      cacheKey,
+      value,
+      expiresAt: Date.now() + PARALLEL_CONTEXT_TTL_MS,
+   };
+   return value;
 }
 
 async function getParallelScope(git$: string | string[]): Promise<{
@@ -813,17 +837,11 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
    const gitExec = scope.gitExec;
    let baseCommit = (await getRevParseCached(gitExec, ctx.repoRoot, 'HEAD')).trim();
    if (forkRef) {
-      try {
-         baseCommit = (await $`${scopeGit$} rev-parse ${forkRef}`).stdout.trim() || baseCommit;
-      } catch {
-         // ignore and keep origin HEAD
-      }
+      const resolvedForkRef = (await revParseCached(scopeGit$, forkRef)).trim();
+      if (resolvedForkRef) baseCommit = resolvedForkRef;
    } else if (forkBranch) {
-      try {
-         baseCommit = (await $`${scopeGit$} rev-parse ${forkBranch}`).stdout.trim() || baseCommit;
-      } catch {
-         // ignore and keep origin HEAD
-      }
+      const resolvedForkBranch = (await revParseCached(scopeGit$, forkBranch)).trim();
+      if (resolvedForkBranch) baseCommit = resolvedForkBranch;
    }
 
    // Check for changes
@@ -1122,8 +1140,8 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             : baseCommit;
 
       const spinnerCtrl = spinner({ message: `Gatering information for ${aliasLabel}...` });
-      const originHead = await getRevParseCached(gitExec, ctx.originPath, 'HEAD');
-      const originHeadRef = originHead.trim() ? [originHead.trim()] : [];
+      const originHead = (await getRevParseCached(gitExec, ctx.originPath, 'HEAD')).trim();
+      const originHeadRef = originHead ? [originHead] : [];
       const maxLogCount = isShortOutput ? 3 : undefined;
       const [statusOutputRaw, comparison, mainLog, submoduleLog] = await Promise.all([
          // get dirty status
@@ -1131,7 +1149,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
             r.stdout.trim()
          ),
          // Get commit comparison with origin
-         getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart),
+         getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart, originHead),
          mainRangeStart
             ? getCommitRangeLog({
                  gitExec,
@@ -1489,9 +1507,9 @@ async function hasMergeTreeConflicts(options: {
 }): Promise<boolean> {
    const { gitExec, originRepoPath, forkRepoPath, commit } = options;
    try {
-      const parent = (await $`${gitExec} -C ${forkRepoPath} rev-parse ${commit}^`).stdout.trim();
+      const parent = (await getRevParseCached(gitExec, forkRepoPath, `${commit}^`)).trim();
       if (!parent) return false;
-      const originHead = (await $`${gitExec} -C ${originRepoPath} rev-parse HEAD`).stdout.trim();
+      const originHead = (await getRevParseCached(gitExec, originRepoPath, 'HEAD')).trim();
       if (!originHead) return false;
       const output = (
          await $`${gitExec} -C ${originRepoPath} merge-tree ${parent} ${originHead} ${commit}`
@@ -1510,9 +1528,9 @@ async function hasOverlapConflicts(options: {
 }): Promise<boolean> {
    const { gitExec, originRepoPath, forkRepoPath, commit } = options;
    try {
-      const parent = (await $`${gitExec} -C ${forkRepoPath} rev-parse ${commit}^`).stdout.trim();
+      const parent = (await getRevParseCached(gitExec, forkRepoPath, `${commit}^`)).trim();
       if (!parent) return false;
-      const originHead = (await $`${gitExec} -C ${originRepoPath} rev-parse HEAD`).stdout.trim();
+      const originHead = (await getRevParseCached(gitExec, originRepoPath, 'HEAD')).trim();
       if (!originHead) return false;
 
       const forkFilesOutput = (
@@ -1942,9 +1960,10 @@ async function interactiveCherryPickDecision(
 
 async function undoLastCherryPick(git$: string | string[], repoPath: string): Promise<boolean> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   try {
-      await $`${gitExec} -C ${repoPath} rev-parse --verify HEAD~1`;
-   } catch {
+   const parentHead = (
+      await getRevParseCached(gitExec, repoPath, ['-q', '--verify', 'HEAD~1'])
+   ).trim();
+   if (!parentHead) {
       Logger.error('No commit available to undo.', 'parallel');
       return false;
    }
@@ -3122,15 +3141,19 @@ async function getCommitComparison(
    git$: string | string[],
    worktreePath: string,
    originPath: string,
-   baseCommit?: string
+   baseCommit?: string,
+   originHeadInput?: string
 ): Promise<{ ahead: number; behind: number }> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    try {
       // Get HEAD of both worktrees
-      const [wtHead, originHead] = await Promise.all([
+      const [wtHead, resolvedOriginHead] = await Promise.all([
          getRevParseCached(gitExec, worktreePath, 'HEAD').then((r) => r.trim()),
-         getRevParseCached(gitExec, originPath, 'HEAD').then((r) => r.trim()),
+         originHeadInput !== undefined
+            ? Promise.resolve(originHeadInput.trim())
+            : getRevParseCached(gitExec, originPath, 'HEAD').then((r) => r.trim()),
       ]);
+      const originHead = resolvedOriginHead;
 
       if (wtHead === originHead) {
          return { ahead: 0, behind: 0 };
@@ -3140,7 +3163,7 @@ async function getCommitComparison(
       let behind = 0;
       await Promise.all([
          (async () => {
-            // Count commits ahead (in worktree but not in origin)
+            // Count commits ahead (in worktree but not in origin/base)
             try {
                const rangeStart = baseCommit || originHead;
                const aheadOutput = (
@@ -3148,7 +3171,6 @@ async function getCommitComparison(
                ).stdout.trim();
                ahead = parseInt(aheadOutput, 10) || 0;
             } catch {
-               // If the range is invalid, might be diverged completely
                ahead = 0;
             }
          })(),
@@ -3160,7 +3182,6 @@ async function getCommitComparison(
                ).stdout.trim();
                behind = parseInt(behindOutput, 10) || 0;
             } catch {
-               // If the range is invalid, might be diverged completely
                behind = 0;
             }
          })(),

@@ -14,6 +14,7 @@ import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
+import { stripAnsiColor } from '@/modules/graphics';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
@@ -372,7 +373,7 @@ function attachTestLivecycleHook(
       );
       fs.writeFile(
          logFilePath,
-         `STDOUT:\n${buffer.stdout}\n\nSTDERR:\n${buffer.stderr}\n\nLOGS:\n${buffer.logs}`,
+         `STDOUT:\n${buffer.stdout}\n\nSTDERR:\n${buffer.stderr}\n\nLOGS:\n${stripAnsiColor(buffer.logs)}`,
          'utf-8'
       ).catch((err) => {
          console.error(`Failed to write test logs to file: ${err}`);

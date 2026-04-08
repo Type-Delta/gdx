@@ -54,6 +54,7 @@ export interface CommitLogResult {
 
 const GIT_HEAD_CACHE_TTL_MINUTES = 360;
 const GIT_PATH_CACHE_TTL_MINUTES = 360;
+const revParseInFlight = new Map<string, Promise<string>>();
 
 function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
@@ -64,6 +65,54 @@ function getGitScope(git$: string | string[], worktreePath?: string): string {
    const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
    const basePath = worktreePath ? path.resolve(worktreePath) : process.cwd();
    return `${gitKey}|${basePath}`;
+}
+
+function resolveGitExecAndRepoPath(
+   git$: string | string[],
+   repoPath?: string
+): { gitExec: string; repoPath: string } {
+   const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   if (repoPath) {
+      return { gitExec, repoPath: path.resolve(repoPath) };
+   }
+
+   if (Array.isArray(git$)) {
+      for (let i = git$.length - 2; i >= 0; i--) {
+         if (git$[i] !== '-C') continue;
+         const candidate = git$[i + 1];
+         if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            return { gitExec, repoPath: path.resolve(candidate) };
+         }
+      }
+   }
+
+   return { gitExec, repoPath: process.cwd() };
+}
+
+function isHeadSensitiveRevParse(refArgs: string[]): boolean {
+   return refArgs.some((arg) => /^head(?:[~^].*)?$/i.test(arg));
+}
+
+/**
+ * Runs `git rev-parse` with automatic cache scoping.
+ *
+ * This wrapper resolves the repository path from either:
+ * - explicit `repoPath`
+ * - `-C <path>` inside `git$`
+ * - current working directory (fallback)
+ *
+ * @param git$ - Git executable path or command array.
+ * @param ref - rev-parse arguments/ref.
+ * @param repoPath - Optional repository path override.
+ * @returns The resolved output string, or empty string on failure.
+ */
+export async function revParseCached(
+   git$: string | string[],
+   ref: string | string[],
+   repoPath?: string
+): Promise<string> {
+   const resolved = resolveGitExecAndRepoPath(git$, repoPath);
+   return await getRevParseCached(resolved.gitExec, resolved.repoPath, ref);
 }
 
 /**
@@ -326,22 +375,8 @@ export async function hasCherryPickInProgress(
    git$: string | string[],
    originPath: string
 ): Promise<boolean> {
-   const cache = await getCache();
-   const cacheKey = createCacheKey(
-      'git.cherryPickInProgress',
-      `${getGitScope(git$, originPath)}|${path.resolve(originPath)}`
-   );
-   const cached = await cache.getOneOff<boolean>(cacheKey);
-   if (cached !== undefined) return cached;
-
-   try {
-      await $`${git$} -C ${originPath} rev-parse -q --verify CHERRY_PICK_HEAD`;
-      await cache.setOneOff(cacheKey, true);
-      return true;
-   } catch {
-      await cache.setOneOff(cacheKey, false);
-      return false;
-   }
+   const cherryPickHeadPath = await getGitPath(git$, originPath, 'CHERRY_PICK_HEAD');
+   return !!cherryPickHeadPath && fs.existsSync(cherryPickHeadPath);
 }
 
 /**
@@ -777,12 +812,11 @@ export async function getRevParseCached(
    const cache = await getCache();
    const refArgs = Array.isArray(ref) ? ref : ref.trim().split(/\s+/).filter(Boolean);
    const refKey = refArgs.join(' ');
-   const scope = `${gitExec}|${path.resolve(repoPath)}|${refKey}`;
+   const resolvedRepoPath = path.resolve(repoPath);
+   const scope = `${gitExec}|${resolvedRepoPath}|${refKey}`;
    const cacheKey = createCacheKey('git.revParse', scope);
-   const isHeadRef =
-      (refArgs.length === 1 && refArgs[0] === 'HEAD') ||
-      (refArgs.length === 2 && refArgs[0] === '--abbrev-ref' && refArgs[1] === 'HEAD');
-   const headSignature = isHeadRef ? await getHeadSignature(gitExec, repoPath) : null;
+   const isHeadRef = isHeadSensitiveRevParse(refArgs);
+   const headSignature = isHeadRef ? await getHeadSignature(gitExec, resolvedRepoPath) : null;
    if (isHeadRef && headSignature !== null) {
       const cached = await cache.get<{ value: string; signature: string | null }>(cacheKey);
       if (cached && cached.signature === headSignature) return cached.value;
@@ -791,34 +825,48 @@ export async function getRevParseCached(
       if (cached !== undefined) return cached;
    }
 
+   const inFlightKey = isHeadRef ? `${cacheKey}|${headSignature ?? 'none'}` : cacheKey;
+   const existingPromise = revParseInFlight.get(inFlightKey);
+   if (existingPromise) return await existingPromise;
+
+   const resolvePromise = (async () => {
+      try {
+         const args = ['-C', resolvedRepoPath, 'rev-parse', ...refArgs];
+         const output = (await $`${gitExec} ${args}`).stdout.trim();
+         if (isHeadRef && headSignature !== null) {
+            await cache.set(
+               cacheKey,
+               { value: output, signature: headSignature },
+               {
+                  maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+               }
+            );
+         } else {
+            await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+         }
+         return output;
+      } catch {
+         if (isHeadRef && headSignature !== null) {
+            await cache.set(
+               cacheKey,
+               { value: '', signature: headSignature },
+               {
+                  maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+               }
+            );
+         } else {
+            await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+         }
+         return '';
+      }
+   })();
+
+   revParseInFlight.set(inFlightKey, resolvePromise);
+
    try {
-      const args = ['-C', repoPath, 'rev-parse', ...refArgs];
-      const output = (await $`${gitExec} ${args}`).stdout.trim();
-      if (isHeadRef && headSignature !== null) {
-         await cache.set(
-            cacheKey,
-            { value: output, signature: headSignature },
-            {
-               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-            }
-         );
-      } else {
-         await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
-      }
-      return output;
-   } catch {
-      if (isHeadRef && headSignature !== null) {
-         await cache.set(
-            cacheKey,
-            { value: '', signature: headSignature },
-            {
-               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-            }
-         );
-      } else {
-         await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
-      }
-      return '';
+      return await resolvePromise;
+   } finally {
+      revParseInFlight.delete(inFlightKey);
    }
 }
 
