@@ -4,16 +4,23 @@ import {
    GIT_GLOBAL_OPTIONS_NO_VALUES,
    GIT_GLOBAL_OPTIONS_WITH_VALUES,
 } from '@/consts';
+import { Err } from '@lib/Tools';
 
 const GDX_OPTIONS_WITH_VALUES_LIST = [...GDX_OPTIONS_WITH_VALUES] as string[];
 const GDX_OPTIONS_NO_VALUES_LIST = [...GDX_OPTIONS_NO_VALUES] as string[];
 const GIT_GLOBAL_OPTIONS_WITH_VALUES_LIST = [...GIT_GLOBAL_OPTIONS_WITH_VALUES] as string[];
 const GIT_GLOBAL_OPTIONS_NO_VALUES_LIST = [...GIT_GLOBAL_OPTIONS_NO_VALUES] as string[];
+const OPTION_PREFIXES = ['--', '-'];
 
 export class ArgsSet extends Array<string> {
+   argIndexes: Map<string, number> = new Map();
+
    constructor(args: string[]) {
+      // @ts-expect-error - allow dynamic super() call with array elements
       if (Array.isArray(args)) super(...args);
       else super(args);
+
+      this.indexArgs();
    }
 
    /**
@@ -88,6 +95,46 @@ export class ArgsSet extends Array<string> {
    }
 
    /**
+    * Pops the value of the given argument and removes both the argument and its value from the array.
+    * If the argument is in the form `--arg=value`, it extracts the value and removes only the argument.
+    *
+    * Throws an error if the argument is found but no value is provided.
+    *
+    * @param arg The argument to pop the value for.
+    * @param from The index after which to search for the argument.
+    * @param valSameIdxOnly If true, only considers values in the same index (i.e., `--arg=value`).
+    * @returns The value associated with the argument, or null if not found.
+    */
+   popAssertValue(arg: string, from: number = 0, valSameIdxOnly: boolean = false): string | null {
+      const index = this.optionIndexOf(arg, from);
+      if (index !== -1) {
+         let value: string | null = null;
+
+         if (arg.includes('=')) {
+            // Argument is in the form --arg=value
+            value = getValueFromOption(this[index]);
+            this.splice(index, 1);
+         } else if (
+            !valSameIdxOnly &&
+            index + 1 < this.length &&
+            !this[index + 1].startsWith('-')
+         ) {
+            // Argument is in the form --arg value
+            value = this[index + 1];
+            this.splice(index, 2);
+         } else {
+            // Argument found but no value present
+            throw new Err(
+               `Options "${arg}" requires a value, but none was provided.`,
+               'MISSING_OPTION_VALUE'
+            );
+         }
+         return value;
+      }
+      return null;
+   }
+
+   /**
     * Pops the specified argument from the array.
     * @param arg The argument to pop.
     * @param from The index after which to search for the argument.
@@ -153,6 +200,52 @@ export class ArgsSet extends Array<string> {
     */
    toArray(): string[] {
       return super.slice(0);
+   }
+
+   splice(start: number, deleteCount?: number, ...rest: string[]): string[] {
+      const result = super.splice(start, deleteCount || 0, ...rest);
+      if (rest.length) {
+         this.indexArgs(start, start + rest.length);
+      }
+      else if (deleteCount) {
+         this.lshiftIndexes(start, deleteCount);
+      }
+      return result;
+   }
+
+   indexOf(arg: string, from: number = 0): number {
+      let idx = this.argIndexes.get(arg);
+      if (idx === undefined || idx < from) {
+         idx = super.indexOf(arg, from);
+         if (idx !== -1) {
+            this.argIndexes.set(arg, idx);
+         }
+      }
+      return idx;
+   }
+
+   private indexArgs(start = 0, end = this.length): void {
+      this.argIndexes.clear();
+      for (let i = start; i < end; i++) {
+         const token = this[i];
+         if (!token) continue;
+         if (OPTION_PREFIXES.some(prefix => token.startsWith(prefix))) {
+            const eqIndex = token.indexOf('=');
+            const argName = eqIndex !== -1 ? token.substring(0, eqIndex) : token;
+            // Intentionally overwrite duplicates to get the last occurrence index
+            this.argIndexes.set(argName, i);
+         }
+      }
+   }
+
+   private lshiftIndexes(cursor: number = 0, shift: number = 1): void {
+      const keys = Array.from(this.argIndexes.keys());
+      for (let i = cursor; i < keys.length; i++) {
+         const newIdx = this.argIndexes.get(keys[i])! - shift;
+         if (newIdx > cursor)
+            this.argIndexes.set(keys[i], newIdx);
+         else this.argIndexes.delete(keys[i]);
+      }
    }
 }
 

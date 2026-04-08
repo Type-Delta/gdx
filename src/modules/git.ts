@@ -10,6 +10,7 @@ import { stripAnsiColor } from '@/modules/graphics';
 
 import Logger from '../utils/logger';
 import { asUnixPath } from '@/utils/path';
+import { quickPrint } from '@/utils/utilities';
 import { $, $inherit, createAbortableExec } from './shell';
 import { ArgsSet } from './arguments';
 import { Result } from '@/common/types';
@@ -31,12 +32,43 @@ interface GitmodulesEntry {
    name: string;
    path: string;
    url: string;
+   branch?: string;
 }
 
 type InlineSubmoduleMode = 'off' | 'internal' | 'all';
 
+type SubmoduleUpdateStrategy = 'checkout' | 'merge' | 'rebase';
+
 interface SubmoduleCommandOptions {
    allowFileProtocol?: boolean;
+   quiet?: boolean;
+}
+
+export interface AddSubmoduleOptions extends SubmoduleCommandOptions {
+   force?: boolean;
+   name?: string;
+   branch?: string;
+   reference?: string;
+}
+
+export interface UpdateSubmoduleOptions extends SubmoduleCommandOptions {
+   recursive?: boolean;
+   force?: boolean;
+   init?: boolean;
+   remote?: boolean;
+   noFetch?: boolean;
+   strategy?: SubmoduleUpdateStrategy;
+   recommendShallow?: boolean;
+   reference?: string;
+   singleBranch?: boolean;
+   filter?: string;
+   paths?: string[];
+}
+
+export interface DeinitSubmoduleOptions extends SubmoduleCommandOptions {
+   force?: boolean;
+   all?: boolean;
+   paths?: string[];
 }
 
 /**
@@ -929,13 +961,34 @@ async function getInlineSubmoduleMode(): Promise<InlineSubmoduleMode> {
    return 'internal';
 }
 
-function shouldAllowFileProtocol(options?: SubmoduleCommandOptions): boolean {
-   return options?.allowFileProtocol !== false;
-}
-
 function withFileProtocolFlag(args: string[], allowFileProtocol: boolean): string[] {
    if (!allowFileProtocol) return args;
    return ['-c', 'protocol.file.allow=always', ...args];
+}
+
+function normalizeSubmodulePaths(paths?: string[]): string[] {
+   if (!paths || paths.length === 0) return [];
+   const normalized = new Set<string>();
+   for (const candidate of paths) {
+      const value = normalizeSubmodulePath(candidate);
+      if (!value) continue;
+      normalized.add(value);
+   }
+   return Array.from(normalized);
+}
+
+function matchesSubmodulePath(
+   submodulePath: string,
+   requestedPathSet: Set<string> | null
+): boolean {
+   if (!requestedPathSet || requestedPathSet.size === 0) return true;
+   if (requestedPathSet.has(submodulePath)) return true;
+
+   for (const requestedPath of requestedPathSet) {
+      if (submodulePath.startsWith(requestedPath + '/')) return true;
+   }
+
+   return false;
 }
 
 /**
@@ -959,6 +1012,7 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
    let currentName = '';
    let currentPath = '';
    let currentUrl = '';
+   let currentBranch = '';
 
    const commitCurrent = () => {
       if (!currentPath) return;
@@ -966,6 +1020,7 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
          name: currentName || currentPath,
          path: currentPath,
          url: currentUrl,
+         branch: currentBranch || undefined,
       });
    };
 
@@ -979,6 +1034,7 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
          currentName = sectionMatch[1]?.trim() || '';
          currentPath = '';
          currentUrl = '';
+         currentBranch = '';
          continue;
       }
 
@@ -989,6 +1045,7 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
       const value = kvMatch[2]?.trim() || '';
       if (key === 'path') currentPath = normalizeSubmodulePath(value);
       else if (key === 'url') currentUrl = value;
+      else if (key === 'branch') currentBranch = value;
    }
 
    commitCurrent();
@@ -1004,25 +1061,39 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
 function ensureGitmodulesEntry(
    worktreePath: string,
    submodulePath: string,
-   submoduleUrl: string
+   submoduleUrl: string,
+   options?: { name?: string; branch?: string }
 ): void {
    const normalizedPath = normalizeSubmodulePath(submodulePath);
    const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const normalizedName = options?.name?.trim() || normalizedPath;
+   const normalizedBranch = options?.branch?.trim() || undefined;
    const existing = readGitmodulesEntries(worktreePath);
    const current = existing.get(normalizedPath);
-   if (current && current.url.trim() === normalizedUrl) return;
+   if (
+      current &&
+      current.url.trim() === normalizedUrl &&
+      (current.name || normalizedPath) === normalizedName &&
+      (current.branch?.trim() || undefined) === normalizedBranch
+   ) {
+      return;
+   }
 
    existing.set(normalizedPath, {
-      name: current?.name || normalizedPath,
+      name: normalizedName || current?.name || normalizedPath,
       path: normalizedPath,
       url: normalizedUrl,
+      branch: normalizedBranch,
    });
 
    const gitmodulesPath = path.join(worktreePath, '.gitmodules');
    const rendered = Array.from(existing.values())
       .map((entry) => {
          return (
-            `[submodule "${entry.name}"]\n` + `\tpath = ${entry.path}\n` + `\turl = ${entry.url}`
+            `[submodule "${entry.name}"]\n` +
+            `\tpath = ${entry.path}\n` +
+            `\turl = ${entry.url}` +
+            (entry.branch ? `\n\tbranch = ${entry.branch}` : '')
          );
       })
       .join('\n\n');
@@ -1067,24 +1138,32 @@ async function getSubmoduleGitlinks(
  * @param submoduleUrl - Submodule URL/path.
  * @returns Resolved commit SHA.
  */
-async function resolveSubmoduleSourceHead(gitExec: string, submoduleUrl: string): Promise<string> {
+async function resolveSubmoduleSourceHead(
+   gitExec: string,
+   submoduleUrl: string,
+   options?: { branch?: string }
+): Promise<string> {
    const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const branch = options?.branch?.trim();
+   const branchRef = branch ? `refs/heads/${branch}` : 'HEAD';
    const maybeLocalPath = normalizedUrl.startsWith('file://')
       ? path.resolve(normalizedUrl.replace(/^file:\/\//i, ''))
       : normalizedUrl;
    if (fs.existsSync(maybeLocalPath)) {
-      const localHead = (await $`${gitExec} -C ${maybeLocalPath} rev-parse HEAD`).stdout.trim();
+      const localHead = (
+         await $`${gitExec} -C ${maybeLocalPath} rev-parse ${branch || 'HEAD'}`
+      ).stdout.trim();
       if (localHead) return localHead;
    }
 
-   const remoteHeadLine = (await $`${gitExec} ls-remote ${normalizedUrl} HEAD`).stdout
+   const remoteHeadLine = (await $`${gitExec} ls-remote ${normalizedUrl} ${branchRef}`).stdout
       .trim()
       .split('\n')
       .map((line) => line.trim())
       .find((line) => line.length > 0);
    const remoteHead = remoteHeadLine?.split(/\s+/)[0]?.trim() || '';
    if (!remoteHead) {
-      throw new Error(`Unable to resolve HEAD for submodule source '${normalizedUrl}'.`);
+      throw new Error(`Unable to resolve ${branchRef} for submodule source '${normalizedUrl}'.`);
    }
    return remoteHead;
 }
@@ -1113,7 +1192,14 @@ async function cloneSubmoduleWithSeparateGitDir(
    worktreePath: string,
    submoduleUrl: string,
    submodulePath: string,
-   allowFileProtocol: boolean
+   options: {
+      allowFileProtocol: boolean;
+      quiet: boolean;
+      reference?: string;
+      singleBranch?: boolean;
+      filter?: string;
+      branch?: string;
+   }
 ): Promise<void> {
    const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
    const submoduleRepoPath = path.resolve(worktreePath, submodulePath);
@@ -1126,20 +1212,24 @@ async function cloneSubmoduleWithSeparateGitDir(
    const moduleGitDir = path.join(modulesRoot, ...submodulePath.split('/').filter(Boolean));
    fs.mkdirSync(path.dirname(moduleGitDir), { recursive: true });
 
-   const cloneArgs = withFileProtocolFlag(
-      [
-         '-C',
-         worktreePath,
-         'clone',
-         '--quiet',
-         '--no-checkout',
-         '--separate-git-dir',
-         moduleGitDir,
-         normalizedUrl,
-         submodulePath,
-      ],
-      allowFileProtocol
-   );
+   const cloneBaseArgs = [
+      '-C',
+      worktreePath,
+      'clone',
+      '--no-checkout',
+      '--separate-git-dir',
+      moduleGitDir,
+   ];
+
+   if (options.quiet) cloneBaseArgs.push('--quiet');
+   if (options.reference) cloneBaseArgs.push('--reference', options.reference);
+   if (options.singleBranch === true) cloneBaseArgs.push('--single-branch');
+   else if (options.singleBranch === false) cloneBaseArgs.push('--no-single-branch');
+   if (options.filter) cloneBaseArgs.push(`--filter=${options.filter}`);
+   if (options.branch) cloneBaseArgs.push('--branch', options.branch);
+   cloneBaseArgs.push(normalizedUrl, submodulePath);
+
+   const cloneArgs = withFileProtocolFlag(cloneBaseArgs, options.allowFileProtocol);
    await $`${gitExec} ${cloneArgs}`;
 }
 
@@ -1155,63 +1245,94 @@ export async function addSubmodule(
    worktreePath: string,
    submoduleUrl: string,
    submodulePath: string,
-   options?: SubmoduleCommandOptions
+   options?: AddSubmoduleOptions
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const normalizedPath = normalizeSubmodulePath(submodulePath);
    const mode = await getInlineSubmoduleMode();
-   const allowFileProtocol = shouldAllowFileProtocol(options);
+   const allowFileProtocol = options?.allowFileProtocol !== false;
+   const quiet = options?.quiet !== false;
+   const force = !!options?.force;
+   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
+   const branch = options?.branch?.trim() || undefined;
+   const name = options?.name?.trim() || undefined;
+   const reference = options?.reference?.trim() || undefined;
+
    if (!normalizedPath) {
       throw new Error('Submodule path cannot be empty.');
    }
 
    if (mode === 'off') {
-      const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
-      const addArgs = withFileProtocolFlag(
-         ['-C', worktreePath, 'submodule', 'add', normalizedUrl, normalizedPath],
-         allowFileProtocol
-      );
-      await $`${gitExec} ${addArgs}`;
+      const addArgs = ['-C', worktreePath, 'submodule'];
+      if (quiet) addArgs.push('--quiet');
+      addArgs.push('add');
+      if (branch) addArgs.push('--branch', branch);
+      if (force) addArgs.push('--force');
+      if (name) addArgs.push('--name', name);
+      if (reference) addArgs.push('--reference', reference);
+      addArgs.push('--', normalizedUrl, normalizedPath);
+      await $`${gitExec} ${withFileProtocolFlag(addArgs, allowFileProtocol)}`;
       await invalidateSubmodulesCache(git$, worktreePath);
       return;
    }
 
-   const sourceHead = await resolveSubmoduleSourceHead(gitExec, submoduleUrl);
-   const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
-   ensureGitmodulesEntry(worktreePath, normalizedPath, normalizedUrl);
+   const sourceHead = await resolveSubmoduleSourceHead(gitExec, submoduleUrl, { branch });
+   ensureGitmodulesEntry(worktreePath, normalizedPath, normalizedUrl, {
+      name,
+      branch,
+   });
 
    const submoduleRepoPath = path.resolve(worktreePath, normalizedPath);
+   if (fs.existsSync(submoduleRepoPath)) {
+      const currentEntries = fs.readdirSync(submoduleRepoPath);
+      if (currentEntries.length > 0 && !force) {
+         throw new Error(
+            `Submodule path '${normalizedPath}' already exists. Re-run with --force to replace it.`
+         );
+      }
+   }
+
    const gitMarker = path.join(submoduleRepoPath, '.git');
    const markerIsDirectory = fs.existsSync(gitMarker)
       ? await fs
-           .stat(gitMarker)
-           .then((stat) => stat.isDirectory())
-           .catch(() => false)
+         .stat(gitMarker)
+         .then((stat) => stat.isDirectory())
+         .catch(() => false)
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
-      await cloneSubmoduleWithSeparateGitDir(
-         gitExec,
-         worktreePath,
-         normalizedUrl,
-         normalizedPath,
-         allowFileProtocol
-      );
+      await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
+         allowFileProtocol: options?.allowFileProtocol !== false,
+         quiet: !!options?.quiet,
+         reference,
+         branch,
+      });
    }
 
    try {
-      await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${sourceHead}`;
+      const checkoutArgs = ['-C', submoduleRepoPath, 'checkout'];
+      if (quiet) checkoutArgs.push('--quiet');
+      checkoutArgs.push('--detach', sourceHead);
+      await $`${gitExec} ${checkoutArgs}`;
    } catch {
-      const fetchArgs = withFileProtocolFlag(
-         ['-C', submoduleRepoPath, 'fetch', '--quiet', 'origin', sourceHead],
-         allowFileProtocol
-      );
-      await $`${gitExec} ${fetchArgs}`;
-      await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${sourceHead}`;
+      const fetchArgs = ['-C', submoduleRepoPath, 'fetch'];
+      if (quiet) fetchArgs.push('--quiet');
+      fetchArgs.push('origin', sourceHead);
+      await $`${gitExec} ${withFileProtocolFlag(fetchArgs, allowFileProtocol)}`;
+      const checkoutArgs = ['-C', submoduleRepoPath, 'checkout'];
+      if (quiet) checkoutArgs.push('--quiet');
+      checkoutArgs.push('--detach', sourceHead);
+      await $`${gitExec} ${checkoutArgs}`;
    }
 
    await $`${gitExec} -C ${worktreePath} add .gitmodules`;
    await $`${gitExec} -C ${worktreePath} update-index --add --cacheinfo 160000 ${sourceHead} ${normalizedPath}`;
    await invalidateSubmodulesCache(git$, worktreePath);
+
+   if (!quiet) {
+      quickPrint(
+         `Submodule add: path=${normalizedPath} url=${normalizedUrl} commit=${sourceHead}`,
+      );
+   }
 }
 
 /**
@@ -1400,22 +1521,40 @@ export async function getDirtySubmodules(
  */
 export async function deinitSubmodules(
    git$: string | string[],
-   worktreePath: string
+   worktreePath: string,
+   options?: DeinitSubmoduleOptions
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   const force = options?.force !== false;
+   const quiet = options?.quiet !== false;
+   const requestedPaths = normalizeSubmodulePaths(options?.paths);
+   const deinitAll = options?.all === true || requestedPaths.length === 0;
    const mode = await getInlineSubmoduleMode();
+
    if (mode === 'off') {
-      await $`${gitExec} -C ${worktreePath} submodule deinit -f --all`;
+      const deinitArgs: string[] = ['-C', worktreePath, 'submodule'];
+      if (quiet) deinitArgs.push('--quiet');
+      deinitArgs.push('deinit');
+      if (force) deinitArgs.push('--force');
+      if (deinitAll) deinitArgs.push('--all');
+      else deinitArgs.push('--', ...requestedPaths);
+      await $`${gitExec} ${deinitArgs}`;
       await invalidateSubmodulesCache(git$, worktreePath);
+      return;
    }
 
    const submodules = await getSubmodules(git$, worktreePath);
    const gitmodulesEntries = readGitmodulesEntries(worktreePath);
-   const allPaths = new Set<string>([
+   const pathSet = new Set<string>([
       ...submodules.map((submodule) => normalizeSubmodulePath(submodule.path)),
       ...Array.from(gitmodulesEntries.keys()),
    ]);
-   if (allPaths.size === 0) return;
+
+   const requestedPathSet = deinitAll ? null : new Set<string>(requestedPaths);
+   const allPaths = Array.from(pathSet).filter(
+      (submodulePath) => submodulePath && matchesSubmodulePath(submodulePath, requestedPathSet)
+   );
+   if (allPaths.length === 0) return;
 
    for (const submodulePathRaw of allPaths) {
       if (!submodulePathRaw) continue;
@@ -1461,12 +1600,30 @@ export async function deinitSubmodules(
          : '';
       const worktreeModulesRoot = gitDir ? path.join(gitDir, 'modules') : '';
       if (worktreeModulesRoot && fs.existsSync(worktreeModulesRoot)) {
-         fs.rmSync(worktreeModulesRoot, { recursive: true, force: true });
+         if (deinitAll) {
+            fs.rmSync(worktreeModulesRoot, { recursive: true, force: true });
+         } else {
+            for (const submodulePathRaw of allPaths) {
+               const modulePath = path.join(
+                  worktreeModulesRoot,
+                  ...submodulePathRaw.split('/').filter(Boolean)
+               );
+               if (fs.existsSync(modulePath)) {
+                  fs.rmSync(modulePath, { recursive: true, force: true });
+               }
+            }
+         }
       }
    } catch (err) {
       Logger.debug(
          `Failed to clean worktree submodule metadata. ${yuString(err, { color: true })}`,
          'git'
+      );
+   }
+
+   if (!quiet) {
+      quickPrint(
+         `Submodule deinit: ${allPaths.length} path(s) (${allPaths.join(', ')})`,
       );
    }
 
@@ -1482,23 +1639,63 @@ export async function deinitSubmodules(
 export async function updateSubmodules(
    git$: string | string[],
    worktreePath: string,
-   options?: {
-      recursive?: boolean;
-      force?: boolean;
-      allowFileProtocol?: boolean;
-   }
+   options?: UpdateSubmoduleOptions
 ): Promise<void> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const recursive = options?.recursive !== false;
    const force = options?.force === true;
-   const allowFileProtocol = shouldAllowFileProtocol(options);
+   const init = options?.init !== false;
+   const remote = options?.remote === true;
+   const noFetch = options?.noFetch === true;
+   const strategy = options?.strategy || 'checkout';
+   const quiet = options?.quiet !== false;
+   const allowFileProtocol = options?.allowFileProtocol !== false;
+   const requestedPaths = normalizeSubmodulePaths(options?.paths);
+   const requestedPathSet = requestedPaths.length > 0 ? new Set<string>(requestedPaths) : null;
    const mode = await getInlineSubmoduleMode();
 
    if (mode === 'off') {
-      const args = ['-C', worktreePath, 'submodule', 'update'];
+      const args: string[] = ['-C', worktreePath, 'submodule'];
+      if (quiet) args.push('--quiet');
+      args.push('update');
       if (force) args.push('--force');
-      args.push('--init');
+      if (init) args.push('--init');
+      if (options?.filter) args.push(`--filter=${options.filter}`);
+      if (remote) args.push('--remote');
+      if (noFetch) args.push('--no-fetch');
+      if (strategy === 'merge') args.push('--merge');
+      else if (strategy === 'rebase') args.push('--rebase');
+      else args.push('--checkout');
+      if (options?.recommendShallow === true) args.push('--recommend-shallow');
+      else if (options?.recommendShallow === false) args.push('--no-recommend-shallow');
+      if (options?.reference) args.push('--reference', options.reference);
       if (recursive) args.push('--recursive');
+      if (options?.singleBranch === true) args.push('--single-branch');
+      else if (options?.singleBranch === false) args.push('--no-single-branch');
+      if (requestedPaths.length > 0) args.push('--', ...requestedPaths);
+      await $`${gitExec} ${withFileProtocolFlag(args, allowFileProtocol)}`;
+      await invalidateSubmodulesCache(git$, worktreePath);
+      return;
+   }
+
+   if (strategy !== 'checkout') {
+      const args: string[] = ['-C', worktreePath, 'submodule'];
+      if (quiet) args.push('--quiet');
+      args.push('update');
+      if (force) args.push('--force');
+      if (init) args.push('--init');
+      if (options?.filter) args.push(`--filter=${options.filter}`);
+      if (remote) args.push('--remote');
+      if (noFetch) args.push('--no-fetch');
+      if (strategy === 'merge') args.push('--merge');
+      else args.push('--rebase');
+      if (options?.recommendShallow === true) args.push('--recommend-shallow');
+      else if (options?.recommendShallow === false) args.push('--no-recommend-shallow');
+      if (options?.reference) args.push('--reference', options.reference);
+      if (recursive) args.push('--recursive');
+      if (options?.singleBranch === true) args.push('--single-branch');
+      else if (options?.singleBranch === false) args.push('--no-single-branch');
+      if (requestedPaths.length > 0) args.push('--', ...requestedPaths);
       await $`${gitExec} ${withFileProtocolFlag(args, allowFileProtocol)}`;
       await invalidateSubmodulesCache(git$, worktreePath);
       return;
@@ -1511,10 +1708,12 @@ export async function updateSubmodules(
    }
 
    const gitmodulesEntries = readGitmodulesEntries(worktreePath);
+   const updatedPaths: string[] = [];
 
    for (const [submodulePathRaw, targetSha] of gitlinks.entries()) {
       const submodulePath = normalizeSubmodulePath(submodulePathRaw);
       if (!submodulePath || !targetSha) continue;
+      if (!matchesSubmodulePath(submodulePath, requestedPathSet)) continue;
 
       const entry = gitmodulesEntries.get(submodulePath);
       if (!entry?.url) continue;
@@ -1523,45 +1722,95 @@ export async function updateSubmodules(
       const gitMarker = path.join(submoduleRepoPath, '.git');
       const markerIsDirectory = fs.existsSync(gitMarker)
          ? await fs
-              .stat(gitMarker)
-              .then((stat) => stat.isDirectory())
-              .catch(() => false)
+            .stat(gitMarker)
+            .then((stat) => stat.isDirectory())
+            .catch(() => false)
          : false;
 
       if (!fs.existsSync(gitMarker) || markerIsDirectory) {
-         await cloneSubmoduleWithSeparateGitDir(
-            gitExec,
-            worktreePath,
-            entry.url,
-            submodulePath,
-            allowFileProtocol
-         );
+         if (!init) continue;
+
+         await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, entry.url, submodulePath, {
+            allowFileProtocol,
+            quiet,
+            reference: options?.reference,
+            singleBranch: options?.singleBranch,
+            filter: options?.filter,
+            branch: remote ? entry.branch : undefined,
+         });
+      }
+
+      let resolvedTargetSha = targetSha;
+      if (remote) {
+         const remoteBranch = entry.branch?.trim() || 'HEAD';
+
+         if (!noFetch) {
+            const fetchArgs: string[] = ['-C', submoduleRepoPath, 'fetch'];
+            if (quiet) fetchArgs.push('--quiet');
+            fetchArgs.push('origin');
+            if (remoteBranch !== 'HEAD') fetchArgs.push(remoteBranch);
+            await $`${gitExec} ${withFileProtocolFlag(fetchArgs, allowFileProtocol)}`;
+         }
+
+         const remoteRef = remoteBranch === 'HEAD' ? 'origin/HEAD' : `origin/${remoteBranch}`;
+         const remoteHead = (await getRevParseCached(gitExec, submoduleRepoPath, remoteRef)).trim();
+         if (!remoteHead) {
+            throw new Error(
+               `Unable to resolve remote ref '${remoteRef}' for submodule '${submodulePath}'.`
+            );
+         }
+
+         resolvedTargetSha = remoteHead;
       }
 
       const hasCommit = (
          await getRevParseCached(gitExec, submoduleRepoPath, [
             '-q',
             '--verify',
-            `${targetSha}^{commit}`,
+            `${resolvedTargetSha}^{commit}`,
          ])
       ).trim();
       if (!hasCommit) {
+         if (noFetch) {
+            throw new Error(
+               `Missing commit '${resolvedTargetSha}' for submodule '${submodulePath}' and --no-fetch is set.`
+            );
+         }
+
          const fetchArgs = withFileProtocolFlag(
-            ['-C', submoduleRepoPath, 'fetch', '--quiet', 'origin', targetSha],
+            [
+               '-C',
+               submoduleRepoPath,
+               'fetch',
+               ...(quiet ? ['--quiet'] : []),
+               'origin',
+               resolvedTargetSha,
+            ],
             allowFileProtocol
          );
          await $`${gitExec} ${fetchArgs}`;
       }
 
-      if (force) {
-         await $`${gitExec} -C ${submoduleRepoPath} checkout --force --detach ${targetSha}`;
-      } else {
-         await $`${gitExec} -C ${submoduleRepoPath} checkout --quiet --detach ${targetSha}`;
-      }
+      const checkoutArgs: string[] = ['-C', submoduleRepoPath, 'checkout'];
+      if (force) checkoutArgs.push('--force');
+      else if (quiet) checkoutArgs.push('--quiet');
+      checkoutArgs.push('--detach', resolvedTargetSha);
+      await $`${gitExec} ${checkoutArgs}`;
+
+      updatedPaths.push(`${submodulePath}@${resolvedTargetSha}`);
 
       if (recursive) {
-         await updateSubmodules(git$, submoduleRepoPath, options);
+         await updateSubmodules(git$, submoduleRepoPath, {
+            ...options,
+            paths: undefined,
+         });
       }
+   }
+
+   if (updatedPaths.length > 0 && !quiet) {
+      quickPrint(
+         `Submodule update: ${updatedPaths.length} path(s) (${updatedPaths.join(', ')})`,
+      );
    }
 
    await invalidateSubmodulesCache(git$, worktreePath);

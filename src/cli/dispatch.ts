@@ -53,9 +53,9 @@ export async function dispatch(
 
          quickPrint(
             ncc('Dim') +
-               ncc('Magenta') +
-               `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-               ncc()
+            ncc('Magenta') +
+            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
+            ncc()
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -93,10 +93,38 @@ export async function dispatch(
             }
             break;
          case 'submodule': {
-            const subCommands = ['switch'];
+            const subCommands = [
+               'switch',
+               'update',
+               'status',
+               'add',
+               'sync',
+               'summary',
+               'deinit',
+               'foreach',
+            ];
             const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
-            if (subCmdMatch.match !== 'switch') break;
-            return await cmd.submodule.switch(ctx);
+            switch (subCmdMatch.match) {
+               case 'switch':
+                  return await cmd.submodule.switch(ctx);
+               case 'update':
+               case 'add':
+               case 'deinit': {
+                  const forceQuiet = !!args.popOption('--quiet');
+                  args[1] = subCmdMatch.match;
+                  const userSubmoduleResult = await cmd.submodule.handleUserCommand(
+                     ctx,
+                     args.slice(1),
+                     forceQuiet
+                  );
+                  if (typeof userSubmoduleResult === 'number') {
+                     return userSubmoduleResult;
+                  }
+               }
+               default:
+                  if (subCmdMatch.match) args[1] = subCmdMatch.match;
+            }
+            break;
          }
          case 'co': // alias for 'checkout'
             args[0] = 'checkout';
@@ -161,7 +189,7 @@ export async function dispatch(
                } catch (e) {
                   Logger.info(
                      'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
-                        Err.from(e)
+                     Err.from(e)
                   );
                }
             }
@@ -224,8 +252,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            ncc('Yellow') +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              ncc()
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           ncc()
                         );
                      }
                   }
@@ -377,9 +405,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          ncc('Dim') +
-            ncc(rgbVec2decimal(colorVec), 'fg') +
-            `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-            ncc()
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
+         ncc()
       );
    }
 

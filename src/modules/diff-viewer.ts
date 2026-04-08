@@ -714,8 +714,7 @@ export class DiffViewerRenderer implements PagerRenderer {
                deletedLines.length === 1 &&
                addedLines.length === 1 &&
                deletedLines[0].oldLineNum !== undefined &&
-               addedLines[0].newLineNum !== undefined &&
-               deletedLines[0].oldLineNum === addedLines[0].newLineNum;
+               addedLines[0].newLineNum !== undefined;
 
             if (isSingleLineReplacement) {
                const oldLine = deletedLines[0];
