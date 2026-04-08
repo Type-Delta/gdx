@@ -21,6 +21,7 @@ import global from '@/global';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
 import { getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
+import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
 
 /**
  * Generates a hash for the given value.
@@ -148,16 +149,42 @@ async function getCommitGuidelines(
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
-   // Filter out gdx-specific flags to get pass-through args
-   const gdxFlags = ['auto', '--no-commit', '-nc', '--copy', '-cp', '--yes', '-y'];
-   const passThruArgs = args.slice(1).filter((arg) => !gdxFlags.includes(arg));
+   const passThruArgs = args.slice(2);
+   const shouldNoCommit =
+      passThruArgs.popOption('--no-commit') !== null || passThruArgs.popOption('-nc') !== null;
+   const shouldCopy =
+      passThruArgs.popOption('--copy') !== null || passThruArgs.popOption('-cp') !== null;
+   const shouldYes =
+      passThruArgs.popOption('--yes') !== null || passThruArgs.popOption('-y') !== null;
+   const shouldPreview = passThruArgs.popOption('--preview') !== null;
+   const userDescriptionRaw =
+      passThruArgs.popValue('--describe') || passThruArgs.popValue('-d') || '';
+   const userDescription = userDescriptionRaw.trim();
+
+   if ((args.hasOption('--describe') || args.hasOption('-d')) && !userDescription) {
+      Logger.warn('Ignoring --describe/-d because no description text was provided.', 'commit');
+   }
+
    const config = await getConfig();
    const showThinking = config.get<boolean>('llm.showThinking', true);
    const commitPattern = config.get<'inherit' | 'comprehensive'>('commit.commitPattern', 'inherit');
+   const noisyFilePatterns = config.get<string[]>(
+      'commit.noisyFiles',
+      []
+   );
+   const resolvedNoisyPatterns = Array.isArray(noisyFilePatterns)
+      ? noisyFilePatterns.filter((entry) => typeof entry === 'string')
+      : [];
 
-   const cachedChanges = (await $`${git$} diff --cached HEAD`).stdout;
+   const spin = spinner({
+      message: 'compiling changes summary...',
+   });
+   const stagedSummary = await buildStagedCommitDiffSummary(git$, {
+      noisyPatterns: resolvedNoisyPatterns,
+   });
+   spin.stop();
 
-   if (!cachedChanges || cachedChanges.trim().length === 0) {
+   if (!stagedSummary.hasChanges || stagedSummary.summary.trim().length === 0) {
       quickPrint(
          `${ncc('Red')}No staged changes found. Please stage your changes before generating a commit message.${ncc()}`
       );
@@ -169,13 +196,18 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    if (commitPattern === 'inherit') {
       const guidelines = await getCommitGuidelines(git$, config);
       if (guidelines) {
-         prompt = commitMsgGeneratorInherent(cachedChanges, guidelines);
+         prompt = commitMsgGeneratorInherent(stagedSummary.summary, guidelines, userDescription);
       } else {
          // Fallback to comprehensive if learning failed
-         prompt = commitMsgGenerator(cachedChanges);
+         prompt = commitMsgGenerator(stagedSummary.summary, userDescription);
       }
    } else {
-      prompt = commitMsgGenerator(cachedChanges);
+      prompt = commitMsgGenerator(stagedSummary.summary, userDescription);
+   }
+
+   if (shouldPreview) {
+      quickPrint(prompt);
+      return 0;
    }
 
    quickPrint(`${ncc('Cyan')}Generating commit message based on staged changes...${ncc()}\n`);
@@ -260,16 +292,13 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       }
 
       redrawText(originalMsg, generatedMsg); // replace streaming prompt with wrapped version
-      quickPrint();
-
-      const shouldNoCommit = args.includes('--no-commit') || args.includes('-nc');
-      const shouldYes = args.includes('--yes') || args.includes('-y');
+      quickPrint('');
 
       if (shouldNoCommit) {
          if (shouldYes) {
             Logger.warn('Ignoring --yes because --no-commit was requested.', 'commit');
          }
-         if (args.includes('--copy') || args.includes('-cp')) {
+         if (shouldCopy) {
             const copied = await copyToClipboard(generatedMsg);
             if (copied) quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
             else Logger.warn('(failed to copy to clipboard)', 'commit');
@@ -320,7 +349,7 @@ ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zin
 Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
 ${bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
- Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. Use ${cyan}--yes (-y)${reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). The tool writes a temporary message file when performing an interactive commit.
+ Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. Use ${cyan}--yes (-y)${reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). Use ${cyan}--describe (-d) <text>${reset} to provide a short human summary of the change intent so the model can prioritize relevant diff sections. Use ${cyan}--preview${reset} to print the complete generated prompt and exit (no LLM request, no commit). The tool writes a temporary message file when performing an interactive commit.
 
 ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 A non-empty staged diff is required; the command will error if there are no staged changes.
@@ -340,13 +369,15 @@ A non-empty staged diff is required; the command will error if there are no stag
       const reset = ncc();
       return strWrap(
          `
- ${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y]${reset}
+ ${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y] [--describe|-d <text>] [--preview]${reset}
 
 Examples:
    ${cyan}${EXECUTABLE_NAME} commit auto                    ${reset + dim}# Generate and commit using LLM-generated message${reset}
     ${cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${reset + dim}# Print generated message without committing${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto --yes              ${reset + dim}# Commit immediately without editing${reset}`,
+     ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}
+    ${cyan}${EXECUTABLE_NAME} commit auto --yes              ${reset + dim}# Commit immediately without editing${reset}
+    ${cyan}${EXECUTABLE_NAME} commit auto -d ${'"refactor parser + trim noisy lockfile diffs"'} ${reset + dim}# Add extra context for the LLM${reset}
+    ${cyan}${EXECUTABLE_NAME} commit auto --preview          ${reset + dim}# Print full LLM prompt and exit${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

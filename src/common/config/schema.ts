@@ -20,6 +20,7 @@ export interface GdxConfig {
    commit?: {
       commitPattern?: 'inherit' | 'comprehensive';
       guidelineCacheDays?: number;
+      noisyFiles?: string[];
    };
    reword?: {
       editor?: string | null;
@@ -36,6 +37,22 @@ export interface GdxConfig {
    enhancedOutput?: boolean;
    useInlineSubmodule?: 'off' | 'internal' | 'all';
 }
+
+export const COMMIT_DEFAULT_NOISY_FILES = [
+   '**/package-lock.json',
+   '**/bun.lock',
+   '**/yarn.lock',
+   '**/pnpm-lock.yaml',
+   '**/npm-shrinkwrap.json',
+   '**/__snapshots__/*.snap',
+   '**/*.snap',
+   '**/dist/**',
+   '**/build/**',
+   '**/coverage/**',
+   '**/out/**',
+   '**/*.min.js',
+   '**/*.min.css',
+] as const;
 
 export const DEFAULT_CONFIG: GdxConfig = {
    llm: {
@@ -57,6 +74,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    commit: {
       commitPattern: 'inherit',
       guidelineCacheDays: 30,
+      noisyFiles: [...COMMIT_DEFAULT_NOISY_FILES],
    },
    reword: {
       editor: null,
@@ -118,6 +136,8 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'commit.commitPattern':
       'Commit message pattern (inherit: learn from repo, comprehensive: fixed format)',
    'commit.guidelineCacheDays': 'Days to cache learned commit guidelines per repository',
+   'commit.noisyFiles':
+      'Files treated as noisy in commit auto diff summary (array of glob patterns matching relative paths)',
    reword: 'Configuration for rewording commit messages',
    'reword.editor': 'Editor command used by gdx reword (overrides global editor when set)',
    cache: 'Configuration for caching mechanism.\nValues that are expensive to get are cached for faster subsequent access.',

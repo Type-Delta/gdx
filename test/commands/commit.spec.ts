@@ -7,6 +7,8 @@ import commit from '@/commands/commit';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getCache, resetCache } from '@/common/cache';
 import { $ as shell$ } from '@/modules/shell';
+import { commitMsgGenerator, commitMsgGeneratorInherent } from '@/templates/prompts';
+import { getConfig } from '@/common/config';
 
 async function clearRemotes($: typeof shell$): Promise<void> {
    const remotes = (await $`git remote`).stdout
@@ -81,6 +83,25 @@ describe('gdx commit auto', async () => {
       expect(log).toContain('Mock response from LLM');
    });
 
+   it('should accept --describe and still commit successfully', async () => {
+      await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'described content');
+      await $`${git$} add newfile.txt`;
+
+      const describedCtx = createGdxContext(tmpDir, [
+         'commit',
+         'auto',
+         '--yes',
+         '--describe',
+         'refactor parser and trim noisy lockfile diffs',
+      ]);
+      const result = await commit.auto(describedCtx);
+
+      expect(result).toBe(0);
+
+      const log = (await $`${git$} log -1 --pretty=%B`).stdout;
+      expect(log).toContain('Mock response from LLM');
+   });
+
    it('should warn and ignore --yes when --no-commit is set', async () => {
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'ignored yes content');
       await $`${git$} add newfile.txt`;
@@ -94,6 +115,54 @@ describe('gdx commit auto', async () => {
 
       const status = (await $`${git$} status --porcelain`).stdout;
       expect(status).toContain('M  newfile.txt');
+   });
+
+   it('should warn when --describe is provided without a value', async () => {
+      await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'empty describe');
+      await $`${git$} add newfile.txt`;
+
+      const emptyDescribeCtx = createGdxContext(tmpDir, [
+         'commit',
+         'auto',
+         '--no-commit',
+         '--describe',
+      ]);
+      const result = await commit.auto(emptyDescribeCtx);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain(
+         'Ignoring --describe/-d because no description text was provided.'
+      );
+   });
+
+   it('should print prompt and exit when --preview is set', async () => {
+      await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'preview content');
+      await $`${git$} add newfile.txt`;
+
+      const previewCtx = createGdxContext(tmpDir, ['commit', 'auto', '--preview']);
+      const result = await commit.auto(previewCtx);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('<git-diff>');
+
+      const status = (await $`${git$} status --porcelain`).stdout;
+      expect(status).toContain('M  newfile.txt');
+   });
+
+   it('should classify configured noisy glob patterns as noisy', async () => {
+      const config = await getConfig();
+      await config.set('commit.noisyFiles', ['**/*.generated.ts']);
+      await config.save();
+
+      await fs.writeFile(path.join(tmpDir, 'auto.generated.ts'), 'export const x = 1;\n', 'utf-8');
+      await $`${git$} add auto.generated.ts`;
+
+      const previewCtx = createGdxContext(tmpDir, ['commit', 'auto', '--preview']);
+      const result = await commit.auto(previewCtx);
+
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('<noisy-text-diffs>');
+      expect(buffer.stdout).toContain('auto.generated.ts');
    });
 });
 
@@ -253,5 +322,28 @@ describe('gdx commit auto - inherit mode', async () => {
       // Verify commit was made even with fallback
       const log = (await $`${git$} log -1 --pretty=%B`).stdout;
       expect(log).toContain('Mock response from LLM');
+   });
+});
+
+describe('commit prompt templates', async () => {
+   const { it } = await createTestEnv({ liteMode: true });
+
+   it('should include user description block in comprehensive prompt', () => {
+      const prompt = commitMsgGenerator('summary content', 'tighten diff summarization logic');
+      expect(prompt).toContain('User describes the changes as: tighten diff summarization logic');
+   });
+
+   it('should omit user description block when description is not provided', () => {
+      const prompt = commitMsgGenerator('summary content');
+      expect(prompt).not.toContain('User describes the changes as:');
+   });
+
+   it('should include user description block in inherit prompt', () => {
+      const prompt = commitMsgGeneratorInherent(
+         'summary content',
+         'Use emoji + conventional commits',
+         'improve prompt relevance'
+      );
+      expect(prompt).toContain('User describes the changes as: improve prompt relevance');
    });
 });

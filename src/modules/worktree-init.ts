@@ -6,8 +6,8 @@ import * as fs from '@/modules/fs';
 import { $, spinner, whichExec } from '@/modules/shell';
 import Logger from '@/utils/logger';
 import { getConfig } from '@/common/config';
-import { asUnixPath } from '@/utils/path';
 import { initSubmodules } from '@/modules/git';
+import { buildGitignoreMatcher, buildPathGlobMatcher } from '@/utils/glob';
 
 export type WorktreeInitBehavior = 'submodule' | 'pkg' | 'env';
 
@@ -45,7 +45,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
       if (parsedConfig.invalid.length > 0) {
          warnings.push(
             `Unknown parallel.init values: ${parsedConfig.invalid.join(', ')}. ` +
-               'Valid values: submodule, env, pkg.'
+            'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -53,7 +53,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
       if (parsedNoInit.invalid.length > 0) {
          warnings.push(
             `Unknown --no-init values: ${parsedNoInit.invalid.join(', ')}. ` +
-               'Valid values: submodule, env, pkg.'
+            'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -370,7 +370,7 @@ async function copyEnvPathsFromPatterns(options: {
    if (patterns.length === 0) return 0;
 
    const matchers = patterns
-      .map((pattern) => buildEnvPathMatcher(pattern))
+      .map((pattern) => buildPathGlobMatcher(pattern))
       .filter((matcher): matcher is (value: string) => boolean => Boolean(matcher));
    if (matchers.length === 0) return 0;
 
@@ -426,90 +426,11 @@ async function copyEnvPathsFromPatterns(options: {
 }
 
 /**
- * Normalizes env path patterns to a consistent relative format.
- */
-function normalizeEnvPathPattern(pattern: string): string {
-   let normalized = asUnixPath(pattern.trim());
-   while (normalized.startsWith('./')) {
-      normalized = normalized.slice(2);
-   }
-   if (normalized.startsWith('/')) {
-      normalized = normalized.slice(1);
-   }
-   normalized = normalized.replace(/\/+$/, '');
-   return normalized;
-}
-
-/**
- * Builds a glob-like matcher for env path patterns.
- */
-function buildEnvPathMatcher(pattern: string): ((value: string) => boolean) | null {
-   const normalized = normalizeEnvPathPattern(pattern);
-   if (!normalized) return null;
-
-   let regex = '^';
-   let index = 0;
-   while (index < normalized.length) {
-      const char = normalized[index];
-      if (char === '*') {
-         const nextChar = normalized[index + 1];
-         if (nextChar === '*') {
-            const afterNext = normalized[index + 2];
-            if (afterNext === '/') {
-               regex += '(?:.*/)?';
-               index += 3;
-               continue;
-            }
-            regex += '.*';
-            index += 2;
-            continue;
-         }
-         regex += '[^/]*';
-         index += 1;
-         continue;
-      }
-      if (char === '?') {
-         regex += '[^/]';
-         index += 1;
-         continue;
-      }
-      if (char === '/') {
-         regex += '/';
-         index += 1;
-         continue;
-      }
-      regex += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-      index += 1;
-   }
-   regex += '$';
-
-   const matcher = new RegExp(regex);
-   return (value: string) => matcher.test(asUnixPath(value));
-}
-
-/**
  * Resolves a forward-slash relative path under the given root.
  */
 function resolveEnvPath(root: string, relativePath: string): string {
    const parts = relativePath.split('/').filter(Boolean);
    return path.join(root, ...parts);
-}
-
-/**
- * Builds a matcher for .gitignore-like patterns (single path segment).
- */
-export function buildGitignoreMatcher(pattern: string): (value: string) => boolean {
-   const trimmed = pattern.trim();
-   if (!trimmed) return () => false;
-   if (trimmed === '*') return () => true;
-
-   const escaped = trimmed
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\?/g, '.')
-      .replace(/\*/g, '[^/]*');
-
-   const matcher = new RegExp(`^${escaped}$`);
-   return (value: string) => matcher.test(value);
 }
 
 /**
@@ -571,7 +492,7 @@ function readPackageManager(packageJsonPath: string, warnings: string[]): Packag
       if (declared) {
          warnings.push(
             `Unsupported packageManager '${declared}' in package.json. ` +
-               'Supported: npm, pnpm, bun.'
+            'Supported: npm, pnpm, bun.'
          );
       }
    } catch (err) {

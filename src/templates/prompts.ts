@@ -1,7 +1,21 @@
 import dedent from 'dedent';
 
-export function commitMsgGenerator(changesSummary: string) {
-   return dedent`<instructions>You are an expert Git commit message generator. Analyze the provided git diff in the following messages and generate a concise and informative commit message following the specified format and rules. Focus on clarity and relevance to help maintain a well-documented project history. Output ONLY the commit message.</instructions>
+/**
+ * Builds the comprehensive commit-message generation prompt.
+ *
+ * @param changesSummary - Summarized staged diff context.
+ * @param userDescription - Optional user-provided intent description.
+ * @returns Prompt text for LLM completion.
+ */
+export function commitMsgGenerator(changesSummary: string, userDescription?: string) {
+   const userDescriptionBlock = userDescription
+      ? `<user-change-description>
+User describes the changes as: ${userDescription}
+</user-change-description>`
+      : '';
+
+   const promptHeader = dedent`
+    <instructions>You are an expert Git commit message generator. Analyze the provided git diff in the following messages and generate a concise and informative commit message following the specified format and rules. Focus on clarity and relevance to help maintain a well-documented project history. Output ONLY the commit message.</instructions>
 
    <rules>
    Commit message must be in the following format:
@@ -26,17 +40,38 @@ export function commitMsgGenerator(changesSummary: string) {
    - Do not use Markdown or any other formatting in the output
    - Do not use bullet points outside of the recap section
    - DO NOT PREFIX SECTIONS with labels like "Description:" or "Recap:"
-   </rules>
+   </rules>`;
 
-   <git-diff>
-   ${changesSummary}
-   </git-diff>
+   const diffBlock = `<git-diff>
+${changesSummary}
+</git-diff>`;
 
-   Your commit message:`;
+   return [promptHeader, diffBlock, userDescriptionBlock, 'Your commit message:']
+      .filter((part) => part.length > 0)
+      .join('\n\n');
 }
 
-export function commitMsgGeneratorInherent(changesSummary: string, guideline: string) {
-   return dedent`<instructions>You are an expert Git commit message generator. Analyze the provided git diff and generate a commit message that follows the project-specific conventions documented below. Focus on clarity and consistency with the existing commit history. Output ONLY the commit message.</instructions>
+/**
+ * Builds the history-inherited commit-message prompt.
+ *
+ * @param changesSummary - Summarized staged diff context.
+ * @param guideline - Learned repository commit-style guideline.
+ * @param userDescription - Optional user-provided intent description.
+ * @returns Prompt text for LLM completion.
+ */
+export function commitMsgGeneratorInherent(
+   changesSummary: string,
+   guideline: string,
+   userDescription?: string
+) {
+   const userDescriptionBlock = userDescription
+      ? `<user-change-description>
+User describes the changes as: ${userDescription}
+</user-change-description>`
+      : '';
+
+   const promptHeader = dedent`
+    <instructions>You are an expert Git commit message generator. Analyze the provided git diff and generate a commit message that follows the project-specific conventions documented below. Focus on clarity and consistency with the existing commit history. Output ONLY the commit message.</instructions>
 
    <project-commit-guidelines>
    ${guideline}
@@ -48,13 +83,15 @@ export function commitMsgGeneratorInherent(changesSummary: string, guideline: st
    - IMPORTANT! Total commit message length MUST NOT EXCEED 170 WORDS, keep it concise
    - Do not use Markdown or any other formatting in the output
    - Output ONLY the commit message without any labels or prefixes
-   </rules>
+   </rules>`;
 
-   <git-diff>
-   ${changesSummary}
-   </git-diff>
+   const diffBlock = `<git-diff>
+${changesSummary}
+</git-diff>`;
 
-   Your commit message:`;
+   return [promptHeader, diffBlock, userDescriptionBlock, 'Your commit message:']
+      .filter((part) => part.length > 0)
+      .join('\n\n');
 }
 
 export function guidelineLearningPrompt(commitMessages: string[]) {
@@ -62,7 +99,8 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
       .map((msg, i) => `Example ${i + 1}:\n${msg}`)
       .join('\n\n---\n\n');
 
-   return dedent`<instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
+   return dedent`
+   <instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
 
    <commit-message-examples>
    ${examplesText}
@@ -87,7 +125,8 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
 }
 
 export function nocapPrompt(commitMessage: string) {
-   return dedent`<instruction>
+   return dedent`
+   <instruction>
    You are an unfiltered Gen-Z dev who speaks like a terminal meme lord.
    You talk in chaotic, funny, exaggerated internet slang. You sprinkle emojis,
    caps, sarcasm, and over-the-top reactions. Never boring.

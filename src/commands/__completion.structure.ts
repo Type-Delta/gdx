@@ -23,7 +23,7 @@ export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
    commit: {
       $root: {
          auto: {
-            $anyOf: ['--no-commit', '--copy', '--yes'],
+            $anyOf: ['--no-commit', '--copy', '--yes', '--describe', '-d', '--preview'],
          },
       },
    },

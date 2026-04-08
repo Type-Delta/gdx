@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-      ncc()
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -155,6 +155,36 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
          return 1;
       }
       parsedValue = num;
+   } else if (Array.isArray(defaultValue)) {
+      let parsedArray: unknown;
+      try {
+         parsedArray = JSON.parse(value);
+      } catch {
+         Logger.error(
+            `Expected a JSON array for '${key}', got '${value}'. Example: ["**/*.foo"]`,
+            'gdx-config'
+         );
+         return 1;
+      }
+
+      if (!Array.isArray(parsedArray)) {
+         Logger.error(
+            `Expected a JSON array for '${key}', got '${value}'. Example: ["**/*.foo"]`,
+            'gdx-config'
+         );
+         return 1;
+      }
+
+      const defaultElementType = defaultValue.find((entry) => entry != null);
+      if (typeof defaultElementType === 'string') {
+         const hasNonString = parsedArray.some((entry) => typeof entry !== 'string');
+         if (hasNonString) {
+            Logger.error(`Expected all array values for '${key}' to be strings.`, 'gdx-config');
+            return 1;
+         }
+      }
+
+      parsedValue = parsedArray;
    } else if (typeof defaultValue === 'boolean') {
       parsedValue = value.toLowerCase() === 'true';
    }

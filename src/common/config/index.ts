@@ -348,6 +348,22 @@ export class ConfigService {
             // Try to parse based on expected type
             if (defaultValue === null) {
                parsedValue = envValue;
+            } else if (Array.isArray(defaultValue)) {
+               try {
+                  const parsed = JSON.parse(envValue);
+                  if (!Array.isArray(parsed)) {
+                     this.logger.warn(
+                        `Environment variable ${envVar} must be a JSON array. Ignoring.`
+                     );
+                     continue;
+                  }
+                  parsedValue = parsed;
+               } catch {
+                  this.logger.warn(
+                     `Environment variable ${envVar} has invalid JSON array value '${envValue}'. Ignoring.`
+                  );
+                  continue;
+               }
             } else if (typeof defaultValue === 'number') {
                const num = Number(envValue);
                if (!isNaN(num)) {

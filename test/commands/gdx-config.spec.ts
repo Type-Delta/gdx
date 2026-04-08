@@ -65,6 +65,18 @@ describe('gdx gdx-config', async () => {
       expect(buffer.stderr).toContain('Expected one of off, internal, all');
    });
 
+   it('should set and get commit.noisyFiles as string array', async () => {
+      const setCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         'commit.noisyFiles',
+         '["**/*.foo"]',
+      ]);
+      expect(await gdxConfig(setCtx)).toBe(0);
+
+      const config = await getConfig();
+      expect(config.get<string[]>('commit.noisyFiles', [])).toEqual(['**/*.foo']);
+   });
+
    it('should handle invalid keys gracefully', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'invalid.key']);
       const result = await gdxConfig(ctx);
