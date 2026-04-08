@@ -5,22 +5,25 @@ import {
    GIT_GLOBAL_OPTIONS_WITH_VALUES,
 } from '@/consts';
 import { Err } from '@lib/Tools';
+import global from '../global';
 
 const GDX_OPTIONS_WITH_VALUES_LIST = [...GDX_OPTIONS_WITH_VALUES] as string[];
 const GDX_OPTIONS_NO_VALUES_LIST = [...GDX_OPTIONS_NO_VALUES] as string[];
 const GIT_GLOBAL_OPTIONS_WITH_VALUES_LIST = [...GIT_GLOBAL_OPTIONS_WITH_VALUES] as string[];
 const GIT_GLOBAL_OPTIONS_NO_VALUES_LIST = [...GIT_GLOBAL_OPTIONS_NO_VALUES] as string[];
-const OPTION_PREFIXES = ['--', '-'];
+const OPTION_VALUE_SEPARATOR = '=';
 
 export class ArgsSet extends Array<string> {
-   argIndexes: Map<string, number> = new Map();
+   argIndexes: Map<string, number[]> = new Map();
+   private indexedLength = -1;
+   private indexesDirty = true;
 
    constructor(args: string[]) {
       // @ts-expect-error - allow dynamic super() call with array elements
       if (Array.isArray(args)) super(...args);
       else super(args);
 
-      this.indexArgs();
+      this.reindex();
    }
 
    /**
@@ -32,14 +35,55 @@ export class ArgsSet extends Array<string> {
     * @returns The index of the argument, or -1 if not found.
     */
    optionIndexOf(arg: string, from: number = 0): number {
-      const terminatorIndex = this.indexOf('--');
-      if (terminatorIndex !== -1 && terminatorIndex < from) {
+      const fromIndex = normalizeFromIndex(from, this.length);
+      let terminatorIndex = -1;
+
+      if (global.indexArgs) {
+         this.ensureIndexes();
+         terminatorIndex = this.argIndexes.get('--')?.[0] ?? -1;
+      } else {
+         terminatorIndex = super.indexOf('--');
+      }
+
+      if (terminatorIndex !== -1 && terminatorIndex < fromIndex) {
          return -1;
       }
 
       const endIndex = terminatorIndex === -1 ? this.length : terminatorIndex;
-      for (let i = from; i < endIndex; i++) {
-         if (this[i] === arg || this[i].startsWith(arg + '=')) {
+      const argName = getIndexKey(arg);
+      if (global.indexArgs && argName.startsWith('-')) {
+         const indexes = this.argIndexes.get(argName);
+         if (indexes && indexes.length > 0) {
+            let cursor = 0;
+            if (indexes.length === 1) {
+               const onlyIndex = indexes[0];
+               if (onlyIndex < fromIndex || onlyIndex >= endIndex) {
+                  cursor = 1;
+               }
+            } else {
+               cursor = getFirstIndexPositionAtOrAfter(indexes, fromIndex);
+            }
+
+            while (cursor < indexes.length) {
+               const index = indexes[cursor];
+               if (index >= endIndex) {
+                  break;
+               }
+
+               if (optionTokenMatches(this[index], arg)) {
+                  return index;
+               }
+
+               cursor += 1;
+            }
+         }
+      }
+
+      for (let i = fromIndex; i < endIndex; i++) {
+         if (optionTokenMatches(this[i], arg)) {
+            if (global.indexArgs && argName.startsWith('-')) {
+               this.reindex();
+            }
             return i;
          }
       }
@@ -72,16 +116,13 @@ export class ArgsSet extends Array<string> {
       const index = this.optionIndexOf(arg, from);
       if (index !== -1) {
          let value: string | null = null;
+         const option = this[index];
 
-         if (arg.includes('=')) {
+         if (option.includes(OPTION_VALUE_SEPARATOR)) {
             // Argument is in the form --arg=value
-            value = getValueFromOption(this[index]);
+            value = getValueFromOption(option);
             this.splice(index, 1);
-         } else if (
-            !valSameIdxOnly &&
-            index + 1 < this.length &&
-            !this[index + 1].startsWith('-')
-         ) {
+         } else if (!valSameIdxOnly && index + 1 < this.length && isValueToken(this[index + 1])) {
             // Argument is in the form --arg value
             value = this[index + 1];
             this.splice(index, 2);
@@ -109,23 +150,20 @@ export class ArgsSet extends Array<string> {
       const index = this.optionIndexOf(arg, from);
       if (index !== -1) {
          let value: string | null = null;
+         const option = this[index];
 
-         if (arg.includes('=')) {
+         if (option.includes(OPTION_VALUE_SEPARATOR)) {
             // Argument is in the form --arg=value
-            value = getValueFromOption(this[index]);
+            value = getValueFromOption(option);
             this.splice(index, 1);
-         } else if (
-            !valSameIdxOnly &&
-            index + 1 < this.length &&
-            !this[index + 1].startsWith('-')
-         ) {
+         } else if (!valSameIdxOnly && index + 1 < this.length && isValueToken(this[index + 1])) {
             // Argument is in the form --arg value
             value = this[index + 1];
             this.splice(index, 2);
          } else {
             // Argument found but no value present
             throw new Err(
-               `Options "${arg}" requires a value, but none was provided.`,
+               `Options "${this[index]}" requires a value, but none was provided.`,
                'MISSING_OPTION_VALUE'
             );
          }
@@ -143,8 +181,8 @@ export class ArgsSet extends Array<string> {
    popOption(arg: string, from: number = 0): string | null {
       const index = this.optionIndexOf(arg, from);
       if (index !== -1) {
-         this.splice(index, 1);
-         return arg;
+         const removed = this.splice(index, 1)[0];
+         return removed;
       }
       return null;
    }
@@ -173,18 +211,7 @@ export class ArgsSet extends Array<string> {
     * @returns True if the argument exists after the specified index, false otherwise.
     */
    hasOption(arg: string, from: number = 0): boolean {
-      const terminatorIndex = this.indexOf('--');
-      if (terminatorIndex !== -1 && terminatorIndex < from) {
-         return false;
-      }
-
-      const endIndex = terminatorIndex === -1 ? this.length : terminatorIndex;
-      for (let i = from; i < endIndex; i++) {
-         if (this[i] === arg || this[i].startsWith(arg + '=')) {
-            return true;
-         }
-      }
-      return false;
+      return this.optionIndexOf(arg, from) !== -1;
    }
 
    slice(start?: number, end?: number): ArgsSet {
@@ -203,50 +230,368 @@ export class ArgsSet extends Array<string> {
    }
 
    splice(start: number, deleteCount?: number, ...rest: string[]): string[] {
-      const result = super.splice(start, deleteCount || 0, ...rest);
-      if (rest.length) {
-         this.indexArgs(start, start + rest.length);
+      const oldLength = this.length;
+      const result =
+         arguments.length === 1
+            ? super.splice(start)
+            : super.splice(start, deleteCount as number, ...rest);
+
+      if (!global.indexArgs) {
+         return result;
       }
-      else if (deleteCount) {
-         this.lshiftIndexes(start, deleteCount);
+
+      if (this.indexesDirty || this.indexedLength !== oldLength) {
+         this.reindex();
+         return result;
       }
+
+      const normalizedStart = normalizeSpliceStart(start, oldLength);
+      this.updateIndexesAfterSplice(normalizedStart, result.length, rest);
       return result;
    }
 
    indexOf(arg: string, from: number = 0): number {
-      let idx = this.argIndexes.get(arg);
-      if (idx === undefined || idx < from) {
-         idx = super.indexOf(arg, from);
-         if (idx !== -1) {
-            this.argIndexes.set(arg, idx);
+      if (!global.indexArgs || !arg.startsWith('-')) {
+         return super.indexOf(arg, from);
+      }
+
+      this.ensureIndexes();
+
+      const fromIndex = normalizeFromIndex(from, this.length);
+      if (fromIndex >= this.length) {
+         return -1;
+      }
+
+      const indexes = this.argIndexes.get(getIndexKey(arg));
+      if (indexes && indexes.length > 0) {
+         let cursor = 0;
+         if (indexes.length === 1) {
+            if (indexes[0] < fromIndex) {
+               cursor = 1;
+            }
+         } else {
+            cursor = getFirstIndexPositionAtOrAfter(indexes, fromIndex);
+         }
+
+         while (cursor < indexes.length) {
+            const index = indexes[cursor];
+            if (this[index] === arg) {
+               return index;
+            }
+            cursor += 1;
          }
       }
-      return idx;
+
+      const fallback = super.indexOf(arg, fromIndex);
+      if (fallback !== -1) {
+         this.reindex();
+      }
+      return fallback;
    }
 
-   private indexArgs(start = 0, end = this.length): void {
+   push(...items: string[]): number {
+      const oldLength = this.length;
+      const result = super.push(...items);
+
+      if (!global.indexArgs) {
+         return result;
+      }
+
+      if (this.indexesDirty || this.indexedLength !== oldLength) {
+         this.reindex();
+         return result;
+      }
+
+      this.updateIndexesAfterSplice(oldLength, 0, items);
+      return result;
+   }
+
+   pop(): string | undefined {
+      if (this.length === 0) {
+         return undefined;
+      }
+
+      const oldLength = this.length;
+      const result = super.pop();
+
+      if (!global.indexArgs) {
+         return result;
+      }
+
+      if (this.indexesDirty || this.indexedLength !== oldLength) {
+         this.reindex();
+         return result;
+      }
+
+      this.updateIndexesAfterSplice(oldLength - 1, 1, []);
+      return result;
+   }
+
+   shift(): string | undefined {
+      if (this.length === 0) {
+         return undefined;
+      }
+
+      const oldLength = this.length;
+      const result = super.shift();
+
+      if (!global.indexArgs) {
+         return result;
+      }
+
+      if (this.indexesDirty || this.indexedLength !== oldLength) {
+         this.reindex();
+         return result;
+      }
+
+      this.updateIndexesAfterSplice(0, 1, []);
+      return result;
+   }
+
+   unshift(...items: string[]): number {
+      const oldLength = this.length;
+      const result = super.unshift(...items);
+
+      if (!global.indexArgs) {
+         return result;
+      }
+
+      if (this.indexesDirty || this.indexedLength !== oldLength) {
+         this.reindex();
+         return result;
+      }
+
+      this.updateIndexesAfterSplice(0, 0, items);
+      return result;
+   }
+
+   reverse(): this {
+      super.reverse();
+      this.reindex();
+      return this;
+   }
+
+   sort(compareFn?: (a: string, b: string) => number): this {
+      super.sort(compareFn);
+      this.reindex();
+      return this;
+   }
+
+   fill(value: string, start?: number, end?: number): this {
+      super.fill(value, start, end);
+      this.reindex();
+      return this;
+   }
+
+   copyWithin(target: number, start: number, end?: number): this {
+      super.copyWithin(target, start, end);
+      this.reindex();
+      return this;
+   }
+
+   /**
+    * Invalidates the argument indexes, marking them as outdated. This should be called after any mutation that changes the array length or order when indexing is enabled.
+    */
+   invalidateIndexes(): void {
       this.argIndexes.clear();
-      for (let i = start; i < end; i++) {
-         const token = this[i];
-         if (!token) continue;
-         if (OPTION_PREFIXES.some(prefix => token.startsWith(prefix))) {
-            const eqIndex = token.indexOf('=');
-            const argName = eqIndex !== -1 ? token.substring(0, eqIndex) : token;
-            // Intentionally overwrite duplicates to get the last occurrence index
-            this.argIndexes.set(argName, i);
-         }
+      this.indexedLength = -1;
+      this.indexesDirty = true;
+   }
+
+   /**
+    * Ensures that the argument indexes are up to date if indexing is enabled.
+    */
+   private ensureIndexes(): void {
+      if (!global.indexArgs) {
+         return;
+      }
+
+      if (this.indexesDirty || this.indexedLength !== this.length) {
+         this.reindex();
       }
    }
 
-   private lshiftIndexes(cursor: number = 0, shift: number = 1): void {
-      const keys = Array.from(this.argIndexes.keys());
-      for (let i = cursor; i < keys.length; i++) {
-         const newIdx = this.argIndexes.get(keys[i])! - shift;
-         if (newIdx > cursor)
-            this.argIndexes.set(keys[i], newIdx);
-         else this.argIndexes.delete(keys[i]);
+   /**
+    * Updates the argument indexes after a splice operation. This method adjusts the stored indexes based on the splice parameters, removing indexes for deleted items and shifting indexes for items after the splice point. It also adds indexes for any new items that are valid options (i.e., start with '-').
+    */
+   private updateIndexesAfterSplice(start: number, removedCount: number, inserted: string[]): void {
+      const removedEnd = start + removedCount;
+      const delta = inserted.length - removedCount;
+
+      for (const [key, indexes] of this.argIndexes) {
+         if (indexes.length === 1) {
+            const index = indexes[0];
+            if (index >= start && index < removedEnd) {
+               this.argIndexes.delete(key);
+               continue;
+            }
+
+            if (index >= removedEnd) {
+               indexes[0] = index + delta;
+            }
+
+            continue;
+         }
+
+         let write = 0;
+         for (const index of indexes) {
+            if (index < start) {
+               indexes[write] = index;
+               write += 1;
+               continue;
+            }
+
+            if (index >= removedEnd) {
+               indexes[write] = index + delta;
+               write += 1;
+            }
+         }
+
+         if (write === 0) {
+            this.argIndexes.delete(key);
+         } else {
+            indexes.length = write;
+         }
+      }
+
+      for (let i = 0; i < inserted.length; i++) {
+         const token = inserted[i];
+         if (!token.startsWith('-')) {
+            continue;
+         }
+
+         const key = getIndexKey(token);
+         const index = start + i;
+         const indexes = this.argIndexes.get(key);
+         if (!indexes) {
+            this.argIndexes.set(key, [index]);
+            continue;
+         }
+
+         if (indexes.length === 1) {
+            if (index <= indexes[0]) {
+               indexes.unshift(index);
+            } else {
+               indexes.push(index);
+            }
+            continue;
+         }
+
+         const lastIndex = indexes[indexes.length - 1];
+         if (index >= lastIndex) {
+            indexes.push(index);
+            continue;
+         }
+
+         const insertAt = getFirstIndexPositionAtOrAfter(indexes, index);
+         indexes.splice(insertAt, 0, index);
+      }
+
+      this.indexedLength = this.length;
+      this.indexesDirty = false;
+   }
+
+   /**
+    * Rebuilds the argument indexes from scratch by iterating over the current array. This should be called when the indexes are known to be outdated or when enabling indexing for the first time. If indexing is disabled, it simply invalidates the indexes without rebuilding.
+    */
+   private reindex(): void {
+      if (!global.indexArgs) {
+         return;
+      }
+
+      this.argIndexes.clear();
+      for (let i = 0; i < this.length; i++) {
+         const token = this[i];
+         if (token === undefined) continue;
+
+         if (!token.startsWith('-')) {
+            continue;
+         }
+
+         const key = getIndexKey(token);
+         const optionIndexes = this.argIndexes.get(key);
+         if (optionIndexes) {
+            optionIndexes.push(i);
+         } else {
+            this.argIndexes.set(key, [i]);
+         }
+      }
+
+      this.indexedLength = this.length;
+      this.indexesDirty = false;
+   }
+}
+
+function normalizeFromIndex(from: number, length: number): number {
+   if (!Number.isFinite(from)) {
+      return 0;
+   }
+
+   const normalized = Math.trunc(from);
+   if (normalized < 0) {
+      const shifted = length + normalized;
+      return shifted < 0 ? 0 : shifted;
+   }
+
+   return normalized;
+}
+
+function optionTokenMatches(token: string | undefined, arg: string): boolean {
+   if (token == null) {
+      return false;
+   }
+
+   if (arg.includes(OPTION_VALUE_SEPARATOR)) {
+      return token === arg;
+   }
+
+   return token === arg || token.startsWith(arg + OPTION_VALUE_SEPARATOR);
+}
+
+function getIndexKey(token: string): string {
+   const eqIndex = token.indexOf(OPTION_VALUE_SEPARATOR);
+   return eqIndex === -1 ? token : token.slice(0, eqIndex);
+}
+
+function getFirstIndexPositionAtOrAfter(indexes: number[], from: number): number {
+   let left = 0;
+   let right = indexes.length;
+
+   while (left < right) {
+      const mid = (left + right) >>> 1;
+      if (indexes[mid] < from) {
+         left = mid + 1;
+      } else {
+         right = mid;
       }
    }
+
+   return left;
+}
+
+function normalizeSpliceStart(start: number, length: number): number {
+   if (!Number.isFinite(start)) {
+      return 0;
+   }
+
+   if (start < 0) {
+      const shifted = length + start;
+      return shifted < 0 ? 0 : shifted;
+   }
+
+   return start > length ? length : start;
+}
+
+function isValueToken(token: string): boolean {
+   if (token === '--') {
+      return false;
+   }
+
+   if (token === '-' || !token.startsWith('-')) {
+      return true;
+   }
+
+   return /^-\d+(\.\d+)?$/.test(token);
 }
 
 interface ParsedGitGlobalOption {

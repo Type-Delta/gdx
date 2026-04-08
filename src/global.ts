@@ -5,4 +5,5 @@ export default {
    finalStringOutput: '',
    logLevel: 'warn' as LogLevel,
    terminalWidth: process.stdout.columns || 100,
+   indexArgs: true as boolean,
 };
