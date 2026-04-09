@@ -20,6 +20,7 @@ import { help as doctorHelp } from './doctor';
 import { help as submoduleHelp } from './submodule';
 import { help as rewordHelp } from './reword';
 import { help as macroHelp } from './macro';
+import { help as tagHelp } from './tag';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 const HELP_MAP: Record<string, CommandHelpObj> = {
@@ -38,6 +39,7 @@ const HELP_MAP: Record<string, CommandHelpObj> = {
    submodule: submoduleHelp,
    reword: rewordHelp,
    macro: macroHelp,
+   tag: tagHelp,
 };
 
 export default function help(name?: string): number {

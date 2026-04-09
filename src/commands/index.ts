@@ -14,6 +14,7 @@ import status from './status';
 import macro from './macro';
 import submodule from './submodule';
 import reword from './reword';
+import tag from './tag';
 import __completion from './__completion';
 
 export default {
@@ -34,4 +35,5 @@ export default {
    macro,
    submodule,
    reword,
+   tag,
 };

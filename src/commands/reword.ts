@@ -6,7 +6,7 @@ import * as fs from '@/modules/fs';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit, tokenizeCommand, whichExec } from '@/modules/shell';
 import { getConfig } from '@/common/config';
-import { assertInGitWorktree, expandRelativeRef } from '@/modules/git';
+import { assertInGitWorktree, expandRelativeRef, resolveRefShaCached } from '@/modules/git';
 import { noop } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
@@ -21,18 +21,6 @@ interface CommitAuthor {
    name: string;
    email: string;
    date: string;
-}
-
-/**
- * Resolves a commit SHA from an arbitrary ref.
- */
-async function resolveCommitSha(git$: string | string[], ref: string): Promise<string | null> {
-   try {
-      const { stdout } = await $`${git$} rev-parse --verify ${ref}^{commit}`;
-      return stdout.trim();
-   } catch {
-      return null;
-   }
 }
 
 /**
@@ -278,7 +266,7 @@ export default async function reword(ctx: GdxContext): Promise<number> {
    }
 
    const targetRef = args[1] || 'HEAD';
-   const targetSha = await resolveCommitSha(git$, targetRef);
+   const targetSha = await resolveRefShaCached(git$, targetRef, { type: 'commit' });
    if (!targetSha) {
       Logger.error(`Invalid commit reference: ${targetRef}`, 'reword');
       return 1;

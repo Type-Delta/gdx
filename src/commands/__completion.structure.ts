@@ -15,6 +15,7 @@ import { structure as statusStructure } from './status';
 import { structure as macroStructure } from './macro';
 import { structure as submoduleStructure } from './submodule';
 import { structure as rewordStructure } from './reword';
+import { structure as tagStructure } from './tag';
 
 /**
  * command structure for command extensions that doesn't a dedicated source file
@@ -76,4 +77,5 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    macro: macroStructure,
    submodule: submoduleStructure,
    reword: rewordStructure,
+   tag: tagStructure,
 };

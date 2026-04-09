@@ -148,6 +148,39 @@ export async function revParseCached(
 }
 
 /**
+ * Resolves a ref expression to a SHA using `git rev-parse --verify` with cache support.
+ *
+ * The wrapper supports optional type peeling via Git's `^{<type>}` syntax.
+ * Examples:
+ * - `resolveRefShaCached(git$, 'HEAD')`
+ * - `resolveRefShaCached(git$, 'v1.0.0', { type: 'tag' })`
+ * - `resolveRefShaCached(git$, '~3', { type: 'commit' })`
+ *
+ * @param git$ - Git executable path or command array.
+ * @param ref - Ref expression to resolve.
+ * @param options - Optional resolution options.
+ * @param options.type - Optional Git object type to peel to.
+ * @param options.repoPath - Optional repository path override.
+ * @returns The resolved SHA, or `null` if resolution fails.
+ */
+export async function resolveRefShaCached(
+   git$: string | string[],
+   ref: string,
+   options?: {
+      type?: 'commit' | 'tag' | 'tree' | 'blob';
+      repoPath?: string;
+   }
+): Promise<string | null> {
+   const trimmedRef = ref.trim();
+   if (!trimmedRef) return null;
+
+   const verifyRef = options?.type ? `${trimmedRef}^{${options.type}}` : trimmedRef;
+   const resolved = await revParseCached(git$, ['--verify', verifyRef], options?.repoPath);
+   const sha = resolved.trim();
+   return sha || null;
+}
+
+/**
  * Checks if the current directory is inside a Git worktree.
  * Logs an error message if not in a Git repository.
  * @param git$ - Git executable path or command array.
@@ -1295,9 +1328,9 @@ export async function addSubmodule(
    const gitMarker = path.join(submoduleRepoPath, '.git');
    const markerIsDirectory = fs.existsSync(gitMarker)
       ? await fs
-         .stat(gitMarker)
-         .then((stat) => stat.isDirectory())
-         .catch(() => false)
+           .stat(gitMarker)
+           .then((stat) => stat.isDirectory())
+           .catch(() => false)
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
       await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
@@ -1329,9 +1362,7 @@ export async function addSubmodule(
    await invalidateSubmodulesCache(git$, worktreePath);
 
    if (!quiet) {
-      quickPrint(
-         `Submodule add: path=${normalizedPath} url=${normalizedUrl} commit=${sourceHead}`,
-      );
+      quickPrint(`Submodule add: path=${normalizedPath} url=${normalizedUrl} commit=${sourceHead}`);
    }
 }
 
@@ -1622,9 +1653,7 @@ export async function deinitSubmodules(
    }
 
    if (!quiet) {
-      quickPrint(
-         `Submodule deinit: ${allPaths.length} path(s) (${allPaths.join(', ')})`,
-      );
+      quickPrint(`Submodule deinit: ${allPaths.length} path(s) (${allPaths.join(', ')})`);
    }
 
    await invalidateSubmodulesCache(git$, worktreePath);
@@ -1722,9 +1751,9 @@ export async function updateSubmodules(
       const gitMarker = path.join(submoduleRepoPath, '.git');
       const markerIsDirectory = fs.existsSync(gitMarker)
          ? await fs
-            .stat(gitMarker)
-            .then((stat) => stat.isDirectory())
-            .catch(() => false)
+              .stat(gitMarker)
+              .then((stat) => stat.isDirectory())
+              .catch(() => false)
          : false;
 
       if (!fs.existsSync(gitMarker) || markerIsDirectory) {
@@ -1808,9 +1837,7 @@ export async function updateSubmodules(
    }
 
    if (updatedPaths.length > 0 && !quiet) {
-      quickPrint(
-         `Submodule update: ${updatedPaths.length} path(s) (${updatedPaths.join(', ')})`,
-      );
+      quickPrint(`Submodule update: ${updatedPaths.length} path(s) (${updatedPaths.join(', ')})`);
    }
 
    await invalidateSubmodulesCache(git$, worktreePath);

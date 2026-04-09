@@ -9,6 +9,7 @@ import {
    updateSubmodules,
    isEmptyCherryPickError,
    revParseCached,
+   resolveRefShaCached,
    hasCherryPickInProgress,
 } from '@/modules/git';
 import { getConfig, resetConfig } from '@/common/config';
@@ -186,6 +187,22 @@ describe('git module', async () => {
       const headFromScoped = (await revParseCached(scoped, 'HEAD')).trim();
       const headFromDirect = (await revParseCached(git$, 'HEAD', tmpDir)).trim();
       expect(headFromScoped).toBe(headFromDirect);
+   });
+
+   it('should resolve refs to sha using verify wrapper with optional type', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      const headCommit = await resolveRefShaCached(git$, 'HEAD', { type: 'commit' });
+      const headRaw = await resolveRefShaCached(git$, 'HEAD');
+      expect(headCommit).toBeTruthy();
+      expect(headRaw).toBe(headCommit);
+
+      await $`git tag -a v-test -m ${'annotated test tag'}`;
+      const tagObject = await resolveRefShaCached(git$, 'refs/tags/v-test', { type: 'tag' });
+      expect(tagObject).toBeTruthy();
+
+      const invalid = await resolveRefShaCached(git$, 'refs/tags/does-not-exist');
+      expect(invalid).toBeNull();
    });
 
    it('should detect cherry-pick in progress via git-path check', async () => {
