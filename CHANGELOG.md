@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.4.2 - 2026-04-09
 
 ### Added
 
@@ -23,7 +23,7 @@
 - Improved error messages and diagnostic output.
 - `reword` Complete rewrite using `git commit-tree` instead of interactive rebase, eliminating sequence editor complexity and removing clean working tree requirements.
 - `parallel -C handling` Proper `-C` argument routing using `getParallelScope` for correct dispatch behavior in fork and join commands.
-- `orphan detection` Replaced `git rev-list` with `git fsck` for more accurate unreachable commit detection.
+- Replaced `git rev-list` with `git fsck` for more accurate unreachable commit detection.
 
 ### Fixed
 
