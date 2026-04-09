@@ -1,11 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `stats --lang-metric` Language usage calculation modes (`auto`, `net`, `activity`) for controlling how line metrics are calculated in different scopes.
+- Improved commit message generation with diff summarization with intelligent file categorization (normal/noisy/binary/rename) and hunk trimming. Added `--describe` flag for user-supplied change context, `--preview` to inspect LLM prompts without making requests.
+- improved streaming output in commit and nocap commands.
+- `submodule` inline submodule add, update, and deinit commands with full argument parsing, branch tracking, remote strategies, and configurable modes (native/internal).
+- Improved submodule handling with in-flight request deduplication, submodule location cache with TTL, and HEAD-sensitive operation detection.
+- `inline submodule mode` `useInlineSubmodule` configuration with `off`, `internal`, and `all` modes for controlling submodule handling.
+- `character-level inline diff` Visual diff viewer with character-level highlighting for single-line replacements and per-character diff segments.
+- ANSI style inference helper functions to extract and serialize ANSI styles for preserving colored text across line wraps in pager and diff-viewer.
+- Object inventory statistics garbage object analysis using `git fsck` with total/garbage object counts and byte metrics in all-scope mode.
+- Contributor detection: top contributor analysis in all-authors mode with contribution percentages, first commit timestamps, orphan commit counts, and hyperlinked repository/user profiles.
+- `stats` binary file filtering with extension heuristics, filename-based language detection (e.g., Makefile), responsive terminal-aware formatting, and language whitelist support.
+- `parallel sync/pick` Sync command for fork synchronization with merge/reset strategies, pick command for cherry-picking commits between worktrees, and enhanced join cursor blocking logic.
+- `graph/stats --all` Project-wide analysis across all authors with language usage visualization and refactored JSTime parsing for improved performance.
+
+### Changed
+
+- Improved error messages and diagnostic output.
+- `reword` Complete rewrite using `git commit-tree` instead of interactive rebase, eliminating sequence editor complexity and removing clean working tree requirements.
+- `parallel -C handling` Proper `-C` argument routing using `getParallelScope` for correct dispatch behavior in fork and join commands.
+- `orphan detection` Replaced `git rev-list` with `git fsck` for more accurate unreachable commit detection.
+
+### Fixed
+
+- Conflict resolution and type formatting in language catalog.
+- Bumped dependencies to latest compatible versions.
+
 ## Version 0.4.1 - 2026-03-02
 
 ### Added
 
 - `gdx parallel join -i` interactive cherry-pick workflow with preview, undo support, cursor navigation, and skip options.
-- Improved `gdx parallel fork` capabilities: branch tracking, forking from a specific ref, environment file copying, and smarter origin-commit filtering.
+- Improved `gdx parallel fork` capabilities branch tracking, forking from a specific ref, environment file copying, and smarter origin-commit filtering.
 - `gdx parallel remove -r` recursive worktree removal support.
 - `gdx submodule switch` command.
 - Progressive command matching/alias improvements for completion and subcommands.
@@ -50,7 +80,7 @@
 - `gdx parallel join` failure from empty commit in cherry-pick operation.
 - optimized `gdx parallel` command to reduce redundant operations and improve performance.
 
-## Version 0.3.0 - 2026-02-5
+## Version 0.3.0 - 2026-02-05
 
 ### Added
 
