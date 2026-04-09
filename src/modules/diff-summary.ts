@@ -1,4 +1,4 @@
-import { Err } from '@lib/Tools';
+import { Err, toShortNum } from '@lib/Tools';
 
 import { $ } from '@/modules/shell';
 import { parseDiffOutput } from '@/modules/diff-viewer';
@@ -686,7 +686,7 @@ function formatFileStatLine(file: ClassifiedFile): string {
 
    if (file.category === 'binary') {
       const sizeText = file.binaryStat
-         ? `${file.binaryStat.beforeBytes} -> ${file.binaryStat.afterBytes} bytes`
+         ? `${toShortNum(file.binaryStat.beforeBytes, 1, 1024)} -> ${toShortNum(file.binaryStat.afterBytes, 1, 1024)} bytes`
          : 'binary size unavailable';
       return `- ${file.status} [binary] ${file.path} (${sizeText})`;
    }

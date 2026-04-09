@@ -571,8 +571,8 @@ export class DiffViewerRenderer implements PagerRenderer {
    private logger = new Logger('diff-renderer');
 
    /** Blended background colors for diff lines (translucent effect) */
-   private readonly ADDED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.15);
-   private readonly DELETED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.15);
+   private readonly ADDED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.13);
+   private readonly DELETED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.13);
    private readonly ADDED_INLINE_BG = colorMix(
       CATPPUCCIN_VPALETTE.base,
       CATPPUCCIN_VPALETTE.green,

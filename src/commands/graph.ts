@@ -2,7 +2,7 @@ import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { MathKit, ncc, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal } from '../modules/graphics';
+import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal, colorMix } from '../modules/graphics';
 import { GDX_VPALETTE, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
@@ -44,6 +44,16 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    const termWidth = global.terminalWidth;
    const graphWidth = termWidth - LABEL_WIDTH - RIGHT_MARGIN;
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
+   const lowContColor = colorMix(
+      GDX_VPALETTE.OceanDeepBlue,
+      GDX_VPALETTE.MidnightBlack,
+      0.86
+   );
+   const noContColor = colorMix(
+      GDX_VPALETTE.OceanDeepBlue,
+      GDX_VPALETTE.MidnightBlack,
+      0.76
+   );
 
    if (graphWidth < MIN_TERM_WIDTH) {
       Logger.error(
@@ -144,12 +154,12 @@ export default async function graph(ctx: GdxContext): Promise<number> {
          let color: string;
          let cellChar = '■';
          if (commitCount === 0) {
-            color = ncc('Dim') + ncc(rgbVec2decimal(GDX_VPALETTE.MidnightBlack));
+            color = ncc('Dim') + ncc(rgbVec2decimal(noContColor));
             cellChar = '▨'; // Different char for zero commits
          } else {
             const intensity = MathKit.clamp(commitCount / maxCommits, 0.15, 1);
             const interpColor = _2PointGradientInterp(
-               GDX_VPALETTE.MidnightBlack,
+               lowContColor,
                GDX_VPALETTE.OceanGreen,
                intensity
             );

@@ -403,7 +403,7 @@ ${contributionLine}
                { align: 'left', redundancyLv: -1 }
             );
             quickPrint(
-               `${languageBarPrefix}${usageBar.bar}\n${ncc('Dim') + usageLegendPrefix + ncc()}${usageBar.legend}\n`
+               `${languageBarPrefix}${usageBar.bar}\n${ncc('Dim') + usageLegendPrefix + ncc()}${usageBar.legend}${ncc()}\n`
             );
          }
       }
