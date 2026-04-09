@@ -17,6 +17,7 @@ import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } 
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
 import { CATPPUCCIN_VPALETTE, INLINE_DIFF_MERGE_DISTANCE, TUI_THEME } from '@/consts';
+import { DiffModule, ShikijsCliModule } from '@/common/types';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -63,30 +64,24 @@ interface ParsedDiff {
    lines: DiffLine[];
 }
 
-export type BundledLanguage = Parameters<(typeof import('@shikijs/cli'))['codeToANSI']>[1];
+export type BundledLanguage = Parameters<ShikijsCliModule['codeToANSI']>[1];
 type DiffChange = {
    added?: boolean;
    removed?: boolean;
    value: string;
 };
 type DiffCharsFn = (oldStr: string, newStr: string) => DiffChange[];
-type DiffModule = {
-   diffChars?: DiffCharsFn;
-   default?: {
-      diffChars?: DiffCharsFn;
-   };
-};
 
-let shikiPromise: Promise<typeof import('@shikijs/cli')> | null = null;
+let shikiPromise: Promise<ShikijsCliModule> | null = null;
 let diffPromise: Promise<DiffModule> | null = null;
 
-async function getShiki(): Promise<typeof import('@shikijs/cli')> {
+async function getShiki(): Promise<ShikijsCliModule> {
    shikiPromise ??= import('@shikijs/cli');
    return await shikiPromise;
 }
 
 async function getDiffLib(): Promise<DiffModule> {
-   diffPromise ??= import('diff') as Promise<DiffModule>;
+   diffPromise ??= import('diff');
    return await diffPromise;
 }
 
@@ -678,7 +673,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       let diffChars: DiffCharsFn | undefined;
       try {
          const diffLib = await getDiffLib();
-         diffChars = diffLib.diffChars || diffLib.default?.diffChars;
+         diffChars = diffLib.diffChars;
       } catch (e) {
          this.logger.warn(`Inline diff module failed to load: ${Err.from(e)}`);
          return;

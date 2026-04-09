@@ -13,13 +13,6 @@ type DiffChange = {
 
 type DiffCharsFn = (oldStr: string, newStr: string) => DiffChange[];
 
-type DiffModule = {
-   diffChars?: DiffCharsFn;
-   default?: {
-      diffChars?: DiffCharsFn;
-   };
-};
-
 interface NameStatusEntry {
    status: string;
    path: string;
@@ -59,7 +52,7 @@ interface ParsedPatchFile {
    hunks: PatchHunk[];
 }
 
-type FileCategory = 'rename' | 'binary' | 'noisy' | 'normal';
+type FileCategory = 'rename' | 'copy' | 'binary' | 'noisy' | 'normal';
 
 interface ClassifiedFile {
    status: string;
@@ -126,11 +119,11 @@ export async function buildStagedCommitDiffSummary(
    }
 
    const [nameStatusOut, numstatOut, statOut, shortstatOut, patchOut] = await Promise.all([
-      $`${git$} diff --cached --name-status -z -M`,
-      $`${git$} diff --cached --numstat -z`,
-      $`${git$} -c color.ui=never diff --cached --stat`,
+      $`${git$} diff --cached --name-status -z -M -C --find-copies-harder`,
+      $`${git$} diff --cached --numstat -z -M -C --find-copies-harder`,
+      $`${git$} -c color.ui=never diff --cached --stat -M -C --find-copies-harder`,
       $`${git$} diff --cached --shortstat`,
-      $`${git$} -c color.ui=never diff --cached --patch --no-ext-diff`,
+      $`${git$} -c color.ui=never diff --cached --patch --no-ext-diff -M -C --find-copies-harder`,
    ]);
 
    const nameStatusEntries = parseNameStatusZ(nameStatusOut.stdout);
@@ -141,14 +134,16 @@ export async function buildStagedCommitDiffSummary(
       };
    }
 
-   const renamePathMap = new Map<string, string>();
+   const movePathMap = new Map<string, string[]>();
    for (const entry of nameStatusEntries) {
       if (entry.oldPath) {
-         renamePathMap.set(entry.oldPath, entry.path);
+         const existing = movePathMap.get(entry.oldPath);
+         if (existing) existing.push(entry.path);
+         else movePathMap.set(entry.oldPath, [entry.path]);
       }
    }
 
-   const numstatMap = parseNumstatZ(numstatOut.stdout, renamePathMap);
+   const numstatMap = parseNumstatZ(numstatOut.stdout, movePathMap);
    const binaryStatMap = parseBinaryStat(statOut.stdout);
    const patchMap = parsePatchByFile(patchOut.stdout);
    const diffChars = await getDiffChars();
@@ -162,26 +157,57 @@ export async function buildStagedCommitDiffSummary(
 
    const normalDiffChunks: string[] = [];
    const noisyDiffChunks: string[] = [];
-   const renameLines: string[] = [];
-   const nonTextLines: string[] = [];
+   const renameDiffChunks: string[] = [];
+   const copyDiffChunks: string[] = [];
    const whitespaceOnlyLines: string[] = [];
    const omittedNotes: string[] = [];
 
    for (const file of classifiedFiles) {
-      if (file.category === 'rename') {
-         const contentDriftPtc = 100 - parseInt(file.status.slice(1), 10);
-         const contentDriftLabel = isNaN(contentDriftPtc)
-            ? ''
-            : contentDriftPtc === 0 ? `(identical content)` : `(~${contentDriftPtc}% content drifted)`;
-         renameLines.push(`- ${file.oldPath || file.path} -> ${file.path} ${contentDriftLabel}`);
+      if (file.category === 'binary') {
          continue;
       }
 
-      if (file.category === 'binary') {
-         const sizeText = file.binaryStat
-            ? `${file.binaryStat.beforeBytes} -> ${file.binaryStat.afterBytes} bytes`
-            : 'binary size unavailable';
-         nonTextLines.push(`- [${file.status}] ${file.path} (${sizeText})`);
+      if (file.category === 'rename' || file.category === 'copy') {
+         const patchFile =
+            patchMap.get(file.path) || (file.oldPath ? patchMap.get(file.oldPath) : undefined);
+         if (!hasMoveContentDrift(file.status, patchFile)) {
+            continue;
+         }
+         if (!patchFile) continue;
+
+         const isNoisyMove =
+            isNoisyPath(file.path, noisyMatchers) ||
+            (file.oldPath ? isNoisyPath(file.oldPath, noisyMatchers) : false);
+         const serialized = serializeTrimmedPatchFile(
+            patchFile,
+            diffChars,
+            isNoisyMove ? noisyFileCharCap : normalFileCharCap,
+            isNoisyMove
+         );
+
+         if (serialized.whitespaceOnlyFile) {
+            whitespaceOnlyLines.push(`- ${file.path}: only whitespace-only changes were detected.`);
+            continue;
+         }
+
+         if (serialized.whitespaceOnlyHunksOmitted > 0) {
+            omittedNotes.push(
+               `${file.path}: omitted ${serialized.whitespaceOnlyHunksOmitted} whitespace-only hunk(s).`
+            );
+         }
+         if (serialized.droppedLowImportanceHunks > 0) {
+            omittedNotes.push(
+               `${file.path}: dropped ${serialized.droppedLowImportanceHunks} low-importance hunk(s) to fit budget.`
+            );
+         }
+         if (serialized.hardTrimmed) {
+            omittedNotes.push(
+               `${file.path}: noisy diff still exceeded budget and was hard-trimmed to ${noisyFileCharCap} chars.`
+            );
+         }
+
+         if (file.category === 'rename') renameDiffChunks.push(serialized.text);
+         else copyDiffChunks.push(serialized.text);
          continue;
       }
 
@@ -230,45 +256,31 @@ export async function buildStagedCommitDiffSummary(
       normal: classifiedFiles.filter((f) => f.category === 'normal').length,
       noisy: classifiedFiles.filter((f) => f.category === 'noisy').length,
       binary: classifiedFiles.filter((f) => f.category === 'binary').length,
+      copy: classifiedFiles.filter((f) => f.category === 'copy').length,
       rename: classifiedFiles.filter((f) => f.category === 'rename').length,
    };
 
-   const perFileStatsLines = classifiedFiles.map((file) => {
-      const categoryLabel = file.category;
-      const status = file.status[0] !== 'R' ? file.status : 'R';
-      const plusMinus =
-         file.isBinary || file.added == null || file.deleted == null
-            ? ''
-            : `(+${file.added} -${file.deleted})`;
-      return `- ${status} [${categoryLabel}] ${file.path} ${status !== 'R' ? plusMinus : `(${file.status})`}`;
-   });
+   const perFileStatsLines = classifiedFiles.map((file) => formatFileStatLine(file));
 
    const summaryBlocks = [
       '<summary-help-text>',
       'This summary includes trimmed diffs, file-level stats, and other metadata, constructed by analyzing raw git diff. Changes are classified into the following categories:',
       '- normal: text files with typical changes',
-      '- noisy: text files that usually don\'t contain meaningful changes (e.g. lockfiles, minified files)',
+      "- noisy: text files that usually don't contain meaningful changes (e.g. lockfiles, minified files)",
       '- binary: non-text files where content changes cannot be meaningfully summarized in text',
-      '- rename: files detected as renames/moves without content changes',
+      '- rename: files detected as renames/moves (includes similarity score and drift percentage)',
+      '- copy: files detected as copies (includes similarity score and drift percentage)',
       '</summary-help-text>',
       '',
       '<changes-overview>',
       shortstat ? `- shortstat: ${shortstat}` : '- shortstat: (empty)',
-      `- files: total=${classifiedFiles.length}, normal=${countByCategory.normal}, noisy=${countByCategory.noisy}, binary=${countByCategory.binary}, renames=${countByCategory.rename}`,
+      `- files: total=${classifiedFiles.length}, normal=${countByCategory.normal}, noisy=${countByCategory.noisy}, binary=${countByCategory.binary}, renames=${countByCategory.rename}, copies=${countByCategory.copy}`,
       '</changes-overview>',
       '',
       '<file-stats>',
       ...perFileStatsLines,
       '</file-stats>',
    ];
-
-   if (renameLines.length > 0) {
-      summaryBlocks.push('', '<renames>', ...renameLines, '</renames>');
-   }
-
-   if (nonTextLines.length > 0) {
-      summaryBlocks.push('', '<binary-changes>', ...nonTextLines, '</binary-changes>');
-   }
 
    if (whitespaceOnlyLines.length > 0) {
       summaryBlocks.push(
@@ -277,6 +289,14 @@ export async function buildStagedCommitDiffSummary(
          ...whitespaceOnlyLines,
          '</whitespace-only-changes>'
       );
+   }
+
+   if (renameDiffChunks.length > 0) {
+      summaryBlocks.push('', '<rename-diffs>', ...renameDiffChunks, '</rename-diffs>');
+   }
+
+   if (copyDiffChunks.length > 0) {
+      summaryBlocks.push('', '<copy-diffs>', ...copyDiffChunks, '</copy-diffs>');
    }
 
    if (normalDiffChunks.length > 0) {
@@ -303,7 +323,7 @@ export async function buildStagedCommitDiffSummary(
 }
 
 /**
- * Parses `git diff --cached --name-status -z -M` output.
+ * Parses `git diff --cached --name-status -z -M -C` output.
  *
  * @param raw - Null-delimited name-status output.
  * @returns Parsed name-status entries.
@@ -336,10 +356,10 @@ function parseNameStatusZ(raw: string): NameStatusEntry[] {
  * Parses `git diff --cached --numstat -z` output.
  *
  * @param raw - Null-delimited numstat output.
- * @param renamePathMap - Map of old path to new path for rename-aware path resolution.
+ * @param movePathMap - Map of old path to rename/copy target paths for move-aware path resolution.
  * @returns A map keyed by resolved file path.
  */
-function parseNumstatZ(raw: string, renamePathMap: Map<string, string>): Map<string, NumstatEntry> {
+function parseNumstatZ(raw: string, movePathMap: Map<string, string[]>): Map<string, NumstatEntry> {
    const tokens = raw.split('\0');
    const result = new Map<string, NumstatEntry>();
 
@@ -348,19 +368,36 @@ function parseNumstatZ(raw: string, renamePathMap: Map<string, string>): Map<str
       if (!token) continue;
 
       const match = token.match(/^(-|\d+)\t(-|\d+)\t(.+)$/);
-      if (!match) continue;
-
-      const addedRaw = match[1];
-      const deletedRaw = match[2];
-      let path = match[3];
-
-      const renamedPath = renamePathMap.get(path);
-      if (renamedPath && tokens[i + 1] === renamedPath) {
-         path = renamedPath;
-         i += 1;
+      if (match) {
+         const addedRaw = match[1];
+         const deletedRaw = match[2];
+         const path = match[3];
+         result.set(path, {
+            added: addedRaw === '-' ? null : parseInt(addedRaw, 10),
+            deleted: deletedRaw === '-' ? null : parseInt(deletedRaw, 10),
+            isBinary: addedRaw === '-' || deletedRaw === '-',
+         });
+         continue;
       }
 
-      result.set(path, {
+      const moveMatch = token.match(/^(-|\d+)\t(-|\d+)\t$/);
+      if (!moveMatch) continue;
+
+      const addedRaw = moveMatch[1];
+      const deletedRaw = moveMatch[2];
+      const oldPath = tokens[i + 1];
+      const nextPath = tokens[i + 2];
+      if (!oldPath || !nextPath) continue;
+
+      const movedPaths = movePathMap.get(oldPath) || [];
+      const resolvedPath = movedPaths.includes(nextPath)
+         ? nextPath
+         : movedPaths.length === 1
+            ? movedPaths[0]
+            : nextPath;
+      i += 2;
+
+      result.set(resolvedPath, {
          added: addedRaw === '-' ? null : parseInt(addedRaw, 10),
          deleted: deletedRaw === '-' ? null : parseInt(deletedRaw, 10),
          isBinary: addedRaw === '-' || deletedRaw === '-',
@@ -533,7 +570,7 @@ function parseUnifiedHunkHeader(
 }
 
 /**
- * Classifies staged files into rename/non-text/noisy/normal buckets.
+ * Classifies staged files into rename/copy/non-text/noisy/normal buckets.
  *
  * @param nameStatusEntries - Entries from name-status parsing.
  * @param numstatMap - Numstat map by path.
@@ -554,10 +591,12 @@ function classifyFiles(
          (entry.oldPath ? binaryStatMap.get(entry.oldPath) : undefined) ||
          binaryStatMap.get(normalizeStatPath(entry.path));
       const isRename = entry.status.startsWith('R');
+      const isCopy = entry.status.startsWith('C');
       const isBinary = Boolean(numstat?.isBinary);
 
       let category: FileCategory;
       if (isRename) category = 'rename';
+      else if (isCopy) category = 'copy';
       else if (isBinary) category = 'binary';
       else if (isNoisyPath(entry.path, noisyMatchers)) category = 'noisy';
       else category = 'normal';
@@ -573,6 +612,90 @@ function classifyFiles(
          category,
       };
    });
+}
+
+/**
+ * Extracts similarity and drift percentages from rename/copy status codes.
+ *
+ * @param status - Name-status token (e.g. `R100`, `C73`).
+ * @returns Parsed percentages, or nulls when unavailable.
+ */
+function parseMoveSimilarity(status: string): {
+   similarityPercent: number | null;
+   driftPercent: number | null;
+} {
+   if (!status.startsWith('R') && !status.startsWith('C')) {
+      return {
+         similarityPercent: null,
+         driftPercent: null,
+      };
+   }
+
+   const similarityRaw = parseInt(status.slice(1), 10);
+   if (isNaN(similarityRaw)) {
+      return {
+         similarityPercent: null,
+         driftPercent: null,
+      };
+   }
+
+   const similarityPercent = Math.min(100, Math.max(0, similarityRaw));
+   return {
+      similarityPercent,
+      driftPercent: 100 - similarityPercent,
+   };
+}
+
+/**
+ * Returns true when a rename/copy has content drift from its source.
+ *
+ * @param status - Name-status token (e.g. `R100`, `C75`).
+ * @param patchFile - Parsed patch for move target.
+ * @returns True when move content changed from original.
+ */
+function hasMoveContentDrift(status: string, patchFile?: ParsedPatchFile): boolean {
+   const moveSimilarity = parseMoveSimilarity(status);
+   if (moveSimilarity.driftPercent != null) {
+      return moveSimilarity.driftPercent > 0;
+   }
+
+   if (!patchFile) return false;
+   return patchFile.hunks.some((hunk) =>
+      hunk.lines.some((line) => line.type === 'add' || line.type === 'delete')
+   );
+}
+
+/**
+ * Formats one file-stat entry according to file category.
+ *
+ * @param file - Classified staged file metadata.
+ * @returns Human-readable file stats line.
+ */
+function formatFileStatLine(file: ClassifiedFile): string {
+   if (file.category === 'rename' || file.category === 'copy') {
+      const moveKind = file.category;
+      const moveSimilarity = parseMoveSimilarity(file.status);
+      const driftLabel =
+         moveSimilarity.driftPercent == null
+            ? '(similarity unknown)'
+            : moveSimilarity.driftPercent === 0
+               ? '(identical)'
+               : `(drift ~${moveSimilarity.driftPercent}%)`;
+      return `- ${file.status[0]} [${moveKind}] ${file.oldPath || file.path} -> ${file.path} ${driftLabel}`;
+   }
+
+   if (file.category === 'binary') {
+      const sizeText = file.binaryStat
+         ? `${file.binaryStat.beforeBytes} -> ${file.binaryStat.afterBytes} bytes`
+         : 'binary size unavailable';
+      return `- ${file.status} [binary] ${file.path} (${sizeText})`;
+   }
+
+   const plusMinus =
+      file.added == null || file.deleted == null
+         ? '(line stats unavailable)'
+         : `(+${file.added} -${file.deleted})`;
+   return `- ${file.status} [${file.category}] ${file.path} ${plusMinus}`;
 }
 
 /**
@@ -964,7 +1087,7 @@ function isNoisyPath(filePath: string, noisyMatchers: Array<(value: string) => b
 async function getDiffChars(): Promise<DiffCharsFn | null> {
    diffCharsPromise ??= (async () => {
       try {
-         const diffLib = (await import('diff')) as DiffModule;
+         const diffLib = await import('diff');
          return diffLib.diffChars || diffLib.default?.diffChars || null;
       } catch (error) {
          throw new Err(

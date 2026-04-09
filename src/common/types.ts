@@ -1,6 +1,9 @@
 import { ArgsSet } from '@/modules/arguments';
 import { RgbVec } from '@/modules/graphics';
 
+export type DiffModule = Awaited<typeof import('diff')>;
+export type ShikijsCliModule = Awaited<typeof import('@shikijs/cli')>;
+
 export interface GdxContext {
    args: ArgsSet;
    git$: string | string[];

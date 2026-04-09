@@ -16,12 +16,20 @@ describe('commit-diff-summary module', async () => {
       expect(summary.summary).toBe('');
    });
 
-   it('should classify rename, non-text, noisy, and normal files', async () => {
+   it('should classify rename, copy, binary, noisy, and normal files in file-stats', async () => {
       await fs.writeFile(path.join(tmpDir, 'rename-me.txt'), 'before\n', 'utf-8');
+      await fs.writeFile(
+         path.join(tmpDir, 'copy-source.ts'),
+         Array.from({ length: 30 }, (_, idx) => `export const value${idx} = ${idx};`).join('\n') +
+         '\n',
+         'utf-8'
+      );
       await $`${git$} add rename-me.txt`;
+      await $`${git$} add copy-source.ts`;
       await $`${git$} commit -m ${'add rename source file'}`;
 
       await $`${git$} mv rename-me.txt renamed.txt`;
+      await fs.copyFile(path.join(tmpDir, 'copy-source.ts'), path.join(tmpDir, 'copied.ts'));
       await fs.writeFile(path.join(tmpDir, 'src.ts'), 'const a = 1;\nconst b = 2;\n', 'utf-8');
       await fs.writeFile(
          path.join(tmpDir, 'package-lock.json'),
@@ -45,19 +53,86 @@ describe('commit-diff-summary module', async () => {
       );
       await fs.writeFile(path.join(tmpDir, 'image.bin'), Buffer.from([0, 255, 10, 16, 3, 99]));
 
-      await $`${git$} add renamed.txt src.ts package-lock.json image.bin`;
+      await $`${git$} add renamed.txt copied.ts src.ts package-lock.json image.bin`;
 
       const summary = await buildStagedCommitDiffSummary(git$);
 
       expect(summary.hasChanges).toBe(true);
-      expect(summary.summary).toContain('<renames>');
-      expect(summary.summary).toContain('rename-me.txt -> renamed.txt');
-      expect(summary.summary).toContain('<binary-changes>');
+      expect(summary.summary).toContain('<summary-help-text>');
+      expect(summary.summary).toContain('- copy: files detected as copies');
+      expect(summary.summary).toContain('<file-stats>');
+      expect(summary.summary).toContain('R [rename] rename-me.txt -> renamed.txt (identical)');
+      expect(summary.summary).toContain('C [copy] copy-source.ts -> copied.ts (identical)');
+      expect(summary.summary).toContain('[binary] image.bin (');
       expect(summary.summary).toContain('image.bin');
       expect(summary.summary).toContain('<normal-text-diffs>');
       expect(summary.summary).toContain('src.ts');
       expect(summary.summary).toContain('<noisy-text-diffs>');
       expect(summary.summary).toContain('package-lock.json');
+      expect(summary.summary).not.toContain('<renames>');
+      expect(summary.summary).not.toContain('<binary-changes>');
+   });
+
+   it('should include rename-diffs for drifted renames', async () => {
+      await $`${git$} reset --hard HEAD`;
+      await $`${git$} clean -fd`;
+
+      await fs.writeFile(
+         path.join(tmpDir, 'rename-drift.txt'),
+         ['one', 'two', 'three', 'four'].join('\n') + '\n',
+         'utf-8'
+      );
+      await $`${git$} add rename-drift.txt`;
+      await $`${git$} commit -m ${'add rename drift source'}`;
+
+      await $`${git$} mv rename-drift.txt renamed-drift.txt`;
+      await fs.writeFile(
+         path.join(tmpDir, 'renamed-drift.txt'),
+         ['one', 'TWO', 'three', 'four', 'five'].join('\n') + '\n',
+         'utf-8'
+      );
+      await $`${git$} add renamed-drift.txt`;
+
+      const summary = await buildStagedCommitDiffSummary(git$);
+
+      expect(summary.hasChanges).toBe(true);
+      expect(summary.summary).toContain('<rename-diffs>');
+      expect(summary.summary).toContain('diff --git a/rename-drift.txt b/renamed-drift.txt');
+   });
+
+   it('should include copy-diffs for drifted copies', async () => {
+      await $`${git$} reset --hard HEAD`;
+      await $`${git$} clean -fd`;
+
+      await fs.writeFile(
+         path.join(tmpDir, 'copy-drift-source.ts'),
+         Array.from({ length: 40 }, (_, idx) => `export const token${idx} = '${idx}';`).join('\n') +
+         '\n',
+         'utf-8'
+      );
+      await $`${git$} add copy-drift-source.ts`;
+      await $`${git$} commit -m ${'add copy drift source'}`;
+
+      await fs.copyFile(
+         path.join(tmpDir, 'copy-drift-source.ts'),
+         path.join(tmpDir, 'copy-drift.ts')
+      );
+      await fs.writeFile(
+         path.join(tmpDir, 'copy-drift.ts'),
+         Array.from({ length: 40 }, (_, idx) => {
+            if (idx === 5) return `export const token${idx} = 'changed';`;
+            if (idx === 36) return `export const token${idx} = '${idx}-updated';`;
+            return `export const token${idx} = '${idx}';`;
+         }).join('\n') + '\n',
+         'utf-8'
+      );
+      await $`${git$} add copy-drift.ts`;
+
+      const summary = await buildStagedCommitDiffSummary(git$);
+
+      expect(summary.hasChanges).toBe(true);
+      expect(summary.summary).toContain('<copy-diffs>');
+      expect(summary.summary).toContain('diff --git a/copy-drift-source.ts b/copy-drift.ts');
    });
 
    it('should classify files via configurable glob noisy patterns', async () => {
