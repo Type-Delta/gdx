@@ -54,6 +54,7 @@ import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
 import { CommandHelpObj, CommandStructure, GdxContext, CommandArgThunk } from '../common/types';
 import clear from './clear';
+import litedent from '@/utils/litedent';
 
 interface ParallelMetadata {
    alias: string;
@@ -1152,27 +1153,27 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart, originHead),
          mainRangeStart
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${mainRangeStart}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-                 excludeRefs: originHeadRef,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${mainRangeStart}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+               excludeRefs: originHeadRef,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    originPath: ctx.originPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                    submoduleCursors: meta.submoduleCursors,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  originPath: ctx.originPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1937,14 +1938,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ]
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ]
       : [
-           { key: 'a', label: 'apply', action: 'apply' },
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ];
+         { key: 'a', label: 'apply', action: 'apply' },
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -2035,9 +2036,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-                 .split('\n')
-                 .map((line) => line.trim())
-                 .filter((line) => line.length > 0)
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -2150,9 +2151,9 @@ async function joinWorktree(
       const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2302,12 +2303,12 @@ async function joinWorktree(
          const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
          const originSubHeadInFork = originSubHead
             ? (
-                 await getRevParseCached(gitExec, forkSubPath, [
-                    '-q',
-                    '--verify',
-                    `${originSubHead}^{commit}`,
-                 ])
-              ).trim()
+               await getRevParseCached(gitExec, forkSubPath, [
+                  '-q',
+                  '--verify',
+                  `${originSubHead}^{commit}`,
+               ])
+            ).trim()
             : '';
          const subRevListArgs = [
             '-C',
@@ -3409,31 +3410,31 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('PARALLEL', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Manage parallel (forked) worktrees for iterative development.
+         litedent`
+         ${bright + _2PointGradient('PARALLEL', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Manage parallel (forked) worktrees for iterative development.
 
-${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-\`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
+         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         \`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
-Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules,
-copy ignored env files, and install dependencies using detected package managers (currently supports
-npm, pnpm, bun, and uv) if configured (see \`${cyan}parallel.init${reset}\` and
-\`${cyan}parallel.envPaths${reset}\` config for options), getting the fork ready for work in no time.
+         Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules,
+         copy ignored env files, and install dependencies using detected package managers (currently supports
+         npm, pnpm, bun, and uv) if configured (see \`${cyan}parallel.init${reset}\` and
+         \`${cyan}parallel.envPaths${reset}\` config for options), getting the fork ready for work in no time.
 
-${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-- ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${cyan}--no-init${reset}\`.
-- ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
-- ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
-- ${cyan}sync [<alias>] [--hard|-h]${reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${cyan}--hard${reset}\` clears fork-local changes before syncing.
-- ${cyan}pick <alias|origin> <commit> [commit...]${reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
-- ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
-- ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
-- ${cyan}remove -r|--recursive${reset}: Removes every fork for the current branch.
+         ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${cyan}--no-init${reset}\`.
+         - ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
+         - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
+         - ${cyan}sync [<alias>] [--hard|-h]${reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${cyan}--hard${reset}\` clears fork-local changes before syncing.
+         - ${cyan}pick <alias|origin> <commit> [commit...]${reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
+         - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
+         - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
+         - ${cyan}remove -r|--recursive${reset}: Removes every fork for the current branch.
 
-${bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
-`,
+         ${bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -3448,33 +3449,33 @@ Joining cherry-picks commits into origin; conflicts will prompt for resolve/cont
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,env,pkg]]${reset}
-${cyan}${EXECUTABLE_NAME} parallel list${reset}
-${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
-${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
-${cyan}${EXECUTABLE_NAME} parallel sync ${dim}[<alias>] [--hard|-h]${reset}
-${cyan}${EXECUTABLE_NAME} parallel pick ${dim}<alias|origin> <commit> [commit...]${reset}
-${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all|-i|--interactive]${reset}
-${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
-${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
-${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,env,pkg]]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel list${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel sync ${dim}[<alias>] [--hard|-h]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel pick ${dim}<alias|origin> <commit> [commit...]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all|-i|--interactive]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
+         ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=env ${reset + dim}# Skip env file copy${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${reset + dim}# Reset a fork to the latest origin state${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${reset + dim}# Cherry-pick from origin into current worktree${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${reset + dim}# Preview and pick commits${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}
-   ${cyan}${EXECUTABLE_NAME} parallel remove -r ${reset + dim}# Remove all forks for this branch${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=env ${reset + dim}# Skip env file copy${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${reset + dim}# Reset a fork to the latest origin state${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${reset + dim}# Cherry-pick from origin into current worktree${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${reset + dim}# Preview and pick commits${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}
+            ${cyan}${EXECUTABLE_NAME} parallel remove -r ${reset + dim}# Remove all forks for this branch${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

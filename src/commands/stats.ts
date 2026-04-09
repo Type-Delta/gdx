@@ -40,6 +40,7 @@ import {
    inferLanguageFromPath,
    type LanguageCatalog,
 } from '@/modules/languages';
+import litedent from '@/utils/litedent';
 
 interface ParsedNumStat {
    totalAdded: number;
@@ -598,19 +599,19 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Gather detailed contribution statistics for a git author in this repository.
+         litedent`
+         ${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Gather detailed contribution statistics for a git author in this repository.
 
-${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language bar (activity or net), and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
+         ${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language bar (activity or net), and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
 
-${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
+         ${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
-${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide stats across all authors. Use ${cyan}--lang-metric <auto|net|activity>${reset} to choose whether the language bar reflects net lines (added - removed), activity (added + removed), or automatic mode (project-wide net, author activity). Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
-`,
+         ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide stats across all authors. Use ${cyan}--lang-metric <auto|net|activity>${reset} to choose whether the language bar reflects net lines (added - removed), activity (added + removed), or automatic mode (project-wide net, author activity). Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -625,14 +626,14 @@ Use ${cyan}--author <email>${reset} to target a different author than the config
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>] [--all|-a] [--lang-metric <auto|net|activity>]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>] [--all|-a] [--lang-metric <auto|net|activity>]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} stats ${reset + dim}# Stats for configured git user${reset}
-   ${cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${reset + dim}# Stats for specified author${reset}
-   ${cyan}${EXECUTABLE_NAME} stats --all ${reset + dim}# Project-wide stats for all authors${reset}
-   ${cyan}${EXECUTABLE_NAME} stats --lang-metric net ${reset + dim}# Force net language usage in author scope${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} stats ${reset + dim}# Stats for configured git user${reset}
+            ${cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${reset + dim}# Stats for specified author${reset}
+            ${cyan}${EXECUTABLE_NAME} stats --all ${reset + dim}# Project-wide stats for all authors${reset}
+            ${cyan}${EXECUTABLE_NAME} stats --lang-metric net ${reset + dim}# Force net language usage in author scope${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

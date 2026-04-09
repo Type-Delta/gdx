@@ -11,6 +11,7 @@ import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
 import { getCache } from '@/common/cache';
+import litedent from '@/utils/litedent';
 
 export default async function doctor(): Promise<number> {
    // Detect native binary info
@@ -149,13 +150,13 @@ export const help = {
       const bright = ncc('Bright');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('DOCTOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Diagnose installation and environment.
+         litedent`
+         ${bright + _2PointGradient('DOCTOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Diagnose installation and environment.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Checks for native binary, runtimes, and provides installation guidance.
-`,
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Checks for native binary, runtimes, and provides installation guidance.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -170,11 +171,11 @@ Checks for native binary, runtimes, and provides installation guidance.
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} doctor${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} doctor${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} doctor ${reset + dim}# Diagnose installation and environment${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} doctor ${reset + dim}# Diagnose installation and environment${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

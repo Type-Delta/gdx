@@ -22,6 +22,7 @@ import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
 import { getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
 import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
+import litedent from '@/utils/litedent';
 
 /**
  * Generates a hash for the given value.
@@ -341,19 +342,19 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('COMMIT AUTO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Generate a commit message from staged changes using an LLM.
+         litedent`
+         ${bright + _2PointGradient('COMMIT AUTO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Generate a commit message from staged changes using an LLM.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
-${bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
- Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. Use ${cyan}--yes (-y)${reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). Use ${cyan}--describe (-d) <text>${reset} to provide a short human summary of the change intent so the model can prioritize relevant diff sections. Use ${cyan}--preview${reset} to print the complete generated prompt and exit (no LLM request, no commit). The tool writes a temporary message file when performing an interactive commit.
+         ${bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. Use ${cyan}--yes (-y)${reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). Use ${cyan}--describe (-d) <text>${reset} to provide a short human summary of the change intent so the model can prioritize relevant diff sections. Use ${cyan}--preview${reset} to print the complete generated prompt and exit (no LLM request, no commit). The tool writes a temporary message file when performing an interactive commit.
 
-${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-A non-empty staged diff is required; the command will error if there are no staged changes.
-`,
+         ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         A non-empty staged diff is required; the command will error if there are no staged changes.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -368,16 +369,16 @@ A non-empty staged diff is required; the command will error if there are no stag
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
- ${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y] [--describe|-d <text>] [--preview]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y] [--describe|-d <text>] [--preview]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} commit auto                    ${reset + dim}# Generate and commit using LLM-generated message${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${reset + dim}# Print generated message without committing${reset}
-     ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto --yes              ${reset + dim}# Commit immediately without editing${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto -d ${'"refactor parser + trim noisy lockfile diffs"'} ${reset + dim}# Add extra context for the LLM${reset}
-    ${cyan}${EXECUTABLE_NAME} commit auto --preview          ${reset + dim}# Print full LLM prompt and exit${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} commit auto                    ${reset + dim}# Generate and commit using LLM-generated message${reset}
+            ${cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${reset + dim}# Print generated message without committing${reset}
+            ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}
+            ${cyan}${EXECUTABLE_NAME} commit auto --yes              ${reset + dim}# Commit immediately without editing${reset}
+            ${cyan}${EXECUTABLE_NAME} commit auto -d ${'"refactor parser + trim noisy lockfile diffs"'} ${reset + dim}# Add extra context for the LLM${reset}
+            ${cyan}${EXECUTABLE_NAME} commit auto --preview          ${reset + dim}# Print full LLM prompt and exit${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

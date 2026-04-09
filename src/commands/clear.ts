@@ -12,6 +12,7 @@ import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
 import { getRepoRootCached } from '@/modules/git';
+import litedent from '@/utils/litedent';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
@@ -191,20 +192,20 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('CLEAR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Safely backup and clear local working changes.
+         litedent`
+         ${bright + _2PointGradient('CLEAR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Safely backup and clear local working changes.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${cyan}git reset --hard${reset}\` and \`${cyan}git clean -fd${reset}\`. The latest patch is kept so you can restore it with \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\`.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${cyan}git reset --hard${reset}\` and \`${cyan}git clean -fd${reset}\`. The latest patch is kept so you can restore it with \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\`.
 
-${bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-- list: Show available backup patch files for this project/branch.
-- pardon: Restore the most recent backup patch.
+         ${bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - list: Show available backup patch files for this project/branch.
+         - pardon: Restore the most recent backup patch.
 
-${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
-`,
+         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -219,13 +220,13 @@ All files (tracked and untracked) are backed up before clearing. Pardon requires
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} clear ${dim}[list|pardon]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} clear ${dim}[list|pardon]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}# Create backup patch and clear working tree${reset}
-   ${cyan}${EXECUTABLE_NAME} clear list ${reset + dim}# Show recent backup patches${reset}
-   ${cyan}${EXECUTABLE_NAME} clear pardon ${reset + dim}# Restore the latest backup patch${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}# Create backup patch and clear working tree${reset}
+            ${cyan}${EXECUTABLE_NAME} clear list ${reset + dim}# Show recent backup patches${reset}
+            ${cyan}${EXECUTABLE_NAME} clear pardon ${reset + dim}# Restore the latest backup patch${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

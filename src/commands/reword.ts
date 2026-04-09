@@ -12,6 +12,7 @@ import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
+import litedent from '@/utils/litedent';
 
 /**
  * Git author metadata used when creating a rewritten commit.
@@ -332,20 +333,20 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('REWORD', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Update a commit message without rebase, no clean working directory required, and with safety checks to prevent history corruption. Ideal for quick fixes to recent commits.
+         litedent`
+         ${bright + _2PointGradient('REWORD', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Update a commit message without rebase, no clean working directory required, and with safety checks to prevent history corruption. Ideal for quick fixes to recent commits.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Opens the selected commit message in your editor, then rewrites history as needed. By default, it rewords HEAD. Provide a commit SHA or a relative ref (e.g. ${cyan}~2${reset}) to target older commits.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Opens the selected commit message in your editor, then rewrites history as needed. By default, it rewords HEAD. Provide a commit SHA or a relative ref (e.g. ${cyan}~2${reset}) to target older commits.
 
-${bright + _2PointGradient('CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Set ${cyan}reword.editor${reset} to override the global editor. When unset, ${cyan}defaultEditor${reset} is used.
+         ${bright + _2PointGradient('CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Set ${cyan}reword.editor${reset} to override the global editor. When unset, ${cyan}defaultEditor${reset} is used.
 
-${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Rewording rewrites commit history. Ensure you coordinate with collaborators before rewriting shared commits.
-If the commit you are rewording or later commits exist on a remote, you will need to force push after rewording. Always double-check the rewritten history before pushing.
-`,
+         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Rewording rewrites commit history. Ensure you coordinate with collaborators before rewriting shared commits.
+         If the commit you are rewording or later commits exist on a remote, you will need to force push after rewording. Always double-check the rewritten history before pushing.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -360,13 +361,13 @@ If the commit you are rewording or later commits exist on a remote, you will nee
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} reword ${dim}[<commit>]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} reword ${dim}[<commit>]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} reword${reset + dim}           # Reword the latest commit${reset}
-   ${cyan}${EXECUTABLE_NAME} reword ~2${reset + dim}        # Reword HEAD~2${reset}
-   ${cyan}${EXECUTABLE_NAME} reword deadbeef${reset + dim}  # Reword a specific commit${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} reword${reset + dim}           # Reword the latest commit${reset}
+            ${cyan}${EXECUTABLE_NAME} reword ~2${reset + dim}        # Reword HEAD~2${reset}
+            ${cyan}${EXECUTABLE_NAME} reword deadbeef${reset + dim}  # Reword a specific commit${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

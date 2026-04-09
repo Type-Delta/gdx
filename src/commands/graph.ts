@@ -7,6 +7,7 @@ import { GDX_VPALETTE, EXECUTABLE_NAME } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { getGitConfigCached } from '@/modules/git';
+import litedent from '@/utils/litedent';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "
@@ -171,19 +172,19 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Render a calendar-style contribution graph for a repository author or the whole repository.
+         litedent`
+         ${bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Render a calendar-style contribution graph for a repository author or the whole repository.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
-${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide commit graph across all authors. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
+         ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide commit graph across all authors. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
 
-${bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
-`,
+         ${bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -198,13 +199,13 @@ The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is t
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
- ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--all|-a] [--quiet]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--all|-a] [--quiet]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} graph ${reset + dim}# Graph for configured git user${reset}
-   ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}
-   ${cyan}${EXECUTABLE_NAME} graph --all ${reset + dim}# Graph for all authors${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} graph ${reset + dim}# Graph for configured git user${reset}
+            ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}
+            ${cyan}${EXECUTABLE_NAME} graph --all ${reset + dim}# Graph for all authors${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

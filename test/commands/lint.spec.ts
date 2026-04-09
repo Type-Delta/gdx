@@ -1,11 +1,11 @@
 import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
-import dedent from 'dedent';
 
 import lint from '@/commands/lint';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
+import litedent from '@/utils/litedent';
 
 describe('gdx lint', async () => {
    const { tmpDir, $, buffer, it } = await createTestEnv();
@@ -52,7 +52,7 @@ describe('gdx lint', async () => {
    });
 
    it('should detect conflict markers', async () => {
-      const content = dedent`
+      const content = litedent`
          <<<<<<< HEAD
          current change
          =======

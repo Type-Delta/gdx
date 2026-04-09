@@ -12,6 +12,7 @@ import * as fs from '@/modules/fs';
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 import { CacheStructure, ZCacheStructure } from '@/common/schema';
+import litedent from '@/utils/litedent';
 
 
 export default async function cache(ctx: GdxContext): Promise<number> {
@@ -347,17 +348,17 @@ export const help = {
       const bright = ncc('Bright');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('CACHE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Manually manage gdx cache entries and settings.
+         litedent`
+         ${bright + _2PointGradient('CACHE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Manually manage gdx cache entries and settings.
 
-${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-- list: Show cache keys, TTL, and a short value preview.
-- prune: Remove expired entries from the cache file.
-- reset: Delete the entire cache file.
-- delete: Mark cache entries as expired by key or prefix.
-- enable/disable: Toggle cache.enabled in gdx config.
-`,
+         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - list: Show cache keys, TTL, and a short value preview.
+         - prune: Remove expired entries from the cache file.
+         - reset: Delete the entire cache file.
+         - delete: Mark cache entries as expired by key or prefix.
+         - enable/disable: Toggle cache.enabled in gdx config.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -372,21 +373,21 @@ ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc10
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} cache prune${reset}
-${cyan}${EXECUTABLE_NAME} cache reset${reset}
-${cyan}${EXECUTABLE_NAME} cache list${reset}
-${cyan}${EXECUTABLE_NAME} cache delete ${dim}<key|prefix> [more...]${reset}
-${cyan}${EXECUTABLE_NAME} cache enable${reset}
-${cyan}${EXECUTABLE_NAME} cache disable${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} cache prune${reset}
+         ${cyan}${EXECUTABLE_NAME} cache reset${reset}
+         ${cyan}${EXECUTABLE_NAME} cache list${reset}
+         ${cyan}${EXECUTABLE_NAME} cache delete ${dim}<key|prefix> [more...]${reset}
+         ${cyan}${EXECUTABLE_NAME} cache enable${reset}
+         ${cyan}${EXECUTABLE_NAME} cache disable${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} cache list ${reset + dim}# List cached keys with TTL${reset}
-   ${cyan}${EXECUTABLE_NAME} cache prune ${reset + dim}# Remove expired cache entries${reset}
-   ${cyan}${EXECUTABLE_NAME} cache reset ${reset + dim}# Delete cache file entirely${reset}
-   ${cyan}${EXECUTABLE_NAME} cache delete git git.config ${reset + dim}# Expire by key/prefix${reset}
-   ${cyan}${EXECUTABLE_NAME} cache disable ${reset + dim}# Turn caching off${reset}
-`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} cache list ${reset + dim}# List cached keys with TTL${reset}
+            ${cyan}${EXECUTABLE_NAME} cache prune ${reset + dim}# Remove expired cache entries${reset}
+            ${cyan}${EXECUTABLE_NAME} cache reset ${reset + dim}# Delete cache file entirely${reset}
+            ${cyan}${EXECUTABLE_NAME} cache delete git git.config ${reset + dim}# Expire by key/prefix${reset}
+            ${cyan}${EXECUTABLE_NAME} cache disable ${reset + dim}# Turn caching off${reset}
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

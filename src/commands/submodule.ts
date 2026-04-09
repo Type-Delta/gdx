@@ -24,6 +24,7 @@ import { asUnixPath } from '@/utils/path';
 import { progressiveMatch } from '@/utils/utilities';
 import { ArgsSet } from '@/modules/arguments';
 import global from '@/global';
+import litedent from '@/utils/litedent';
 
 export async function switchSubmodule(ctx: GdxContext): Promise<number> {
    const args = ctx.args;
@@ -326,19 +327,19 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('SUBMODULE SWITCH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Jump into a submodule directory from the parent repository.
+         litedent`
+         ${bright + _2PointGradient('SUBMODULE SWITCH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Jump into a submodule directory from the parent repository.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Resolve the target submodule by full path, unique prefix, or unique leaf name and then
-schedule an auto-cd into it. Use "main" to jump back to the parent repository root.
-Requires shell integration to change directories.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Resolve the target submodule by full path, unique prefix, or unique leaf name and then
+         schedule an auto-cd into it. Use "main" to jump back to the parent repository root.
+         Requires shell integration to change directories.
 
-${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Shell integration must be enabled using ${cyan}${EXECUTABLE_NAME} --init${reset}.
-Submodules must be initialized (use ${cyan}git submodule update --init${reset}).
-`,
+         ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Shell integration must be enabled using ${cyan}${EXECUTABLE_NAME} --init${reset}.
+         Submodules must be initialized (use ${cyan}git submodule update --init${reset}).
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -353,13 +354,13 @@ Submodules must be initialized (use ${cyan}git submodule update --init${reset}).
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-   ${cyan}${EXECUTABLE_NAME} submodule switch ${dim}<path|name|main>${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} submodule switch ${dim}<path|name|main>${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} submodule switch vendor/sdk ${reset + dim}# Switch by full path${reset}
-   ${cyan}${EXECUTABLE_NAME} submodule switch sdk        ${reset + dim}# Switch by unique name${reset}
-   ${cyan}${EXECUTABLE_NAME} submodule switch main       ${reset + dim}# Back to parent repo${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} submodule switch vendor/sdk ${reset + dim}# Switch by full path${reset}
+            ${cyan}${EXECUTABLE_NAME} submodule switch sdk        ${reset + dim}# Switch by unique name${reset}
+            ${cyan}${EXECUTABLE_NAME} submodule switch main       ${reset + dim}# Back to parent repo${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

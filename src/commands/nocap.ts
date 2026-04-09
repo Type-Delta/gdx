@@ -10,6 +10,7 @@ import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
 import { _2PointGradient, redrawText } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
+import litedent from '@/utils/litedent';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
    const { git$ } = ctx;
@@ -104,19 +105,19 @@ export const help = {
       const bright = ncc('Bright');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('NOCAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Generate a playful roast for your latest commit message.
+         litedent`
+         ${bright + _2PointGradient('NOCAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Generate a playful roast for your latest commit message.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Reads the latest commit message authored by the configured git user and asks the configured LLM provider to produce a humorous "roast" or light-hearted commentary. Output is streamed to the terminal with progress spinners and incremental printing as the LLM responds.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Reads the latest commit message authored by the configured git user and asks the configured LLM provider to produce a humorous "roast" or light-hearted commentary. Output is streamed to the terminal with progress spinners and incremental printing as the LLM responds.
 
-${bright + _2PointGradient('WHEN TO USE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Use when you want a quick, entertaining summary/critique of your most recent commit message before pushing, or as a lighthearted CI/gaming aid.
+         ${bright + _2PointGradient('WHEN TO USE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Use when you want a quick, entertaining summary/critique of your most recent commit message before pushing, or as a lighthearted CI/gaming aid.
 
-${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
-`,
+         ${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -131,11 +132,11 @@ The command requires a valid git user.email in repo config and a configured LLM 
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} nocap${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} nocap${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} nocap ${reset + dim}# Roast the latest commit by the configured git user${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} nocap ${reset + dim}# Roast the latest commit by the configured git user${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

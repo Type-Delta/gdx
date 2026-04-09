@@ -1,4 +1,4 @@
-import dedent from 'dedent';
+import litedent from '@/utils/litedent';
 
 /**
  * Builds the comprehensive commit-message generation prompt.
@@ -9,13 +9,14 @@ import dedent from 'dedent';
  */
 export function commitMsgGenerator(changesSummary: string, userDescription?: string) {
    const userDescriptionBlock = userDescription
-      ? `<user-change-description>
-User describes the changes as: ${userDescription}
-</user-change-description>`
+      ? litedent`
+         <user-change-description>
+         User describes the changes as: ${userDescription}
+         </user-change-description>` + '\n'
       : '';
 
-   const promptHeader = dedent`
-    <instructions>You are an expert Git commit message generator. Analyze the provided git diff in the following messages and generate a concise and informative commit message following the specified format and rules. Focus on clarity and relevance to help maintain a well-documented project history. Output ONLY the commit message.</instructions>
+   return litedent`
+   <instructions>You are an expert Git commit message generator. Analyze the provided git diff in the following messages and generate a concise and informative commit message following the specified format and rules. Focus on clarity and relevance to help maintain a well-documented project history. Output ONLY the commit message.</instructions>
 
    <rules>
    Commit message must be in the following format:
@@ -40,15 +41,15 @@ User describes the changes as: ${userDescription}
    - Do not use Markdown or any other formatting in the output
    - Do not use bullet points outside of the recap section
    - DO NOT PREFIX SECTIONS with labels like "Description:" or "Recap:"
-   </rules>`;
+   </rules>
 
-   const diffBlock = `<git-diff>
-${changesSummary}
-</git-diff>`;
+   ${userDescriptionBlock}
+   <git-diff>
+   ${changesSummary}
+   </git-diff>
 
-   return [promptHeader, diffBlock, userDescriptionBlock, 'Your commit message:']
-      .filter((part) => part.length > 0)
-      .join('\n\n');
+   Your commit message:
+   `;
 }
 
 /**
@@ -65,12 +66,13 @@ export function commitMsgGeneratorInherent(
    userDescription?: string
 ) {
    const userDescriptionBlock = userDescription
-      ? `<user-change-description>
-User describes the changes as: ${userDescription}
-</user-change-description>`
+      ? litedent`
+         <user-change-description>
+         User describes the changes as: ${userDescription}
+         </user-change-description>` + '\n'
       : '';
 
-   const promptHeader = dedent`
+   return litedent`
     <instructions>You are an expert Git commit message generator. Analyze the provided git diff and generate a commit message that follows the project-specific conventions documented below. Focus on clarity and consistency with the existing commit history. Output ONLY the commit message.</instructions>
 
    <project-commit-guidelines>
@@ -83,15 +85,15 @@ User describes the changes as: ${userDescription}
    - IMPORTANT! Total commit message length MUST NOT EXCEED 170 WORDS, keep it concise
    - Do not use Markdown or any other formatting in the output
    - Output ONLY the commit message without any labels or prefixes
-   </rules>`;
+   </rules>
 
-   const diffBlock = `<git-diff>
-${changesSummary}
-</git-diff>`;
+   ${userDescriptionBlock}
+   <git-diff>
+   ${changesSummary}
+   </git-diff>
 
-   return [promptHeader, diffBlock, userDescriptionBlock, 'Your commit message:']
-      .filter((part) => part.length > 0)
-      .join('\n\n');
+   Your commit message:
+   `;
 }
 
 export function guidelineLearningPrompt(commitMessages: string[]) {
@@ -99,7 +101,7 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
       .map((msg, i) => `Example ${i + 1}:\n${msg}`)
       .join('\n\n---\n\n');
 
-   return dedent`
+   return litedent`
    <instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
 
    <commit-message-examples>
@@ -125,7 +127,7 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
 }
 
 export function nocapPrompt(commitMessage: string) {
-   return dedent`
+   return litedent`
    <instruction>
    You are an unfiltered Gen-Z dev who speaks like a terminal meme lord.
    You talk in chaotic, funny, exaggerated internet slang. You sprinkle emojis,

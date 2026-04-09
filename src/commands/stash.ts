@@ -13,6 +13,7 @@ import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
+import litedent from '@/utils/litedent';
 
 export interface StashEntry {
    sha: string;
@@ -220,23 +221,23 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('STASH DROP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Remove a stash entry or a range of stash entries.
+         litedent`
+         ${bright + _2PointGradient('STASH DROP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Remove a stash entry or a range of stash entries.
 
-${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Accepts a single stash index, a range like <start>..<end>, or defaults to the latest stash.
-Includes safety features:
-- **Undoable**: You can restore the last dropped stash(es) with \`${cyan}${EXECUTABLE_NAME} stash drop pardon${reset}\`.
+         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Accepts a single stash index, a range like <start>..<end>, or defaults to the latest stash.
+         Includes safety features:
+         - **Undoable**: You can restore the last dropped stash(es) with \`${cyan}${EXECUTABLE_NAME} stash drop pardon${reset}\`.
 
-${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-- \`${cyan}drop <index>${reset}\`: Drop specific stash.
-- \`${cyan}drop <start>..<end>${reset}\`: Drop range of stashes.
-- \`${cyan}drop pardon${reset}\`: Undo the last drop operation.
+         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - \`${cyan}drop <index>${reset}\`: Drop specific stash.
+         - \`${cyan}drop <start>..<end>${reset}\`: Drop range of stashes.
+         - \`${cyan}drop pardon${reset}\`: Undo the last drop operation.
 
-${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Dropped stashes are backed up temporarily. Use \`${cyan}pardon${reset}\` to bring them back.
-`,
+         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Dropped stashes are backed up temporarily. Use \`${cyan}pardon${reset}\` to bring them back.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -251,17 +252,17 @@ Dropped stashes are backed up temporarily. Use \`${cyan}pardon${reset}\` to brin
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} stash drop ${dim}[<stash> | <range> | pardon]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} stash drop ${dim}[<stash> | <range> | pardon]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} stash drop 0..0   ${reset + dim}# Drop the most recent stash${reset}
-   ${cyan}${EXECUTABLE_NAME} stash drop pardon ${reset + dim}# Restore last dropped stash${reset}
-   ${cyan}${EXECUTABLE_NAME} stash l           ${reset + dim}# Show stash list (alias for ${EXECUTABLE_NAME} stash list).${reset}
-   ${cyan}${EXECUTABLE_NAME} stash d 3         ${reset + dim}# Drop stash@{3}.${reset}
-   ${cyan}${EXECUTABLE_NAME} stash d 2..5      ${reset + dim}# Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).${reset}
-   ${cyan}${EXECUTABLE_NAME} stash p 1         ${reset + dim}# Pop stash@{1}.${reset}
-   ${cyan}${EXECUTABLE_NAME} stash c           ${reset + dim}# Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} stash drop 0..0   ${reset + dim}# Drop the most recent stash${reset}
+            ${cyan}${EXECUTABLE_NAME} stash drop pardon ${reset + dim}# Restore last dropped stash${reset}
+            ${cyan}${EXECUTABLE_NAME} stash l           ${reset + dim}# Show stash list (alias for ${EXECUTABLE_NAME} stash list).${reset}
+            ${cyan}${EXECUTABLE_NAME} stash d 3         ${reset + dim}# Drop stash@{3}.${reset}
+            ${cyan}${EXECUTABLE_NAME} stash d 2..5      ${reset + dim}# Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).${reset}
+            ${cyan}${EXECUTABLE_NAME} stash p 1         ${reset + dim}# Pop stash@{1}.${reset}
+            ${cyan}${EXECUTABLE_NAME} stash c           ${reset + dim}# Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

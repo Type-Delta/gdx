@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import dedent from 'dedent';
-
 import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
+import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE } from '@/consts';
@@ -219,7 +218,7 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
       return await setConfigValue(ctx);
    } else {
       quickPrint(
-         dedent(
+         litedent(
             `${ncc('Cyan')}Usage:${ncc()}
             gdx gdx-config list           - List all configuration
             gdx gdx-config path           - Show config file path

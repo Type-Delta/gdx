@@ -10,6 +10,7 @@ import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
 import { getRepoRootCached } from '@/modules/git';
+import litedent from '@/utils/litedent';
 
 /**
  * Represents a git submodule with its path information
@@ -170,33 +171,33 @@ export const help = {
       const cyan = ncc('Cyan');
       const reset = ncc();
       return strWrap(
-         `
-${bright + _2PointGradient('STATUS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Show the working tree status for the repository and optionally all submodules.
+         litedent`
+         ${bright + _2PointGradient('STATUS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Show the working tree status for the repository and optionally all submodules.
 
-${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-\`${cyan}${EXECUTABLE_NAME} status${reset}\` is a wrapper around \`${cyan}git status${reset}\` with added support for recursive submodule status checking. When the \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
+         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         \`${cyan}${EXECUTABLE_NAME} status${reset}\` is a wrapper around \`${cyan}git status${reset}\` with added support for recursive submodule status checking. When the \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
 
-${bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-When \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` is specified:
-- Shows status of the main repository first
-- Then shows status for each submodule with clear headers
-- Displays both absolute submodule paths and paths relative to your current directory
-- All other \`${cyan}git status${reset}\` flags are passed through to each status check
+         ${bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         When \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` is specified:
+         - Shows status of the main repository first
+         - Then shows status for each submodule with clear headers
+         - Displays both absolute submodule paths and paths relative to your current directory
+         - All other \`${cyan}git status${reset}\` flags are passed through to each status check
 
-${bright + _2PointGradient('EXAMPLES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-${cyan}${EXECUTABLE_NAME} status --recursive${reset}
-   Show status for repository and all submodules
+         ${bright + _2PointGradient('EXAMPLES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${cyan}${EXECUTABLE_NAME} status --recursive${reset}
+            Show status for repository and all submodules
 
-${cyan}${EXECUTABLE_NAME} s -r${reset}
-   Same as above using shorthand
+         ${cyan}${EXECUTABLE_NAME} s -r${reset}
+            Same as above using shorthand
 
-${cyan}${EXECUTABLE_NAME} status -r --short${reset}
-   Show short format status recursively
+         ${cyan}${EXECUTABLE_NAME} status -r --short${reset}
+            Show short format status recursively
 
-${cyan}${EXECUTABLE_NAME} status --recursive --porcelain${reset}
-   Show porcelain format status recursively
-`,
+         ${cyan}${EXECUTABLE_NAME} status --recursive --porcelain${reset}
+            Show porcelain format status recursively
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -211,13 +212,13 @@ ${cyan}${EXECUTABLE_NAME} status --recursive --porcelain${reset}
       const dim = ncc('Dim');
       const reset = ncc();
       return strWrap(
-         `
-${cyan}${EXECUTABLE_NAME} status ${dim}[--recursive|-r] [<git-status-options>]${reset}
-${cyan}${EXECUTABLE_NAME} s ${dim}[--recursive|-r] [<git-status-options>]${reset}
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} status ${dim}[--recursive|-r] [<git-status-options>]${reset}
+         ${cyan}${EXECUTABLE_NAME} s ${dim}[--recursive|-r] [<git-status-options>]${reset}
 
-Examples:
-   ${cyan}${EXECUTABLE_NAME} status --recursive ${reset + dim}# Show status for repo and all submodules${reset}
-   ${cyan}${EXECUTABLE_NAME} s -r --short ${reset + dim}# Short format with submodules${reset}`,
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} status --recursive ${reset + dim}# Show status for repo and all submodules${reset}
+            ${cyan}${EXECUTABLE_NAME} s -r --short ${reset + dim}# Short format with submodules${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
