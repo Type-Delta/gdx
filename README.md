@@ -171,6 +171,9 @@ gdx parallel list    # See where your forks are
 gdx parallel switch  # Switch between forks (requires shell integration)
 gdx parallel open    # Open any fork in your default editor
 gdx parallel join    # Merge changes from a fork back to main
+gdx parallel sync    # Sync forks with the main (origin worktree)
+gdx parallel pick    # Cherry-pick a commit from between forks
+gdx parallel remove  # Remove a fork when you're done
 ```
 
 Additionally, `gdx parallel fork` can auto-initialize submodules and
@@ -181,7 +184,7 @@ getting the fork ready for work in no time.
 ### 5. Git Output for Human (Experimental)
 
 Admit it, Git's default output isn't exactly designed for readability.
-`gdx` enhances the output of some commands with better formatting to make it more enjoyable and less "git" to read.
+`gdx` enhances the output of some commands with better formatting to make it less "git" to read.
 
 Currently, we only support enhanced formatting for `gdx diff` and `gdx show`,
 but more commands will be added in the future. (feel free to request what commands you'd like to see enhanced!)
@@ -234,19 +237,26 @@ Tools to help you feel productive without leaving the terminal.
 
 ## Command Reference
 
-| Command      | Expansion / Function                                               |
-| :----------- | :----------------------------------------------------------------- |
-| `s`, `stat`  | `git status` (use `-r` recursively run "status" on all submodules) |
-| `lg`, `lo`   | `git log --oneline --graph --all --decorate`                       |
-| `sw`, `swit` | `git switch`                                                       |
-| `br`, `bra`  | `git branch`                                                       |
-| `cmi`, `com` | `git commit` (Try `gdx cmi auto` for AI messages!)                 |
-| `res`        | `git reset` (supports `res ~3`, `res -h` expansion)                |
-| `dif`        | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)          |
-| `sho`        | `git show` (supports `sho ~3`, `sho origin ~2` expansion)          |
-| `sta`, `st`  | `git stash`                                                        |
-| `lint`       | Run pre-push checks (spelling, secrets, etc.)                      |
-| `gdx-config` | Manage gdx configuration                                           |
+| Command           | Expansion / Function                                               |
+| :---------------- | :----------------------------------------------------------------- |
+| `s`, `stat`       | `git status` (use `-r` recursively run "status" on all submodules) |
+| `lg`, `lo`        | `git log --oneline --graph --all --decorate`                       |
+| `sw`, `swit`      | `git switch`                                                       |
+| `br`, `bra`       | `git branch`                                                       |
+| `cmi`, `com`      | `git commit` (Try `gdx cmi auto` for AI messages!)                 |
+| `res`             | `git reset` (supports `res ~3`, `res -h` expansion)                |
+| `dif`             | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)          |
+| `sho`             | `git show` (supports `sho ~3`, `sho origin ~2` expansion)          |
+| `sta`, `st`       | `git stash`                                                        |
+| `lint`            | Run pre-push checks (spelling, secrets, etc.)                      |
+| `gdx-config`      | Manage gdx configuration                                           |
+| `reword`, `rew`   | Rewrite commit messages                                            |
+| `parallel`, `par` | Manage parallel worktrees for the current branch                   |
+| `stats`           | Show contribution statistics and metrics for the current repo      |
+| `graph`           | Render a GitHub-style contribution heatmap in the terminal         |
+| `nocap`           | Roast your latest commit message with AI                           |
+| `clear`           | Wipe changes in the working directory with a backup patch          |
+| `cache`           | Manage GDX's cache                                                 |
 
 _Run `gdx ghelp` to see the full list of expansions._
 
