@@ -53,6 +53,29 @@ describe('litedent', () => {
       expect(output).toBe('value: 42\nobject: [object Object]');
    });
 
+   it('preserves multiline interpolation indentation by default', () => {
+      const inserted = '      child\n        grandchild';
+      const output = litedent`
+         root
+            ${inserted}
+         end
+      `;
+
+      expect(output).toBe('root\n   ' + inserted + '\nend');
+   });
+
+   it('can disable multiline interpolation indent preservation', () => {
+      const withoutPreserve = litedent.withOptions({ preserveTemplateIndent: false });
+      const inserted = '      child\n        grandchild';
+      const output = withoutPreserve`
+         root
+            ${inserted}
+         end
+      `;
+
+      expect(output).toBe('root\n         child\ngrandchild\nend');
+   });
+
    it('handles all-whitespace input', () => {
       expect(litedent('\n\t   \n')).toBe('');
       expect(litedent.withOptions({ trimWhitespace: false })('\n\t   \n')).toBe('\n\t   \n');
@@ -60,7 +83,15 @@ describe('litedent', () => {
 
    it('skips dedent for under-indented lines in strict mode', () => {
       const strictDedent = litedent.withOptions({ dedentMode: 'strict' });
-      const output = strictDedent('   one\n  two\n      three');
+      let output = strictDedent('   one\n  two\n      three');
+
+      expect(output).toBe('one\n  two\n   three');
+
+      output = strictDedent`
+   one
+  two
+      three
+      `;
 
       expect(output).toBe('one\n  two\n   three');
    });

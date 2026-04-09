@@ -15,12 +15,21 @@ export interface LitedentOptions {
     * Defaults to `true`.
     */
    trimWhitespace?: boolean;
-
+   /**
+    * Preserves indentation for multi-line interpolation values in tagged templates.
+    * Defaults to `true`.
+    */
+   preserveTemplateIndent?: boolean;
    /**
     * Per-line dedent behavior.
     * Defaults to `greedy`.
     */
    dedentMode?: LitedentDedentMode;
+}
+
+interface ToInputStringResult {
+   input: string;
+   skipRanges?: number[];
 }
 
 interface LitedentFunction {
@@ -52,24 +61,47 @@ function isWhitespaceCode(code: number): boolean {
 
 /**
  * Converts tagged-template input or plain input into a single string.
+ *
+ * When `preserveTemplateIndent` is enabled, multi-line interpolation values are
+ * tracked as skip ranges so dedent will not trim whitespace that belongs to
+ * those values.
+ *
  * @param inputOrStrings - Direct input string or template strings array.
  * @param values - Interpolated template values.
- * @returns Concatenated source string.
+ * @param options - Runtime options.
+ * @returns Concatenated source string and optional skip ranges.
  */
-function toInputString(inputOrStrings: string | TemplateStringsArray, values: unknown[]): string {
+function toInputString(
+   inputOrStrings: string | TemplateStringsArray,
+   values: unknown[],
+   options: LitedentOptions
+): ToInputStringResult {
    if (typeof inputOrStrings === 'string') {
-      return inputOrStrings;
+      return { input: inputOrStrings };
    }
+
+   const valueStrings = values.map((value) => String(value));
+   const preserveTemplateIndent = options.preserveTemplateIndent !== false;
+   const skipRanges: number[] = [];
 
    let result = '';
    for (let i = 0; i < inputOrStrings.length; i++) {
       result += inputOrStrings[i];
-      if (i < values.length) {
-         result += String(values[i]);
+      if (i < valueStrings.length) {
+         const value = valueStrings[i];
+         const valueStart = result.length;
+         result += value;
+
+         if (preserveTemplateIndent && value.includes('\n')) {
+            skipRanges.push(valueStart, valueStart + value.length);
+         }
       }
    }
 
-   return result;
+   return {
+      input: result,
+      skipRanges: skipRanges.length === 0 ? undefined : skipRanges,
+   };
 }
 
 /**
@@ -82,9 +114,10 @@ function toInputString(inputOrStrings: string | TemplateStringsArray, values: un
  * through the end of the string.
  *
  * @param input - Source string.
- * @returns Boundary-trimmed string.
+ * @param skipRanges - Optional skip ranges to keep aligned with `input`.
+ * @returns Boundary-trimmed string and adjusted skip ranges.
  */
-function trimWhitespaceAroundBoundary(input: string): string {
+function trimWhitespaceAroundBoundary(input: string, skipRanges?: number[]): ToInputStringResult {
    let start = 0;
    let end = input.length;
 
@@ -114,10 +147,30 @@ function trimWhitespaceAroundBoundary(input: string): string {
    }
 
    if (start >= end) {
-      return '';
+      return { input: '' };
    }
 
-   return input.slice(start, end);
+   const output = input.slice(start, end);
+   if (skipRanges === undefined || skipRanges.length === 0) {
+      return { input: output };
+   }
+
+   const trimmedRanges: number[] = [];
+   for (let i = 0; i < skipRanges.length; i += 2) {
+      const rangeStart = skipRanges[i];
+      const rangeEnd = skipRanges[i + 1];
+
+      if (rangeEnd <= start || rangeStart >= end) {
+         continue;
+      }
+
+      trimmedRanges.push(Math.max(rangeStart, start) - start, Math.min(rangeEnd, end) - start);
+   }
+
+   return {
+      input: output,
+      skipRanges: trimmedRanges.length === 0 ? undefined : trimmedRanges,
+   };
 }
 
 /**
@@ -151,7 +204,8 @@ function measureBaselineIndent(input: string): number {
 function removeIndentByAmount(
    input: string,
    indentLength: number,
-   dedentMode: LitedentDedentMode
+   dedentMode: LitedentDedentMode,
+   skipRanges?: number[]
 ): string {
    if (indentLength <= 0 || input.length === 0) {
       return input;
@@ -159,6 +213,20 @@ function removeIndentByAmount(
 
    const parts: string[] = [];
    const length = input.length;
+   let skipRangeIndex = 0;
+
+   const shouldSkipTrim = (index: number): boolean => {
+      if (skipRanges === undefined || skipRanges.length === 0) {
+         return false;
+      }
+
+      while (skipRangeIndex < skipRanges.length && index >= skipRanges[skipRangeIndex + 1]) {
+         skipRangeIndex += 2;
+      }
+
+      return skipRangeIndex < skipRanges.length && index >= skipRanges[skipRangeIndex];
+   };
+
    let lineStart = 0;
 
    while (lineStart <= length) {
@@ -169,16 +237,16 @@ function removeIndentByAmount(
 
       let trimTo = lineStart;
       let removeCount = 0;
-      while (
-         trimTo < lineEnd &&
-         removeCount < indentLength &&
-         isWhitespaceCode(input.charCodeAt(trimTo))
-      ) {
+      while (trimTo < lineEnd && removeCount < indentLength) {
+         if (shouldSkipTrim(trimTo) || !isWhitespaceCode(input.charCodeAt(trimTo))) {
+            break;
+         }
+
          trimTo++;
          removeCount++;
       }
 
-      const canRemoveFullIndent = removeCount === indentLength - 1;
+      const canRemoveFullIndent = removeCount === indentLength;
       const nextLineStart = dedentMode === 'strict' && !canRemoveFullIndent ? lineStart : trimTo;
 
       parts.push(input.slice(nextLineStart, lineEnd));
@@ -197,14 +265,17 @@ function removeIndentByAmount(
  * Applies lightweight indentation trimming for plain strings or template tags.
  * @param input - Normalized input string.
  * @param options - Runtime options.
+ * @param skipRanges - Optional ranges excluded from leading-whitespace trimming.
  * @returns Indent-trimmed string.
  */
-function applyLitedent(input: string, options: LitedentOptions): string {
+function applyLitedent(input: string, options: LitedentOptions, skipRanges?: number[]): string {
    const normalized =
-      options.trimWhitespace === false ? input : trimWhitespaceAroundBoundary(input);
-   const indent = measureBaselineIndent(normalized);
+      options.trimWhitespace === false
+         ? { input, skipRanges }
+         : trimWhitespaceAroundBoundary(input, skipRanges);
+   const indent = measureBaselineIndent(normalized.input);
    const dedentMode = options.dedentMode ?? 'greedy';
-   return removeIndentByAmount(normalized, indent, dedentMode);
+   return removeIndentByAmount(normalized.input, indent, dedentMode, normalized.skipRanges);
 }
 
 /**
@@ -214,8 +285,8 @@ function applyLitedent(input: string, options: LitedentOptions): string {
  */
 function createLitedent(options: LitedentOptions): LitedentFunction {
    const fn = ((inputOrStrings: string | TemplateStringsArray, ...values: unknown[]) => {
-      const input = toInputString(inputOrStrings, values);
-      return applyLitedent(input, options);
+      const { input, skipRanges } = toInputString(inputOrStrings, values, options);
+      return applyLitedent(input, options, skipRanges);
    }) as LitedentFunction;
 
    fn.withOptions = (nextOptions: LitedentOptions) => {
