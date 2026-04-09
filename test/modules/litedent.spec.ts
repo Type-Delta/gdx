@@ -19,6 +19,12 @@ describe('litedent', () => {
       expect(output).toBe('one\ntwo\n   three');
    });
 
+   it('uses greedy dedent mode by default', () => {
+      const output = litedent('   one\n  two\n      three');
+
+      expect(output).toBe('one\ntwo\n   three');
+   });
+
    it('trims boundary whitespace only when LF is present', () => {
       const output = litedent('   \n\t  foo\n  bar  \n\t ');
 
@@ -50,5 +56,12 @@ describe('litedent', () => {
    it('handles all-whitespace input', () => {
       expect(litedent('\n\t   \n')).toBe('');
       expect(litedent.withOptions({ trimWhitespace: false })('\n\t   \n')).toBe('\n\t   \n');
+   });
+
+   it('skips dedent for under-indented lines in strict mode', () => {
+      const strictDedent = litedent.withOptions({ dedentMode: 'strict' });
+      const output = strictDedent('   one\n  two\n      three');
+
+      expect(output).toBe('one\n  two\n   three');
    });
 });

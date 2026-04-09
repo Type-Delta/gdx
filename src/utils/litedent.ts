@@ -1,5 +1,26 @@
+/**
+ * Dedent strategy for per-line indentation removal.
+ *
+ * - `greedy`: removes as much leading whitespace as possible per line, up to the measured indent.
+ * - `strict`: removes indentation only when a line can remove the full measured indent.
+ */
+export type LitedentDedentMode = 'greedy' | 'strict';
+
+/**
+ * Runtime options for `litedent`.
+ */
 export interface LitedentOptions {
+   /**
+    * Trims boundary whitespace blocks only when they include a line feed.
+    * Defaults to `true`.
+    */
    trimWhitespace?: boolean;
+
+   /**
+    * Per-line dedent behavior.
+    * Defaults to `greedy`.
+    */
+   dedentMode?: LitedentDedentMode;
 }
 
 interface LitedentFunction {
@@ -127,7 +148,11 @@ function measureBaselineIndent(input: string): number {
  * @param indentLength - Maximum whitespace characters to remove per line.
  * @returns Indent-trimmed string.
  */
-function removeIndentByAmount(input: string, indentLength: number): string {
+function removeIndentByAmount(
+   input: string,
+   indentLength: number,
+   dedentMode: LitedentDedentMode
+): string {
    if (indentLength <= 0 || input.length === 0) {
       return input;
    }
@@ -153,7 +178,10 @@ function removeIndentByAmount(input: string, indentLength: number): string {
          removeCount++;
       }
 
-      parts.push(input.slice(trimTo, lineEnd));
+      const canRemoveFullIndent = removeCount === indentLength - 1;
+      const nextLineStart = dedentMode === 'strict' && !canRemoveFullIndent ? lineStart : trimTo;
+
+      parts.push(input.slice(nextLineStart, lineEnd));
 
       if (lineEnd === length) {
          break;
@@ -175,7 +203,8 @@ function applyLitedent(input: string, options: LitedentOptions): string {
    const normalized =
       options.trimWhitespace === false ? input : trimWhitespaceAroundBoundary(input);
    const indent = measureBaselineIndent(normalized);
-   return removeIndentByAmount(normalized, indent);
+   const dedentMode = options.dedentMode ?? 'greedy';
+   return removeIndentByAmount(normalized, indent, dedentMode);
 }
 
 /**

@@ -15,7 +15,7 @@ export function commitMsgGenerator(changesSummary: string, userDescription?: str
          </user-change-description>` + '\n'
       : '';
 
-   return litedent`
+   return litedent.withOptions({ dedentMode: 'strict' })`
    <instructions>You are an expert Git commit message generator. Analyze the provided git diff in the following messages and generate a concise and informative commit message following the specified format and rules. Focus on clarity and relevance to help maintain a well-documented project history. Output ONLY the commit message.</instructions>
 
    <rules>
@@ -72,7 +72,7 @@ export function commitMsgGeneratorInherent(
          </user-change-description>` + '\n'
       : '';
 
-   return litedent`
+   return litedent.withOptions({ dedentMode: 'strict' })`
     <instructions>You are an expert Git commit message generator. Analyze the provided git diff and generate a commit message that follows the project-specific conventions documented below. Focus on clarity and consistency with the existing commit history. Output ONLY the commit message.</instructions>
 
    <project-commit-guidelines>
@@ -101,7 +101,7 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
       .map((msg, i) => `Example ${i + 1}:\n${msg}`)
       .join('\n\n---\n\n');
 
-   return litedent`
+   return litedent.withOptions({ dedentMode: 'strict' })`
    <instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
 
    <commit-message-examples>
@@ -127,7 +127,7 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
 }
 
 export function nocapPrompt(commitMessage: string) {
-   return litedent`
+   return litedent.withOptions({ dedentMode: 'strict' })`
    <instruction>
    You are an unfiltered Gen-Z dev who speaks like a terminal meme lord.
    You talk in chaotic, funny, exaggerated internet slang. You sprinkle emojis,
