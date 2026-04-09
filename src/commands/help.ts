@@ -19,7 +19,26 @@ import { help as statusHelp } from './status';
 import { help as doctorHelp } from './doctor';
 import { help as submoduleHelp } from './submodule';
 import { help as rewordHelp } from './reword';
+import { help as macroHelp } from './macro';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
+
+const HELP_MAP: Record<string, CommandHelpObj> = {
+   cache: cacheHelp,
+   stash: stashHelp,
+   stats: statsHelp,
+   graph: graphHelp,
+   nocap: nocapHelp,
+   parallel: parallelHelp,
+   'gdx-config': gdxConfigHelp,
+   commit: commitHelp,
+   clear: clearHelp,
+   lint: lintHelp,
+   status: statusHelp,
+   doctor: doctorHelp,
+   submodule: submoduleHelp,
+   reword: rewordHelp,
+   macro: macroHelp,
+};
 
 export default function help(name?: string): number {
    const cyan = ncc('Cyan');
@@ -27,23 +46,6 @@ export default function help(name?: string): number {
    const bright = ncc('Bright');
    const dim = ncc('Dim');
    const reset = ncc('Reset');
-
-   const HELP_MAP: Record<string, CommandHelpObj> = {
-      cache: cacheHelp,
-      stash: stashHelp,
-      stats: statsHelp,
-      graph: graphHelp,
-      nocap: nocapHelp,
-      parallel: parallelHelp,
-      'gdx-config': gdxConfigHelp,
-      commit: commitHelp,
-      clear: clearHelp,
-      lint: lintHelp,
-      status: statusHelp,
-      doctor: doctorHelp,
-      submodule: submoduleHelp,
-      reword: rewordHelp,
-   };
 
    if (!name) {
       // LINK: dn2jka text literal in spec
@@ -218,18 +220,5 @@ function formatShortCmdList(
 }
 
 export const structure = {
-   $root: [
-      'cache',
-      'clear',
-      'commit',
-      'doctor',
-      'graph',
-      'gdx-config',
-      'lint',
-      'nocap',
-      'parallel',
-      'stash',
-      'stats',
-      'status',
-   ],
+   $root: Object.keys(HELP_MAP),
 } as const satisfies CommandStructure;

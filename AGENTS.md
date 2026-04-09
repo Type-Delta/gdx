@@ -32,7 +32,7 @@ This repo commonly uses an emoji + Conventional Commits-style subject line, plus
 
 ```bash
 bun run check   # Runs lint, typecheck, and build checks
-bun test        # Runs tests with Bun's test runner
+bun test        # Runs tests with Bun's test runner (set timeout >= 5mins)
 ```
 
 ### Development Setup

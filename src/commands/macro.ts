@@ -1,15 +1,19 @@
-import { GdxContext } from '@/common/types';
+import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import {
    readMacrosFromFile,
    writeMacrosToFile,
    syncMacrosToCache,
    isFilePath,
 } from '@/modules/macro';
-import { Err, ncc } from '@lib/Tools';
+import { Err, ncc, strWrap } from '@lib/Tools';
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
+import { EXECUTABLE_NAME, GDX_VPALETTE } from '@/consts';
+import { _2PointGradient } from '@/modules/graphics';
+import global from '@/global';
+import litedent from '@/utils/litedent';
 
 /**
  * Main macro command dispatcher.
@@ -17,10 +21,12 @@ import * as fs from '@/modules/fs';
 async function macro(ctx: GdxContext): Promise<number> {
    const { args } = ctx;
    const inputCommand = args[1]?.toLowerCase();
-   const { match: subCmd, candidates } = progressiveMatch(
-      inputCommand,
-      ['set', 'list', 'drop', 'sync']
-   );
+   const { match: subCmd, candidates } = progressiveMatch(inputCommand, [
+      'set',
+      'list',
+      'drop',
+      'sync',
+   ]);
 
    switch (subCmd) {
       case 'set':
@@ -244,6 +250,72 @@ async function macroSync(): Promise<number> {
 
 export default macro;
 
+export const help = {
+   long: () => {
+      const bright = ncc('Bright');
+      const cyan = ncc('Cyan');
+      const reset = ncc();
+      return strWrap(
+         litedent`
+         ${bright + _2PointGradient('MACRO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Define reusable gdx command sequences.
+
+         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Macros are stored and executed by name:
+         ${cyan}${EXECUTABLE_NAME} <name> [args]${reset}.
+         They run through the gdx dispatcher, so both gdx custom commands and git commands work.
+
+         ${bright + _2PointGradient('PLACEHOLDERS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - ${cyan}$1, $2, ...${reset} : positional args passed to the macro
+         - ${cyan}$*${reset} : all args (consumes the rest)
+
+         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - set <name> <script|file>: Save a macro script.
+         - list: Show macros with a short preview.
+         - drop <name>: Delete a macro.
+         - sync: Refresh cache from macro.json.
+
+         ${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         - Use semicolons to chain commands.
+         - You can read the script from stdin: ${cyan}${EXECUTABLE_NAME} macro set <name> < file.txt${reset}.
+         - Macros cannot invoke other macros.
+         `,
+         Math.min(100, global.terminalWidth - 4),
+         {
+            firstIndent: '  ',
+            mode: 'softboundary',
+            indent: '  ',
+         }
+      );
+   },
+   short: 'Create and manage reusable command macros.',
+   usage: () => {
+      const cyan = ncc('Cyan');
+      const dim = ncc('Dim');
+      const reset = ncc();
+      return strWrap(
+         litedent`
+         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> <script|file>${reset}
+         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> < file.txt${reset}
+         ${cyan}${EXECUTABLE_NAME} macro list${reset}
+         ${cyan}${EXECUTABLE_NAME} macro drop ${dim}<name>${reset}
+         ${cyan}${EXECUTABLE_NAME} macro sync${reset}
+
+         Examples:
+            ${cyan}${EXECUTABLE_NAME} macro set qc 'ad . ; cmi -m "$1"' ${reset + dim}# Save a macro with args${reset}
+            ${cyan}${EXECUTABLE_NAME} qc "ship it" ${reset + dim}# Run macro by name${reset}
+            ${cyan}${EXECUTABLE_NAME} macro set build ./script.txt ${reset + dim}# Load from file${reset}
+         `,
+         Math.min(100, global.terminalWidth - 4),
+         {
+            firstIndent: '  ',
+            mode: 'softboundary',
+            indent: '  ',
+         }
+      );
+   },
+} as const satisfies CommandHelpObj;
+
 export const structure = {
    $root: {
       set: {},
@@ -251,4 +323,4 @@ export const structure = {
       drop: {},
       sync: {},
    },
-};
+} as const satisfies CommandStructure;
