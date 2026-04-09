@@ -92,15 +92,17 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 export async function createTestEnv(
    options: TestEnvOptions = { autoResetBuffer: true, liteMode: false }
 ) {
-   const tmpDir = fs.mkdtempSync(path.join(process.cwd(), 'test/env/'));
+   const baseTestEnvDir = path.join(process.cwd(), 'test/env');
+
+   await clearTestEnvs();
+   fs.mkdirSync(baseTestEnvDir, { recursive: true });
+
+   const tmpDir = fs.mkdtempSync(baseTestEnvDir + '/');
    const tmpDirName = path.basename(tmpDir);
 
    console.time('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));
-   await clearTestEnvs();
 
    if (!gitExePath) await findGitExecutable();
-
-   fs.mkdirSync(path.join(process.cwd(), 'test/env'), { recursive: true });
    const tmpMockProjDir = path.join(tmpDir, 'project');
    const testLogDir = path.join(tmpDir, '.gdx', 'logs');
    fs.mkdirSync(tmpMockProjDir, { recursive: true });
