@@ -9,6 +9,7 @@ import {
    ex_length,
    strJustify,
    hyperlink,
+   MathKit,
 } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
@@ -44,7 +45,8 @@ interface ParsedNumStat {
    totalAdded: number;
    totalRemoved: number;
    totalRecords: number;
-   changedFiles: Array<{ filePath: string; changedLines: number }>;
+   netFiles: Array<{ filePath: string; netLines: number }>;
+   activityFiles: Array<{ filePath: string; activityLines: number }>;
 }
 
 interface LanguageUsageBar {
@@ -77,6 +79,9 @@ interface ObjectInventoryStats {
    garbageBytes: number;
 }
 
+type LanguageMetricMode = 'auto' | 'net' | 'activity';
+type ResolvedLanguageMetricMode = Exclude<LanguageMetricMode, 'auto'>;
+
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
    const $ = exec.$;
@@ -88,6 +93,18 @@ export default async function stats(ctx: GdxContext): Promise<number> {
    const isAllScope = args.hasOption('--all') || args.hasOption('-a');
    args.popOption('--all');
    args.popOption('-a');
+
+   const hasLanguageMetric = args.hasOption('--lang-metric');
+   const languageMetricRaw = args.popValue('--lang-metric');
+   const languageMetricMode = parseLanguageMetricMode(languageMetricRaw, hasLanguageMetric);
+   if (!languageMetricMode) {
+      Logger.error(
+         'Invalid --lang-metric value. Use one of: auto, net, activity (for example: --lang-metric auto).',
+         'stats'
+      );
+      return 1;
+   }
+   const resolvedLanguageMetricMode = resolveLanguageMetricMode(languageMetricMode, isAllScope);
 
    let email = '';
    let username = 'Your';
@@ -352,22 +369,40 @@ ${contributionLine}
   Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`);
 
       if (languageCatalog) {
-         const LANGUAGE_BAR_PREFIX = '  Language Usage:      ';
-         const languageBarWidth = Math.max(
-            24,
-            Math.min(56, global.terminalWidth - LANGUAGE_BAR_PREFIX.length - 2)
+         const languageLabel = resolvedLanguageMetricMode === 'net'
+            ? 'Language Usage:'
+            : 'Language Activity:';
+         const legendLabel = resolvedLanguageMetricMode === 'net'
+            ? '(Net changes)'
+            : '(Aggregated changes)';
+         const languageBarWidth = MathKit.clamp(
+            global.terminalWidth - 21 - 2 - 2, 24, 56
          );
-         const usageBar = renderLanguageUsageBar(
-            languageCatalog,
-            scopedNumStat.changedFiles,
-            totalChanged,
-            languageBarWidth
-         );
+         const languageFiles =
+            resolvedLanguageMetricMode === 'net'
+               ? scopedNumStat.netFiles.map((file) => ({
+                  filePath: file.filePath,
+                  lines: file.netLines,
+               }))
+               : scopedNumStat.activityFiles.map((file) => ({
+                  filePath: file.filePath,
+                  lines: file.activityLines,
+               }));
+         const usageBar = renderLanguageUsageBar(languageCatalog, languageFiles, languageBarWidth);
 
          if (usageBar) {
-            const usageLegendPrefix = ' '.repeat(LANGUAGE_BAR_PREFIX.length);
+            const languageBarPrefix = '  ' + strJustify(
+               languageLabel,
+               21,
+               { align: 'left', redundancyLv: -1 }
+            );
+            const usageLegendPrefix = '  ' + strJustify(
+               legendLabel,
+               21,
+               { align: 'left', redundancyLv: -1 }
+            );
             quickPrint(
-               `${LANGUAGE_BAR_PREFIX}${usageBar.bar}\n${usageLegendPrefix}${usageBar.legend}\n`
+               `${languageBarPrefix}${usageBar.bar}\n${ncc('Dim') + usageLegendPrefix + ncc()}${usageBar.legend}\n`
             );
          }
       }
@@ -568,13 +603,13 @@ ${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 
 Gather detailed contribution statistics for a git author in this repository.
 
 ${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language usage by modified lines, and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
+Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language bar (activity or net), and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
 
 ${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
 ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide stats across all authors. Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
+Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide stats across all authors. Use ${cyan}--lang-metric <auto|net|activity>${reset} to choose whether the language bar reflects net lines (added - removed), activity (added + removed), or automatic mode (project-wide net, author activity). Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
 `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -591,12 +626,13 @@ Use ${cyan}--author <email>${reset} to target a different author than the config
       const reset = ncc();
       return strWrap(
          `
-${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>] [--all|-a]${reset}
+${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>] [--all|-a] [--lang-metric <auto|net|activity>]${reset}
 
 Examples:
    ${cyan}${EXECUTABLE_NAME} stats ${reset + dim}# Stats for configured git user${reset}
    ${cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${reset + dim}# Stats for specified author${reset}
-   ${cyan}${EXECUTABLE_NAME} stats --all ${reset + dim}# Project-wide stats for all authors${reset}`,
+   ${cyan}${EXECUTABLE_NAME} stats --all ${reset + dim}# Project-wide stats for all authors${reset}
+   ${cyan}${EXECUTABLE_NAME} stats --lang-metric net ${reset + dim}# Force net language usage in author scope${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -608,19 +644,20 @@ Examples:
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['--author', '--all', '-a'],
+   $root: ['--author', '--all', '-a', '--lang-metric'],
 } as const satisfies CommandStructure;
 
 /**
  * Parses git numstat output and accumulates changed lines per file.
  *
  * @param raw - Raw output from `git log --numstat`.
- * @returns Aggregated totals and file-level changes.
+ * @returns Aggregated totals and file-level net deltas.
  */
 function parseNumStat(raw: string): ParsedNumStat {
    let totalAdded = 0;
    let totalRemoved = 0;
-   const changedFiles: Array<{ filePath: string; changedLines: number }> = [];
+   const fileNetLines = new Map<string, number>();
+   const fileActivityLines = new Map<string, number>();
    const lines = raw.split('\n');
 
    for (const line of lines) {
@@ -640,17 +677,32 @@ function parseNumStat(raw: string): ParsedNumStat {
 
       totalAdded += added;
       totalRemoved += removed;
-      changedFiles.push({
-         filePath,
-         changedLines: changed,
-      });
+
+      fileActivityLines.set(filePath, (fileActivityLines.get(filePath) ?? 0) + changed);
+
+      const net = added - removed;
+      if (net === 0) continue;
+
+      fileNetLines.set(filePath, (fileNetLines.get(filePath) ?? 0) + net);
    }
+
+   const netFiles = Array.from(fileNetLines.entries()).map(([filePath, netLines]) => ({
+      filePath,
+      netLines,
+   }));
+   const activityFiles = Array.from(fileActivityLines.entries()).map(
+      ([filePath, activityLines]) => ({
+         filePath,
+         activityLines,
+      })
+   );
 
    return {
       totalAdded,
       totalRemoved,
       totalRecords: lines.length,
-      changedFiles,
+      netFiles,
+      activityFiles,
    };
 }
 
@@ -754,40 +806,46 @@ function formatInteger(value: number): string {
  * Builds a colored language usage bar and legend text.
  *
  * @param catalog - Language catalog used for extension lookup.
- * @param changedFiles - Changed lines grouped by file path.
- * @param totalChanged - Total changed lines in selected scope.
+ * @param languageFiles - Line totals grouped by file path for selected metric.
  * @param barWidth - Target bar width in visible columns.
  * @returns Renderable bar and legend or null when no changes exist.
  */
 function renderLanguageUsageBar(
    catalog: LanguageCatalog,
-   changedFiles: Array<{ filePath: string; changedLines: number }>,
-   totalChanged: number,
+   languageFiles: Array<{ filePath: string; lines: number }>,
    barWidth: number
 ): LanguageUsageBar | null {
-   if (totalChanged <= 0 || barWidth <= 0) return null;
+   if (barWidth <= 0) return null;
 
    let othersLines = 0;
    const languageLines = new Map<string, { name: string; color: number; lines: number }>();
 
-   for (const file of changedFiles) {
+   for (const file of languageFiles) {
       const language = inferLanguageFromPath(catalog, file.filePath);
       if (!language) {
-         othersLines += file.changedLines;
+         othersLines += file.lines;
          continue;
       }
 
       const current = languageLines.get(language.name);
       if (current) {
-         current.lines += file.changedLines;
+         current.lines += file.lines;
       } else {
          languageLines.set(language.name, {
             name: language.name,
             color: language.color,
-            lines: file.changedLines,
+            lines: file.lines,
          });
       }
    }
+
+   const positiveLanguageLines = [...languageLines.values()].filter(
+      (language) => language.lines > 0
+   );
+   const baseOthersLines = Math.max(0, othersLines);
+   const totalLines =
+      positiveLanguageLines.reduce((sum, language) => sum + language.lines, 0) + baseOthersLines;
+   if (totalLines <= 0) return null;
 
    const visibleBuckets: {
       name: string;
@@ -798,10 +856,11 @@ function renderLanguageUsageBar(
       isOthers: boolean;
    }[] = [];
 
-   for (const lang of languageLines.values()) {
-      const rawCols = (lang.lines / totalChanged) * barWidth;
+   let collapsedOthersLines = baseOthersLines;
+   for (const lang of positiveLanguageLines) {
+      const rawCols = (lang.lines / totalLines) * barWidth;
       if (rawCols < 1) {
-         othersLines += lang.lines;
+         collapsedOthersLines += lang.lines;
          continue;
       }
 
@@ -816,13 +875,13 @@ function renderLanguageUsageBar(
       });
    }
 
-   if (othersLines > 0) {
-      const rawCols = (othersLines / totalChanged) * barWidth;
+   if (collapsedOthersLines > 0) {
+      const rawCols = (collapsedOthersLines / totalLines) * barWidth;
       const wholeCols = Math.floor(rawCols);
       visibleBuckets.push({
          name: 'Others',
          color: DEFAULT_LANGUAGE_COLOR,
-         lines: othersLines,
+         lines: collapsedOthersLines,
          cols: wholeCols,
          remainder: rawCols - wholeCols,
          isOthers: true,
@@ -874,14 +933,14 @@ function renderLanguageUsageBar(
       .filter((bucket) => bucket.cols > 0)
       .sort((a, b) => b.lines - a.lines);
 
-   const topThreshold = totalChanged * 0.18;
+   const topThreshold = totalLines * 0.18;
    const [topBuckets, otherBuckets] = routeItems(renderedBuckets.slice(0, 6), (bucket, i) => {
       if (bucket.lines >= topThreshold) return 0;
       if (i === 0) return 0;
       return 1;
    });
    const topBucketPcts = topBuckets!.map((bucket) =>
-      maxFraction((bucket.lines / totalChanged) * 100, 1, true)
+      maxFraction((bucket.lines / totalLines) * 100, 1, true)
    );
 
    const bar =
@@ -904,4 +963,40 @@ function renderLanguageUsageBar(
          : '');
 
    return { bar, legend };
+}
+
+/**
+ * Parses and validates the requested language metric mode.
+ *
+ * @param value - Raw CLI value from `--lang-metric`.
+ * @param hasOption - Whether the option token was present.
+ * @returns Parsed mode or null when invalid.
+ */
+function parseLanguageMetricMode(
+   value: string | null,
+   hasOption: boolean
+): LanguageMetricMode | null {
+   if (!hasOption) return 'auto';
+   if (!value) return null;
+
+   const normalized = value.trim().toLowerCase();
+   if (normalized === 'auto' || normalized === 'net' || normalized === 'activity') {
+      return normalized;
+   }
+   return null;
+}
+
+/**
+ * Resolves the effective language metric mode.
+ *
+ * @param mode - User-selected metric mode.
+ * @param isAllScope - Whether stats are project-wide.
+ * @returns Effective render mode.
+ */
+function resolveLanguageMetricMode(
+   mode: LanguageMetricMode,
+   isAllScope: boolean
+): ResolvedLanguageMetricMode {
+   if (mode === 'auto') return isAllScope ? 'net' : 'activity';
+   return mode;
 }

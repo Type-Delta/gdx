@@ -234,10 +234,111 @@ describe('gdx stats', async () => {
 
       const result = await stats(ctx);
       expect(result).toBe(0);
-      expect(buffer.stdout).toContain('Language Usage');
-      expect(buffer.stdout).toContain('TypeScript');
+      expect(buffer.stdout).toContain('Language Activity');
       expect(buffer.stdout).toContain('JavaScript');
       expect(buffer.stdout).toContain('━');
+   });
+
+   it('should render language usage from net lines (added - removed)', async () => {
+      await seedLanguageCatalog();
+
+      await fs.writeFile(path.join(tmpDir, 'balance.ts'), 'a\nb\nc\nd\n');
+      await $`${git$} add balance.ts`;
+      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit -m ${'add ts lines'}`;
+
+      await fs.writeFile(path.join(tmpDir, 'balance.ts'), '');
+      await fs.writeFile(path.join(tmpDir, 'net.js'), 'const now = true;\n');
+      await $`${git$} add balance.ts net.js`;
+      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit -m ${'remove ts and add js'}`;
+
+      const netCtx = createGdxContext(tmpDir, [
+         'stats',
+         '--author',
+         'metric@example.com',
+         '--lang-metric',
+         'net',
+      ]);
+      const result = await stats(netCtx);
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Language Usage');
+      expect(buffer.stdout).toContain('JavaScript');
+      expect(buffer.stdout).not.toContain('TypeScript');
+   });
+
+   it('should default language metric to activity for author scope and net for --all', async () => {
+      await seedLanguageCatalog();
+
+      await fs.writeFile(path.join(tmpDir, 'auto-mode.ts'), 'a\nb\nc\nd\n');
+      await $`${git$} add auto-mode.ts`;
+      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit -m ${'add auto-mode ts lines'}`;
+
+      await fs.writeFile(path.join(tmpDir, 'auto-mode.ts'), '');
+      await fs.writeFile(path.join(tmpDir, 'auto-mode.js'), 'const after = true;\n');
+      await $`${git$} add auto-mode.ts auto-mode.js`;
+      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit -m ${'replace ts with js in auto mode'}`;
+
+      const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'auto@example.com']);
+      const authorResult = await stats(authorCtx);
+      expect(authorResult).toBe(0);
+      expect(buffer.stdout).toContain('Language Activity');
+      expect(buffer.stdout).toContain('TypeScript');
+
+      buffer.stdout = '';
+      const allCtx = createGdxContext(tmpDir, ['stats', '--all']);
+      const allResult = await stats(allCtx);
+      expect(allResult).toBe(0);
+      expect(buffer.stdout).toContain('Language Usage');
+   });
+
+   it('should allow overriding language metric mode', async () => {
+      await seedLanguageCatalog();
+
+      await fs.writeFile(path.join(tmpDir, 'override.ts'), 'a\nb\nc\nd\n');
+      await $`${git$} add override.ts`;
+      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit -m ${'add override ts lines'}`;
+
+      await fs.writeFile(path.join(tmpDir, 'override.ts'), '');
+      await fs.writeFile(path.join(tmpDir, 'override.js'), 'const after = true;\n');
+      await $`${git$} add override.ts override.js`;
+      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit -m ${'replace ts with js in override mode'}`;
+
+      const allActivityCtx = createGdxContext(tmpDir, [
+         'stats',
+         '--all',
+         '--lang-metric',
+         'activity',
+      ]);
+      const allActivityResult = await stats(allActivityCtx);
+      expect(allActivityResult).toBe(0);
+      expect(buffer.stdout).toContain('Language Activity');
+      expect(buffer.stdout).toContain('TypeScript');
+
+      buffer.stdout = '';
+      const authorNetCtx = createGdxContext(tmpDir, [
+         'stats',
+         '--author',
+         'override@example.com',
+         '--lang-metric',
+         'net',
+      ]);
+      const authorNetResult = await stats(authorNetCtx);
+      expect(authorNetResult).toBe(0);
+      expect(buffer.stdout).toContain('Language Usage');
+      expect(buffer.stdout).toContain('JavaScript');
+      expect(buffer.stdout).not.toContain('TypeScript');
+   });
+
+   it('should fail for invalid --lang-metric values', async () => {
+      await seedLanguageCatalog();
+      const invalidCtx = createGdxContext(tmpDir, ['stats', '--lang-metric', 'wrong']);
+      const invalidResult = await stats(invalidCtx);
+      expect(invalidResult).toBe(1);
+      expect(buffer.stderr).toContain('Invalid --lang-metric value');
+
+      const missingValueCtx = createGdxContext(tmpDir, ['stats', '--lang-metric']);
+      const missingValueResult = await stats(missingValueCtx);
+      expect(missingValueResult).toBe(1);
+      expect(buffer.stderr).toContain('Invalid --lang-metric value');
    });
 
    it('should skip language usage bar when language catalog is unavailable', async () => {
@@ -256,6 +357,7 @@ describe('gdx stats', async () => {
 
          const result = await stats(ctx);
          expect(result).toBe(0);
+         expect(buffer.stdout).not.toContain('Language Activity');
          expect(buffer.stdout).not.toContain('Language Usage');
       } finally {
          globalThis.fetch = originalFetch;

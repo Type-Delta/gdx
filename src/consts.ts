@@ -44,8 +44,10 @@ export const GDX_VPALETTE = {
    SunsetOrange: [255, 99, 71],
    MidnightBlack: [10, 16, 36],
    Zinc700: [63, 63, 70],
+   Zinc500: [113, 113, 122],
    Zinc400: [161, 161, 170],
    Zinc100: [244, 244, 245],
+   Zinc050: [250, 250, 250],
    Fuchsia400: [232, 121, 249],
    Teal300: [94, 234, 212],
 } as const satisfies Record<string, RgbVec>;
@@ -215,7 +217,7 @@ export const KNOWN_GIT_FAULT_FILE_HUBRISTICS = [
 export const LANGUAGE_SOURCE_URL =
    'https://github.com/github-linguist/linguist/raw/refs/heads/main/lib/linguist/languages.yml';
 export const LANGUAGE_CACHE_KEY = 'languages.catalog';
-export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS;
+export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS * 7; // Refresh every 7 days
 export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
 export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
 

@@ -211,9 +211,9 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
       interval: 70,
       frames: DEFAULT_SPINNER as string[],
       animateGradient: false,
-      gradientColor: GDX_VPALETTE.Zinc100,
-      gradientColorBg: GDX_VPALETTE.Zinc700,
-      gradientSpeed: 0.11,
+      gradientColor: GDX_VPALETTE.Zinc050,
+      gradientColorBg: GDX_VPALETTE.Zinc400,
+      gradientSpeed: 0.13,
       gradientInterval: 3,
       ...options,
    } satisfies Required<SpinnerOptions>;
