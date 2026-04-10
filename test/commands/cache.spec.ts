@@ -8,7 +8,7 @@ import { CACHE_PATH } from '@/consts';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx cache', async () => {
-   const { tmpDir, buffer, it } = await createTestEnv();
+   const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'cache' });
 
    it('should reset cache file', async () => {
       resetCache();

@@ -39,6 +39,7 @@ function isSubmoduleRemovalBlockedError(stderr: string): boolean {
 describe('gdx parallel', async () => {
    const { tmpDir, tmpRootDir, $, buffer, it, env, resetRepo, tracker } = await createTestEnv({
       autoResetBuffer: true,
+      suitName: 'parallel'
    });
    const { git$ } = createGdxContext(tmpDir);
    const { default: parallel } = await import('@/commands/parallel');

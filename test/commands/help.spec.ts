@@ -4,7 +4,10 @@ import { createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx help', async () => {
-   const { buffer, it } = await createTestEnv({ liteMode: true });
+   const { buffer, it } = await createTestEnv({
+      liteMode: true,
+      suitName: 'help'
+   });
 
    it('should print help message', async () => {
       // help command doesn't take context, it takes an optional string name

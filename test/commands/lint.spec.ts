@@ -8,7 +8,9 @@ import { getConfig } from '@/common/config';
 import litedent from '@/utils/litedent';
 
 describe('gdx lint', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv({
+      suitName: 'lint'
+   });
    const ctx = createGdxContext(tmpDir, ['lint']);
    const { git$ } = ctx;
 

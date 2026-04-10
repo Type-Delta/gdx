@@ -22,6 +22,7 @@ let actualPager: typeof import('@/modules/pager');
 describe('gdx parallel join conflict preview', async () => {
    const { tmpDir, tmpRootDir, $, it, env } = await createTestEnv({
       autoResetBuffer: true,
+      suitName: 'parallel-join-interactive'
    });
    const { git$ } = createGdxContext(tmpDir);
    beforeAll(async () => {

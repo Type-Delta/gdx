@@ -4,7 +4,7 @@ import { dispatch } from '@/cli/dispatch';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx tag move', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'tag-move' });
 
    it('moves an annotated tag to another commit while preserving metadata', async () => {
       await $`git commit --allow-empty -m ${'tag-move base 1'}`;

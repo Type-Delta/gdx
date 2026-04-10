@@ -1,5 +1,4 @@
-import { createTestEnv } from '@/utils/testHelper';
-import { afterAll, describe, expect } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import {
    _2PointGradient,
    _2PointGradientInterp,
@@ -20,7 +19,6 @@ import {
 import { CheckCache, ncc } from '@lib/Tools';
 
 describe('graphics module', async () => {
-   const { it } = await createTestEnv({ liteMode: true });
    const originalSupportsColor = CheckCache.supportsColor;
    CheckCache.supportsColor = 3;
    afterAll(() => {

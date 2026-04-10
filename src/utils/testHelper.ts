@@ -51,6 +51,10 @@ interface TestEnvOptions {
     * If true, creates a lighter test environment by skipping git repository initialization and global git config setup.
     */
    liteMode?: boolean;
+   /**
+    * Optional name for the test suite, which can be used in logging or test lifecycle hooks for better identification of test runs.
+    */
+   suitName?: string;
 }
 
 interface EnvController {
@@ -90,14 +94,18 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
 }
 
 export async function createTestEnv(
-   options: TestEnvOptions = { autoResetBuffer: true, liteMode: false }
+   options: TestEnvOptions = {
+      autoResetBuffer: true,
+      liteMode: false,
+      suitName: undefined,
+   }
 ) {
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
 
    await clearTestEnvs();
    fs.mkdirSync(baseTestEnvDir, { recursive: true });
 
-   const tmpDir = fs.mkdtempSync(baseTestEnvDir + '/');
+   const tmpDir = fs.mkdtempSync(baseTestEnvDir + (options.suitName ? `/${options.suitName}-` : '/'));
    const tmpDirName = path.basename(tmpDir);
 
    console.time('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));

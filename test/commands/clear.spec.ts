@@ -6,7 +6,7 @@ import clear from '@/commands/clear';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx clear', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({ suitName: 'clear' });
    const { git$ } = createGdxContext(tmpDir);
 
    it('should create a backup containing untracked files and clean the directory', async () => {

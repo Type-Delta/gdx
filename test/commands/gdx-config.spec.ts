@@ -6,7 +6,10 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
 
 describe('gdx gdx-config', async () => {
-   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({ liteMode: true });
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({
+      liteMode: true,
+      suitName: 'gdx-config'
+   });
 
    it('should list configuration', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'list']);

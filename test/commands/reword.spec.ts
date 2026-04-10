@@ -33,7 +33,7 @@ await writeFile(targetFile, ${JSON.stringify(message)}, 'utf8');
 }
 
 describe('gdx reword', async () => {
-   const { tmpDir, $, tracker, it, resetRepo } = await createTestEnv();
+   const { tmpDir, $, tracker, it, resetRepo } = await createTestEnv({ suitName: 'reword' });
 
    it('rewords the latest commit message exactly', async () => {
       await resetRepo();

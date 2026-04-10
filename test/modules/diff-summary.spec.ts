@@ -7,7 +7,7 @@ import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
 import { COMMIT_DEFAULT_NOISY_FILES } from '@/common/config/schema';
 
 describe('commit-diff-summary module', async () => {
-   const { tmpDir, $, it } = await createTestEnv();
+   const { tmpDir, $, it } = await createTestEnv({ suitName: 'diff-summary' });
    const { git$ } = createGdxContext(tmpDir, []);
 
    it('should return no changes when index is empty', async () => {

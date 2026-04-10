@@ -7,7 +7,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { noop } from '@/utils/utilities';
 
 describe('gdx stash drop X..Y (stash.dropRange())', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'stash-drop-range' });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 
@@ -43,7 +43,7 @@ describe('gdx stash drop X..Y (stash.dropRange())', async () => {
 });
 
 describe('gdx stash drop pardon', async () => {
-   const { tmpDir, $, it } = await createTestEnv();
+   const { tmpDir, $, it } = await createTestEnv({ suitName: 'stash-drop-pardon' });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 

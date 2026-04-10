@@ -8,7 +8,9 @@ import { cleanString } from '@lib/Tools';
 import { addSubmodule } from '@/modules/git';
 
 describe('gdx status', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({
+      suitName: 'status'
+   });
 
    // Setup submodule for tests that need it
    let submoduleCreated = false;

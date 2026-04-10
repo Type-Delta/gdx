@@ -5,7 +5,11 @@ import { getLanguageCatalog, inferLanguageFromPath, languageConsts } from '@/mod
 import { createTestEnv } from '@/utils/testHelper';
 
 describe('languages module', async () => {
-   const { it } = await createTestEnv({ autoResetBuffer: true, liteMode: true });
+   const { it } = await createTestEnv({
+      autoResetBuffer: true,
+      liteMode: true,
+      suitName: 'languages'
+   });
 
    it('should load catalog from cached value', async () => {
       const cache = await getCache();

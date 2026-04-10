@@ -26,7 +26,7 @@ describe('gdx commit auto', async () => {
    // Set comprehensive mode via env var before creating test env
    process.env.GDX_COMMIT_PATTERN = 'comprehensive';
 
-   const { tmpDir, $, buffer, it } = await createTestEnv();
+   const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'commit-auto' });
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
 
@@ -170,7 +170,9 @@ describe('gdx commit auto - inherit mode', async () => {
    // Use inherit mode for these tests
    process.env.GDX_COMMIT_PATTERN = 'inherit';
 
-   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv({
+      suitName: 'commit-auto-inherit'
+   });
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
 

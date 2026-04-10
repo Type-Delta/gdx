@@ -8,7 +8,7 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import global from '@/global';
 
 describe('gdx __completion', async () => {
-   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({ suitName: '__completion' });
 
    it('suggests using command structure and preserves log level', async () => {
       const previous = global.logLevel;

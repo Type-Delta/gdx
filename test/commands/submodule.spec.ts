@@ -12,6 +12,7 @@ import { asUnixPath } from '@/utils/path';
 describe('gdx submodule', async () => {
    const { tmpDir, tmpRootDir, $, buffer, it, tracker } = await createTestEnv({
       autoResetBuffer: true,
+      suitName: 'submodule'
    });
    const previousGdxResult = process.env.GDX_RESULT;
    process.env.GDX_RESULT = path.join(tmpRootDir, 'gdx-result');

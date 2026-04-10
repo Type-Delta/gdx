@@ -17,7 +17,7 @@ import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 import { asUnixPath } from '@/utils/path';
 
 describe('git module', async () => {
-   const { tmpDir, tmpRootDir, $, it } = await createTestEnv();
+   const { tmpDir, tmpRootDir, $, it } = await createTestEnv({ suitName: 'git' });
 
    async function withInlineSubmoduleMode(
       mode: 'off' | 'internal' | 'all',
@@ -187,6 +187,31 @@ describe('git module', async () => {
       const headFromScoped = (await revParseCached(scoped, 'HEAD')).trim();
       const headFromDirect = (await revParseCached(git$, 'HEAD', tmpDir)).trim();
       expect(headFromScoped).toBe(headFromDirect);
+   });
+
+   it('should invalidate cached head scope when HEAD advances', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      const before = (await revParseCached(git$, 'HEAD')).trim();
+      await $`git commit --allow-empty -m ${'advance head for rev-parse cache'}`;
+      const after = (await revParseCached(git$, 'HEAD')).trim();
+
+      expect(after).toBeTruthy();
+      expect(after).not.toBe(before);
+   });
+
+   it('should invalidate cached refs scope when branch ref changes', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await $`git branch ${'cache-ref-target'}`;
+      const first = (await revParseCached(git$, 'cache-ref-target')).trim();
+      await $`git commit --allow-empty -m ${'move branch for rev-parse cache'}`;
+      const latestHead = (await revParseCached(git$, 'HEAD')).trim();
+      await $`git update-ref ${'refs/heads/cache-ref-target'} ${latestHead}`;
+
+      const second = (await revParseCached(git$, 'cache-ref-target')).trim();
+      expect(second).toBe(latestHead);
+      expect(second).not.toBe(first);
    });
 
    it('should resolve refs to sha using verify wrapper with optional type', async () => {

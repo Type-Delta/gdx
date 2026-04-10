@@ -8,7 +8,10 @@ import nocap from '@/commands/nocap';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx nocap', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv({ autoResetBuffer: false });
+   const { tmpDir, $, buffer, it } = await createTestEnv({
+      autoResetBuffer: false,
+      suitName: 'nocap'
+   });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 

@@ -4,7 +4,10 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx graph', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv({ autoResetBuffer: true });
+   const { tmpDir, $, buffer, it } = await createTestEnv({
+      autoResetBuffer: true,
+      suitName: 'graph'
+   });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 

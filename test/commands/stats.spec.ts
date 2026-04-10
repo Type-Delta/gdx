@@ -13,7 +13,10 @@ import stats from '@/commands/stats';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv({ autoResetBuffer: true });
+   const { tmpDir, $, buffer, it } = await createTestEnv({
+      autoResetBuffer: true,
+      suitName: 'stats'
+   });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 

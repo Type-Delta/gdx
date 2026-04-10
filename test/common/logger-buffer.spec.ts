@@ -4,7 +4,7 @@ import { createTestEnv } from '@/utils/testHelper';
 import global from '@/global';
 
 describe('Logger buffer capture', async () => {
-   const { buffer, it } = await createTestEnv({ liteMode: true });
+   const { buffer, it } = await createTestEnv({ liteMode: true, suitName: 'logger-buffer' });
 
    it('should respect log level for stdout/stderr but capture all logs in buffer.logs', async () => {
       // Set log level to 'warn' (so debug and info are hidden from stdout)

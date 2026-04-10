@@ -41,6 +41,7 @@ import {
    type LanguageCatalog,
 } from '@/modules/languages';
 import litedent from '@/utils/litedent';
+import { toShortBytes } from '@/utils/data';
 
 interface ParsedNumStat {
    totalAdded: number;
@@ -238,8 +239,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const totalAdded = scopedNumStat.totalAdded;
       const totalRemoved = scopedNumStat.totalRemoved;
 
-      const addedSize = toShortNum(totalAdded * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'iB';
-      const removedSize = toShortNum(totalRemoved * STATS_EST.AVG_CHARS_PER_LINE, 2, 1024) + 'iB';
+      const addedSize = toShortBytes(totalAdded * STATS_EST.AVG_CHARS_PER_LINE, 2);
+      const removedSize = toShortBytes(totalRemoved * STATS_EST.AVG_CHARS_PER_LINE, 2);
 
       const addedFuncs = toShortNum(
          totalAdded / STATS_EST.AVG_LINES_PER_FUNCTION,
@@ -336,7 +337,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          : `  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project`;
       const header = [
          `${ncc('Dim') + ncc('Italic')}Showing stats for ${scopeLabel} in ${projectName}${ncc()}`,
-         `${ncc('Dim')}Parsed ${toShortNum(numStatSize, 1, 1024)}iB of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${ncc()}`,
+         `${ncc('Dim')}Parsed ${toShortBytes(numStatSize)} of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${ncc()}`,
       ];
       const useInlineHeader = ex_length(header[0] + header[1]) + 7 < global.terminalWidth;
       const headerText = useInlineHeader
@@ -352,7 +353,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
       const objectInventoryLine =
          isAllScope && objectInventoryStats
-            ? `  Object Inventory:    ${ncc('Cyan')}${formatInteger(objectInventoryStats.totalObjects)}${ncc()} total ${ncc('Dim')}(${toShortNum(objectInventoryStats.totalBytes, 1, 1024)}iB)${ncc()} / ${ncc('Yellow')}${formatInteger(objectInventoryStats.garbageObjects)}${ncc()} garbage ${ncc('Dim')}(${toShortNum(objectInventoryStats.garbageBytes, 1, 1024)}iB)${ncc()}`
+            ? `  Object Inventory:    ${ncc('Cyan')}${formatInteger(objectInventoryStats.totalObjects)}${ncc()} total ${ncc('Dim')}(${toShortBytes(objectInventoryStats.totalBytes)})${ncc()} / ${ncc('Yellow')}${formatInteger(objectInventoryStats.garbageObjects)}${ncc()} garbage ${ncc('Dim')}(${toShortBytes(objectInventoryStats.garbageBytes)})${ncc()}`
             : '';
       const objectStatsBlock = objectInventoryLine ? `\n${objectInventoryLine}` : '';
 
