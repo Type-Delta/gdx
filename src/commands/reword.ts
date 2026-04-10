@@ -6,7 +6,12 @@ import * as fs from '@/modules/fs';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit, tokenizeCommand, whichExec } from '@/modules/shell';
 import { getConfig } from '@/common/config';
-import { assertInGitWorktree, expandRelativeRef, resolveRefShaCached } from '@/modules/git';
+import {
+   assertInGitWorktree,
+   expandRelativeRef,
+   resolveRefShaCached,
+   revParseCached,
+} from '@/modules/git';
 import { noop } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
@@ -229,7 +234,7 @@ async function rewriteOlderCommit(
          await $inherit`${worktreeGit} cherry-pick ${commit}`;
       }
 
-      const rewrittenHead = (await $`${worktreeGit} rev-parse HEAD`).stdout.trim();
+      const rewrittenHead = (await revParseCached(worktreeGit, 'HEAD')).trim();
       const [originalHeadTree, rewrittenHeadTree] = await Promise.all([
          resolveCommitTree(git$, headSha),
          resolveCommitTree(worktreeGit, rewrittenHead),
@@ -272,7 +277,7 @@ export default async function reword(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   const headSha = (await $`${git$} rev-parse HEAD`).stdout.trim();
+   const headSha = (await revParseCached(git$, 'HEAD')).trim();
    const isHead = headSha === targetSha;
 
    if (!isHead) {

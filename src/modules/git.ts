@@ -11,7 +11,7 @@ import { stripAnsiColor } from '@/modules/graphics';
 import Logger from '../utils/logger';
 import { asUnixPath } from '@/utils/path';
 import { quickPrint } from '@/utils/utilities';
-import { $, $inherit, createAbortableExec } from './shell';
+import { $, $inherit } from './shell';
 import { ArgsSet } from './arguments';
 import { Result } from '@/common/types';
 
@@ -86,11 +86,74 @@ export interface CommitLogResult {
 
 const GIT_HEAD_CACHE_TTL_MINUTES = 360;
 const GIT_PATH_CACHE_TTL_MINUTES = 360;
+const REV_PARSE_REPO_HASH_LENGTH = 12;
 const revParseInFlight = new Map<string, Promise<string>>();
+const revParseRepoRootCache = new Map<string, string>();
+
+type GitRevParseFeatureScope = 'workspace' | 'gitPath' | 'head' | 'upstream' | 'refs';
+
+const REV_PARSE_OPTIONS_WITH_VALUE = new Set(['--git-path']);
 
 function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
    return `${prefix}.${hash}`;
+}
+
+function createShortHash(input: string, length = REV_PARSE_REPO_HASH_LENGTH): string {
+   return crypto.createHash('sha1').update(input).digest('hex').slice(0, length);
+}
+
+function createRevParseCacheKey(
+   repoHash: string,
+   worktreeHash: string,
+   featureScope: GitRevParseFeatureScope,
+   scopeToken: string,
+   refKey: string
+): string {
+   const refHash = createShortHash(refKey || '__empty__', 16);
+   return `git.${repoHash}.${featureScope}.revParse.${worktreeHash}.${scopeToken}.${refHash}`;
+}
+
+async function runRevParseRaw(
+   gitExec: string,
+   repoPath: string,
+   refArgs: string[]
+): Promise<string> {
+   const args = ['-C', path.resolve(repoPath), 'rev-parse', ...refArgs];
+   return (await $`${gitExec} ${args}`).stdout.trim();
+}
+
+async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promise<string> {
+   const resolvedRepoPath = path.resolve(repoPath);
+   const cacheKey = `${gitExec}|${resolvedRepoPath}`;
+   const cached = revParseRepoRootCache.get(cacheKey);
+   if (cached) return cached;
+
+   let repoRoot = resolvedRepoPath;
+   try {
+      const resolved = await runRevParseRaw(gitExec, resolvedRepoPath, ['--show-toplevel']);
+      if (resolved) repoRoot = path.resolve(resolved);
+
+      const commonDir = await runRevParseRaw(gitExec, resolvedRepoPath, ['--git-common-dir']);
+      if (commonDir) {
+         const commonDirAbs = path.isAbsolute(commonDir)
+            ? commonDir
+            : path.resolve(repoRoot, commonDir);
+         const normalizedCommonDir = asUnixPath(commonDirAbs);
+
+         if (normalizedCommonDir.includes('/.git/worktrees/')) {
+            const gitDir = path.dirname(path.dirname(commonDirAbs));
+            repoRoot = path.dirname(gitDir);
+         } else {
+            repoRoot = path.dirname(commonDirAbs);
+         }
+      }
+   } catch {
+      repoRoot = resolvedRepoPath;
+   }
+
+   revParseRepoRootCache.set(cacheKey, repoRoot);
+   return repoRoot;
 }
 
 function getGitScope(git$: string | string[], worktreePath?: string): string {
@@ -121,8 +184,120 @@ function resolveGitExecAndRepoPath(
    return { gitExec, repoPath: process.cwd() };
 }
 
-function isHeadSensitiveRevParse(refArgs: string[]): boolean {
-   return refArgs.some((arg) => /^head(?:[~^].*)?$/i.test(arg));
+function isHeadLikeRef(ref: string): boolean {
+   return /^head(?:[~^].*)?(?:\^\{.+\})?$/i.test(ref.trim());
+}
+
+function getRevParseFeatureScope(refArgs: string[]): GitRevParseFeatureScope {
+   const hasFlag = (flag: string) => refArgs.includes(flag);
+   const hasUpstreamRef = refArgs.some((arg) => arg.includes('@{u}'));
+
+   if (
+      hasFlag('--git-path') ||
+      hasFlag('--git-dir') ||
+      hasFlag('--git-common-dir') ||
+      hasFlag('--absolute-git-dir')
+   ) {
+      return 'gitPath';
+   }
+
+   if (
+      hasFlag('--show-toplevel') ||
+      hasFlag('--show-superproject-working-tree') ||
+      hasFlag('--show-cdup') ||
+      hasFlag('--show-prefix') ||
+      hasFlag('--is-inside-work-tree')
+   ) {
+      return 'workspace';
+   }
+
+   if (
+      hasUpstreamRef ||
+      (hasFlag('--symbolic-full-name') && refArgs.some((arg) => arg.includes('@{')))
+   ) {
+      return 'upstream';
+   }
+
+   if (refArgs.some((arg) => isHeadLikeRef(arg))) return 'head';
+   return 'refs';
+}
+
+function extractRevParseRefCandidates(refArgs: string[]): string[] {
+   const candidates: string[] = [];
+
+   for (let i = 0; i < refArgs.length; i++) {
+      const arg = refArgs[i];
+      if (!arg) continue;
+
+      if (REV_PARSE_OPTIONS_WITH_VALUE.has(arg)) {
+         i++;
+         continue;
+      }
+
+      if (arg === '--') {
+         for (let j = i + 1; j < refArgs.length; j++) {
+            if (refArgs[j]) candidates.push(refArgs[j]);
+         }
+         break;
+      }
+
+      if (arg.startsWith('-')) continue;
+      candidates.push(arg);
+   }
+
+   return candidates;
+}
+
+function normalizeRefCandidate(ref: string): string {
+   return ref
+      .trim()
+      .replace(/\^\{[^}]+\}$/g, '')
+      .replace(/[~^].*$/, '');
+}
+
+function getRefStatePaths(ref: string): string[] {
+   const normalized = normalizeRefCandidate(ref);
+   if (!normalized) return [];
+
+   if (/^[0-9a-f]{7,40}$/i.test(normalized)) return [];
+   if (isHeadLikeRef(normalized)) return ['HEAD', 'logs/HEAD'];
+   if (/^stash(?:@\{\d+\})?$/i.test(normalized)) return ['refs/stash', 'logs/refs/stash'];
+
+   if (normalized.startsWith('refs/')) {
+      return [normalized, `logs/${normalized}`];
+   }
+
+   if (/^[a-z0-9._-]+\/.+/i.test(normalized)) {
+      return [`refs/remotes/${normalized}`, `logs/refs/remotes/${normalized}`];
+   }
+
+   return [
+      `refs/heads/${normalized}`,
+      `logs/refs/heads/${normalized}`,
+      `refs/tags/${normalized}`,
+      `logs/refs/tags/${normalized}`,
+   ];
+}
+
+async function buildGitPathMtimeSignature(
+   gitExec: string,
+   repoPath: string,
+   gitPaths: string[]
+): Promise<string> {
+   const uniquePaths = Array.from(
+      new Set(gitPaths.map((gitPath) => gitPath.trim()).filter(Boolean))
+   );
+   if (uniquePaths.length === 0) return '';
+
+   const signatureParts = await Promise.all(
+      uniquePaths.map(async (gitPath) => {
+         const resolvedPath = await getGitPath(gitExec, repoPath, gitPath);
+         const mtime = await fs.getStatMTime(resolvedPath);
+         return `${gitPath}=${mtime ?? 'null'}`;
+      })
+   );
+
+   return signatureParts.sort().join('|');
 }
 
 /**
@@ -187,9 +362,8 @@ export async function resolveRefShaCached(
  * @returns True if inside a Git worktree, false otherwise.
  */
 export async function assertInGitWorktree(git$: string | string[]): Promise<boolean> {
-   try {
-      await $`${git$} rev-parse --is-inside-work-tree`;
-   } catch {
+   const output = (await revParseCached(git$, ['--is-inside-work-tree'])).trim();
+   if (output !== 'true') {
       Logger.error('This command must be run inside a git repository.', 'git');
       return false;
    }
@@ -213,7 +387,7 @@ export async function getStashEntry(
 
    try {
       const ref = `stash@{${index}}`;
-      const { stdout: sha } = await $`${git$} rev-parse ${ref}`;
+      const sha = await revParseCached(git$, [ref]);
       const { stdout: message } = await $`${git$} log -1 --format=%s ${ref}`;
       const result = { sha: sha.trim(), message: message.trim() };
       await cache.setOneOff(cacheKey, result);
@@ -295,8 +469,7 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
       } else {
          let branchRemote = '';
          try {
-            const { stdout: branchStdout } = await $`${git$} rev-parse --abbrev-ref HEAD`;
-            const branchName = branchStdout.trim();
+            const branchName = (await revParseCached(git$, ['--abbrev-ref', 'HEAD'])).trim();
             if (branchName && branchName !== 'HEAD') {
                const { stdout: configStdout } = await $`${git$} config branch.${branchName}.remote`;
                branchRemote = configStdout.trim();
@@ -364,70 +537,55 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
    const cached = await cache.getOneOff<string>(cacheKey);
    if (cached !== undefined) return cached;
 
-   let repoRoot = '';
+   const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim() || process.cwd();
 
-   try {
-      const { stdout } = await $`${git$} rev-parse --show-toplevel`;
-      repoRoot = stdout.trim();
-   } catch {
-      repoRoot = process.cwd();
-   }
-
-   try {
-      const { stdout } = await $`${git$} rev-parse --git-common-dir`;
-      const commonDir = stdout.trim();
-      if (!commonDir) {
-         await cache.setOneOff(cacheKey, repoRoot);
-         return repoRoot;
-      }
-
-      const commonDirAbs = path.isAbsolute(commonDir)
-         ? commonDir
-         : path.resolve(repoRoot, commonDir);
-      const normalizedCommonDir = asUnixPath(commonDirAbs);
-
-      if (normalizedCommonDir.includes('/.git/worktrees/')) {
-         const gitDir = path.dirname(path.dirname(commonDirAbs));
-         const mainRoot = path.dirname(gitDir);
-         const result = mainRoot || repoRoot;
-         await cache.setOneOff(cacheKey, result);
-         return result;
-      }
-
-      try {
-         const gitFile = fs.readFileSync(commonDirAbs, 'utf-8');
-         const gitDirLine = gitFile
-            .split('\n')
-            .map((line) => line.trim())
-            .find((line) => line.toLowerCase().startsWith('gitdir:'));
-
-         if (gitDirLine) {
-            const gitDirRaw = gitDirLine.split(':').slice(1).join(':').trim();
-            const gitDirAbs = path.isAbsolute(gitDirRaw)
-               ? gitDirRaw
-               : path.resolve(repoRoot, gitDirRaw);
-            const normalizedGitDir = asUnixPath(gitDirAbs);
-
-            if (normalizedGitDir.includes('/.git/worktrees/')) {
-               const gitDir = path.dirname(path.dirname(gitDirAbs));
-               const mainRoot = path.dirname(gitDir);
-               const result = mainRoot || repoRoot;
-               await cache.setOneOff(cacheKey, result);
-               return result;
-            }
-         }
-      } catch {
-         // ignore: commonDirAbs may be a directory, not a .git file
-      }
-
-      const mainRoot = path.dirname(commonDirAbs);
-      const result = mainRoot || repoRoot;
-      await cache.setOneOff(cacheKey, result);
-      return result;
-   } catch {
+   const commonDir = (await revParseCached(git$, ['--git-common-dir'])).trim();
+   if (!commonDir) {
       await cache.setOneOff(cacheKey, repoRoot);
       return repoRoot;
    }
+
+   const commonDirAbs = path.isAbsolute(commonDir) ? commonDir : path.resolve(repoRoot, commonDir);
+   const normalizedCommonDir = asUnixPath(commonDirAbs);
+
+   if (normalizedCommonDir.includes('/.git/worktrees/')) {
+      const gitDir = path.dirname(path.dirname(commonDirAbs));
+      const mainRoot = path.dirname(gitDir);
+      const result = mainRoot || repoRoot;
+      await cache.setOneOff(cacheKey, result);
+      return result;
+   }
+
+   try {
+      const gitFile = fs.readFileSync(commonDirAbs, 'utf-8');
+      const gitDirLine = gitFile
+         .split('\n')
+         .map((line) => line.trim())
+         .find((line) => line.toLowerCase().startsWith('gitdir:'));
+
+      if (gitDirLine) {
+         const gitDirRaw = gitDirLine.split(':').slice(1).join(':').trim();
+         const gitDirAbs = path.isAbsolute(gitDirRaw)
+            ? gitDirRaw
+            : path.resolve(repoRoot, gitDirRaw);
+         const normalizedGitDir = asUnixPath(gitDirAbs);
+
+         if (normalizedGitDir.includes('/.git/worktrees/')) {
+            const gitDir = path.dirname(path.dirname(gitDirAbs));
+            const mainRoot = path.dirname(gitDir);
+            const result = mainRoot || repoRoot;
+            await cache.setOneOff(cacheKey, result);
+            return result;
+         }
+      }
+   } catch {
+      // ignore: commonDirAbs may be a directory, not a .git file
+   }
+
+   const mainRoot = path.dirname(commonDirAbs);
+   const result = mainRoot || repoRoot;
+   await cache.setOneOff(cacheKey, result);
+   return result;
 }
 
 /**
@@ -609,10 +767,10 @@ export async function getTrackedUpstreamRef(git$: string | string[]): Promise<st
 
    if (cached !== undefined) return cached;
 
-   const exec = createAbortableExec();
    try {
-      const { stdout } = await exec.$`${git$} rev-parse --abbrev-ref --symbolic-full-name @{u}`;
-      const upstream = stdout.trim();
+      const upstream = (
+         await revParseCached(git$, ['--abbrev-ref', '--symbolic-full-name', '@{u}'])
+      ).trim();
       await cache.setOneOff(cacheKey, upstream);
       return upstream || null;
    } catch {
@@ -672,8 +830,8 @@ export async function getRepoRootCached(git$: string | string[]): Promise<string
    }
 
    try {
-      const { stdout } = await $`${git$} rev-parse --show-toplevel`;
-      const repoRoot = stdout.trim();
+      const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim();
+      if (!repoRoot) throw new Error('Unable to resolve repository root.');
 
       await cache.set(cacheKey, repoRoot);
       Logger.debug(`Cache store for ${cacheKey}: ${repoRoot}`, 'cache-ctrl');
@@ -820,16 +978,18 @@ export async function getGitPath(
    if (cached !== undefined) return cached;
 
    try {
-      const output = (
-         await $`${git$} -C ${worktreePath} rev-parse --git-path ${gitPath}`
-      ).stdout.trim();
+      const resolvedGit = resolveGitExecAndRepoPath(git$, worktreePath);
+      const output = await runRevParseRaw(resolvedGit.gitExec, resolvedGit.repoPath, [
+         '--git-path',
+         gitPath,
+      ]);
       if (!output) {
          await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
          return null;
       }
-      const resolved = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
-      await cache.set(cacheKey, resolved, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
-      return resolved;
+      const resolvedPath = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
+      await cache.set(cacheKey, resolvedPath, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
+      return resolvedPath;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
       await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
@@ -837,29 +997,56 @@ export async function getGitPath(
    }
 }
 
-async function getHeadSignature(gitExec: string, repoPath: string): Promise<string | null> {
-   const headPath = await getGitPath(gitExec, repoPath, 'HEAD');
-   if (!headPath) return null;
+function getRevParseScopeGitPaths(
+   featureScope: GitRevParseFeatureScope,
+   refArgs: string[]
+): string[] {
+   const refCandidates = extractRevParseRefCandidates(refArgs);
+   const refStatePaths = refCandidates.flatMap((refCandidate) => getRefStatePaths(refCandidate));
 
-   const headMtime = await fs.getStatMTime(headPath);
-   let refMtime: number | undefined;
-   let refPath = '';
-
-   try {
-      const content = fs.readFileSync(headPath, 'utf-8').trim();
-      const match = content.match(/^ref:\s*(.+)$/i);
-      if (match?.[1]) {
-         refPath = match[1].trim();
-         if (refPath) {
-            const resolvedRef = await getGitPath(gitExec, repoPath, refPath);
-            refMtime = await fs.getStatMTime(resolvedRef);
-         }
-      }
-   } catch {
-      // ignore signature enrichment errors
+   if (featureScope === 'workspace') {
+      return [];
    }
 
-   return `${headMtime ?? 'null'}|${refPath}|${refMtime ?? 'null'}`;
+   if (featureScope === 'gitPath') {
+      const gitPathArgIdx = refArgs.indexOf('--git-path');
+      const gitPathTarget = gitPathArgIdx >= 0 ? refArgs[gitPathArgIdx + 1] : '';
+      return gitPathTarget ? [gitPathTarget] : [];
+   }
+
+   if (featureScope === 'upstream') {
+      return [
+         'HEAD',
+         'logs/HEAD',
+         'config',
+         'FETCH_HEAD',
+         'packed-refs',
+         'refs/remotes',
+         'logs/refs/remotes',
+         ...refStatePaths,
+      ];
+   }
+
+   if (featureScope === 'head') {
+      return ['HEAD', 'logs/HEAD', 'packed-refs', ...refStatePaths];
+   }
+
+   return ['packed-refs', ...refStatePaths];
+}
+
+async function getRevParseScopeToken(
+   gitExec: string,
+   repoPath: string,
+   featureScope: GitRevParseFeatureScope,
+   refArgs: string[]
+): Promise<string> {
+   const gitPaths = getRevParseScopeGitPaths(featureScope, refArgs);
+   if (gitPaths.length === 0) return 'stable';
+
+   const signature = await buildGitPathMtimeSignature(gitExec, repoPath, gitPaths);
+   return signature
+      ? createShortHash(`${featureScope}|${signature}`)
+      : createShortHash(`${featureScope}|stable`);
 }
 
 /**
@@ -876,52 +1063,36 @@ export async function getRevParseCached(
 ): Promise<string> {
    const cache = await getCache();
    const refArgs = Array.isArray(ref) ? ref : ref.trim().split(/\s+/).filter(Boolean);
+   if (refArgs.length === 0) return '';
    const refKey = refArgs.join(' ');
    const resolvedRepoPath = path.resolve(repoPath);
-   const scope = `${gitExec}|${resolvedRepoPath}|${refKey}`;
-   const cacheKey = createCacheKey('git.revParse', scope);
-   const isHeadRef = isHeadSensitiveRevParse(refArgs);
-   const headSignature = isHeadRef ? await getHeadSignature(gitExec, resolvedRepoPath) : null;
-   if (isHeadRef && headSignature !== null) {
-      const cached = await cache.get<{ value: string; signature: string | null }>(cacheKey);
-      if (cached && cached.signature === headSignature) return cached.value;
-   } else {
-      const cached = await cache.get<string>(cacheKey);
-      if (cached !== undefined) return cached;
-   }
+   const repoRoot = await resolveRevParseRepoRoot(gitExec, resolvedRepoPath);
+   const repoHash = createShortHash(normalizeWorktreePath(repoRoot));
+   const worktreeHash = createShortHash(normalizeWorktreePath(resolvedRepoPath));
+   const featureScope = getRevParseFeatureScope(refArgs);
+   const scopeToken = await getRevParseScopeToken(gitExec, resolvedRepoPath, featureScope, refArgs);
+   const cacheKey = createRevParseCacheKey(
+      repoHash,
+      worktreeHash,
+      featureScope,
+      scopeToken,
+      refKey
+   );
 
-   const inFlightKey = isHeadRef ? `${cacheKey}|${headSignature ?? 'none'}` : cacheKey;
+   const cached = await cache.get<string>(cacheKey);
+   if (cached !== undefined) return cached;
+
+   const inFlightKey = cacheKey;
    const existingPromise = revParseInFlight.get(inFlightKey);
    if (existingPromise) return await existingPromise;
 
    const resolvePromise = (async () => {
       try {
-         const args = ['-C', resolvedRepoPath, 'rev-parse', ...refArgs];
-         const output = (await $`${gitExec} ${args}`).stdout.trim();
-         if (isHeadRef && headSignature !== null) {
-            await cache.set(
-               cacheKey,
-               { value: output, signature: headSignature },
-               {
-                  maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-               }
-            );
-         } else {
-            await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
-         }
+         const output = await runRevParseRaw(gitExec, resolvedRepoPath, refArgs);
+         await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
          return output;
       } catch {
-         if (isHeadRef && headSignature !== null) {
-            await cache.set(
-               cacheKey,
-               { value: '', signature: headSignature },
-               {
-                  maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-               }
-            );
-         } else {
-            await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
-         }
+         await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
          return '';
       }
    })();
@@ -1183,9 +1354,7 @@ async function resolveSubmoduleSourceHead(
       ? path.resolve(normalizedUrl.replace(/^file:\/\//i, ''))
       : normalizedUrl;
    if (fs.existsSync(maybeLocalPath)) {
-      const localHead = (
-         await $`${gitExec} -C ${maybeLocalPath} rev-parse ${branch || 'HEAD'}`
-      ).stdout.trim();
+      const localHead = (await getRevParseCached(gitExec, maybeLocalPath, branch || 'HEAD')).trim();
       if (localHead) return localHead;
    }
 
@@ -1208,7 +1377,7 @@ async function resolveSubmoduleSourceHead(
  * @returns Absolute module root path.
  */
 async function getSubmoduleGitRoot(gitExec: string, worktreePath: string): Promise<string> {
-   const gitDirRaw = (await $`${gitExec} -C ${worktreePath} rev-parse --git-dir`).stdout.trim();
+   const gitDirRaw = (await getRevParseCached(gitExec, worktreePath, ['--git-dir'])).trim();
    const gitDir = path.isAbsolute(gitDirRaw) ? gitDirRaw : path.resolve(worktreePath, gitDirRaw);
    return path.join(gitDir, 'modules');
 }
@@ -1328,9 +1497,9 @@ export async function addSubmodule(
    const gitMarker = path.join(submoduleRepoPath, '.git');
    const markerIsDirectory = fs.existsSync(gitMarker)
       ? await fs
-           .stat(gitMarker)
-           .then((stat) => stat.isDirectory())
-           .catch(() => false)
+         .stat(gitMarker)
+         .then((stat) => stat.isDirectory())
+         .catch(() => false)
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
       await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
@@ -1622,7 +1791,7 @@ export async function deinitSubmodules(
    }
 
    try {
-      const gitDirRaw = (await $`${gitExec} -C ${worktreePath} rev-parse --git-dir`).stdout.trim();
+      const gitDirRaw = (await getRevParseCached(gitExec, worktreePath, ['--git-dir'])).trim();
 
       const gitDir = gitDirRaw
          ? path.isAbsolute(gitDirRaw)
@@ -1751,9 +1920,9 @@ export async function updateSubmodules(
       const gitMarker = path.join(submoduleRepoPath, '.git');
       const markerIsDirectory = fs.existsSync(gitMarker)
          ? await fs
-              .stat(gitMarker)
-              .then((stat) => stat.isDirectory())
-              .catch(() => false)
+            .stat(gitMarker)
+            .then((stat) => stat.isDirectory())
+            .catch(() => false)
          : false;
 
       if (!fs.existsSync(gitMarker) || markerIsDirectory) {

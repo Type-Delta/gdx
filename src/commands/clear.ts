@@ -11,20 +11,19 @@ import Logger from '../utils/logger';
 import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
-import { getRepoRootCached } from '@/modules/git';
+import { getRepoRootCached, revParseCached } from '@/modules/git';
 import litedent from '@/utils/litedent';
 
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
    const inputCommand = args[1]?.toLowerCase();
-   const { match: subCommand } = progressiveMatch(
-      inputCommand,
-      ['list', 'pardon']
-   );
+   const { match: subCommand } = progressiveMatch(inputCommand, ['list', 'pardon']);
 
    const [branchName, repoRoot] = await Promise.all([
-      $`${git$} rev-parse --abbrev-ref HEAD`.then((c) => c.stdout.trim().replace(/\//g, '-')),
+      revParseCached(git$, ['--abbrev-ref', 'HEAD']).then((branch) =>
+         branch.trim().replace(/\//g, '-')
+      ),
       getRepoRootCached(git$),
    ]);
    const projectName = path.basename(repoRoot);
