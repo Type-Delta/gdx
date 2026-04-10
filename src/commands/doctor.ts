@@ -5,7 +5,7 @@ import { execa } from 'execa';
 import { ncc, arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } from '@lib/Tools';
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, VERSION } from '../consts';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, VERSION } from '../consts';
 import global from '@/global';
 import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
@@ -93,6 +93,8 @@ export default async function doctor(): Promise<number> {
       `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
       (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development mode)' + ncc())
    );
+
+   quickPrint(`Shell Integration: ${GDX_RESULT_FILE ? ncc('Green') + 'Yes' + ncc() : ncc('Red') + 'No' + ncc()}`);
 
    quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
 
