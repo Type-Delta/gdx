@@ -4,6 +4,7 @@
 
 ### Added
 
+- `gdx tag mv` command for moving tags
 - `stats --lang-metric` Language usage calculation modes (`auto`, `net`, `activity`) for controlling how line metrics are calculated in different scopes.
 - Improved commit message generation with diff summarization with intelligent file categorization (normal/noisy/binary/rename) and hunk trimming. Added `--describe` flag for user-supplied change context, `--preview` to inspect LLM prompts without making requests.
 - improved streaming output in commit and nocap commands.

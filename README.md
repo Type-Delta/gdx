@@ -93,7 +93,7 @@ Shell integration provides:
 
 - **Auto-cd support**: Allows `gdx parallel switch` to change directories
 - **Tab completion**: Intelligent completion for gdx commands, shorthands, and git subcommands
-- **Git fallback**: Falls back to native git completion when gdx has no suggestions (git fallback requires you to install git's completion scripts separately)
+- **Completion fallback**: Falls back to native git completion when gdx has no suggestions (git fallback requires you to install git's completion scripts separately)
 
 To add shell integration, add the following line to the **End** of your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
@@ -256,7 +256,7 @@ Tools to help you feel productive without leaving the terminal.
 | `graph`           | Render a GitHub-style contribution heatmap in the terminal         |
 | `nocap`           | Roast your latest commit message with AI                           |
 | `clear`           | Wipe changes in the working directory with a backup patch          |
-| `cache`           | Manage GDX's cache                                                 |
+| `cache`           | Manage gdx cache                                                   |
 
 _Run `gdx ghelp` to see the full list of expansions._
 
