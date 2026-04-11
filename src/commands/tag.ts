@@ -104,8 +104,8 @@ export async function moveTag(ctx: GdxContext): Promise<number> {
 
       quickPrint(
          ncc('Green') +
-            `Moved tag '${tagName}' to ${ncc('Bright') + targetCommit.slice(0, 12) + ncc('Green')}.` +
-            ncc()
+         `Moved tag '${tagName}' to ${ncc('Bright') + targetCommit.slice(0, 12) + ncc('Green')}.` +
+         ncc()
       );
       return 0;
    } catch (err) {
@@ -145,7 +145,7 @@ export const help = {
          }
       );
    },
-   short: 'Move a tag to another commit (alias: mv).',
+   short: 'Extends git tag with ability to move tags.',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');

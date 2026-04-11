@@ -328,7 +328,7 @@ describe('gdx commit auto - inherit mode', async () => {
 });
 
 describe('commit prompt templates', async () => {
-   const { it } = await createTestEnv({ liteMode: true });
+   const { it } = await createTestEnv({ liteMode: true, suitName: 'commit-prompts' });
 
    it('should include user description block in comprehensive prompt', () => {
       const prompt = commitMsgGenerator('summary content', 'tighten diff summarization logic');

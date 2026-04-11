@@ -237,28 +237,46 @@ Tools to help you feel productive without leaving the terminal.
 
 ## Command Reference
 
-| Command           | Expansion / Function                                               |
-| :---------------- | :----------------------------------------------------------------- |
-| `s`, `stat`       | `git status` (use `-r` recursively run "status" on all submodules) |
-| `lg`, `lo`        | `git log --oneline --graph --all --decorate`                       |
-| `sw`, `swit`      | `git switch`                                                       |
-| `br`, `bra`       | `git branch`                                                       |
-| `cmi`, `com`      | `git commit` (Try `gdx cmi auto` for AI messages!)                 |
-| `res`             | `git reset` (supports `res ~3`, `res -h` expansion)                |
-| `dif`             | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)          |
-| `sho`             | `git show` (supports `sho ~3`, `sho origin ~2` expansion)          |
-| `sta`, `st`       | `git stash`                                                        |
-| `lint`            | Run pre-push checks (spelling, secrets, etc.)                      |
-| `gdx-config`      | Manage gdx configuration                                           |
-| `reword`, `rew`   | Rewrite commit messages                                            |
-| `parallel`, `par` | Manage parallel worktrees for the current branch                   |
-| `stats`           | Show contribution statistics and metrics for the current repo      |
-| `graph`           | Render a GitHub-style contribution heatmap in the terminal         |
-| `nocap`           | Roast your latest commit message with AI                           |
-| `clear`           | Wipe changes in the working directory with a backup patch          |
-| `cache`           | Manage gdx cache                                                   |
+### Expansions & Custom Commands
 
-_Run `gdx ghelp` to see the full list of expansions._
+| Command           | Expansion / Function                                                                         |
+| :---------------- | :------------------------------------------------------------------------------------------- |
+| `s`, `stat`       | `git status` (use `-r` recursively run "status" on all submodules)                           |
+| `lg`, `lo`        | `git log --oneline --graph --all --decorate`                                                 |
+| `sw`, `swit`      | `git switch`                                                                                 |
+| `br`, `bra`       | `git branch`                                                                                 |
+| `ps`              | `git push` with option expansion `-fl`=`--force-with-lease`                                  |
+| `pu`, `pl`        | `git pull`                                                                                   |
+| `sub`             | `git submodule`                                                                              |
+| `sta`             | `git stash`                                                                                  |
+| `cmi`, `com`      | `git commit` (Try `gdx cmi auto` for AI messages!)                                           |
+| `res`             | `git reset` with option expansion `-h`=`--hard`, `-s`=`--soft` (supports `res ~3` expansion) |
+| `dif`             | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)                                    |
+| `sho`             | `git show` (supports `sho ~3`, `sho origin ~2` expansion)                                    |
+| `sta`, `st`       | `git stash`                                                                                  |
+| `lint`            | Run pre-push checks (spelling, secrets, etc.)                                                |
+| `gdx-config`      | Manage gdx configuration                                                                     |
+| `reword`, `rew`   | Rewrite commit messages                                                                      |
+| `parallel`, `par` | Manage parallel worktrees for the current branch                                             |
+| `stats`           | Show contribution statistics and metrics for the current repo                                |
+| `graph`           | Render a GitHub-style contribution heatmap in the terminal                                   |
+| `nocap`           | Roast your latest commit message with AI                                                     |
+| `clear`           | Wipe changes in the working directory with a backup patch                                    |
+| `cache`           | Manage gdx cache                                                                             |
+
+_Run `gdx ghelp` to see the full list of expansions/commands._
+
+### Command Extensions
+
+| Command                           | Expansion / Function                                                                                 |
+| :-------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| `tag mv`, `tag move`              | Move a tag to a new commit (supports ref expansion)                                                  |
+| `lg export`                       | Export git log to a markdown file with enhanced formatting                                           |
+| `commit auto`                     | Generate commit messages with AI based on staged changes (supports `--no-commit` and `--copy` flags) |
+| `stash drop`                      | Drop stashes with advanced options (e.g., `drop 2..6`)                                               |
+| `stash drop pardon`               | Restore the last dropped stash                                                                       |
+| `submodule switch`                | Jump into a submodule's directory from the parent repo (requires shell integration)                  |
+| `status --recursive`, `status -r` | Show status for the main repo and all submodules recursively                                         |
 
 ## Development
 

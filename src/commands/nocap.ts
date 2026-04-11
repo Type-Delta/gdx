@@ -1,14 +1,14 @@
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
-import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { $, spinner } from '../modules/shell';
-import { noop, quickPrint } from '../utils/utilities';
-import { getLLMProvider } from '../common/adapters/llm';
-import Logger from '../utils/logger';
-import { nocapPrompt } from '../templates/prompts';
+import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
+import { $, redrawText, spinner } from '@/modules/shell';
+import { noop, quickPrint } from '@/utils/utilities';
+import { getLLMProvider } from '@/common/adapters/llm';
+import Logger from '@/utils/logger';
+import { nocapPrompt } from '@/templates/prompts';
 import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import global from '@/global';
-import { _2PointGradient, redrawText } from '@/modules/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
 import litedent from '@/utils/litedent';
 

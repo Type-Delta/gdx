@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import { Err, ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
-import { $, $inherit, copyToClipboard, spinner } from '@/modules/shell';
+import { $, $inherit, copyToClipboard, spinner, redrawText } from '@/modules/shell';
 import { asUnixPath } from '@/utils/path';
 import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
@@ -16,7 +16,7 @@ import {
    guidelineLearningPrompt,
 } from '@/templates/prompts';
 import { EXECUTABLE_NAME, TEMP_DIR, GDX_VPALETTE } from '@/consts';
-import { _2PointGradient, redrawText } from '@/modules/graphics';
+import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
@@ -363,7 +363,7 @@ export const help = {
          }
       );
    },
-   short: 'Auto-generate a commit message from staged changes using an LLM.',
+   short: 'Extends git commit with ability to auto-generate messages using an LLM.',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');

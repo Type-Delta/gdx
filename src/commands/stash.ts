@@ -246,7 +246,7 @@ export const help = {
          }
       );
    },
-   short: 'Drop stash entries with undo support (e.g. 0..3, pardon).',
+   short: 'Extends git stash with ability to drop entries and undo support (e.g. 0..3, pardon).',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');

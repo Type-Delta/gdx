@@ -7,6 +7,7 @@ import {
    colorMix,
    cubicBezier,
    fgRgb,
+   formatTable,
    get4bitColorName,
    getDisplayWidth,
    hslToRgbVec,
@@ -232,6 +233,63 @@ describe('graphics module', async () => {
             expect(easing(0)).toBeCloseTo(0, 6);
             expect(easing(1)).toBeCloseTo(1, 6);
          }
+      });
+   });
+
+   describe('formatTable', () => {
+      it('should render an ASCII table with deterministic spacing', () => {
+         const output = formatTable(
+            [
+               ['A', 'B'],
+               ['CC', 'D'],
+            ],
+            {
+               borderStyle: 'ascii',
+               padding: 0,
+               columnWidth: [2, 1],
+               columnAlign: 'left',
+            }
+         );
+
+         expect(output).toBe(['+--+-+', '|A |B|', '+--+-+', '|CC|D|', '+--+-+'].join('\n'));
+      });
+
+      it('should render borderless table with right alignment', () => {
+         const output = formatTable(
+            [
+               ['1', '2'],
+               ['22', '333'],
+            ],
+            {
+               borderStyle: 'none',
+               padding: 0,
+               columnWidth: [2, 3],
+               columnAlign: 'right',
+            }
+         );
+
+         expect(output).toBe([' 1  2', '22333'].join('\n'));
+      });
+
+      it('should preserve multiline cell content across row height', () => {
+         const output = formatTable([['A\nB']], {
+            borderStyle: 'ascii',
+            padding: 0,
+            columnWidth: 1,
+         });
+
+         expect(output).toBe(['+-+', '|A|', '|B|', '+-+'].join('\n'));
+      });
+
+      it('should apply ANSI border color without affecting cell content', () => {
+         const output = formatTable([['A']], {
+            borderStyle: 'unicode',
+            padding: 0,
+            borderAnsiColor: [255, 0, 0],
+         });
+
+         expect(output).toContain('\x1b[38;2;255;0;0m');
+         expect(stripAnsiColor(output)).toBe(['┌─┐', '│A│', '└─┘'].join('\n'));
       });
    });
 });

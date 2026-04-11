@@ -1,10 +1,10 @@
 import path from 'path';
 
-import { ncc, strWrap } from '@lib/Tools';
+import { hyperlink, ncc, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, GDX_VPALETTE } from '@/consts';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, GDX_VPALETTE, REPO_README_URL } from '@/consts';
 import * as fs from '@/modules/fs';
 import {
    AddSubmoduleOptions,
@@ -17,7 +17,7 @@ import {
    getSubmodules,
    updateSubmodules,
 } from '@/modules/git';
-import { _2PointGradient } from '@/modules/graphics';
+import { _2PointGradient, formatTable } from '@/modules/graphics';
 import { scheduleChangeDir } from '@/modules/shell';
 import Logger from '@/utils/logger';
 import { asUnixPath } from '@/utils/path';
@@ -326,21 +326,40 @@ export const help = {
       const bright = ncc('Bright');
       const cyan = ncc('Cyan');
       const reset = ncc();
+      const maxWidth = Math.min(100, global.terminalWidth - 4);
+      const subcommandTable = formatTable(
+         [
+            [cyan + 'switch <path|name|main>', reset + 'Switch to a submodule by path, unique name, or back to main repo.'],
+            [cyan + 'add [options] <repository> [path]', reset + 'Add a new submodule with optional inline mode.'],
+            [cyan + 'update [options] [--] [<path>...]', reset + 'Update submodules with optional inline mode.'],
+            [cyan + 'deinit [options] (--all | -- <path>...)', reset + 'Deinitialize submodules with optional inline mode.'],
+         ], {
+         padding: [0, 1, 0, 0],
+         borderStyle: 'none',
+         columnWidth: [Math.floor(maxWidth * 0.32), Math.floor(maxWidth * 0.60)],
+         redundancyLv: 0,
+      });
+
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('SUBMODULE SWITCH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Jump into a submodule directory from the parent repository.
+         ${bright + _2PointGradient('SUBMODULE EXTENSIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         Extends git submodule with additional features and inline mode for add/update/deinit.
+
+         ${bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${subcommandTable}
 
          ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Resolve the target submodule by full path, unique prefix, or unique leaf name and then
+         Switch command resolve the target submodule by full path, unique prefix, or unique leaf name and then
          schedule an auto-cd into it. Use "main" to jump back to the parent repository root.
          Requires shell integration to change directories.
 
+         Inline mode for add/update/deinit is enabled when the config value 'useInlineSubmodule' is set to 'all'. In this mode, the command will parse the arguments of these submodule commands and execute them internally, allowing for faster execution. If the config value is 'off' or 'internal', all commands will be delegated to git and no internal parsing will occur.
+
          ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Shell integration must be enabled using ${cyan}${EXECUTABLE_NAME} --init${reset}.
+         For switch command: shell integration must be enabled, see ${hyperlink('README.md', REPO_README_URL)} for details.
          Submodules must be initialized (use ${cyan}git submodule update --init${reset}).
          `,
-         Math.min(100, global.terminalWidth - 4),
+         maxWidth,
          {
             firstIndent: '  ',
             mode: 'softboundary',
@@ -348,7 +367,7 @@ export const help = {
          }
       );
    },
-   short: 'Jump into a submodule directory (requires shell integration).',
+   short: 'Extends git submodule with ability to switch between submodules. (requires shell integration) And speedup submodule add/update/deinit operations with inline mode.',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');
@@ -358,9 +377,9 @@ export const help = {
          ${cyan}${EXECUTABLE_NAME} submodule switch ${dim}<path|name|main>${reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} submodule switch vendor/sdk ${reset + dim}# Switch by full path${reset}
-            ${cyan}${EXECUTABLE_NAME} submodule switch sdk        ${reset + dim}# Switch by unique name${reset}
-            ${cyan}${EXECUTABLE_NAME} submodule switch main       ${reset + dim}# Back to parent repo${reset}`,
+            ${cyan}${EXECUTABLE_NAME}submodule switch vendor/sdk ${reset + dim}# Switch by full path${reset}
+            ${cyan}${EXECUTABLE_NAME}submodule switch sdk        ${reset + dim}# Switch by unique name${reset}
+            ${cyan}${EXECUTABLE_NAME}submodule switch main       ${reset + dim}# Back to parent repo${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

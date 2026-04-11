@@ -23,24 +23,27 @@ import { help as macroHelp } from './macro';
 import { help as tagHelp } from './tag';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
-const HELP_MAP: Record<string, CommandHelpObj> = {
-   cache: cacheHelp,
+const EXTENSION_HELP_MAP: Record<string, CommandHelpObj> = {
+   tag: tagHelp,
    stash: stashHelp,
+   commit: commitHelp,
+   submodule: submoduleHelp,
+   status: statusHelp,
+};
+const COMMAND_HELP_MAP: Record<string, CommandHelpObj> = {
+   cache: cacheHelp,
    stats: statsHelp,
    graph: graphHelp,
    nocap: nocapHelp,
    parallel: parallelHelp,
    'gdx-config': gdxConfigHelp,
-   commit: commitHelp,
    clear: clearHelp,
    lint: lintHelp,
-   status: statusHelp,
    doctor: doctorHelp,
-   submodule: submoduleHelp,
    reword: rewordHelp,
    macro: macroHelp,
-   tag: tagHelp,
 };
+const FIRST_COL_WIDTH = 23;
 
 export default function help(name?: string): number {
    const cyan = ncc('Cyan');
@@ -73,7 +76,8 @@ Examples:
    ${cyan}${EXECUTABLE_NAME} st           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} stash${reset}
    ${cyan}${EXECUTABLE_NAME} lg           ${reset + dim}# shorthand for ${EXECUTABLE_NAME} log --oneline --graph --all --decorate${reset}
    ${cyan}${EXECUTABLE_NAME} stash d 2..6 ${reset + dim}# drop stashes 2 through 6 (safe: drops high->low)${reset}
-   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory (use \`${cyan}${EXECUTABLE_NAME} clear pardon${ncc('White')}\` to restore)${reset}
+   ${cyan}${EXECUTABLE_NAME} clear        ${reset + dim}# backup changes to a temp patch file and reset working directory
+                    # (use \`${cyan}${EXECUTABLE_NAME} clear pardon${ncc('White')}\` to restore)${reset}
    ${cyan}${EXECUTABLE_NAME} cmi auto     ${reset + dim}# generate commit message based on staged changes using LLM${reset}
 
 ${bright + _2PointGradient('KEY FEATURES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
@@ -101,27 +105,32 @@ ${bright + _2PointGradient('KEY FEATURES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zi
    - ${cyan}${EXECUTABLE_NAME} parallel fork/remove/join/switch/open/list${reset} for temp-backed worktree workflows.
 
 ${bright + _2PointGradient('SHORTHAND LIST (common)', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-${cyan}ad                 ${reset + dim}-> ${reset}add
-${cyan}bra, br            ${reset + dim}-> ${reset}branch
-${cyan}clear              ${reset + dim}-> ${reset}clear (backup changes and reset working directory; use \`${cyan}pardon${reset}\` to restore)
-${cyan}cl, clo            ${reset + dim}-> ${reset}clone
-${cyan}com, comm, cmi     ${reset + dim}-> ${reset}commit
-${cyan}che, checko, co    ${reset + dim}-> ${reset}checkout
-${cyan}dif                ${reset + dim}-> ${reset}diff
-${cyan}lg, lo             ${reset + dim}-> ${reset}log (auto-expanded)
-${cyan}pl, pul            ${reset + dim}-> ${reset}pull
-${cyan}ps, pus            ${reset + dim}-> ${reset}push
-${cyan}rb, rebas          ${reset + dim}-> ${reset}rebase
-${cyan}res, rese          ${reset + dim}-> ${reset}reset
-${cyan}rv, rever          ${reset + dim}-> ${reset}revert
-${cyan}mg, merg           ${reset + dim}-> ${reset}merge
-${cyan}in, ini            ${reset + dim}-> ${reset}init
-${cyan}sta, st            ${reset + dim}-> ${reset}stash
-${cyan}s, stat            ${reset + dim}-> ${reset}status
-${cyan}swit, sw           ${reset + dim}-> ${reset}switch
+${cyan}ad                  ${reset + dim}-> ${reset}add
+${cyan}bra, br             ${reset + dim}-> ${reset}branch
+${cyan}clear               ${reset + dim}-> ${reset}clear (backup changes and reset working directory; use \`${cyan}pardon${reset}\` to restore)
+${cyan}cl, clo             ${reset + dim}-> ${reset}clone
+${cyan}com, comm, cmi      ${reset + dim}-> ${reset}commit
+${cyan}che, checko, co     ${reset + dim}-> ${reset}checkout
+${cyan}dif                 ${reset + dim}-> ${reset}diff
+${cyan}lg                  ${reset + dim}-> ${reset}log (auto-expanded)
+${cyan}pl, pu              ${reset + dim}-> ${reset}pull
+${cyan}ps, pus             ${reset + dim}-> ${reset}push
+${cyan}rb, rebas           ${reset + dim}-> ${reset}rebase
+${cyan}res, rese           ${reset + dim}-> ${reset}reset
+${cyan}rv, rever           ${reset + dim}-> ${reset}revert
+${cyan}mg, mer             ${reset + dim}-> ${reset}merge
+${cyan}in, ini             ${reset + dim}-> ${reset}init
+${cyan}sta, st             ${reset + dim}-> ${reset}stash
+${cyan}s, stat             ${reset + dim}-> ${reset}status
+${cyan}swit, sw            ${reset + dim}-> ${reset}switch
 
-${bright + _2PointGradient('CUSTOM COMMAND LIST', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-${formatShortCmdList(HELP_MAP, { cyan, reset })}
+${bright + _2PointGradient('CUSTOM COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+${formatShortCmdList(COMMAND_HELP_MAP, { cyan, reset })}
+
+${bright + _2PointGradient('GIT COMMAND EXTENSIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+${formatShortCmdList(EXTENSION_HELP_MAP, { cyan, reset })}
+
+Run \`${cyan}${EXECUTABLE_NAME} ghelp <command>${reset}\` for detailed help on a specific command.
 
 ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
 ${cyan}--init <shell>         ${reset}Output shell initialization script for given shell.
@@ -132,7 +141,7 @@ ${cyan}--ghelp,               ${reset}Show GDX help message. ${dim}(use \`${cyan
 ${cyan}  --gdx-help, -gh      ${reset + dim}for command-specific help)${reset}
 ${cyan}-r, --recursive        ${yellow}[For '${EXECUTABLE_NAME} status']${reset} Recursively show git status of submodules.
 ${cyan}-au                    ${yellow}[For '${EXECUTABLE_NAME} pull']${reset} Shorthand for ${cyan}--allow-unrelated-histories${reset}.
-${cyan}--on-lint              ${yellow}[For '${EXECUTABLE_NAME} push']${reset} Skip linting for this push${reset}.
+${cyan}--no-lint              ${yellow}[For '${EXECUTABLE_NAME} push']${reset} Skip linting for this push${reset}.
 ${cyan}-fl                    ${yellow}[For '${EXECUTABLE_NAME} push']${reset} Shorthand for ${cyan}--force-with-lease${reset}.
 ${cyan}-h                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--hard${reset}.
 ${cyan}-s                     ${yellow}[For '${EXECUTABLE_NAME} reset']${reset} Shorthand for ${cyan}--soft${reset}.
@@ -163,9 +172,8 @@ ${bright + _2PointGradient('NOTES & SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.
 - For more infomation, see ${hyperlink('README.md', REPO_README_URL)}.`,
             Math.min(100, global.terminalWidth - 4),
             {
-               firstIndent: '  ',
                mode: 'softboundary',
-               indent: '  ',
+               indent: 2,
             }
          )
       );
@@ -178,15 +186,16 @@ ${bright + _2PointGradient('NOTES & SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.
       return help();
    }
 
-   const h = HELP_MAP[cmdName];
+   const h = COMMAND_HELP_MAP[cmdName] || EXTENSION_HELP_MAP[cmdName];
    let message = '';
    if (h && h.long) message = h.long();
    if (message && h.usage)
       message +=
-         '\n  ' +
+         '\n\n  ' +
          bright +
          _2PointGradient('USAGE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) +
          reset +
+         '\n' +
          h.usage();
 
    if (message) {
@@ -206,21 +215,25 @@ function formatShortCmdList(
    const res = [];
    for (const [cmd, h] of Object.entries(helpObj)) {
       res.push(
-         `${colors.cyan}${strJustify(cmd, 19, {
+         colors.cyan +
+         strJustify(cmd, FIRST_COL_WIDTH, {
             overflow: 'visible',
             align: 'left',
             redundancyLv: 0,
-         })}${colors.reset}${strWrap(h.short, 60, {
-            indent: 19,
+         }) +
+         colors.reset +
+         strWrap(h.short, 60, {
+            indent: FIRST_COL_WIDTH,
             firstIndent: 0,
             redundancyLv: 0,
-            mode: 'strict',
-         })}`
+            mode: 'softboundary',
+         })
       );
    }
    return res.join('\n');
 }
 
 export const structure = {
-   $root: Object.keys(HELP_MAP),
+   $root: Object.keys(COMMAND_HELP_MAP)
+      .concat(Object.keys(EXTENSION_HELP_MAP)),
 } as const satisfies CommandStructure;

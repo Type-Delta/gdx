@@ -1,4 +1,13 @@
-import { CheckCache, CONSTS, MathKit, REGEXP } from '@lib/Tools';
+import {
+   CheckCache,
+   CONSTS,
+   MathKit,
+   REGEXP,
+   ex_length,
+   ncc,
+   strJustify,
+   strWrap,
+} from '@lib/Tools';
 
 const _4bitColorMap = Object.entries(CONSTS.AnsiColorCodes);
 const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'] as const;
@@ -18,6 +27,43 @@ const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'
  * const blue50: RgbVec = [0, 0, 255, 0.5];
  */
 export type RgbVec = [number, number, number, number?];
+
+export interface FormatTableOptions {
+   /**
+    * Padding to apply to each cell's content. Can be a single number for uniform padding or an array for directional padding (top, right, bottom, left similar to CSS padding) Defaults to 1 (one space on each side).
+    */
+   padding?: number[] | number;
+   /**
+    * Width of each column's content area (excluding cell padding). Can be a single number for uniform width or an array for per-column widths.
+    * Use `'auto'` to size each column to its widest content. Defaults to `'auto'`.
+    */
+   columnWidth?: (number | 'auto')[] | number | 'auto';
+   /**
+    * Alignment for each column. Can be a single value for uniform alignment or an array for per-column alignment. Defaults to left-aligned.
+    */
+   columnAlign?: ('left' | 'right' | 'center')[] | ('left' | 'right' | 'center');
+   /**
+    * Border style to use for the table. 'ascii' uses simple +, -, | characters; 'unicode' uses box-drawing characters; 'none' produces a borderless table. Defaults to 'unicode'.
+    */
+   borderStyle?: 'ascii' | 'unicode' | 'none';
+   /**
+    * Optional ANSI color for the table borders. Can be an RgbVec or ANSI SGR string. If not provided, borders will use the default terminal color. Note: This option is ignored if `borderStyle` is set to 'none'.
+    */
+   borderAnsiColor?: RgbVec | string;
+   /**
+    * Redundancy level for ANSI-aware string operations. Higher levels provide more robust handling of complex strings (e.g., with emojis, fullwidth characters, or nested ANSI codes) at the cost of performance. Defaults to 0 (basic ANSI support without special handling). See `strWrap` documentation for details on how this affects string processing within table cells.
+    */
+   redundancyLv?: number;
+}
+
+/**
+ * Represents the inferred ANSI styles from a string, including foreground color (`fg`), background color (`bg`), and text styles (`sp` for styles present). The `fg` and `bg` can be either an ANSI SGR string or an RgbVec depending on the context of use. The `sp` array contains style names like 'bright', 'dim', 'italic', etc., that are active in the string.
+ */
+export interface InferredAnsiStyle {
+   fg?: string | RgbVec;
+   bg?: RgbVec | string;
+   sp?: string[];
+}
 
 /**
  * Returns `text` decorated with an ANSI 24-bit gradient that interpolates
@@ -218,11 +264,7 @@ export function hslToRgbVec(h: number, s: number, l: number): RgbVec {
  * @param overlay - The overlay color as an `RgbVec`.
  * @param ratio - The blend ratio (0..1) determining the influence of the overlay color.
  */
-export function colorMix(
-   base: RgbVec,
-   overlay: RgbVec,
-   ratio: number
-): RgbVec {
+export function colorMix(base: RgbVec, overlay: RgbVec, ratio: number): RgbVec {
    return [
       Math.round(base[0] * (1 - ratio) + overlay[0] * ratio),
       Math.round(base[1] * (1 - ratio) + overlay[1] * ratio),
@@ -378,8 +420,8 @@ export function get4bitColorName(code: string): string | null {
  * @returns An object with optional `fg` and `bg` properties representing the inferred foreground and background colors, `sp` for styles.
  * Colors can be returned as 4-bit color names (e.g., 'red', 'bgBlue') or as RGB tuples ([r, g, b]).
  */
-export function inferAnsiStyles(str: string) {
-   const style: { fg?: RgbVec | string; bg?: RgbVec | string, sp?: string[] } = {};
+export function inferAnsiStyles(str: string): InferredAnsiStyle {
+   const style: { fg?: RgbVec | string; bg?: RgbVec | string; sp?: string[] } = {};
    const matches = [...str.matchAll(REGEXP.ANSICode)].reverse();
 
    for (const match of matches) {
@@ -390,18 +432,15 @@ export function inferAnsiStyles(str: string) {
             break; // stop processing on reset
          else if (!style.bg && _4bitColor.startsWith('bg')) {
             style.bg = _4bitColor;
-         }
-         else if (_4bitStyles.includes(_4bitColor as typeof _4bitStyles[number])) {
+         } else if (_4bitStyles.includes(_4bitColor as (typeof _4bitStyles)[number])) {
             // prepend style to preserve order
             if (!style.sp) style.sp = [];
             style.sp.unshift(_4bitColor);
-         }
-         else {
+         } else {
             if (style.fg) continue; // already have a foreground color, skip
             style.fg = _4bitColor;
          }
-      }
-      else if (!style.fg && code.startsWith('[38;2;')) {
+      } else if (!style.fg && code.startsWith('[38;2;')) {
          const [r, g, b] = code
             .slice(6)
             .split(';')
@@ -428,9 +467,7 @@ export function inferAnsiStyles(str: string) {
  * @param styles - An object with optional `fg`, `bg`, and `sp` properties representing the desired styles.
  * @returns A string containing the ANSI escape codes corresponding to the provided styles.
  */
-export function serializeAnsiStyles(
-   styles: { fg?: RgbVec | string; bg?: RgbVec | string, sp?: string[] }
-): string {
+export function serializeAnsiStyles(styles: InferredAnsiStyle): string {
    let result = '';
    if (styles.sp) {
       for (const style of styles.sp) {
@@ -457,21 +494,252 @@ export function serializeAnsiStyles(
    return result;
 }
 
-/**
- * Redraws text in the terminal by moving the cursor up to the start of the previous text and overwriting it with new text.
- * This is useful for updating progress messages or dynamic content without adding new lines.
- */
-export function redrawText(prev: string, next: string): void {
-   const originalLnCount = prev.length - prev.replace(/\n/g, '').length + 1;
+export function formatTable(rows: string[][], options: FormatTableOptions = {}): string {
+   const {
+      padding = 1,
+      columnWidth = 'auto',
+      columnAlign = 'left',
+      borderStyle = 'unicode',
+      borderAnsiColor,
+      redundancyLv = 0,
+   } = options;
 
-   // Move cursor up to the start of the original message
-   process.stdout.write(`\x1b[${originalLnCount}F`);
+   if (!rows?.length) return '';
 
-   // Clear from cursor to end of screen
-   process.stdout.write(`\x1b[0J`);
+   const columnCount = Math.max(0, ...rows.map((row) => row?.length ?? 0));
+   if (!columnCount) return '';
 
-   // Rewrite message line by line, clearing each line first
-   for (const line of next.split('\n')) {
-      process.stdout.write(`\x1b[2K${line}\n`);
+   const [padTop, padRight, padBottom, padLeft] = normalizePadding(padding);
+   const normalizedRows = rows.map((row) =>
+      new Array(columnCount).fill('').map((_, i) => String(row?.[i] ?? ''))
+   );
+   const normalizedAlign = normalizeAlign(columnAlign, columnCount);
+
+   const rawCellLines = normalizedRows.map((row) => row.map((cell) => cell.split(/\r?\n/)));
+
+   const contentWidths = new Array<number>(columnCount).fill(0);
+   for (let col = 0; col < columnCount; col++) {
+      for (let row = 0; row < rawCellLines.length; row++) {
+         for (const line of rawCellLines[row][col]) {
+            const width = ex_length(line, redundancyLv);
+            if (width > contentWidths[col]) contentWidths[col] = width;
+         }
+      }
+   }
+
+   const normalizedWidths = normalizeColumnWidth(columnWidth, contentWidths);
+   const cellLines = rawCellLines.map((row) =>
+      row.map((lines, col) => {
+         const width = normalizedWidths[col];
+         if (width <= 0) return [''];
+
+         const wrapped: string[] = [];
+         for (const line of lines) {
+            if (ex_length(line, redundancyLv) <= width) {
+               wrapped.push(line);
+               continue;
+            }
+
+            const wrappedLines = strWrap(line, width, {
+               mode: 'strict',
+               redundancyLv,
+            }).split('\n');
+
+            // Restore ANSI styles across wrapped lines to prevent style breaks
+            let lastLineStyle: string | null = null;
+            for (let i = 0; i < wrappedLines.length; i++) {
+               if (lastLineStyle) {
+                  wrappedLines[i] = lastLineStyle + wrappedLines[i];
+               }
+               lastLineStyle = serializeAnsiStyles(inferAnsiStyles(wrappedLines[i]));
+            }
+
+            wrapped.push(
+               ...wrappedLines
+            );
+         }
+         return wrapped.length ? wrapped : [''];
+      })
+   );
+
+   const cellWidths = normalizedWidths.map((w) => w + padLeft + padRight);
+
+   const border = getBorder(borderStyle);
+   const borderPrefix = getBorderPrefix(borderAnsiColor);
+   const borderSuffix = borderPrefix ? ncc() : '';
+   const colorizeBorder = (text: string) =>
+      borderPrefix ? `${borderPrefix}${text}${borderSuffix}` : text;
+
+   const out: string[] = [];
+
+   if (border) {
+      out.push(buildBorderLine('top'));
+   }
+
+   for (let rowIndex = 0; rowIndex < normalizedRows.length; rowIndex++) {
+      const rowCells = cellLines[rowIndex];
+      const contentHeight = Math.max(1, ...rowCells.map((lines) => lines.length));
+      const totalHeight = padTop + contentHeight + padBottom;
+
+      for (let lineIndex = 0; lineIndex < totalHeight; lineIndex++) {
+         const segments: string[] = [];
+         for (let col = 0; col < columnCount; col++) {
+            const contentLineIndex = lineIndex - padTop;
+            const rawLine =
+               contentLineIndex >= 0 && contentLineIndex < rowCells[col].length
+                  ? rowCells[col][contentLineIndex]
+                  : '';
+
+            const aligned = strJustify(rawLine, normalizedWidths[col], {
+               align: normalizedAlign[col],
+               filler: ' ',
+               overflow: 'visible',
+               redundancyLv,
+            });
+            segments.push(' '.repeat(padLeft) + aligned + ' '.repeat(padRight));
+         }
+
+         if (!border) {
+            out.push(segments.join(''));
+            continue;
+         }
+
+         let rowLine = colorizeBorder(border.v);
+         for (let col = 0; col < segments.length; col++) {
+            rowLine += segments[col];
+            if (col < segments.length - 1) {
+               rowLine += colorizeBorder(border.v);
+            }
+         }
+         rowLine += colorizeBorder(border.v);
+         out.push(rowLine);
+      }
+
+      if (border && rowIndex < normalizedRows.length - 1) {
+         out.push(buildBorderLine('mid'));
+      }
+   }
+
+   if (border) {
+      out.push(buildBorderLine('bottom'));
+   }
+
+   return out.join('\n');
+
+   function normalizePadding(value: number | number[]): [number, number, number, number] {
+      if (typeof value === 'number') {
+         const n = Math.max(0, Math.floor(value));
+         return [n, n, n, n];
+      }
+
+      if (!value.length) return [1, 1, 1, 1];
+      const v = value.map((n) => Math.max(0, Math.floor(n || 0)));
+      switch (v.length) {
+         case 1:
+            return [v[0], v[0], v[0], v[0]];
+         case 2:
+            return [v[0], v[1], v[0], v[1]];
+         case 3:
+            return [v[0], v[1], v[2], v[1]];
+         default:
+            return [v[0], v[1], v[2], v[3]];
+      }
+   }
+
+   function normalizeAlign(
+      value: ('left' | 'right' | 'center')[] | ('left' | 'right' | 'center'),
+      count: number
+   ): ('left' | 'right' | 'center')[] {
+      if (typeof value === 'string') {
+         return new Array(count).fill(value);
+      }
+      return new Array(count)
+         .fill('left')
+         .map((_, i) => value[i] ?? value[value.length - 1] ?? 'left');
+   }
+
+   function normalizeColumnWidth(
+      value: (number | 'auto')[] | number | 'auto',
+      measuredWidths: number[]
+   ): number[] {
+      if (value === 'auto') return [...measuredWidths];
+
+      if (typeof value === 'number') {
+         const n = Math.max(0, Math.floor(value));
+         return new Array(measuredWidths.length).fill(n);
+      }
+
+      return measuredWidths.map((autoWidth, i) => {
+         const setting = value[i] ?? value[value.length - 1] ?? 'auto';
+         if (setting === 'auto') return autoWidth;
+         return Math.max(0, Math.floor(setting));
+      });
+   }
+
+   function getBorder(style: 'ascii' | 'unicode' | 'none') {
+      if (style === 'none') return null;
+      if (style === 'ascii') {
+         return {
+            topLeft: '+',
+            topJoin: '+',
+            topRight: '+',
+            leftJoin: '+',
+            cross: '+',
+            rightJoin: '+',
+            bottomLeft: '+',
+            bottomJoin: '+',
+            bottomRight: '+',
+            h: '-',
+            v: '|',
+         };
+      }
+
+      return {
+         topLeft: '┌',
+         topJoin: '┬',
+         topRight: '┐',
+         leftJoin: '├',
+         cross: '┼',
+         rightJoin: '┤',
+         bottomLeft: '└',
+         bottomJoin: '┴',
+         bottomRight: '┘',
+         h: '─',
+         v: '│',
+      };
+   }
+
+   function getBorderPrefix(color: RgbVec | string | undefined): string {
+      if (!color || borderStyle === 'none') return '';
+      if (typeof color === 'string') {
+         if (color.includes('\x1b[')) return color;
+         return ncc(color as never);
+      }
+      return ncc(rgbVec2decimal(color));
+   }
+
+   function buildBorderLine(kind: 'top' | 'mid' | 'bottom'): string {
+      if (!border) return '';
+
+      const left =
+         kind === 'top' ? border.topLeft : kind === 'bottom' ? border.bottomLeft : border.leftJoin;
+      const join =
+         kind === 'top' ? border.topJoin : kind === 'bottom' ? border.bottomJoin : border.cross;
+      const right =
+         kind === 'top'
+            ? border.topRight
+            : kind === 'bottom'
+               ? border.bottomRight
+               : border.rightJoin;
+
+      let line = colorizeBorder(left);
+      for (let col = 0; col < cellWidths.length; col++) {
+         line += colorizeBorder(border.h.repeat(cellWidths[col]));
+         if (col < cellWidths.length - 1) {
+            line += colorizeBorder(join);
+         }
+      }
+      line += colorizeBorder(right);
+      return line;
    }
 }
