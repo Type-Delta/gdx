@@ -1,6 +1,7 @@
 import { Err, estimateStrComplexity, ex_length, ncc, strSlice, strWrap, yuString } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
 import * as fs from '@/modules/fs';
+import type { ChangeObject } from 'diff';
 
 import {
    pagerWithRenderer,
@@ -65,12 +66,6 @@ interface ParsedDiff {
 }
 
 export type BundledLanguage = Parameters<ShikijsCliModule['codeToANSI']>[1];
-type DiffChange = {
-   added?: boolean;
-   removed?: boolean;
-   value: string;
-};
-type DiffCharsFn = (oldStr: string, newStr: string) => DiffChange[];
 
 let shikiPromise: Promise<ShikijsCliModule> | null = null;
 let diffPromise: Promise<DiffModule> | null = null;
@@ -105,7 +100,7 @@ function compactInlineSegments(segments: InlineDiffSegment[]): InlineDiffSegment
  * Returns true when a diff change represents modified content.
  * @param change - Diff change object.
  */
-function isChangedSegment(change: DiffChange): boolean {
+function isChangedSegment(change: ChangeObject<string>): boolean {
    return Boolean(change.added || change.removed);
 }
 
@@ -116,7 +111,7 @@ function isChangedSegment(change: DiffChange): boolean {
  * @param index - Segment index to check.
  * @param maxGap - Maximum gap length (exclusive).
  */
-function shouldMergeGap(changes: DiffChange[], index: number, maxGap: number): boolean {
+function shouldMergeGap(changes: ChangeObject<string>[], index: number, maxGap: number): boolean {
    const current = changes[index];
    if (!current || isChangedSegment(current)) return false;
 
@@ -150,7 +145,7 @@ function shouldMergeGap(changes: DiffChange[], index: number, maxGap: number): b
  * @param changes - Character-level diff changes.
  * @returns Inline segments preserving both deleted and added chunks.
  */
-function buildMergedInlineSegments(changes: DiffChange[]): InlineDiffSegment[] {
+function buildMergedInlineSegments(changes: ChangeObject<string>[]): InlineDiffSegment[] {
    const segments = changes.map((change, index) => {
       const type = change.removed
          ? ('delete' as const)
@@ -171,7 +166,7 @@ function buildMergedInlineSegments(changes: DiffChange[]): InlineDiffSegment[] {
  * @returns Inline segments for the target line.
  */
 function buildLineInlineSegments(
-   changes: DiffChange[],
+   changes: ChangeObject<string>[],
    lineType: 'add' | 'delete'
 ): InlineDiffSegment[] {
    const segments: InlineDiffSegment[] = [];
@@ -189,6 +184,35 @@ function buildLineInlineSegments(
       }
    }
    return compactInlineSegments(segments);
+}
+
+/**
+ * Determines whether to display inline segments in a compact merged form or separate added/deleted form.
+ * If there are long unchanged segments between changes, it opts for separate form to avoid confusion.
+ *
+ * @param singleLineChanges - Character-level diff changes for a single line.
+ * @return True to display in separate form, false to display in merged form.
+ */
+function shouldDisplayMultiline(singleLineChanges: ChangeObject<string>[]): boolean {
+   const largestSegmentLen = 3;
+   let sequenceLength = 0;
+   for (const diff of singleLineChanges) {
+      if (sequenceLength > 2) return true;
+
+      if (diff.count > largestSegmentLen) {
+         sequenceLength = 0;
+         continue;
+      }
+
+      if (diff.added) {
+         sequenceLength++;
+      }
+      else if (diff.removed) {
+         sequenceLength++;
+      }
+   }
+
+   return sequenceLength > 1;
 }
 
 /**
@@ -620,7 +644,7 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    async prepareHighlighting(): Promise<void> {
-      await this.prepareInlineDiffs();
+      await Logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
 
       for (const diff of this.parsedDiffs) {
          const codeLines = diff.lines.filter(
@@ -665,8 +689,8 @@ export class DiffViewerRenderer implements PagerRenderer {
             while (
                i < diff.lines.length &&
                (diff.lines[i].type === 'add' || diff.lines[i].type === 'delete')
-            )
-               i++;
+            ) i++;
+
             const block = diff.lines.slice(blockStart, i);
             const hasAdd = block.some((line) => line.type === 'add');
             const hasDelete = block.some((line) => line.type === 'delete');
@@ -678,7 +702,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       if (!hasReplacementBlock) return;
 
-      let diffChars: DiffCharsFn | undefined;
+      let diffChars: DiffModule['diffChars'] | undefined;
       try {
          const diffLib = await getDiffLib();
          diffChars = diffLib.diffChars;
@@ -719,31 +743,40 @@ export class DiffViewerRenderer implements PagerRenderer {
                deletedLines[0].oldLineNum !== undefined &&
                addedLines[0].newLineNum !== undefined;
 
+            let deletedText: string;
+            let addedText: string;
+            let changes: ChangeObject<string>[] | null = null;
             if (isSingleLineReplacement) {
                const oldLine = deletedLines[0];
                const newLine = addedLines[0];
-               const changes = diffChars(oldLine.content, newLine.content);
+               changes = diffChars(oldLine.content, newLine.content);
                const inlineSegments = buildMergedInlineSegments(changes);
+               deletedText = oldLine.content;
+               addedText = newLine.content;
 
-               const modifyLine: DiffLine = {
-                  type: 'modify',
-                  content: newLine.content,
-                  oldLineNum: oldLine.oldLineNum,
-                  newLineNum: newLine.newLineNum,
-                  inlineSegments,
-               };
+               if (!shouldDisplayMultiline(changes)) {
+                  const modifyLine: DiffLine = {
+                     type: 'modify',
+                     content: newLine.content,
+                     oldLineNum: oldLine.oldLineNum,
+                     newLineNum: newLine.newLineNum,
+                     inlineSegments,
+                  };
 
-               diff.lines.splice(blockStart, blockEnd - blockStart, modifyLine);
-               i = blockStart + 1;
-               continue;
+                  diff.lines.splice(blockStart, blockEnd - blockStart, modifyLine);
+                  i = blockStart + 1;
+                  continue;
+               }
             }
 
-            const deletedText = deletedLines.map((line) => line.content).join('\n');
-            const addedText = addedLines.map((line) => line.content).join('\n');
-            const changes = diffChars(deletedText, addedText);
+            if (!changes) {
+               deletedText = deletedLines.map((line) => line.content).join('\n');
+               addedText = addedLines.map((line) => line.content).join('\n');
+               changes = diffChars(deletedText, addedText);
+            }
 
             const addSegments = buildLineInlineSegments(changes, 'add');
-            if (addSegments.length > 0 && inlineSegmentsToText(addSegments) === addedText) {
+            if (addSegments.length > 0 && inlineSegmentsToText(addSegments) === addedText!) {
                const addLineSegments = splitInlineSegmentsByLines(addSegments, addedLines.length);
                for (let lineIndex = 0; lineIndex < addedLines.length; lineIndex++) {
                   if (addLineSegments[lineIndex].length > 0)
@@ -752,7 +785,7 @@ export class DiffViewerRenderer implements PagerRenderer {
             }
 
             const deleteSegments = buildLineInlineSegments(changes, 'delete');
-            if (deleteSegments.length > 0 && inlineSegmentsToText(deleteSegments) === deletedText) {
+            if (deleteSegments.length > 0 && inlineSegmentsToText(deleteSegments) === deletedText!) {
                const deleteLineSegments = splitInlineSegmentsByLines(
                   deleteSegments,
                   deletedLines.length
