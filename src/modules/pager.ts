@@ -196,7 +196,7 @@ export class SimplePagerRenderer implements PagerRenderer {
 
          if (this.options.wrapLines && ex_length(line, this.redundancyLv) > contentWidth) {
             const wrapped = strWrap(line, contentWidth, {
-               mode: 'softboundary',
+               mode: 'strict',
                redundancyLv: Math.max(0, this.redundancyLv),
             });
             const splitted = wrapped.split('\n');

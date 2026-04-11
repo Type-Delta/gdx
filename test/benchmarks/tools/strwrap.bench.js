@@ -2,6 +2,7 @@
 import { Bench } from 'tinybench';
 import fs from 'fs';
 import { createRequire } from 'module';
+import path from 'path';
 
 const require = createRequire(import.meta.url);
 const tools_old = require('./_tools.cjs');
@@ -38,7 +39,7 @@ await bench.run();
 console.log('Normal Test: (medium length string)');
 console.table(bench.table());
 
-const long_test_str = fs.readFileSync('./test/dev/tools-bench/_tools.cjs', 'utf-8');
+const long_test_str = fs.readFileSync(path.join(__dirname, '_tools.cjs'), 'utf-8');
 
 const bench_long = new Bench({ time: 2000 });
 bench_long.add('strWrap() (old, redundancyLv: 0)', () => {

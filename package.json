@@ -45,7 +45,8 @@
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
     "dummy-editor": "bun ./scripts/dummyEditor.mjs",
-    "bench:litedent": "bun run ./test/benchmarks/litedent.bench.ts"
+    "bench:litedent": "bun run ./test/benchmarks/litedent.bench.ts",
+    "bench:strwrap": "bun run ./test/benchmarks/tools/strwrap.bench.js"
   },
   "devDependencies": {
     "@babel/cli": "^7.28.6",
