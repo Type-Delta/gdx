@@ -11,6 +11,7 @@
 - Fixed overflowing enhanced diff view with long lines.
 - Improved 'modify' diff hunk rendering for better readability.
 - Updated help messages accross app.
+- `gdx clear pardon` failing to restore from patch file
 
 ## Version 0.4.2 - 2026-04-09
 
