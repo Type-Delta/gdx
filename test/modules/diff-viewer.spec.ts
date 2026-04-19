@@ -353,7 +353,7 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
          expect(addLine).toContain('\x1b[48;2;68;85;78m');
       });
 
-      it('should merge nearby inline change groups with small gaps', async () => {
+      it('should merge nearby change groups with small gaps', async () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts
 +++ b/test.ts
@@ -366,11 +366,16 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
 
          const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
             .parsedDiffs;
-         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify');
+         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify' || line.type === 'add');
 
          expect(
-            modifyLine?.inlineSegments?.some((seg) => seg.type === 'same' && seg.value === 'de')
+            modifyLine?.inlineSegments?.some((seg) => seg.type === 'same' && seg.value === 'de'),
+            'Expected unchanged segment in between nearby changes to be merged (negative case)'
          ).toBe(false);
+         expect(
+            modifyLine?.inlineSegments?.some((seg) => seg.type === 'add' && seg.value === 'XdeY'),
+            'Expected unchanged segment in between nearby changes to be merged (positive case)'
+         ).toBe(true);
       });
 
       it('should preserve unmatched remaining deleted and added lines in large replacement block', async () => {
