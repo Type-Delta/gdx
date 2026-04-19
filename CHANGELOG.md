@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed overflowing enhanced diff view with long lines.
+- Improved 'modify' diff hunk rendering for better readability.
+- Updated help messages accross app.
+
 ## Version 0.4.2 - 2026-04-09
 
 ### Added
