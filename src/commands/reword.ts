@@ -4,7 +4,7 @@ import { Err, ncc, strWrap, yuString } from '@lib/Tools';
 
 import * as fs from '@/modules/fs';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { $, $inherit, tokenizeCommand, whichExec } from '@/modules/shell';
+import { $, $inherit, spinner, SpinnerContoller, tokenizeCommand, whichExec } from '@/modules/shell';
 import { getConfig } from '@/common/config';
 import {
    assertInGitWorktree,
@@ -224,6 +224,7 @@ async function rewriteOlderCommit(
    let didCreateWorktree = false;
    const oldShaToNewShaMap: Record<string, string> = {};
    const shaFromGitOutputRegex = /\[detached HEAD ([\da-f]+)\]/;
+   let spinnerCtrl: SpinnerContoller | null = null;
 
    try {
       await $`${git$} worktree add --detach ${worktreeDir} ${headSha}`;
@@ -247,11 +248,18 @@ async function rewriteOlderCommit(
       await $`${worktreeGit} checkout --detach ${rewrittenTarget}`;
 
       const replayCommits = await listReplayCommits(git$, targetSha, headSha);
+      spinnerCtrl = replayCommits.length > 50 ? spinner({
+         message: `Replaying commits... (0/${replayCommits.length})`,
+      }) : null;
+
+      let replayCounter = 0;
       for (const commit of replayCommits) {
          const cherryPickResult = await $`${worktreeGit} cherry-pick ${commit}`;
          oldShaToNewShaMap[commit] = shaFromGitOutputRegex.exec(cherryPickResult.stdout)?.[1] || 'unknown';
+         spinnerCtrl?.setMessage(`Replaying commits... (${++replayCounter}/${replayCommits.length})`);
       }
 
+      spinnerCtrl?.setMessage('Repositioning HEAD...');
       const rewrittenHead = (await revParseCached(worktreeGit, 'HEAD')).trim();
       const [originalHeadTree, rewrittenHeadTree] = await Promise.all([
          resolveCommitTree(git$, headSha),
@@ -259,6 +267,7 @@ async function rewriteOlderCommit(
       ]);
 
       if (originalHeadTree !== rewrittenHeadTree) {
+         spinnerCtrl?.stop();
          throw new Err(
             'Reword aborted because rewritten history changed the HEAD tree.',
             'REWORD_TREE_MISMATCH'
@@ -268,6 +277,7 @@ async function rewriteOlderCommit(
       const headRef = await resolveHeadRef(git$);
       await $`${git$} update-ref ${headRef} ${rewrittenHead} ${headSha}`;
    } finally {
+      spinnerCtrl?.stop();
       if (didCreateWorktree) {
          await $`${git$} worktree remove --force ${worktreeDir}`.catch(noop);
       }
