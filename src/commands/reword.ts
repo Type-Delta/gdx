@@ -12,7 +12,7 @@ import {
    resolveRefShaCached,
    revParseCached,
 } from '@/modules/git';
-import { noop } from '@/utils/utilities';
+import { noop, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
@@ -166,13 +166,19 @@ function resolveGitExecutable(git$: string | string[]): string {
 }
 
 /**
- * Rewrites the current HEAD commit message using commit-tree.
+ * Rewrites the current HEAD commit message using commit-tree and returns the new commit SHA.
+ * This is a simpler operation than rewriting older commits since we can just create a new commit and move HEAD.
+ *
+ * @param git$ - The git executable path/command array.
+ * @param headSha - The current HEAD commit SHA.
+ * @param messageFile - Path to the file containing the new commit message.
+ * @returns The SHA of the newly created commit that replaces HEAD.
  */
 async function rewriteHeadCommit(
    git$: string | string[],
    headSha: string,
    messageFile: string
-): Promise<void> {
+): Promise<string> {
    const [treeSha, parents, author] = await Promise.all([
       resolveCommitTree(git$, headSha),
       resolveCommitParents(git$, headSha),
@@ -189,17 +195,25 @@ async function rewriteHeadCommit(
 
    const headRef = await resolveHeadRef(git$);
    await $`${git$} update-ref ${headRef} ${rewrittenHead} ${headSha}`;
+   return rewrittenHead;
 }
 
 /**
- * Rewrites a non-HEAD commit message using commit-tree + cherry-pick in a temporary worktree.
+ * Rewrites a non-HEAD commit message using commit-tree + cherry-pick in a temporary worktree and returns the
+ * SHAs of the newly created commits.
+ *
+ * @param git$ - The git executable path/command array.
+ * @param targetSha - The SHA of the commit to reword (must be an ancestor of HEAD).
+ * @param headSha - The current HEAD commit SHA.
+ * @param messageFile - Path to the file containing the new commit message for the target commit.
+ * @returns A mapping of old SHAs to new SHAs for all rewritten commits, including the target and all its descendants up to HEAD.
  */
 async function rewriteOlderCommit(
    git$: string | string[],
    targetSha: string,
    headSha: string,
    messageFile: string
-): Promise<void> {
+): Promise<Record<string, string>> {
    await fs.mkdir(TEMP_DIR, { recursive: true });
 
    const worktreeDir = path.join(
@@ -207,6 +221,8 @@ async function rewriteOlderCommit(
       `gdx_reword_worktree_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`
    );
    let didCreateWorktree = false;
+   const oldShaToNewShaMap: Record<string, string> = {};
+   const shaFromGitOutputRegex = /\[detached HEAD ([\da-f]+)\]/;
 
    try {
       await $`${git$} worktree add --detach ${worktreeDir} ${headSha}`;
@@ -231,7 +247,8 @@ async function rewriteOlderCommit(
 
       const replayCommits = await listReplayCommits(git$, targetSha, headSha);
       for (const commit of replayCommits) {
-         await $inherit`${worktreeGit} cherry-pick ${commit}`;
+         const cherryPickResult = await $`${worktreeGit} cherry-pick ${commit}`;
+         oldShaToNewShaMap[commit] = shaFromGitOutputRegex.exec(cherryPickResult.stdout)?.[1] || 'unknown';
       }
 
       const rewrittenHead = (await revParseCached(worktreeGit, 'HEAD')).trim();
@@ -255,6 +272,7 @@ async function rewriteOlderCommit(
       }
       await fs.rm(worktreeDir, { recursive: true, force: true }).catch(noop);
    }
+   return oldShaToNewShaMap;
 }
 
 export default async function reword(ctx: GdxContext): Promise<number> {
@@ -305,10 +323,20 @@ export default async function reword(ctx: GdxContext): Promise<number> {
          return 1;
       }
 
+      if (updatedMessage.trim() === originalMessage.trim()) {
+         quickPrint('Commit message unchanged. No reword needed.');
+         return 0;
+      }
+
       if (isHead) {
-         await rewriteHeadCommit(git$, headSha, tempFile);
+         const newHead = await rewriteHeadCommit(git$, headSha, tempFile);
+         quickPrint(`Rewrote ${headSha.slice(0, 7)} (HEAD) to ${newHead.slice(0, 7)} (new HEAD)`);
       } else {
-         await rewriteOlderCommit(git$, targetSha, headSha, tempFile);
+         const oldShaToNewShaMap = await rewriteOlderCommit(git$, targetSha, headSha, tempFile);
+         quickPrint(`Rewrote ${Object.keys(oldShaToNewShaMap).length} commits:`);
+         for (const [oldSha, newSha] of Object.entries(oldShaToNewShaMap)) {
+            quickPrint(`  ${oldSha.slice(0, 7)} -> ${newSha.slice(0, 7)}${oldSha === headSha ? ' (HEAD)' : ''}${oldSha === targetSha ? ' [target]' : ''}`);
+         }
       }
 
       return 0;
