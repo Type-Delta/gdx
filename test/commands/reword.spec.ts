@@ -33,7 +33,7 @@ await writeFile(targetFile, ${JSON.stringify(message)}, 'utf8');
 }
 
 describe('gdx reword', async () => {
-   const { tmpDir, $, tracker, it, resetRepo } = await createTestEnv({ suitName: 'reword' });
+   const { tmpDir, $, tracker, buffer, it, resetRepo } = await createTestEnv({ suitName: 'reword' });
 
    it('rewords the latest commit message exactly', async () => {
       await resetRepo();
@@ -54,6 +54,14 @@ describe('gdx reword', async () => {
 
       const message = await readCommitMessage(tmpDir, 'HEAD');
       expect(message).toBe(expectedMessage);
+      expect(buffer.stdout).toContain('@@ -');
+      expect(buffer.stdout).toContain('-initial subject');
+      expect(buffer.stdout).toContain('+updated subject');
+
+      const rewroteIndex = buffer.stdout.indexOf('Rewrote ');
+      const diffIndex = buffer.stdout.indexOf('@@ -');
+      expect(diffIndex).toBeGreaterThan(-1);
+      expect(rewroteIndex).toBeGreaterThan(diffIndex);
    });
 
    it('rewords an older commit message exactly and keeps working tree changes', async () => {

@@ -19,6 +19,7 @@ import Logger from '@/utils/logger';
 import { spinner } from './shell';
 import { CATPPUCCIN_VPALETTE, INLINE_DIFF_MERGE_DISTANCE, TUI_THEME } from '@/consts';
 import { DiffModule, ShikijsCliModule } from '@/common/types';
+import { quickPrint } from '@/utils/utilities';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -36,7 +37,31 @@ export interface DiffViewerOptions extends PagerOptions {
    theme?: string;
    workingDir?: string;
    preambleLines?: string[];
+   disableSyntaxHighlighting?: boolean;
 }
+
+interface UnifiedPatchHunk {
+   oldStart: number;
+   oldLines: number;
+   newStart: number;
+   newLines: number;
+   lines: string[];
+   heading?: string;
+}
+
+interface UnifiedPatchResult {
+   hunks: UnifiedPatchHunk[];
+}
+
+type StructuredPatchFn = (
+   oldFileName: string,
+   newFileName: string,
+   oldStr: string,
+   newStr: string,
+   oldHeader?: string,
+   newHeader?: string,
+   options?: { context?: number }
+) => UnifiedPatchResult;
 
 interface DiffLine {
    type: 'add' | 'delete' | 'context' | 'header' | 'hunk' | 'file' | 'empty' | 'modify';
@@ -349,6 +374,97 @@ function detectLanguage(fileName: string): BundledLanguage {
    return (langMap[ext] as BundledLanguage) || 'text';
 }
 
+function formatUnifiedRange(start: number, count: number): string {
+   if (count === 1) return String(start);
+   return `${start},${count}`;
+}
+
+function colorizeUnifiedPatchLine(line: string): string {
+   if (CheckCache.supportsColor <= 0) return line;
+   const reset = ncc();
+   if (line.startsWith('@@')) return `${ncc('Cyan')}${line}${reset}`;
+   if (line.startsWith('+')) return `${ncc('Green')}${line}${reset}`;
+   if (line.startsWith('-')) return `${ncc('Red')}${line}${reset}`;
+   if (line.startsWith('\\')) return `${ncc('Dim')}${line}${reset}`;
+   return line;
+}
+
+async function buildCommitMessagePatch(oldText: string, newText: string): Promise<{
+   patchBodyLines: string[];
+   rendererDiffText: string;
+}> {
+   const diffLib = await getDiffLib();
+   const structuredPatch = diffLib.structuredPatch as StructuredPatchFn | undefined;
+
+   if (!structuredPatch) {
+      throw new Err('Diff module does not provide structuredPatch.', 'DIFF_STRUCTURED_PATCH_UNAVAILABLE');
+   }
+
+   const patch = structuredPatch(
+      'a/COMMIT_EDITMSG',
+      'b/COMMIT_EDITMSG',
+      oldText,
+      newText,
+      '',
+      '',
+      { context: 3 }
+   );
+
+   const patchBodyLines: string[] = [];
+   for (const hunk of patch.hunks || []) {
+      const oldRange = formatUnifiedRange(hunk.oldStart, hunk.oldLines);
+      const newRange = formatUnifiedRange(hunk.newStart, hunk.newLines);
+      const heading = hunk.heading ? ` ${hunk.heading}` : '';
+      patchBodyLines.push(`@@ -${oldRange} +${newRange} @@${heading}`);
+      patchBodyLines.push(...hunk.lines);
+   }
+
+   const rendererDiffText =
+      patchBodyLines.length > 0
+         ? `diff --git a/COMMIT_EDITMSG b/COMMIT_EDITMSG\n${patchBodyLines.join('\n')}`
+         : 'diff --git a/COMMIT_EDITMSG b/COMMIT_EDITMSG';
+
+   return { patchBodyLines, rendererDiffText };
+}
+
+/**
+ * Renders a plain-text unified diff between two commit messages.
+ * Falls back to patch-style colored lines and upgrades to DiffViewerRenderer output
+ * when the terminal supports TTY truecolor rendering.
+ */
+export async function renderCommitMessageDiffLines(
+   oldText: string,
+   newText: string
+): Promise<string[]> {
+   if (oldText === newText) return [];
+
+   const { patchBodyLines, rendererDiffText } = await buildCommitMessagePatch(oldText, newText);
+   if (patchBodyLines.length === 0) return [];
+
+   if (canUseDiffViewer()) {
+      const renderer = new DiffViewerRenderer(rendererDiffText, {
+         showLineNumbers: false,
+         showStatus: false,
+         disableSyntaxHighlighting: true,
+      });
+      await renderer.prepareHighlighting();
+
+      const renderedLines: string[] = [];
+      for (let i = 0; i < renderer.getLineCount(); i++) renderedLines.push(renderer.getLine(i));
+      return renderedLines;
+   }
+
+   return patchBodyLines.map((line) => colorizeUnifiedPatchLine(line));
+}
+
+/**
+ * Prints a plain-text unified diff between two commit messages.
+ */
+export async function printCommitMessageDiff(oldText: string, newText: string): Promise<void> {
+   const renderedLines = await renderCommitMessageDiffLines(oldText, newText);
+   for (const line of renderedLines) quickPrint(line);
+}
+
 function parseDiffOutput(diffText: string): ParsedDiff[] {
    const results: ParsedDiff[] = [];
    const lines = diffText.split('\n');
@@ -627,6 +743,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          wrapLines: true,
          showStatus: true,
          preambleLines: [],
+         disableSyntaxHighlighting: false,
          ...options,
       } as Required<DiffViewerOptions>;
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + yuString(this.options));
@@ -645,6 +762,11 @@ export class DiffViewerRenderer implements PagerRenderer {
 
    async prepareHighlighting(): Promise<void> {
       await Logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
+
+      if (this.options.disableSyntaxHighlighting) {
+         Logger.time('Post-processing', () => this.updateRenderedLines());
+         return;
+      }
 
       for (const diff of this.parsedDiffs) {
          const codeLines = diff.lines.filter(

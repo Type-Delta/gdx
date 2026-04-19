@@ -18,6 +18,7 @@ import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import litedent from '@/utils/litedent';
+import { renderCommitMessageDiffLines } from '@/modules/diff-viewer';
 
 /**
  * Git author metadata used when creating a rewritten commit.
@@ -328,16 +329,34 @@ export default async function reword(ctx: GdxContext): Promise<number> {
          return 0;
       }
 
+      const renderedDiffPromise = renderCommitMessageDiffLines(originalMessage, updatedMessage).catch(
+         (error) => {
+            Logger.warn(`Failed to render commit message diff: ${Err.from(error).message}`, 'reword');
+            return [];
+         }
+      );
+
+      const rewriteSummaryLines: string[] = [];
+
       if (isHead) {
          const newHead = await rewriteHeadCommit(git$, headSha, tempFile);
-         quickPrint(`Rewrote ${headSha.slice(0, 7)} (HEAD) to ${newHead.slice(0, 7)} (new HEAD)`);
+         rewriteSummaryLines.push(
+            `Rewrote ${headSha.slice(0, 7)} (HEAD) to ${newHead.slice(0, 7)} (new HEAD)`
+         );
       } else {
          const oldShaToNewShaMap = await rewriteOlderCommit(git$, targetSha, headSha, tempFile);
-         quickPrint(`Rewrote ${Object.keys(oldShaToNewShaMap).length} commits:`);
+         rewriteSummaryLines.push(`Rewrote ${Object.keys(oldShaToNewShaMap).length} commits:`);
          for (const [oldSha, newSha] of Object.entries(oldShaToNewShaMap)) {
-            quickPrint(`  ${oldSha.slice(0, 7)} -> ${newSha.slice(0, 7)}${oldSha === headSha ? ' (HEAD)' : ''}${oldSha === targetSha ? ' [target]' : ''}`);
+            rewriteSummaryLines.push(
+               `  ${oldSha.slice(0, 7)} -> ${newSha.slice(0, 7)}${oldSha === headSha ? ' (new HEAD)' : ''}${oldSha === targetSha ? ' [target]' : ''}`
+            );
          }
       }
+
+      const renderedDiffLines = await renderedDiffPromise;
+      for (const line of renderedDiffLines) quickPrint(line);
+      quickPrint();
+      for (const line of rewriteSummaryLines) quickPrint(line);
 
       return 0;
    } catch (err) {

@@ -1,5 +1,6 @@
 import { describe, expect, mock } from 'bun:test';
 import path from 'path';
+import { CheckCache } from '@lib/Tools';
 
 import * as fs from '@/modules/fs';
 import {
@@ -7,13 +8,19 @@ import {
    parseDiffOutput,
    canUseDiffViewer,
    BundledLanguage,
+   renderCommitMessageDiffLines,
 } from '@/modules/diff-viewer';
 import { createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
 
-mock.module('@shikijs/cli', () => ({
-   codeToANSI: async (code: string) => code,
-}));
+let shikiLoadCount = 0;
+
+mock.module('@shikijs/cli', () => {
+   shikiLoadCount++;
+   return {
+      codeToANSI: async (code: string) => code,
+   };
+});
 
 describe('diff-viewer module', async () => {
    const { it, tmpDir } = await createTestEnv({ liteMode: true, suitName: 'diff-viewer' });
@@ -226,6 +233,36 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
             (line) => line.type === 'modify' || line.type === 'add'
          );
          expect(changedLine?.highlightedContent).toBe('delta');
+      });
+   });
+
+   describe('renderCommitMessageDiffLines', () => {
+      it('should return patch-like lines without file headers', async () => {
+         const lines = await renderCommitMessageDiffLines(
+            'old subject\n\nold body line\n',
+            'new subject\n\nnew body line\n'
+         );
+
+         expect(lines.length).toBeGreaterThan(0);
+         expect(lines.some((line) => line.startsWith('diff --git'))).toBe(false);
+         expect(lines.some((line) => line.startsWith('--- '))).toBe(false);
+         expect(lines.some((line) => line.startsWith('+++ '))).toBe(false);
+         expect(lines.some((line) => line.startsWith('@@ -'))).toBe(true);
+         expect(lines.some((line) => line.includes('-old subject'))).toBe(true);
+         expect(lines.some((line) => line.includes('+new subject'))).toBe(true);
+      });
+
+      it('should avoid loading shiki in truecolor commit-message mode', async () => {
+         const prevColorLevel = CheckCache.supportsColor;
+         CheckCache.supportsColor = 3;
+         const beforeCount = shikiLoadCount;
+
+         const lines = await renderCommitMessageDiffLines('alpha\n', 'beta\n');
+
+         CheckCache.supportsColor = prevColorLevel;
+
+         expect(lines.length).toBeGreaterThan(0);
+         expect(shikiLoadCount).toBe(beforeCount);
       });
    });
 
