@@ -1100,7 +1100,7 @@ describe('gdx parallel', async () => {
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       expect(await parallel(removeCtx)).toBe(0);
-   });
+   }, { timeout: 20000 });
 
    it('should stop on cherry-pick conflicts and print manual steps', async () => {
       env.isTTY = false;

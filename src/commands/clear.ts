@@ -4,7 +4,7 @@ import path from 'path';
 import { ncc, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { $, $inherit, $prompt } from '../modules/shell';
+import { $, $inherit, $prompt, execGit } from '../modules/shell';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
 import Logger from '../utils/logger';
@@ -170,9 +170,17 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    // Stage all changes (including untracked) to capture them in the patch
    await $inherit`${git$} add -A`;
 
-   // Create patch file from the staged changes (using binary to support all file types)
-   const fullDiff = await $`${git$} diff --cached --binary`;
-   fs.writeFileSync(backupFilePath, fullDiff.stdout);
+   const backupExitCode = await execGit(
+      git$,
+      ['-c', 'color.ui=never', 'diff', '--cached', '--binary', '--no-color', '--no-ext-diff'],
+      backupFilePath,
+      '>'
+   );
+
+   if (backupExitCode !== 0) {
+      Logger.error('Failed to create backup patch. Clear aborted.', 'clear');
+      return backupExitCode || 1;
+   }
 
    quickPrint(
       `${ncc('Cyan')}Backup of all changes saved to: ${ncc('Bright')}${backupFilePath}${ncc()}\n${ncc('Cyan')}(\`git clear pardon\` to undo)${ncc()}`

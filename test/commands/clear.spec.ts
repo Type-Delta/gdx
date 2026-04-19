@@ -64,4 +64,30 @@ describe('gdx clear', async () => {
       const content = await fs.readFile(path.join(tmpDir, 'untracked.txt'), 'utf-8');
       expect(content).toBe('untracked content');
    });
+
+   it('should create a no-color patch that can be pardoned when color.ui is always', async () => {
+      await $`${git$} reset --hard HEAD`;
+      await $`${git$} clean -fd`;
+      await $`${git$} config color.ui always`;
+      await fs.writeFile(path.join(tmpDir, 'color-regression.txt'), 'line 1\nline 2\n');
+
+      const clearResult = await clear(createGdxContext(tmpDir));
+      expect(clearResult).toBe(0);
+
+      const backupDir = path.join(tmpRootDir, 'tmp');
+      const backupFiles = (await fs.readdir(backupDir)).filter(
+         (f) => f.includes('_backup_') && f.endsWith('.patch')
+      );
+
+      expect(backupFiles.length).toBe(1);
+
+      const patchContent = await fs.readFile(path.join(backupDir, backupFiles[0]), 'utf-8');
+      expect(patchContent.includes('\u001b[')).toBe(false);
+
+      const pardonResult = await clear(createGdxContext(tmpDir, ['clear', 'pardon']));
+      expect(pardonResult).toBe(0);
+
+      const restored = await fs.readFile(path.join(tmpDir, 'color-regression.txt'), 'utf-8');
+      expect(restored).toBe('line 1\nline 2\n');
+   });
 });

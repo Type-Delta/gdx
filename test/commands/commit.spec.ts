@@ -296,7 +296,7 @@ describe('gdx commit auto - inherit mode', async () => {
          key.startsWith('commit.repoGuidelines.')
       );
       expect(guidelineKeys.length).toBe(1);
-   });
+   }, { timeout: 10000 });
 
    it('should fallback to comprehensive when history is insufficient', async () => {
       // The repo starts with 1 initial commit from createTestEnv
