@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.4.3 - 2026-04-19
+
+### Added
+
+- Improved reword command with better output, progress indication, with addition of diff showing message changes and list of rewritten commits.
 
 ### Fixed
 
