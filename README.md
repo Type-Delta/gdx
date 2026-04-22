@@ -19,7 +19,8 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 - **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`?, `git reset HEAD~3`? why not `gdx res ~3`?
 - **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
-- **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes (`drop 2..6`).
+- **✨ Enhanced Output:** Git's output is... functional. `gdx` makes it beautiful and easier for _humans_ to digest.
+- **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes, working with worktrees, or submodules.
 - **📊 Local-First Stats:** Beautiful TrueColor graphs and stats generated from your local history.
 - **🤖 AI Integration:** Generate commit messages and roast your history with local or cloud LLMs.
 
@@ -162,7 +163,9 @@ We've all accidentally reset files we meant to keep. `gdx clear` is the solution
 
 ### 4. Parallel Worktrees (Experimental)
 
-Need to work on the **same branch** in multiple isolated environments without checking out new branches?
+A wrapper for `git worktree` that reduces the friction of managing multiple worktrees, it handles the setup, switching, syncing changes, and cleanup of parallel worktrees so you can focus on coding instead of git logistics.
+
+It also works great with detached worktrees, allowing you to quickly spin up a fork without worrying about getting a branch locked to it.
 
 ```bash
 # Manage forked worktrees for the current branch
@@ -176,9 +179,9 @@ gdx parallel pick    # Cherry-pick a commit from between forks
 gdx parallel remove  # Remove a fork when you're done
 ```
 
-Additionally, `gdx parallel fork` can auto-initialize submodules and
-install dependencies using detected package managers (currently supports npm, pnpm, bun, and uv)
-if configured (see `parallel.init` config for options),
+Additionally, `gdx parallel fork` can **auto-initialize submodules**, **install dependencies**
+using detected package managers (see `parallel.init` config for options), and **copy
+ignored env files** if configured (see `parallel.envPaths` config for options),
 getting the fork ready for work in no time.
 
 ### 5. Git Output for Human (Experimental)
@@ -263,6 +266,7 @@ Tools to help you feel productive without leaving the terminal.
 | `nocap`           | Roast your latest commit message with AI                                                     |
 | `clear`           | Wipe changes in the working directory with a backup patch                                    |
 | `cache`           | Manage gdx cache                                                                             |
+| `macro`           | Create custom gdx command macros to run multiple commands with a single macro                |
 
 _Run `gdx ghelp` to see the full list of expansions/commands._
 

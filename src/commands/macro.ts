@@ -107,7 +107,9 @@ async function macroSet(ctx: GdxContext): Promise<number> {
          }
          Logger.debug('Loaded macro script from stdin', 'macro');
       } catch (err) {
-         Logger.error(`Failed to read from stdin: ${Err.from(err).message}`, 'macro');
+         const error = Err.from(err);
+         Logger.error(`Failed to read from stdin: ${error.message}`, 'macro');
+         Logger.debug(error.toString(), 'macro');
          return 1;
       }
    }
@@ -122,7 +124,9 @@ async function macroSet(ctx: GdxContext): Promise<number> {
          script = (await fs.readFile(filePath, 'utf-8')).trim();
          Logger.debug(`Loaded macro script from file: ${filePath}`, 'macro');
       } catch (err) {
-         Logger.error(`Failed to read file: ${Err.from(err).message}`, 'macro');
+         const error = Err.from(err);
+         Logger.error(`Failed to read file: ${error.message}`, 'macro');
+         Logger.debug(error.toString(), 'macro');
          return 1;
       }
    } else {
@@ -154,7 +158,9 @@ async function macroSet(ctx: GdxContext): Promise<number> {
 
       return 0;
    } catch (err) {
-      Logger.error(`Failed to set macro: ${Err.from(err).message}`, 'macro');
+      const error = Err.from(err);
+      Logger.error(`Failed to set macro: ${error.message}`, 'macro');
+      Logger.debug(error.toString(), 'macro');
       return 1;
    }
 }
@@ -189,7 +195,9 @@ async function macroList(): Promise<number> {
 
       return 0;
    } catch (err) {
-      Logger.error(`Failed to list macros: ${Err.from(err).message}`, 'macro');
+      const error = Err.from(err);
+      Logger.error(`Failed to list macros: ${error.message}`, 'macro');
+      Logger.debug(error.toString(), 'macro');
       return 1;
    }
 }
@@ -224,7 +232,9 @@ async function macroDrop(ctx: GdxContext): Promise<number> {
       quickPrint(ncc('Yellow') + `Macro '${name}' deleted.` + ncc());
       return 0;
    } catch (err) {
-      Logger.error(`Failed to drop macro: ${Err.from(err).message}`, 'macro');
+      const error = Err.from(err);
+      Logger.error(`Failed to drop macro: ${error.message}`, 'macro');
+      Logger.debug(error.toString(), 'macro');
       return 1;
    }
 }
@@ -244,6 +254,7 @@ async function macroSync(): Promise<number> {
       } else {
          Logger.error(`Failed to sync macros: ${error.message}`, 'macro');
       }
+      Logger.debug(error.toString(), 'macro');
       return 1;
    }
 }
@@ -296,7 +307,7 @@ export const help = {
       return strWrap(
          litedent`
          ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> <script|file>${reset}
-         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> < file.txt${reset}
+         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> < <file>${reset}
          ${cyan}${EXECUTABLE_NAME} macro list${reset}
          ${cyan}${EXECUTABLE_NAME} macro drop ${dim}<name>${reset}
          ${cyan}${EXECUTABLE_NAME} macro sync${reset}
