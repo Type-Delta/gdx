@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import { mkdirSync } from 'fs';
 import path from 'path';
 
-import commit from '@/commands/commit';
+import commit, { learnCommitGuidelines } from '@/commands/commit';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getCache, resetCache } from '@/common/cache';
 import { $ as shell$ } from '@/modules/shell';
@@ -20,6 +20,16 @@ async function clearRemotes($: typeof shell$): Promise<void> {
    for (const remote of remotes) {
       await $`git remote remove ${remote}`;
    }
+}
+
+function extractGuidelineExamples(prompt: string): string[] {
+   const section = prompt.match(/<commit-message-examples>\n([\s\S]*?)\n<\/commit-message-examples>/)?.[1];
+   if (!section) return [];
+
+   return section
+      .split('\x00')
+      .map((chunk) => chunk.replace(/^Example \d+:\n/, '').trim())
+      .filter((msg) => msg.length > 0);
 }
 
 describe('gdx commit auto', async () => {
@@ -324,6 +334,91 @@ describe('gdx commit auto - inherit mode', async () => {
       // Verify commit was made even with fallback
       const log = (await $`${git$} log -1 --pretty=%B`).stdout;
       expect(log).toContain('Mock response from LLM');
+   });
+});
+
+describe('learnCommitGuidelines', async () => {
+   process.env.GDX_COMMIT_PATTERN = 'inherit';
+
+   const { tmpDir, $, it, resetRepo, tracker } = await createTestEnv({
+      suitName: 'commit-guideline-learning',
+   });
+   const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
+   const { git$ } = ctx;
+
+   const addHistoryCommit = async (header: string, marker: string) => {
+      await $`${git$} commit -m ${header} -m ${'Body marker: ' + marker} --allow-empty --no-verify`;
+   };
+
+   it('should select diverse commit examples with medoid + farthest-point sampling', async () => {
+      await resetRepo();
+
+      const olderFamilies = [
+         { header: 'fix(ui): stabilize dialog repaint path', marker: 'fix-ui' },
+         { header: 'docs(readme): expand setup workflow notes', marker: 'docs-readme' },
+         { header: 'chore(ci): tune workflow cache behavior', marker: 'chore-ci' },
+         { header: 'refactor(shell): split command dispatcher', marker: 'refactor-shell' },
+         { header: 'test(commit): verify parser output order', marker: 'test-commit' },
+      ];
+
+      for (const family of olderFamilies) {
+         for (let i = 0; i < 5; i++) {
+            await addHistoryCommit(`${family.header} #${i.toString().padStart(2, '0')}`, `${family.marker}-${i}`);
+         }
+      }
+
+      for (let i = 0; i < 25; i++) {
+         await addHistoryCommit(
+            `feat(core): align parser defaults set #${i.toString().padStart(2, '0')}`,
+            `feat-core-${i}`
+         );
+      }
+
+      tracker.llmMockGenerateResponse = ' learned guideline doc ';
+      const result = await learnCommitGuidelines(git$);
+
+      expect(result.guideline).toBe('learned guideline doc');
+      expect(result.historyCount).toBe(10);
+
+      expect(tracker.llmGenerateRequests.length).toBe(1);
+      const prompt = tracker.llmGenerateRequests[0]?.prompt || '';
+      const examples = extractGuidelineExamples(prompt);
+      expect(examples.length).toBe(10);
+      expect(examples.every((msg) => msg.includes('Body marker:'))).toBe(true);
+
+      const familyCount = new Set(
+         examples.map((msg) => {
+            const header = msg.split('\n')[0] || '';
+            if (header.startsWith('feat(core):')) return 'feat';
+            if (header.startsWith('fix(ui):')) return 'fix';
+            if (header.startsWith('docs(readme):')) return 'docs';
+            if (header.startsWith('chore(ci):')) return 'chore';
+            if (header.startsWith('refactor(shell):')) return 'refactor';
+            if (header.startsWith('test(commit):')) return 'test';
+            return 'other';
+         })
+      ).size;
+
+      expect(familyCount).toBeGreaterThanOrEqual(4);
+   }, { timeout: 20000 });
+
+   it('should adjust sample size to available commit count', async () => {
+      await resetRepo();
+
+      await addHistoryCommit('feat(core): add tiny helper', 'small-history-0');
+      await addHistoryCommit('fix(core): patch tiny helper', 'small-history-1');
+
+      tracker.llmMockGenerateResponse = 'compact guideline';
+      const result = await learnCommitGuidelines(git$);
+
+      expect(result.guideline).toBe('compact guideline');
+      expect(result.historyCount).toBe(3);
+
+      expect(tracker.llmGenerateRequests.length).toBe(1);
+      const prompt = tracker.llmGenerateRequests[0]?.prompt || '';
+      const examples = extractGuidelineExamples(prompt);
+      expect(examples.length).toBe(3);
+      expect(examples.some((msg) => msg.startsWith('Initial commit'))).toBe(true);
    });
 });
 

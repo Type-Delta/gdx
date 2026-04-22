@@ -32,7 +32,7 @@ export function commitMsgGenerator(changesSummary: string, userDescription?: str
    - \`<type>\` is one of the following: feat, fix, docs, style, refactor, test, chore, ci, build, revert
    - \`<scope>\` is a noun describing the section of the codebase affected (e.g., component or file name)
    - \`<title>\` is a short description of the change (max 90 characters)
-   - \`<description>\` is a detailed an comprehensive description of the changes (wrap at 72 characters)
+   - \`<description>\` is a detailed an comprehensive description of the changes
    - \`<recap>\` Only if there are more than two MAJOR changes; bullet points listing important changes
 
    Additional rules:
@@ -97,9 +97,10 @@ export function commitMsgGeneratorInherent(
 }
 
 export function guidelineLearningPrompt(commitMessages: string[]) {
+   const nullSeparator = '\x00';
    const examplesText = commitMessages
       .map((msg, i) => `Example ${i + 1}:\n${msg}`)
-      .join('\n\n---\n\n');
+      .join(nullSeparator);
 
    return litedent`
    <instructions>You are analyzing a Git repository's commit message history to identify and document the commit message conventions used by this project. Study the provided examples and extract the underlying patterns, structure, and style rules.</instructions>
@@ -109,17 +110,19 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
    </commit-message-examples>
 
    <task>
-   Analyze the commit messages above and produce a concise "Commit Message Guideline" document (max 500 words) that captures:
-   1. Overall structure (header/body/footer format, line length limits)
+    Analyze the commit messages above and produce a concise "Commit Message Guideline" document (max 500 words) that captures:
+   1. Overall structure (header/body/footer format)
    2. Header conventions (prefixes, types, scopes, title style)
-   3. Body conventions (description style, wrapping, bullets if used)
+   3. Body conventions (description style, bullets if used)
    4. Any recurring patterns or special formatting
 
-   CRITICAL RULES:
-   - Only document patterns that are CLEARLY EVIDENT in the examples
+    CRITICAL RULES:
+    - Messages are separated by a NULL character (\x00) only as a delimiter; it is not part of any commit message
+    - Only document patterns that are CLEARLY EVIDENT in the examples
    - Do NOT invent rules that aren't demonstrated in the actual commits
    - If examples are inconsistent, note the variations
    - Be specific and actionable
+   - Don't mention wrapping rules
    - Output ONLY the guideline document, no preamble
    </task>
 

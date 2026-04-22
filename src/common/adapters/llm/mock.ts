@@ -1,6 +1,21 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 import { asyncSleep } from '@lib/Tools';
 import { LLMProvider, LLMRequest, StreamChunk } from './types';
+
+interface TestLLMHooks {
+   onGenerate?: (request: LLMRequest) => void;
+   onStreamGenerate?: (request: LLMRequest) => void;
+   generateResponse?: string;
+   streamResponse?: string;
+}
+
+type GlobalWithTestHooks = typeof globalThis & {
+   __GDX_TEST_LLM_HOOKS?: TestLLMHooks;
+};
+
+function getTestHooks(): TestLLMHooks | undefined {
+   return (globalThis as GlobalWithTestHooks).__GDX_TEST_LLM_HOOKS;
+}
 
 interface MockLLMAdapterConfig {
    /**
@@ -23,11 +38,16 @@ export class MockLLMAdapter implements LLMProvider {
    }
 
    async generate(request: LLMRequest): Promise<string> {
-      return `Mock response from LLM`;
+      const hooks = getTestHooks();
+      hooks?.onGenerate?.(request);
+      return hooks?.generateResponse ?? 'Mock response from LLM';
    }
 
    async *streamGenerate(request: LLMRequest): AsyncGenerator<StreamChunk> {
-      const prompt = `Mock response from LLM`;
+      const hooks = getTestHooks();
+      hooks?.onStreamGenerate?.(request);
+
+      const prompt = hooks?.streamResponse ?? 'Mock response from LLM';
       const words = prompt.split(' ');
 
       if (this.config.responseDelayMs! > 0)

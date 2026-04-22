@@ -6,6 +6,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { CheckCache, ncc, strWrap } from '@lib/Tools';
 
 import { GdxContext, SpinnerOptions } from '@/common/types';
+import type { LLMRequest } from '@/common/adapters/llm';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { resetCache } from '@/common/cache';
@@ -61,11 +62,26 @@ interface EnvController {
    isTTY: boolean;
 }
 
+interface TestLLMHooks {
+   onGenerate?: (request: LLMRequest) => void;
+   onStreamGenerate?: (request: LLMRequest) => void;
+   generateResponse?: string;
+   streamResponse?: string;
+}
+
+type GlobalWithTestHooks = typeof globalThis & {
+   __GDX_TEST_LLM_HOOKS?: TestLLMHooks;
+};
+
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
    openedPaths: string[] = [];
    scheduledDirs: string[] = [];
+   llmGenerateRequests: LLMRequest[] = [];
+   llmStreamRequests: LLMRequest[] = [];
+   llmMockGenerateResponse = 'Mock response from LLM';
+   llmMockStreamResponse = 'Mock response from LLM';
    spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
    testSystem: TestSystem = {
       lastTestStatus: 'notrun',
@@ -77,9 +93,31 @@ class TestEnvTracker {
       this.subprocessStack = [];
       this.openedPaths = [];
       this.scheduledDirs = [];
+      this.llmGenerateRequests = [];
+      this.llmStreamRequests = [];
+      this.llmMockGenerateResponse = 'Mock response from LLM';
+      this.llmMockStreamResponse = 'Mock response from LLM';
       this.spinnerStatus = 'nottriggered';
       this.testSystem.lastTestStatus = 'notrun';
    }
+}
+
+function installTestLLMHooks(tracker: TestEnvTracker): void {
+   const globalWithHooks = globalThis as GlobalWithTestHooks;
+   globalWithHooks.__GDX_TEST_LLM_HOOKS = {
+      onGenerate: (request: LLMRequest) => {
+         tracker.llmGenerateRequests.push(request);
+      },
+      onStreamGenerate: (request: LLMRequest) => {
+         tracker.llmStreamRequests.push(request);
+      },
+      get generateResponse() {
+         return tracker.llmMockGenerateResponse;
+      },
+      get streamResponse() {
+         return tracker.llmMockStreamResponse;
+      },
+   };
 }
 
 export function createGdxContext(tempDir: string, args: string[] = []): GdxContext {
@@ -199,7 +237,7 @@ async function initGitRepo(_$: typeof $) {
    await _$`${gitExePath!} config user.email ${'test@example.com'}`;
 
    // Create initial commit to ensure HEAD exists
-   const cmiOutput = (await _$`${gitExePath!} commit --allow-empty -m ${'Initial commit'}`).stdout;
+   const cmiOutput = (await _$`${gitExePath!} commit --allow-empty --no-verify -m ${'Initial commit'}`).stdout;
    const hash = cmiOutput.match(/^\[.* ([a-f0-9]{7,40})\]/m)?.[1];
    if (!hash) {
       throw new Error('Failed to create initial commit in test git repo.');
@@ -295,6 +333,7 @@ function overrideModules(
          SHOULD_WRITE_LOGS: false,
       };
    });
+
    return tracker;
 }
 
@@ -399,6 +438,7 @@ function attachTestLivecycleHook(
          buffer.logs = '';
       }
       tracker.reset();
+      installTestLLMHooks(tracker);
    });
 }
 

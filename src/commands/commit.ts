@@ -2,7 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import crypto from 'crypto';
 
-import { Err, ncc, strWrap, yuString } from '@lib/Tools';
+import { DataScienceKit, Err, SafeTrue, ncc, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
 import { $, $inherit, copyToClipboard, spinner, redrawText } from '@/modules/shell';
@@ -15,7 +15,15 @@ import {
    commitMsgGeneratorInherent,
    guidelineLearningPrompt,
 } from '@/templates/prompts';
-import { EXECUTABLE_NAME, TEMP_DIR, GDX_VPALETTE } from '@/consts';
+import {
+   COMMIT_EXAMPLE_LIMIT,
+   COMMIT_HEADER_PREFIX_LENGTH,
+   COMMIT_HEADER_SAMPLE_LIMIT,
+   COMMIT_MEDOID_SAMPLE_LIMIT,
+   EXECUTABLE_NAME,
+   TEMP_DIR,
+   GDX_VPALETTE,
+} from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
@@ -31,11 +39,140 @@ function createHash(value: string): string {
    return crypto.createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
+interface CommitHeaderSample {
+   hash: string;
+   header: string;
+}
+
+/**
+ * Returns the fixed-length header prefix used for style comparison.
+ */
+function getHeaderPrefix(header: string): string {
+   return header.slice(0, COMMIT_HEADER_PREFIX_LENGTH);
+}
+
+/**
+ * Computes string distance from LCS length on header prefixes.
+ */
+function getHeaderPrefixDistance(left: string, right: string): number {
+   const leftPrefix = getHeaderPrefix(left);
+   const rightPrefix = getHeaderPrefix(right);
+   const maxLength = Math.max(leftPrefix.length, rightPrefix.length, 1);
+   const lcsLength = DataScienceKit.LCSLength_of(leftPrefix, rightPrefix);
+   return maxLength - lcsLength;
+}
+
+/**
+ * Finds the medoid header prefix by minimizing average pairwise distance.
+ */
+function findHeaderMedoidPrefix(headers: string[]): string | null {
+   if (headers.length === 0) return null;
+   if (headers.length === 1) return getHeaderPrefix(headers[0]);
+
+   let bestIndex = 0;
+   let bestAverageDistance = Number.POSITIVE_INFINITY;
+
+   for (let i = 0; i < headers.length; i++) {
+      let totalDistance = 0;
+      for (let j = 0; j < headers.length; j++) {
+         if (i === j) continue;
+         totalDistance += getHeaderPrefixDistance(headers[i], headers[j]);
+      }
+
+      const averageDistance = totalDistance / (headers.length - 1);
+      if (averageDistance < bestAverageDistance) {
+         bestAverageDistance = averageDistance;
+         bestIndex = i;
+      }
+   }
+
+   return getHeaderPrefix(headers[bestIndex]);
+}
+
+/**
+ * Selects diverse commit samples using farthest-point sampling from a seed prefix.
+ */
+function farthestPointSampleCommits(
+   samples: CommitHeaderSample[],
+   seedPrefix: string,
+   limit: number
+): CommitHeaderSample[] {
+   if (samples.length === 0 || limit <= 0) return [];
+
+   const targetCount = Math.min(limit, samples.length);
+   const selectedIndexes: number[] = [];
+   const selectedSet = new Set<number>();
+
+   // Start from sample nearest to the medoid prefix.
+   let startIndex = 0;
+   let bestSeedDistance = Number.POSITIVE_INFINITY;
+   for (let i = 0; i < samples.length; i++) {
+      const distance = getHeaderPrefixDistance(seedPrefix, samples[i].header);
+      if (distance < bestSeedDistance) {
+         bestSeedDistance = distance;
+         startIndex = i;
+      }
+   }
+
+   selectedIndexes.push(startIndex);
+   selectedSet.add(startIndex);
+
+   const safety = new SafeTrue(samples.length * 4 + 8, true);
+   while (safety.True && selectedIndexes.length < targetCount) {
+      let bestCandidateIndex = -1;
+      let bestCandidateSpread = Number.NEGATIVE_INFINITY;
+
+      for (let i = 0; i < samples.length; i++) {
+         if (selectedSet.has(i)) continue;
+
+         let minDistanceToSelected = Number.POSITIVE_INFINITY;
+         for (const selectedIndex of selectedIndexes) {
+            const distance = getHeaderPrefixDistance(samples[i].header, samples[selectedIndex].header);
+            if (distance < minDistanceToSelected) {
+               minDistanceToSelected = distance;
+            }
+         }
+
+         if (minDistanceToSelected > bestCandidateSpread) {
+            bestCandidateSpread = minDistanceToSelected;
+            bestCandidateIndex = i;
+         }
+      }
+
+      if (bestCandidateIndex < 0) break;
+      selectedIndexes.push(bestCandidateIndex);
+      selectedSet.add(bestCandidateIndex);
+   }
+
+   return selectedIndexes.map((index) => samples[index]);
+}
+
+/**
+ * Parses `git log` output encoded as `%H%x00%s%x1e`.
+ */
+function parseCommitHeaderSamples(rawOutput: string): CommitHeaderSample[] {
+   return rawOutput
+      .split('\x1e')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .map((entry) => {
+         const separatorIndex = entry.indexOf('\x00');
+         if (separatorIndex === -1) return null;
+
+         const hash = entry.slice(0, separatorIndex).trim();
+         const header = entry.slice(separatorIndex + 1).trim();
+         if (!hash || !header) return null;
+
+         return { hash, header };
+      })
+      .filter((sample): sample is CommitHeaderSample => sample !== null);
+}
+
 /**
  * Learns commit message guidelines from repository history.
  * Returns the guideline text or null if learning failed/not enough history.
  */
-async function learnCommitGuidelines(
+export async function learnCommitGuidelines(
    git$: string | string[]
 ): Promise<{ guideline: string | null; historyCount: number }> {
    quickPrint('');
@@ -46,20 +183,70 @@ async function learnCommitGuidelines(
    });
 
    try {
-      // Fetch recent commit messages (full body)
-      const result = await $`${git$} log --no-merges -n 10 --format=%B%x00`;
-      const commitMessages = result.stdout
-         .split('\x00')
-         .map((msg) => msg.trim())
-         .filter((msg) => msg.length > 0);
+      // Step 1: sample recent commit headers (up to 50).
+      const headerResult =
+         await $`${git$} log --no-merges -n ${COMMIT_HEADER_SAMPLE_LIMIT} --format=%H%x00%s%x1e`;
+      const headerSamples = parseCommitHeaderSamples(headerResult.stdout);
 
-      if (commitMessages.length === 0) {
+      if (headerSamples.length === 0) {
          spin.stop();
          return { guideline: null, historyCount: 0 };
       }
 
-      // Take 5-10 messages
-      const samplesToUse = commitMessages.slice(0, Math.min(10, commitMessages.length));
+      // Step 2: compute medoid from latest 25 headers (or fewer if unavailable).
+      const medoidCandidates = headerSamples.slice(0, Math.min(COMMIT_MEDOID_SAMPLE_LIMIT, headerSamples.length));
+      const medoidPrefix = findHeaderMedoidPrefix(medoidCandidates.map((sample) => sample.header));
+
+      if (!medoidPrefix) {
+         spin.stop();
+         return { guideline: null, historyCount: 0 };
+      }
+
+      // Step 3: farthest-point sampling from the 50-header pool using medoid as the seed.
+      const selectedSamples = farthestPointSampleCommits(
+         headerSamples,
+         medoidPrefix,
+         COMMIT_EXAMPLE_LIMIT
+      );
+      const selectedHashes = selectedSamples.map((sample) => sample.hash);
+
+      const averageMedoidDistance =
+         selectedSamples.reduce((total, sample) => {
+            return total + getHeaderPrefixDistance(medoidPrefix, sample.header);
+         }, 0) / Math.max(selectedSamples.length, 1);
+      const uniqueHeaderPrefixCount = new Set(
+         selectedSamples.map((sample) => getHeaderPrefix(sample.header))
+      ).size;
+
+      Logger.debug(
+         `Commit guideline sampling stats: pool50=${headerSamples.length}, medoidPool=${medoidCandidates.length}, selected=${selectedSamples.length}, uniquePrefix28=${uniqueHeaderPrefixCount}, avgDistanceToMedoid=${averageMedoidDistance.toFixed(2)}`,
+         'commit'
+      );
+      Logger.debug(`Commit guideline medoid prefix(28): "${medoidPrefix}"`, 'commit');
+      Logger.debug(
+         `Commit guideline selected examples:\n${selectedSamples
+            .map((sample, i) => `${i + 1}. ${sample.hash.slice(0, 10)} ${sample.header}`)
+            .join('\n')}`,
+         'commit'
+      );
+
+      if (selectedHashes.length === 0) {
+         spin.stop();
+         return { guideline: null, historyCount: 0 };
+      }
+
+      // Step 4: fetch full commit messages (header + body) for sampled commits.
+      const fullMessagesResult = await $`${git$} show -s --format=%B%x00 ${selectedHashes}`;
+      const samplesToUse = fullMessagesResult.stdout
+         .split('\x00')
+         .map((msg) => msg.trim())
+         .filter((msg) => msg.length > 0)
+         .slice(0, COMMIT_EXAMPLE_LIMIT);
+
+      if (samplesToUse.length === 0) {
+         spin.stop();
+         return { guideline: null, historyCount: 0 };
+      }
 
       // Ask LLM to learn the pattern
       const llm = await getLLMProvider();

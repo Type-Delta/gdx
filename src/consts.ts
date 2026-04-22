@@ -223,3 +223,9 @@ export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
 
 // Diff viewer constants
 export const INLINE_DIFF_MERGE_DISTANCE = 7;
+
+// Commit guideline learning constants
+export const COMMIT_HEADER_SAMPLE_LIMIT = 50;
+export const COMMIT_MEDOID_SAMPLE_LIMIT = 25;
+export const COMMIT_EXAMPLE_LIMIT = 10;
+export const COMMIT_HEADER_PREFIX_LENGTH = 28;
