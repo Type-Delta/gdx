@@ -5,7 +5,7 @@ import * as fs from '@/modules/fs';
 import { addSubmodule } from '@/modules/git';
 import { resetConfig } from '@/common/config';
 import { dispatch } from '@/cli/dispatch';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { asUnixPath } from '@/utils/path';
 
@@ -54,15 +54,15 @@ describe('gdx submodule', async () => {
       fs.mkdirSync(otherSubmoduleRoot, { recursive: true });
 
       await $`${gitExe} -C ${submoduleRoot} init`;
-      await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-      await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+      await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+      await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
       fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule one');
       await $`${gitExe} -C ${submoduleRoot} add README.md`;
       await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule one'}`;
 
       await $`${gitExe} -C ${otherSubmoduleRoot} init`;
-      await $`${gitExe} -C ${otherSubmoduleRoot} config user.name ${'Test User'}`;
-      await $`${gitExe} -C ${otherSubmoduleRoot} config user.email ${'test@example.com'}`;
+      await setTestGitConfig(otherSubmoduleRoot, 'user.name', 'Test User');
+      await setTestGitConfig(otherSubmoduleRoot, 'user.email', 'test@example.com');
       fs.writeFileSync(path.join(otherSubmoduleRoot, 'README.md'), 'submodule two');
       await $`${gitExe} -C ${otherSubmoduleRoot} add README.md`;
       await $`${gitExe} -C ${otherSubmoduleRoot} commit -m ${'init submodule two'}`;
@@ -127,8 +127,8 @@ describe('gdx submodule', async () => {
          const sourceRoot = path.join(tmpRootDir, 'submodule-inline-add-source');
          fs.mkdirSync(sourceRoot, { recursive: true });
          await $`${gitExe} -C ${sourceRoot} init`;
-         await $`${gitExe} -C ${sourceRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${sourceRoot} config user.email ${'test@example.com'}`;
+          await setTestGitConfig(sourceRoot, 'user.name', 'Test User');
+          await setTestGitConfig(sourceRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(sourceRoot, 'README.md'), 'inline add source');
          await $`${gitExe} -C ${sourceRoot} add README.md`;
          await $`${gitExe} -C ${sourceRoot} commit -m ${'init inline add source'}`;
@@ -161,8 +161,8 @@ describe('gdx submodule', async () => {
          const sourceRoot = path.join(tmpRootDir, 'submodule-inline-verbose-source');
          fs.mkdirSync(sourceRoot, { recursive: true });
          await $`${gitExe} -C ${sourceRoot} init`;
-         await $`${gitExe} -C ${sourceRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${sourceRoot} config user.email ${'test@example.com'}`;
+          await setTestGitConfig(sourceRoot, 'user.name', 'Test User');
+          await setTestGitConfig(sourceRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(sourceRoot, 'README.md'), 'inline verbose source');
          await $`${gitExe} -C ${sourceRoot} add README.md`;
          await $`${gitExe} -C ${sourceRoot} commit -m ${'init inline verbose source'}`;
@@ -188,8 +188,8 @@ describe('gdx submodule', async () => {
          const sourceRoot = path.join(tmpRootDir, 'submodule-inline-update-source');
          fs.mkdirSync(sourceRoot, { recursive: true });
          await $`${gitExe} -C ${sourceRoot} init`;
-         await $`${gitExe} -C ${sourceRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${sourceRoot} config user.email ${'test@example.com'}`;
+          await setTestGitConfig(sourceRoot, 'user.name', 'Test User');
+          await setTestGitConfig(sourceRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(sourceRoot, 'README.md'), 'inline update source');
          await $`${gitExe} -C ${sourceRoot} add README.md`;
          await $`${gitExe} -C ${sourceRoot} commit -m ${'init inline update source'}`;
@@ -229,8 +229,8 @@ describe('gdx submodule', async () => {
          const sourceRoot = path.join(tmpRootDir, 'submodule-inline-deinit-source');
          fs.mkdirSync(sourceRoot, { recursive: true });
          await $`${gitExe} -C ${sourceRoot} init`;
-         await $`${gitExe} -C ${sourceRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${sourceRoot} config user.email ${'test@example.com'}`;
+          await setTestGitConfig(sourceRoot, 'user.name', 'Test User');
+          await setTestGitConfig(sourceRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(sourceRoot, 'README.md'), 'inline deinit source');
          await $`${gitExe} -C ${sourceRoot} add README.md`;
          await $`${gitExe} -C ${sourceRoot} commit -m ${'init inline deinit source'}`;

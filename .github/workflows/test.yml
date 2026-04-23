@@ -30,7 +30,8 @@ jobs:
          - name: Run Tests
            run: bun test
 
-         - name: Run Tests (with native submodule)
+         - name: Run Tests (with native mode)
            env:
               GDX_USE_INLINE_SUBMODULE: off
+              GDX_USE_INLINE_GIT_CONFIG: off
            run: bun test

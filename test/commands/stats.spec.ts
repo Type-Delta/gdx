@@ -10,7 +10,12 @@ import { stripAnsiColor } from '@/modules/graphics';
 import { languageConsts } from '@/modules/languages';
 
 import stats from '@/commands/stats';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import {
+   createGdxContext,
+   createTestEnv,
+   setTestGitConfig,
+   unsetTestGitConfig,
+} from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
    const { tmpDir, $, buffer, it } = await createTestEnv({
@@ -47,13 +52,13 @@ describe('gdx stats', async () => {
 
    it('should fail if no email configured (and not provided)', async () => {
       await seedLanguageCatalog();
-      await $`${git$} config --unset user.email`;
+      await unsetTestGitConfig(tmpDir, 'user.email');
 
       const result = await stats(ctx);
       expect(result).toBe(1);
       expect(buffer.stderr.toLowerCase()).toContain('no user.email configured');
 
-      await $`${git$} config user.email "test@example.com"`;
+      await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
    });
 
    it('should calculate stats for empty repo', async () => {
@@ -87,7 +92,7 @@ describe('gdx stats', async () => {
 
    it('should support --all flag without configured email', async () => {
       await seedLanguageCatalog();
-      await $`${git$} config user.email ${''}`;
+      await setTestGitConfig(tmpDir, 'user.email', '');
 
       try {
          const allCtx = createGdxContext(tmpDir, ['stats', '--all']);
@@ -106,7 +111,7 @@ describe('gdx stats', async () => {
          expect(buffer.stdout).toContain('Most Active User');
          expect(buffer.stdout).toContain('First Commit');
       } finally {
-         await $`${git$} config user.email "test@example.com"`;
+          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 
@@ -142,8 +147,8 @@ describe('gdx stats', async () => {
 
       const submoduleRepoPath = path.join(tmpDir, 'submodule-src');
       await $`${git$} init ${submoduleRepoPath}`;
-      await $`${git$} -C ${submoduleRepoPath} config user.name ${'Test User'}`;
-      await $`${git$} -C ${submoduleRepoPath} config user.email ${'test@example.com'}`;
+       await setTestGitConfig(submoduleRepoPath, 'user.name', 'Test User');
+       await setTestGitConfig(submoduleRepoPath, 'user.email', 'test@example.com');
       await fs.writeFile(path.join(submoduleRepoPath, 'README.md'), 'submodule\n');
       await $`${git$} -C ${submoduleRepoPath} add README.md`;
       await $`${git$} -C ${submoduleRepoPath} commit -m ${'init submodule repo'}`;

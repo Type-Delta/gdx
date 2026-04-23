@@ -68,6 +68,25 @@ describe('gdx gdx-config', async () => {
       expect(buffer.stderr).toContain('Expected one of off, internal, all');
    });
 
+   it('should set experimental useInlineGitConfig value', async () => {
+      const setCtx = createGdxContext(tmpDir, ['gdx-config', 'useInlineGitConfig', 'off']);
+      expect(await gdxConfig(setCtx)).toBe(0);
+
+      const getCtx = createGdxContext(tmpDir, ['gdx-config', 'useInlineGitConfig']);
+      expect(await gdxConfig(getCtx)).toBe(0);
+      expect(buffer.stdout).toContain('off');
+   });
+
+   it('should reject invalid useInlineGitConfig value', async () => {
+      const invalidCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         'useInlineGitConfig',
+         'invalid-value',
+      ]);
+      expect(await gdxConfig(invalidCtx)).toBe(1);
+      expect(buffer.stderr).toContain('Expected one of off, internal');
+   });
+
    it('should set and get commit.noisyFiles as string array', async () => {
       const setCtx = createGdxContext(tmpDir, [
          'gdx-config',

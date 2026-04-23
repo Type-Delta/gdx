@@ -5,15 +5,20 @@ import path from 'path';
 import {
    addSubmodule,
    deinitSubmodules,
+   getGitConfigRegexp,
+   getGitConfigValue,
+   unsetGitConfigValue,
    getMainWorktreeRoot,
    updateSubmodules,
    isEmptyCherryPickError,
+   removeGitConfigSection,
    revParseCached,
    resolveRefShaCached,
    hasCherryPickInProgress,
+   setGitConfigValue,
 } from '@/modules/git';
 import { getConfig, resetConfig } from '@/common/config';
-import { createTestEnv, createGdxContext } from '@/utils/testHelper';
+import { createTestEnv, createGdxContext, setTestGitConfig } from '@/utils/testHelper';
 import { asUnixPath } from '@/utils/path';
 
 describe('git module', async () => {
@@ -38,6 +43,25 @@ describe('git module', async () => {
       }
    }
 
+   async function withInlineGitConfigMode(
+      mode: 'off' | 'internal',
+      fn: () => Promise<void>
+   ): Promise<void> {
+      const previous = process.env.GDX_USE_INLINE_GIT_CONFIG;
+      process.env.GDX_USE_INLINE_GIT_CONFIG = mode;
+      resetConfig();
+      try {
+         await fn();
+      } finally {
+         if (previous === undefined) {
+            delete process.env.GDX_USE_INLINE_GIT_CONFIG;
+         } else {
+            process.env.GDX_USE_INLINE_GIT_CONFIG = previous;
+         }
+         resetConfig();
+      }
+   }
+
    async function createParityRepos(suffix: string): Promise<{
       git$: string | string[];
       gitExe: string;
@@ -55,8 +79,8 @@ describe('git module', async () => {
 
       await fs.mkdir(sourceRepo, { recursive: true });
       await $`${gitExe} -C ${sourceRepo} init`;
-      await $`${gitExe} -C ${sourceRepo} config user.name ${'Test User'}`;
-      await $`${gitExe} -C ${sourceRepo} config user.email ${'test@example.com'}`;
+      await setTestGitConfig(sourceRepo, 'user.name', 'Test User');
+      await setTestGitConfig(sourceRepo, 'user.email', 'test@example.com');
       await fs.writeFile(path.join(sourceRepo, 'README.md'), 'source');
       await $`${gitExe} -C ${sourceRepo} add README.md`;
       await $`${gitExe} -C ${sourceRepo} commit -m ${'init source repo'}`;
@@ -64,8 +88,8 @@ describe('git module', async () => {
       for (const repoPath of [internalRepo, nativeRepo]) {
          await fs.mkdir(repoPath, { recursive: true });
          await $`${gitExe} -C ${repoPath} init`;
-         await $`${gitExe} -C ${repoPath} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${repoPath} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(repoPath, 'user.name', 'Test User');
+         await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
          await fs.writeFile(path.join(repoPath, 'ROOT.md'), 'root');
          await $`${gitExe} -C ${repoPath} add ROOT.md`;
          await $`${gitExe} -C ${repoPath} commit -m ${'init root repo'}`;
@@ -101,8 +125,8 @@ describe('git module', async () => {
       const submoduleRoot = path.join(tmpRootDir, 'submodule-clean');
       await fs.mkdir(submoduleRoot, { recursive: true });
       await $`${gitExe} -C ${submoduleRoot} init`;
-      await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-      await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+      await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+      await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
       await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule');
       await $`${gitExe} -C ${submoduleRoot} add README.md`;
       await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -147,8 +171,8 @@ describe('git module', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-off-mode');
          await fs.mkdir(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule off mode');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule off mode'}`;
@@ -175,6 +199,69 @@ describe('git module', async () => {
          stderr: 'The previous cherry-pick is now empty, possibly due to conflict resolution.',
       };
       expect(isEmptyCherryPickError(err)).toBe(true);
+   });
+
+   it('should read git config via internal file parser', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await withInlineGitConfigMode('internal', async () => {
+         await setGitConfigValue(git$, 'test.inline', 'local-inline-value', { repoPath: tmpDir });
+         const value = await getGitConfigValue(git$, 'test.inline', tmpDir);
+         expect(value).toBe('local-inline-value');
+      });
+   });
+
+   it('should read .gitmodules entries via internal config regexp', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitmodulesPath = path.join(tmpDir, '.gitmodules');
+      await fs.writeFile(
+         gitmodulesPath,
+         '[submodule "pkg.with.dot"]\n\tpath = deps/dotted\n\turl = ../example.git\n'
+      );
+
+      await withInlineGitConfigMode('internal', async () => {
+         const entries = await getGitConfigRegexp(git$, '^submodule\\..*\\.path$', {
+            repoPath: tmpDir,
+            filePath: '.gitmodules',
+         });
+         expect(entries.some((entry) => entry.key === 'submodule.pkg.with.dot.path')).toBe(true);
+         expect(entries.some((entry) => entry.value === 'deps/dotted')).toBe(true);
+      });
+   });
+
+   it('should remove local config section via internal writer', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await withInlineGitConfigMode('internal', async () => {
+         await setGitConfigValue(git$, 'submodule.removable.path', 'deps/removable', {
+            repoPath: tmpDir,
+         });
+         await removeGitConfigSection(git$, tmpDir, 'submodule.removable');
+
+         const value = await getGitConfigValue(git$, 'submodule.removable.path', tmpDir);
+         expect(value).toBe('');
+      });
+   });
+
+   it('should fallback to git executable when inline git config mode is off', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await withInlineGitConfigMode('off', async () => {
+         const value = await getGitConfigValue(git$, 'user.email', tmpDir);
+         expect(value).toBe('test@example.com');
+      });
+   });
+
+   it('should set and unset git config via inline writer', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await withInlineGitConfigMode('internal', async () => {
+         await setGitConfigValue(git$, 'test.inline.writer', 'writer-value', { repoPath: tmpDir });
+         expect(await getGitConfigValue(git$, 'test.inline.writer', tmpDir)).toBe('writer-value');
+
+         await unsetGitConfigValue(git$, 'test.inline.writer', { repoPath: tmpDir });
+         expect(await getGitConfigValue(git$, 'test.inline.writer', tmpDir)).toBe('');
+      });
    });
 
    it('should resolve rev-parse through wrapper with -C scope', async () => {

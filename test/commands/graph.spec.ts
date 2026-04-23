@@ -1,6 +1,6 @@
 import { describe, expect, setSystemTime } from 'bun:test';
 import graph from '@/commands/graph';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 
 describe('gdx graph', async () => {
@@ -16,7 +16,7 @@ describe('gdx graph', async () => {
       try {
          // We can't use --unset bc the value would failback to global config if set
          // thus we set it to empty string
-         await $`${git$} config user.email ${''}`;
+          await setTestGitConfig(tmpDir, 'user.email', '');
 
          const result = await graph(ctx);
          expect(result).toBe(1);
@@ -24,7 +24,7 @@ describe('gdx graph', async () => {
          expect(buffer.stderr.toLowerCase()).toContain('user email not configured');
       } finally {
          // Restore email for next tests
-         await $`${git$} config user.email "test@example.com"`;
+          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 
@@ -55,7 +55,7 @@ describe('gdx graph', async () => {
    });
 
    it('should support --all flag without configured email', async () => {
-      await $`${git$} config user.email ${''}`;
+       await setTestGitConfig(tmpDir, 'user.email', '');
 
       try {
          const allCtx = createGdxContext(tmpDir, ['graph', '--all']);
@@ -63,7 +63,7 @@ describe('gdx graph', async () => {
          expect(result).toBe(0);
          expect(buffer.stdout).toContain('all authors');
       } finally {
-         await $`${git$} config user.email "test@example.com"`;
+          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 

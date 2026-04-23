@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, mock } from 'bun:test';
 import fs from 'fs/promises';
 import path from 'path';
 
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { normalizePath } from '@/utils/utilities';
 import { stripAnsiColor } from '@/modules/graphics';
 
@@ -58,8 +58,8 @@ describe('gdx parallel join conflict preview', async () => {
       statusFormatCalls = [];
       env.isTTY = true;
 
-      await $`${git$} config core.autocrlf false`;
-      await $`${git$} config core.safecrlf false`;
+      await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
+      await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
       await fs.writeFile(path.join(tmpDir, 'conflict.txt'), 'base\n');
       await fs.writeFile(path.join(tmpDir, 'clean.txt'), 'base\n');
@@ -115,8 +115,8 @@ describe('gdx parallel join conflict preview', async () => {
       statusFormatCalls = [];
       env.isTTY = true;
 
-      await $`${git$} config core.autocrlf false`;
-      await $`${git$} config core.safecrlf false`;
+      await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
+      await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
       await fs.writeFile(path.join(tmpDir, 'clean-base.txt'), 'base\n');
       await $`${git$} add clean-base.txt`;
@@ -156,8 +156,8 @@ describe('gdx parallel join conflict preview', async () => {
       statusFormatCalls = [];
       env.isTTY = true;
 
-      await $`${git$} config core.autocrlf false`;
-      await $`${git$} config core.safecrlf false`;
+      await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
+      await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
       await fs.writeFile(path.join(tmpDir, 'clean-status.txt'), 'base\n');
       await $`${git$} add clean-status.txt`;
@@ -198,8 +198,8 @@ describe('gdx parallel join conflict preview', async () => {
       statusFormatCalls = [];
       env.isTTY = true;
 
-      await $`${git$} config core.autocrlf false`;
-      await $`${git$} config core.safecrlf false`;
+      await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
+      await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
       await fs.writeFile(path.join(tmpDir, 'conflict-status.txt'), 'base\n');
       await $`${git$} add conflict-status.txt`;
@@ -243,8 +243,8 @@ describe('gdx parallel join conflict preview', async () => {
       statusFormatCalls = [];
       env.isTTY = true;
 
-      await $`${git$} config core.autocrlf false`;
-      await $`${git$} config core.safecrlf false`;
+      await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
+      await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
       await $`${git$} commit --allow-empty -m ${'Empty base'}`;
 

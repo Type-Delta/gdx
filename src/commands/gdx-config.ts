@@ -147,6 +147,17 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
       }
    }
 
+   if (key === 'useInlineGitConfig') {
+      const allowed = ['off', 'internal'];
+      if (!allowed.includes(value)) {
+         Logger.error(
+            `Expected one of ${allowed.join(', ')} for '${key}', got '${value}'`,
+            'gdx-config'
+         );
+         return 1;
+      }
+   }
+
    if (typeof defaultValue === 'number') {
       const num = Number(value);
       if (isNaN(num)) {

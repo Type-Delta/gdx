@@ -3,7 +3,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 
 import status from '@/commands/status';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 import { addSubmodule } from '@/modules/git';
 
@@ -22,7 +22,7 @@ describe('gdx status', async () => {
       if (!git) throw new Error('Git not found');
 
       try {
-         await $`${git} config --global protocol.file.allow always`;
+         await setTestGitConfig(tmpDir, 'protocol.file.allow', 'always', { scope: 'global' });
       } catch {
          // Ignore if config fails
       }
@@ -52,8 +52,8 @@ describe('gdx status', async () => {
          if (!git) throw new Error('Git not found');
 
          await $({ cwd: submoduleDir })`${git} init`;
-         await $({ cwd: submoduleDir })`${git} config user.name ${'Test User'}`;
-         await $({ cwd: submoduleDir })`${git} config user.email ${'test@example.com'}`;
+          await setTestGitConfig(submoduleDir, 'user.name', 'Test User');
+          await setTestGitConfig(submoduleDir, 'user.email', 'test@example.com');
 
          // Create a file in submodule and commit it
          fs.writeFileSync(path.join(submoduleDir, 'sub.txt'), 'submodule content');
@@ -171,8 +171,8 @@ describe('gdx status', async () => {
       if (!git) throw new Error('Git not found');
 
       await $({ cwd: freshDir })`${git} init`;
-      await $({ cwd: freshDir })`${git} config user.name ${'Test User'}`;
-      await $({ cwd: freshDir })`${git} config user.email ${'test@example.com'}`;
+       await setTestGitConfig(freshDir, 'user.name', 'Test User');
+       await setTestGitConfig(freshDir, 'user.email', 'test@example.com');
       await $({ cwd: freshDir })`${git} commit --allow-empty -m ${'Initial commit'}`;
 
       buffer.stdout = '';

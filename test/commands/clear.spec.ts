@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import clear from '@/commands/clear';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 
 describe('gdx clear', async () => {
    const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({ suitName: 'clear' });
@@ -68,7 +68,7 @@ describe('gdx clear', async () => {
    it('should create a no-color patch that can be pardoned when color.ui is always', async () => {
       await $`${git$} reset --hard HEAD`;
       await $`${git$} clean -fd`;
-      await $`${git$} config color.ui always`;
+      await setTestGitConfig(tmpDir, 'color.ui', 'always');
       await fs.writeFile(path.join(tmpDir, 'color-regression.txt'), 'line 1\nline 2\n');
 
       const clearResult = await clear(createGdxContext(tmpDir));

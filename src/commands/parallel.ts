@@ -33,6 +33,7 @@ import { PagerActionResult } from '@/modules/pager';
 import {
    deinitSubmodules,
    getDirtySubmodules,
+   getGitConfigValue,
    getSubmodules,
    getWorktreeEntry,
    getWorktreeOperations,
@@ -376,14 +377,6 @@ function blockSubmoduleCursorAtCommit(
    return true;
 }
 
-async function getRepoConfigValue(gitExec: string, repoPath: string, key: string): Promise<string> {
-   try {
-      return (await $`${gitExec} -C ${repoPath} config ${key}`).stdout.trim();
-   } catch {
-      return '';
-   }
-}
-
 async function getCherryPickIdentityArgs(
    gitExec: string,
    targetRepoPath: string,
@@ -391,8 +384,8 @@ async function getCherryPickIdentityArgs(
    commit: string
 ): Promise<string[]> {
    const [targetName, targetEmail] = await Promise.all([
-      getRepoConfigValue(gitExec, targetRepoPath, 'user.name'),
-      getRepoConfigValue(gitExec, targetRepoPath, 'user.email'),
+      getGitConfigValue(gitExec, targetRepoPath, 'user.name'),
+      getGitConfigValue(gitExec, targetRepoPath, 'user.email'),
    ]);
 
    if (targetName && targetEmail) {

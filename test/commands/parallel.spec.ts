@@ -3,7 +3,7 @@ import path from 'path';
 
 import * as fs from '@/modules/fs';
 import { addSubmodule, updateSubmodules } from '@/modules/git';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { resetCache } from '@/common/cache';
 import { resetConfig } from '@/common/config';
 import { normalizePath } from '@/utils/utilities';
@@ -563,8 +563,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${git$} -C ${submoduleRoot} init`;
-         await $`${git$} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${git$} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${git$} -C ${submoduleRoot} add README.md`;
          await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -622,8 +622,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-deinit');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -987,8 +987,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-pick');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1140,8 +1140,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-list');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1160,8 +1160,8 @@ describe('gdx parallel', async () => {
             $`${git$} rev-parse --abbrev-ref HEAD`.then((child) => child.stdout.trim()),
             async () => {
                const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-list');
-               await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
-               await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+               await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
+               await setTestGitConfig(originSubmodulePath, 'user.email', 'test@example.com');
             },
          ]);
          expect(forkResult).toBe(0);
@@ -1222,8 +1222,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-list-cursor');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1311,8 +1311,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-counter');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1389,8 +1389,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-join');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1401,8 +1401,8 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
          const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-join');
-         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
+         await setTestGitConfig(originSubmodulePath, 'user.email', 'test@example.com');
 
          try {
             const alias = 'feature-sub-join';
@@ -1467,8 +1467,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-missing-origin');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1480,8 +1480,8 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
 
          const originSubmodulePath = path.join(tmpDir, submodulePath);
-         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
+         await setTestGitConfig(originSubmodulePath, 'user.email', 'test@example.com');
 
          try {
             const alias = 'feature-missing-origin';
@@ -1504,8 +1504,8 @@ describe('gdx parallel', async () => {
             const altRepoRoot = path.join(tmpRootDir, 'submodule-missing-origin-alt');
             fs.mkdirSync(altRepoRoot, { recursive: true });
             await $`${gitExe} -C ${altRepoRoot} init`;
-            await $`${gitExe} -C ${altRepoRoot} config user.name ${'Test User'}`;
-            await $`${gitExe} -C ${altRepoRoot} config user.email ${'test@example.com'}`;
+            await setTestGitConfig(altRepoRoot, 'user.name', 'Test User');
+            await setTestGitConfig(altRepoRoot, 'user.email', 'test@example.com');
             fs.writeFileSync(path.join(altRepoRoot, 'ALT.md'), 'alt');
             await $`${gitExe} -C ${altRepoRoot} add ALT.md`;
             await $`${gitExe} -C ${altRepoRoot} commit -m ${'Alt commit'}`;
@@ -1642,8 +1642,8 @@ describe('gdx parallel', async () => {
          const submoduleRoot = path.join(tmpRootDir, 'submodule-branch-join');
          fs.mkdirSync(submoduleRoot, { recursive: true });
          await $`${gitExe} -C ${submoduleRoot} init`;
-         await $`${gitExe} -C ${submoduleRoot} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${submoduleRoot} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
          fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
          await $`${gitExe} -C ${submoduleRoot} add README.md`;
          await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
@@ -1654,8 +1654,8 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
          await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
          const originSubmodulePath = path.join(tmpDir, submodulePath);
-         await $`${gitExe} -C ${originSubmodulePath} config user.name ${'Test User'}`;
-         await $`${gitExe} -C ${originSubmodulePath} config user.email ${'test@example.com'}`;
+         await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
+         await setTestGitConfig(originSubmodulePath, 'user.email', 'test@example.com');
 
          try {
             const alias = 'feature-branch-sub-join';

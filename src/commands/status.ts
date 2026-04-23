@@ -9,7 +9,7 @@ import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
-import { getRepoRootCached } from '@/modules/git';
+import { getGitConfigRegexp, getRepoRootCached } from '@/modules/git';
 import litedent from '@/utils/litedent';
 
 /**
@@ -25,29 +25,21 @@ interface Submodule {
  */
 async function getSubmodules(git$: string | string[]): Promise<Submodule[]> {
    try {
-      // First, try to get submodule list from .gitmodules using config command
-      const result = await $`${git$} config --file .gitmodules --get-regexp path`;
-      const output = result.stdout.trim();
-
-      if (!output) {
+      const entries = await getGitConfigRegexp(git$, '^submodule\\..*\\.path$', {
+         filePath: '.gitmodules',
+      });
+      if (entries.length === 0) {
          return [];
       }
-
-      const lines = output.split('\n');
       const submodules: Submodule[] = [];
 
-      for (const line of lines) {
-         if (!line.trim()) continue;
-
-         // Format: submodule.<name>.path <path>
-         const match = line.match(/^submodule\.(.+?)\.path\s+(.+)$/);
-         if (match) {
-            const submodulePath = match[2];
-            submodules.push({
-               path: submodulePath,
-               status: ' ',
-            });
-         }
+      for (const entry of entries) {
+         const submodulePath = entry.value.trim();
+         if (!submodulePath) continue;
+         submodules.push({
+            path: submodulePath,
+            status: ' ',
+         });
       }
 
       return submodules;

@@ -26,13 +26,14 @@ let stdioHookInstalled = false;
 let originalStdoutWrite: typeof process.stdout.write | null = null;
 let originalStderrWrite: typeof process.stderr.write | null = null;
 const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === 'off';
+const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
 
 if (USE_NATIVE_SUBMODULE_IN_TESTS) {
    console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
 }
 
-export function shouldUseNativeSubmoduleInTests(): boolean {
-   return USE_NATIVE_SUBMODULE_IN_TESTS;
+if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
+   console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
 }
 
 interface TestSystem {
@@ -56,6 +57,11 @@ interface TestEnvOptions {
     * Optional name for the test suite, which can be used in logging or test lifecycle hooks for better identification of test runs.
     */
    suitName?: string;
+   /**
+    * If true, initializes the test environment with a custom test harness that captures stdout, stderr, and logs, and provides a custom 'it' function for defining tests. If false, it does not set up the test harness, allowing tests to run without interception of stdio and using the default 'it' function from the testing framework. Default is true (test harness will be initialized). Set to false if you want to manage stdio capture and test definitions manually or if you want to run a benchmark without the overhead of the test harness.
+    */
+   initTestHarness?: boolean;
+
 }
 
 interface EnvController {
@@ -131,11 +137,58 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
    } satisfies GdxContext;
 }
 
+export async function setTestGitConfig(
+   repoPath: string,
+   key: string,
+   value: string,
+   options?: { scope?: 'local' | 'global' | 'system'; add?: boolean }
+): Promise<void> {
+   if (!gitExePath) {
+      throw new Error('Git executable path not set. Call createTestEnv() first.');
+   }
+
+   const shouldIncludeRepo = (options?.scope || 'local') === 'local';
+   const gitRef = shouldIncludeRepo ? [gitExePath, '-C', repoPath] : gitExePath;
+   const { setGitConfigValue } = await import('@/modules/git');
+
+   await setGitConfigValue(gitRef, key, value, {
+      repoPath,
+      scope: options?.scope || 'local',
+      add: options?.add,
+   });
+}
+
+export async function unsetTestGitConfig(
+   repoPath: string,
+   key: string,
+   options?: { scope?: 'local' | 'global' | 'system'; all?: boolean }
+): Promise<void> {
+   if (!gitExePath) {
+      throw new Error('Git executable path not set. Call createTestEnv() first.');
+   }
+
+   const shouldIncludeRepo = (options?.scope || 'local') === 'local';
+   const gitRef = shouldIncludeRepo ? [gitExePath, '-C', repoPath] : gitExePath;
+   const { unsetGitConfigValue } = await import('@/modules/git');
+
+   await unsetGitConfigValue(gitRef, key, {
+      repoPath,
+      scope: options?.scope || 'local',
+      all: options?.all,
+   });
+}
+
+/**
+ * Creates a temporary test environment with an initialized git repository, isolated configuration, and utilities for testing. Returns the path to the temporary directory, a shell function with the working directory set to the project directory, and a cleanup function to remove the temporary files after tests are done. The environment is automatically cleaned up before creation to ensure a fresh state for each test run. The function also sets up environment variables to isolate git configuration and provides utilities for capturing stdout, stderr, and logs during tests. Optionally, it can initialize a custom test harness that provides a custom 'it' function and captures stdio for better control over test execution and output capture.
+ * @param options Configuration options for the test environment setup
+ * @return An object containing the path to the temporary project directory, a shell function for executing commands within that directory, a buffer for captured output, a test environment tracker, a cleanup function to remove temporary files, and a custom 'it' function for defining tests if the test harness is initialized.
+ */
 export async function createTestEnv(
    options: TestEnvOptions = {
       autoResetBuffer: true,
       liteMode: false,
       suitName: undefined,
+      initTestHarness: true,
    }
 ) {
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
@@ -160,7 +213,8 @@ export async function createTestEnv(
       isTTY: true,
    };
 
-   tracker = overrideModules(tracker, tmpDir, envController);
+   if (!options.initTestHarness)
+      tracker = overrideModules(tracker, tmpDir, envController);
 
    const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = () => {
@@ -188,7 +242,7 @@ export async function createTestEnv(
    const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
 
    const setupTasks = [
-      options.liteMode ? Promise.resolve(noop) : initGitRepo(_$), // Initialize a git repository
+      options.liteMode ? Promise.resolve(noop) : initGitRepo(_$, tmpMockProjDir), // Initialize a git repository
       options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, ''), // Empty global git config
    ];
 
@@ -212,8 +266,9 @@ export async function createTestEnv(
    process.env.NODE_ENV = 'test';
    ensureStdIoHooked();
 
-   attachTestLivecycleHook(buffer, tracker, testLogDir, options.autoResetBuffer);
-   const it = defineBunIt(tracker);
+   if (!options.initTestHarness)
+      attachTestLivecycleHook(buffer, tracker, testLogDir, options.autoResetBuffer);
+   const it = options.initTestHarness ? noop : defineBunIt(tracker);
    console.timeEnd('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));
 
    return {
@@ -229,12 +284,12 @@ export async function createTestEnv(
    };
 }
 
-async function initGitRepo(_$: typeof $) {
+async function initGitRepo(_$: typeof $, repoPath: string) {
    await _$`${gitExePath!} init`;
 
    // Set user config
-   await _$`${gitExePath!} config user.name ${'Test User'}`;
-   await _$`${gitExePath!} config user.email ${'test@example.com'}`;
+   await setTestGitConfig(repoPath, 'user.name', 'Test User');
+   await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
 
    // Create initial commit to ensure HEAD exists
    const cmiOutput = (await _$`${gitExePath!} commit --allow-empty --no-verify -m ${'Initial commit'}`).stdout;

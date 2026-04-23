@@ -38,6 +38,7 @@
     "transpile-esm": "bunx tsc -p lib/tsconfig.json && bun run scripts/transform-tools.mjs",
     "check": "bun run ts-check && bun run lint && bun run build",
     "lint": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts --fix",
+    "test": "bun test",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",
     "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --format=esm --production --keep-names",
@@ -46,6 +47,7 @@
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
     "dummy-editor": "bun ./scripts/dummyEditor.mjs",
     "bench:litedent": "bun run ./test/benchmarks/litedent.bench.ts",
+    "bench:git-config": "bun run ./test/benchmarks/git-config.bench.ts",
     "bench:strwrap": "bun run ./test/benchmarks/tools/strwrap.bench.js"
   },
   "devDependencies": {
@@ -55,10 +57,12 @@
     "@babel/preset-typescript": "^7.28.5",
     "@eslint/js": "^9.39.4",
     "@types/chai": "^5.2.3",
+    "@types/ini": "^4.1.1",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "banditypes": "^0.3.0",
     "bun-types": "latest",
+    "ini": "^6.0.0",
     "chai": "^6.2.2",
     "dedent": "^1.7.2",
     "eslint": "^10.0.3",

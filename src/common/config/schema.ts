@@ -36,6 +36,7 @@ export interface GdxConfig {
    defaultEditor: string;
    enhancedOutput?: boolean;
    useInlineSubmodule?: 'off' | 'internal' | 'all';
+   useInlineGitConfig?: 'off' | 'internal';
 }
 
 export const COMMIT_DEFAULT_NOISY_FILES = [
@@ -90,6 +91,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    defaultEditor: 'code',
    enhancedOutput: true,
    useInlineSubmodule: 'internal',
+   useInlineGitConfig: 'internal',
 };
 
 export const ENV_PREFIX = 'GDX_';
@@ -116,6 +118,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
    useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
+   useInlineGitConfig: 'GDX_USE_INLINE_GIT_CONFIG',
 };
 
 // Configuration field descriptions
@@ -154,4 +157,6 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",
    useInlineSubmodule:
       '[Experimental] Select submodule implementation mode (off: git-only, internal: gdx internal flow, all: reserved for broader internal usage)',
+   useInlineGitConfig:
+      '[Experimental] Select git config implementation mode (off: use git executable, internal: read/write git config files directly)',
 };

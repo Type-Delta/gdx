@@ -4,7 +4,7 @@ import { mkdirSync } from 'fs';
 import path from 'path';
 
 import commit, { learnCommitGuidelines } from '@/commands/commit';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { getCache, resetCache } from '@/common/cache';
 import { $ as shell$ } from '@/modules/shell';
 import { commitMsgGenerator, commitMsgGeneratorInherent } from '@/templates/prompts';
@@ -48,7 +48,7 @@ describe('gdx commit auto', async () => {
 
    it('should generate commit message and commit', async () => {
       // Set dummy editor to simulate open and close action from user
-      await $`${git$} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
 
       // Create and stage a file
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'content');
@@ -203,7 +203,7 @@ describe('gdx commit auto - inherit mode', async () => {
       await $`${git$} add test-cache.txt`;
 
       // Set dummy editor
-      await $`${git$} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
 
       const result = await commit.auto(createGdxContext(tmpDir, ['commit', 'auto']));
       expect(result).toBe(0);
@@ -229,7 +229,7 @@ describe('gdx commit auto - inherit mode', async () => {
          await $`${git$} commit -m ${'feat: add feature ' + i}`;
       }
 
-      await $`${git$} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
       await fs.writeFile(path.join(tmpDir, 'cache-main.txt'), 'main worktree');
       await $`${git$} add cache-main.txt`;
       await commit.auto(createGdxContext(tmpDir, ['commit', 'auto']));
@@ -239,7 +239,7 @@ describe('gdx commit auto - inherit mode', async () => {
 
       await fs.writeFile(path.join(worktreeDir, 'cache-worktree.txt'), 'worktree');
       await $`${git$} -C ${worktreeDir} add cache-worktree.txt`;
-      await $`${git$} -C ${worktreeDir} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(worktreeDir, 'core.editor', 'bun run dummy-editor --');
 
       const wtCtx = createGdxContext(worktreeDir, ['commit', 'auto']);
       const wtResult = await commit.auto(wtCtx);
@@ -270,7 +270,7 @@ describe('gdx commit auto - inherit mode', async () => {
          await $`${git$} commit -m ${'feat: add feature ' + i}`;
       }
 
-      await $`${git$} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
       await fs.writeFile(path.join(tmpDir, 'cache-remote.txt'), 'remote');
       await $`${git$} add cache-remote.txt`;
       await commit.auto(createGdxContext(tmpDir, ['commit', 'auto']));
@@ -280,11 +280,11 @@ describe('gdx commit auto - inherit mode', async () => {
       const $other = shell$({ cwd: otherDir });
 
       await $other`git init`;
-      await $other`git config user.name ${'Test User'}`;
-      await $other`git config user.email ${'test@example.com'}`;
+      await setTestGitConfig(otherDir, 'user.name', 'Test User');
+      await setTestGitConfig(otherDir, 'user.email', 'test@example.com');
       await $other`git commit --allow-empty -m ${'Initial commit'}`;
       await $other`git remote add origin ${sshRemote}`;
-      await $other`git config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(otherDir, 'core.editor', 'bun run dummy-editor --');
 
       for (let i = 0; i < 6; i++) {
          const filename = `history-${i}.txt`;
@@ -321,7 +321,7 @@ describe('gdx commit auto - inherit mode', async () => {
       await fs.writeFile(path.join(tmpDir, 'file.txt'), 'content');
       await $`${git$} add file.txt`;
 
-      await $`${git$} config core.editor ${'bun run dummy-editor --'}`;
+      await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
       const result = await commit.auto(createGdxContext(tmpDir, ['commit', 'auto']));
 
       // Should still succeed

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import path from 'path';
+import { parse as parseIni, stringify as stringifyIni } from 'ini';
 
 import { CheckCache, Err, yuString } from '@lib/Tools';
 
@@ -36,6 +37,20 @@ interface GitmodulesEntry {
 }
 
 type InlineSubmoduleMode = 'off' | 'internal' | 'all';
+type InlineGitConfigMode = 'off' | 'internal';
+type GitConfigScope = 'local' | 'global' | 'system';
+
+interface GitConfigWriteOptions {
+   repoPath?: string;
+   scope?: GitConfigScope;
+   add?: boolean;
+}
+
+interface GitConfigUnsetOptions {
+   repoPath?: string;
+   scope?: GitConfigScope;
+   all?: boolean;
+}
 
 type SubmoduleUpdateStrategy = 'checkout' | 'merge' | 'rebase';
 
@@ -93,6 +108,7 @@ const revParseRepoRootCache = new Map<string, string>();
 type GitRevParseFeatureScope = 'workspace' | 'gitPath' | 'head' | 'upstream' | 'refs';
 
 const REV_PARSE_OPTIONS_WITH_VALUE = new Set(['--git-path']);
+const gitConfigFileCache = new Map<string, { mtime: number | null; content: Record<string, unknown> }>();
 
 function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
@@ -471,8 +487,7 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
          try {
             const branchName = (await revParseCached(git$, ['--abbrev-ref', 'HEAD'])).trim();
             if (branchName && branchName !== 'HEAD') {
-               const { stdout: configStdout } = await $`${git$} config branch.${branchName}.remote`;
-               branchRemote = configStdout.trim();
+               branchRemote = (await getGitConfigValue(git$, `branch.${branchName}.remote`)).trim();
             }
          } catch {
             branchRemote = '';
@@ -603,6 +618,704 @@ export async function hasCherryPickInProgress(
 }
 
 /**
+ * Reads git config implementation mode from config.
+ * @returns Resolved git config mode.
+ */
+async function getInlineGitConfigMode(): Promise<InlineGitConfigMode> {
+   const config = await getConfig();
+   const value = config.get<InlineGitConfigMode>('useInlineGitConfig', 'internal');
+   if (value === 'off' || value === 'internal') return value;
+   return 'internal';
+}
+
+/**
+ * Resolves configuration files used for inline git config lookup.
+ * @param git$ - Git executable path or command array.
+ * @param repoPath - Repository path.
+ * @returns Ordered list from lowest to highest precedence.
+ */
+async function getGitConfigLookupFiles(
+   git$: string | string[],
+   repoPath: string
+): Promise<string[]> {
+   const files: string[] = [];
+
+   if (process.env.GIT_CONFIG_NOSYSTEM !== '1') {
+      const systemPath = process.env.GIT_CONFIG_SYSTEM?.trim()
+         ? process.env.GIT_CONFIG_SYSTEM
+         : process.platform === 'win32'
+            ? 'C:/ProgramData/Git/config'
+            : '/etc/gitconfig';
+      files.push(systemPath);
+   }
+
+   const envGlobal = process.env.GIT_CONFIG_GLOBAL;
+   if (envGlobal && envGlobal.trim().length > 0) {
+      files.push(path.resolve(envGlobal));
+   } else {
+      const home = process.env.HOME || process.env.USERPROFILE || '';
+      if (home) {
+         const xdgConfigHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+         files.push(path.join(xdgConfigHome, 'git', 'config'));
+         files.push(path.join(home, '.gitconfig'));
+      }
+   }
+
+   const localConfigPath = await getGitPath(git$, repoPath, 'config');
+   if (localConfigPath) files.push(localConfigPath);
+
+   return Array.from(new Set(files.map((filePath) => path.resolve(filePath))));
+}
+
+function getDefaultSystemGitConfigPath(): string {
+   return process.platform === 'win32' ? 'C:/ProgramData/Git/config' : '/etc/gitconfig';
+}
+
+function getDefaultGlobalGitConfigPath(): string {
+   const envGlobal = process.env.GIT_CONFIG_GLOBAL;
+   if (envGlobal && envGlobal.trim().length > 0) return path.resolve(envGlobal);
+
+   const home = process.env.HOME || process.env.USERPROFILE || '';
+   if (!home) return path.resolve('.gitconfig');
+
+   return path.join(home, '.gitconfig');
+}
+
+async function resolveGitConfigFilePath(
+   git$: string | string[],
+   repoPath: string,
+   scope: GitConfigScope = 'local'
+): Promise<string | null> {
+   if (scope === 'system') {
+      return path.resolve(process.env.GIT_CONFIG_SYSTEM?.trim() || getDefaultSystemGitConfigPath());
+   }
+
+   if (scope === 'global') {
+      return path.resolve(getDefaultGlobalGitConfigPath());
+   }
+
+   const localConfigPath = await getGitPath(git$, repoPath, 'config');
+   return localConfigPath ? path.resolve(localConfigPath) : null;
+}
+
+function escapeUnescapedDots(value: string): string {
+   let escaped = false;
+   let out = '';
+
+   for (const char of value) {
+      if (escaped) {
+         out += `\\${char}`;
+         escaped = false;
+         continue;
+      }
+
+      if (char === '\\') {
+         escaped = true;
+         continue;
+      }
+
+      out += char === '.' ? '\\.' : char;
+   }
+
+   if (escaped) out += '\\';
+   return out;
+}
+
+/**
+ * Preprocesses Git config text to avoid ini parser section splitting on subsection dots.
+ * @param content - Raw git config content.
+ * @returns Parser-safe content.
+ */
+function preprocessGitConfigForIniParser(content: string): string {
+   return content.replace(
+      /^\s*\[([^\s"'\]]+)\s+"((?:[^"\\]|\\.)*)"\]\s*$/gm,
+      (_full, section: string, subsection: string) => {
+         return `[${section} "${escapeUnescapedDots(subsection)}"]`;
+      }
+   );
+}
+
+/**
+ * Reads and parses an ini-style git config file with mtime cache.
+ * @param configFilePath - Absolute path to config file.
+ * @returns Parsed ini object.
+ */
+async function readParsedGitConfig(configFilePath: string): Promise<Record<string, unknown>> {
+   const resolvedPath = path.resolve(configFilePath);
+   const mtime = (await fs.getStatMTime(resolvedPath)) ?? null;
+   const cached = gitConfigFileCache.get(resolvedPath);
+   if (cached && cached.mtime === mtime) {
+      return cached.content;
+   }
+
+   if (mtime === null) {
+      const empty = {} as Record<string, unknown>;
+      gitConfigFileCache.set(resolvedPath, { mtime: null, content: empty });
+      return empty;
+   }
+
+   try {
+      const content = await fs.readFile(resolvedPath, 'utf-8');
+      const parserSafeContent = preprocessGitConfigForIniParser(content);
+      const parsed = parseIni(parserSafeContent, { bracketedArray: false }) as Record<string, unknown>;
+      gitConfigFileCache.set(resolvedPath, { mtime, content: parsed });
+      return parsed;
+   } catch {
+      const empty = {} as Record<string, unknown>;
+      gitConfigFileCache.set(resolvedPath, { mtime: null, content: empty });
+      return empty;
+   }
+}
+
+/**
+ * Gets an object property by case-insensitive key.
+ * @param obj - Object to inspect.
+ * @param key - Key to lookup.
+ * @returns Matching value or undefined.
+ */
+function getCaseInsensitiveProperty(obj: Record<string, unknown>, key: string): unknown {
+   const expected = key.toLowerCase();
+   for (const [candidateKey, candidateValue] of Object.entries(obj)) {
+      if (candidateKey.toLowerCase() === expected) return candidateValue;
+   }
+   return undefined;
+}
+
+/**
+ * Converts parsed ini value to git config string semantics.
+ * @param raw - Raw parsed value.
+ * @returns String value or null when unavailable.
+ */
+function toGitConfigString(raw: unknown): string | null {
+   if (raw === undefined) return null;
+   if (Array.isArray(raw)) {
+      if (raw.length === 0) return null;
+      return toGitConfigString(raw[raw.length - 1]);
+   }
+   if (raw === null) return 'null';
+   if (typeof raw === 'boolean' || typeof raw === 'number') return String(raw);
+   if (typeof raw === 'string') return raw.replace(/\\"/g, '"');
+   return null;
+}
+
+/**
+ * Resolves a git config key from parsed ini content.
+ * @param parsedConfig - Parsed ini object.
+ * @param configKey - Config key, like user.email.
+ * @returns String value or null if not found.
+ */
+function getGitConfigValueFromParsed(
+   parsedConfig: Record<string, unknown>,
+   configKey: string
+): string | null {
+   const parts = configKey
+      .split('.')
+      .map((part) => part.trim())
+      .filter(Boolean);
+   if (parts.length < 2) return null;
+
+   const section = parts[0]!;
+   const key = parts[parts.length - 1]!;
+   const subsection = parts.length > 2 ? parts.slice(1, -1).join('.') : null;
+   const sectionCandidates = subsection
+      ? [
+            `${section} "${subsection}"`,
+            `${section} "${subsection.replace(/\./g, '\\.')}"`,
+            `${section} '${subsection}'`,
+            `${section}.${subsection}`,
+         ]
+      : [section];
+
+   let sectionValue: unknown;
+   for (const sectionCandidate of sectionCandidates) {
+      sectionValue = getCaseInsensitiveProperty(parsedConfig, sectionCandidate);
+      if (sectionValue !== undefined) break;
+   }
+
+   if (sectionValue === undefined) return null;
+
+   if (subsection && typeof sectionValue === 'object' && sectionValue && !Array.isArray(sectionValue)) {
+      const maybeNested = getCaseInsensitiveProperty(sectionValue as Record<string, unknown>, subsection);
+      if (maybeNested !== undefined) {
+         sectionValue = maybeNested;
+      }
+   }
+
+   if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue)) return null;
+   const raw = getCaseInsensitiveProperty(sectionValue as Record<string, unknown>, key);
+   return toGitConfigString(raw);
+}
+
+/**
+ * Parses git section key from ini object.
+ * @param sectionKey - Section key from parsed ini.
+ * @returns Parsed section and optional subsection.
+ */
+function parseGitIniSectionKey(sectionKey: string): { section: string; subsection?: string } {
+   const match = sectionKey.match(/^([^\s"']+)\s+"((?:[^"\\]|\\.)*)"$/);
+   if (!match) {
+      return { section: sectionKey.trim() };
+   }
+
+   return {
+      section: match[1]!.trim(),
+      subsection: match[2]!.replace(/\\(["\\.])/g, '$1'),
+   };
+}
+
+/**
+ * Flattens parsed ini content into git config key/value entries.
+ * @param parsedConfig - Parsed ini object.
+ * @returns Flat key/value entries.
+ */
+function flattenParsedGitConfigEntries(
+   parsedConfig: Record<string, unknown>
+): Array<{ key: string; value: string }> {
+   const entries: Array<{ key: string; value: string }> = [];
+
+   for (const [rawSection, sectionValue] of Object.entries(parsedConfig)) {
+      if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue)) continue;
+
+      const parsedSection = parseGitIniSectionKey(rawSection);
+      const sectionObj = sectionValue as Record<string, unknown>;
+      for (const [rawKey, rawValue] of Object.entries(sectionObj)) {
+         const values = Array.isArray(rawValue) ? rawValue : [rawValue];
+         for (const valueCandidate of values) {
+            const value = toGitConfigString(valueCandidate);
+            if (value == null) continue;
+
+            const fullKey = parsedSection.subsection
+               ? `${parsedSection.section}.${parsedSection.subsection}.${rawKey}`
+               : `${parsedSection.section}.${rawKey}`;
+            entries.push({ key: fullKey, value });
+         }
+      }
+   }
+
+   return entries;
+}
+
+function splitGitConfigKey(configKey: string): { section: string; key: string; subsection: string | null } | null {
+   const parts = configKey
+      .split('.')
+      .map((part) => part.trim())
+      .filter(Boolean);
+   if (parts.length < 2) return null;
+
+   return {
+      section: parts[0]!,
+      key: parts[parts.length - 1]!,
+      subsection: parts.length > 2 ? parts.slice(1, -1).join('.') : null,
+   };
+}
+
+function toGitIniSectionName(section: string, subsection: string | null): string {
+   if (!subsection) return section;
+   const escaped = subsection.replace(/(["\\])/g, '\\$1');
+   return `${section} "${escaped}"`;
+}
+
+function prepareGitConfigWriteText(content: string): string {
+   const withoutCarriageReturn = content.replace(/\r/g, '');
+   return withoutCarriageReturn;
+}
+
+function renderGitConfigText(parsedConfig: Record<string, unknown>): string {
+   const rendered = stringifyIni(parsedConfig, {
+      whitespace: true,
+      platform: 'linux',
+      bracketedArray: false,
+   });
+   const indented = rendered.replace(/(^|\n)([^\s[\n][^=\n]*\s=\s[^\n]*)/g, '$1\t$2');
+   return indented.replace(
+      /^\[([^\s"'\]]+)\s+"((?:[^"\\]|\\.)*)"\]$/gm,
+      (_full, section: string, subsection: string) => {
+         return `[${section} "${subsection.replace(/\\\./g, '.').replace(/\\\\/g, '\\')}"]`;
+      }
+   );
+}
+
+function updateParsedGitConfigValue(
+   parsedConfig: Record<string, unknown>,
+   configKey: string,
+   value: string,
+   options?: { add?: boolean }
+): boolean {
+   const parsedKey = splitGitConfigKey(configKey);
+   if (!parsedKey) return false;
+
+   const sectionName = toGitIniSectionName(parsedKey.section, parsedKey.subsection);
+   const sectionValueRaw = getCaseInsensitiveProperty(parsedConfig, sectionName);
+
+   let sectionValue: Record<string, unknown>;
+   if (!sectionValueRaw || typeof sectionValueRaw !== 'object' || Array.isArray(sectionValueRaw)) {
+      sectionValue = Object.create(null) as Record<string, unknown>;
+      parsedConfig[sectionName] = sectionValue;
+   } else {
+      sectionValue = sectionValueRaw as Record<string, unknown>;
+   }
+
+   const existing = getCaseInsensitiveProperty(sectionValue, parsedKey.key);
+   if (options?.add) {
+      if (existing === undefined) {
+         sectionValue[parsedKey.key] = [value];
+         return true;
+      }
+      if (Array.isArray(existing)) {
+         sectionValue[parsedKey.key] = [...existing.map((entry) => String(entry)), value];
+         return true;
+      }
+      sectionValue[parsedKey.key] = [String(existing), value];
+      return true;
+   }
+
+   sectionValue[parsedKey.key] = value;
+   return true;
+}
+
+function unsetParsedGitConfigValue(
+   parsedConfig: Record<string, unknown>,
+   configKey: string,
+   options?: { all?: boolean }
+): boolean {
+   const parsedKey = splitGitConfigKey(configKey);
+   if (!parsedKey) return false;
+
+   const sectionName = toGitIniSectionName(parsedKey.section, parsedKey.subsection);
+   const sectionValueRaw = getCaseInsensitiveProperty(parsedConfig, sectionName);
+   if (!sectionValueRaw || typeof sectionValueRaw !== 'object' || Array.isArray(sectionValueRaw)) {
+      return false;
+   }
+
+   const sectionValue = sectionValueRaw as Record<string, unknown>;
+   const existing = getCaseInsensitiveProperty(sectionValue, parsedKey.key);
+   if (existing === undefined) return false;
+
+   if (Array.isArray(existing) && !options?.all && existing.length > 1) {
+      sectionValue[parsedKey.key] = existing.slice(0, -1);
+      return true;
+   }
+
+   for (const candidateKey of Object.keys(sectionValue)) {
+      if (candidateKey.toLowerCase() !== parsedKey.key.toLowerCase()) continue;
+      delete sectionValue[candidateKey];
+      break;
+   }
+
+   if (Object.keys(sectionValue).length === 0) {
+      for (const candidateKey of Object.keys(parsedConfig)) {
+         if (candidateKey.toLowerCase() !== sectionName.toLowerCase()) continue;
+         delete parsedConfig[candidateKey];
+         break;
+      }
+   }
+
+   return true;
+}
+
+async function writeParsedGitConfigToFile(
+   configFilePath: string,
+   parsedConfig: Record<string, unknown>
+): Promise<void> {
+   const rendered = renderGitConfigText(parsedConfig);
+   await fs.writeFile(configFilePath, rendered, 'utf-8');
+   gitConfigFileCache.delete(path.resolve(configFilePath));
+}
+
+/**
+ * Reads a git config key from config files directly.
+ * @param git$ - Git executable path or command array.
+ * @param configKey - Config key, like user.email.
+ * @param repoPath - Optional repository path.
+ * @returns Resolved value or empty string.
+ */
+export async function getGitConfigValue(
+   git$: string | string[],
+   configKey: string,
+   repoPath?: string
+): Promise<string> {
+   const mode = await getInlineGitConfigMode();
+   const resolved = resolveGitExecAndRepoPath(git$, repoPath);
+
+   if (mode === 'off') {
+      try {
+         const { stdout } = await $`${resolved.gitExec} -C ${resolved.repoPath} config ${configKey}`;
+         return stdout.trim();
+      } catch {
+         return '';
+      }
+   }
+
+   const lookupFiles = await getGitConfigLookupFiles(git$, resolved.repoPath);
+   let resolvedValue = '';
+
+   for (const lookupFile of lookupFiles) {
+      const parsed = await readParsedGitConfig(lookupFile);
+      const value = getGitConfigValueFromParsed(parsed, configKey);
+      if (value !== null) {
+         resolvedValue = value;
+      }
+   }
+
+   return resolvedValue;
+}
+
+/**
+ * Sets git config key/value either inline or via git executable fallback.
+ * @param git$ - Git executable path or command array.
+ * @param configKey - Config key, like user.email.
+ * @param value - Config value.
+ * @param options - Write options.
+ */
+export async function setGitConfigValue(
+   git$: string | string[],
+   configKey: string,
+   value: string,
+   options?: GitConfigWriteOptions
+): Promise<void> {
+   const mode = await getInlineGitConfigMode();
+   const resolved = resolveGitExecAndRepoPath(git$, options?.repoPath);
+   const scope = options?.scope || 'local';
+
+   if (mode === 'off') {
+      const args = ['-C', resolved.repoPath, 'config'];
+      if (scope === 'local') args.push('--local');
+      else if (scope === 'global') args.push('--global');
+      else if (scope === 'system') args.push('--system');
+      if (options?.add) args.push('--add');
+      args.push(configKey, value);
+      await $`${resolved.gitExec} ${args}`;
+      return;
+   }
+
+   const configFilePath = await resolveGitConfigFilePath(git$, resolved.repoPath, scope);
+   if (!configFilePath) {
+      throw new Err(`Git config file is unavailable at '${resolved.repoPath}'.`);
+   }
+
+   const existingContent = fs.existsSync(configFilePath)
+      ? await fs.readFile(configFilePath, 'utf-8')
+      : '';
+   const preparedContent = prepareGitConfigWriteText(existingContent);
+   const parsed = parseIni(preprocessGitConfigForIniParser(preparedContent), {
+      bracketedArray: false,
+   }) as Record<string, unknown>;
+
+   const updated = updateParsedGitConfigValue(parsed, configKey, value, { add: options?.add === true });
+   if (!updated) {
+      throw new Err(`Invalid config key '${configKey}'.`);
+   }
+
+   const parentDir = path.dirname(configFilePath);
+   if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+   }
+
+   await writeParsedGitConfigToFile(configFilePath, parsed);
+   const cache = await getCache();
+   await cache.delete(`git.config.${configKey}`);
+}
+
+/**
+ * Unsets git config key either inline or via git executable fallback.
+ * @param git$ - Git executable path or command array.
+ * @param configKey - Config key, like user.email.
+ * @param options - Unset options.
+ */
+export async function unsetGitConfigValue(
+   git$: string | string[],
+   configKey: string,
+   options?: GitConfigUnsetOptions
+): Promise<void> {
+   const mode = await getInlineGitConfigMode();
+   const resolved = resolveGitExecAndRepoPath(git$, options?.repoPath);
+   const scope = options?.scope || 'local';
+
+   if (mode === 'off') {
+      const args = ['-C', resolved.repoPath, 'config'];
+      if (scope === 'local') args.push('--local');
+      else if (scope === 'global') args.push('--global');
+      else if (scope === 'system') args.push('--system');
+      args.push(options?.all ? '--unset-all' : '--unset', configKey);
+      await $`${resolved.gitExec} ${args}`;
+      return;
+   }
+
+   const configFilePath = await resolveGitConfigFilePath(git$, resolved.repoPath, scope);
+   if (!configFilePath || !fs.existsSync(configFilePath)) {
+      throw new Err(`Git config file is unavailable at '${resolved.repoPath}'.`);
+   }
+
+   const existingContent = await fs.readFile(configFilePath, 'utf-8');
+   const preparedContent = prepareGitConfigWriteText(existingContent);
+   const parsed = parseIni(preprocessGitConfigForIniParser(preparedContent), {
+      bracketedArray: false,
+   }) as Record<string, unknown>;
+   const removed = unsetParsedGitConfigValue(parsed, configKey, { all: options?.all === true });
+   if (!removed) {
+      throw new Err(`Key '${configKey}' does not exist in ${scope} config.`);
+   }
+
+   await writeParsedGitConfigToFile(configFilePath, parsed);
+   const cache = await getCache();
+   await cache.delete(`git.config.${configKey}`);
+}
+
+/**
+ * Reads git config entries using key regex semantics.
+ * @param git$ - Git executable path or command array.
+ * @param keyPattern - Regex pattern string applied to config keys.
+ * @param options - Read options.
+ * @param options.repoPath - Optional repository path.
+ * @param options.filePath - Config file path, absolute or repo-relative.
+ * @returns Matching key/value entries.
+ */
+export async function getGitConfigRegexp(
+   git$: string | string[],
+   keyPattern: string,
+   options?: { repoPath?: string; filePath?: string }
+): Promise<Array<{ key: string; value: string }>> {
+   const mode = await getInlineGitConfigMode();
+   const resolved = resolveGitExecAndRepoPath(git$, options?.repoPath);
+
+   if (mode === 'off') {
+      try {
+         const args = ['-C', resolved.repoPath, 'config'];
+         if (options?.filePath) args.push('--file', options.filePath);
+         args.push('--get-regexp', keyPattern);
+         const output = (await $`${resolved.gitExec} ${args}`).stdout.trim();
+         if (!output) return [];
+
+         return output
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0)
+            .map((line) => {
+               const separatorIdx = line.search(/\s+/);
+               if (separatorIdx < 0) return null;
+               const key = line.slice(0, separatorIdx).trim();
+               const value = line.slice(separatorIdx).trim();
+               if (!key) return null;
+               return { key, value };
+            })
+            .filter((entry): entry is { key: string; value: string } => !!entry);
+      } catch {
+         return [];
+      }
+   }
+
+   const targetFile = options?.filePath
+      ? path.isAbsolute(options.filePath)
+         ? options.filePath
+         : path.resolve(resolved.repoPath, options.filePath)
+      : await getGitPath(git$, resolved.repoPath, 'config');
+
+   if (!targetFile) return [];
+
+   let regex: RegExp;
+   try {
+      regex = new RegExp(keyPattern);
+   } catch {
+      return [];
+   }
+
+   const parsed = await readParsedGitConfig(targetFile);
+   const entries = flattenParsedGitConfigEntries(parsed);
+   return entries.filter((entry) => regex.test(entry.key));
+}
+
+/**
+ * Removes a section from an ini-like git config text.
+ * @param content - Original file content.
+ * @param sectionName - Section expression like submodule.foo.
+ * @returns Updated content and whether a section was removed.
+ */
+function removeGitConfigSectionFromText(
+   content: string,
+   sectionName: string
+): { content: string; removed: boolean } {
+   const separatorIdx = sectionName.indexOf('.');
+   const section = (separatorIdx >= 0 ? sectionName.slice(0, separatorIdx) : sectionName)
+      .trim()
+      .toLowerCase();
+   const subsection = separatorIdx >= 0 ? sectionName.slice(separatorIdx + 1).trim() : '';
+
+   if (!section) return { content, removed: false };
+
+   const lines = content.split(/\r?\n/);
+   const kept: string[] = [];
+   let skipping = false;
+   let removed = false;
+
+   for (const line of lines) {
+      const sectionMatch = line.match(/^\s*\[([^\]]+)\]\s*$/);
+      if (sectionMatch) {
+         const header = sectionMatch[1]!.trim();
+         const quoted = header.match(/^([^\s"']+)\s+"((?:[^"\\]|\\.)*)"$/);
+         if (quoted) {
+            const currentSection = quoted[1]!.trim().toLowerCase();
+            const currentSubsection = quoted[2]!.replace(/\\(["\\.])/g, '$1');
+            skipping =
+               currentSection === section &&
+               subsection.length > 0 &&
+               currentSubsection === subsection;
+         } else {
+            skipping = header.toLowerCase() === section && subsection.length === 0;
+         }
+
+         if (skipping) {
+            removed = true;
+            continue;
+         }
+      }
+
+      if (!skipping) {
+         kept.push(line);
+      }
+   }
+
+   let nextContent = kept.join('\n').replace(/\n{3,}/g, '\n\n');
+   if (content.endsWith('\n') && !nextContent.endsWith('\n')) {
+      nextContent += '\n';
+   }
+   return { content: nextContent, removed };
+}
+
+/**
+ * Removes a section from local git config.
+ * @param git$ - Git executable path or command array.
+ * @param repoPath - Repository path.
+ * @param sectionName - Section expression like submodule.foo.
+ */
+export async function removeGitConfigSection(
+   git$: string | string[],
+   repoPath: string,
+   sectionName: string
+): Promise<void> {
+   const mode = await getInlineGitConfigMode();
+   const resolved = resolveGitExecAndRepoPath(git$, repoPath);
+
+   if (mode === 'off') {
+      await $`${resolved.gitExec} -C ${resolved.repoPath} config --local --remove-section ${sectionName}`;
+      return;
+   }
+
+   const configFilePath = await getGitPath(git$, resolved.repoPath, 'config');
+   if (!configFilePath || !fs.existsSync(configFilePath)) {
+      throw new Err(`Git config file is unavailable at '${resolved.repoPath}'.`);
+   }
+
+   const original = await fs.readFile(configFilePath, 'utf-8');
+   const result = removeGitConfigSectionFromText(original, sectionName);
+   if (!result.removed) {
+      throw new Err(`Section '${sectionName}' does not exist in local config.`);
+   }
+
+   await fs.writeFile(configFilePath, result.content, 'utf-8');
+   gitConfigFileCache.delete(path.resolve(configFilePath));
+}
+
+/**
  * Gets git config value, cached for the session.
  * Cache key: 'git.config.<key>'
  *
@@ -625,8 +1338,7 @@ export async function getGitConfigCached(
    }
 
    try {
-      const { stdout } = await $`${git$} config ${configKey}`;
-      const value = stdout.trim();
+      const value = (await getGitConfigValue(git$, configKey)).trim();
 
       // Only cache non-empty values
       if (value) {
@@ -1564,17 +2276,12 @@ export async function getSubmodules(
          configPaths = cachedPaths.paths;
       } else if (gitmodulesMtime !== null) {
          try {
-            const configOutput = (
-               await $`${gitExec} -C ${worktreePath} config --file .gitmodules --get-regexp path`
-            ).stdout.trim();
-            configPaths = configOutput
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0)
-               .map((line) => {
-                  const match = line.match(/^submodule\.(.+?)\.path\s+(.+)$/);
-                  return match?.[2]?.trim() ?? '';
-               })
+            const entries = await getGitConfigRegexp(git$, 'path', {
+               repoPath: worktreePath,
+               filePath: '.gitmodules',
+            });
+            configPaths = entries
+               .map((entry) => entry.value.trim())
                .filter((submodulePath) => submodulePath.length > 0);
          } catch {
             configPaths = [];
@@ -1767,7 +2474,7 @@ export async function deinitSubmodules(
       for (const sectionName of sectionNames) {
          if (!sectionName) continue;
          try {
-            await $`${gitExec} -C ${worktreePath} config --local --remove-section submodule.${sectionName}`;
+            await removeGitConfigSection(git$, worktreePath, `submodule.${sectionName}`);
          } catch {
             // ignore: section may not exist in local config
          }
