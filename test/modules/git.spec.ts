@@ -173,14 +173,12 @@ describe('git module', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         await fs.writeFile(path.join(submoduleRoot, 'README.md'), 'submodule off mode');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule off mode'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --no-verify --allow-empty -m ${'init submodule off mode'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule-off');
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule-off'}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule off mode'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule off mode'}`;
 
          await deinitSubmodules(git$, tmpDir);
 

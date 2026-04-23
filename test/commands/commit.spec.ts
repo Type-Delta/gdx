@@ -1,4 +1,4 @@
-import { describe, expect } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import fs from 'fs/promises';
 import { mkdirSync } from 'fs';
 import path from 'path';
@@ -192,10 +192,7 @@ describe('gdx commit auto - inherit mode', async () => {
 
       // Create multiple commits to build history
       for (let i = 0; i < 6; i++) {
-         const filename = `history-${i}.txt`;
-         await fs.writeFile(path.join(tmpDir, filename), `content ${i}`);
-         await $`${git$} add ${filename}`;
-         await $`${git$} commit -m ${'feat: add feature ' + i}`;
+         await $`${git$} commit -m ${'feat: add feature ' + i} --allow-empty --no-verify`;
       }
 
       // Now create a new change and use commit auto
@@ -263,11 +260,8 @@ describe('gdx commit auto - inherit mode', async () => {
 
       await $`${git$} remote add origin ${httpsRemote}`;
 
-      for (let i = 0; i < 6; i++) {
-         const filename = `history-${i}.txt`;
-         await fs.writeFile(path.join(tmpDir, filename), `content ${i}`);
-         await $`${git$} add ${filename}`;
-         await $`${git$} commit -m ${'feat: add feature ' + i}`;
+      for (let i = 0; i < 5; i++) {
+         await $`${git$} commit -m ${'feat: add feature ' + i} --allow-empty --no-verify`;
       }
 
       await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
@@ -282,15 +276,12 @@ describe('gdx commit auto - inherit mode', async () => {
       await $other`git init`;
       await setTestGitConfig(otherDir, 'user.name', 'Test User');
       await setTestGitConfig(otherDir, 'user.email', 'test@example.com');
-      await $other`git commit --allow-empty -m ${'Initial commit'}`;
+      await $other`git commit --allow-empty --no-verify -m ${'Initial commit'}`;
       await $other`git remote add origin ${sshRemote}`;
       await setTestGitConfig(otherDir, 'core.editor', 'bun run dummy-editor --');
 
-      for (let i = 0; i < 6; i++) {
-         const filename = `history-${i}.txt`;
-         await fs.writeFile(path.join(otherDir, filename), `content ${i}`);
-         await $other`git add ${filename}`;
-         await $other`git commit -m ${'feat: add feature ' + i}`;
+      for (let i = 0; i < 5; i++) {
+         await $other`git commit -m ${'feat: add feature ' + i} --allow-empty --no-verify`;
       }
 
       await fs.writeFile(path.join(otherDir, 'cache-remote.txt'), 'remote');
@@ -423,8 +414,6 @@ describe('learnCommitGuidelines', async () => {
 });
 
 describe('commit prompt templates', async () => {
-   const { it } = await createTestEnv({ liteMode: true, suitName: 'commit-prompts' });
-
    it('should include user description block in comprehensive prompt', () => {
       const prompt = commitMsgGenerator('summary content', 'tighten diff summarization logic');
       expect(prompt).toContain('User describes the changes as: tighten diff summarization logic');

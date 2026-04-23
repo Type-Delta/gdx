@@ -38,10 +38,7 @@ describe('gdx reword', async () => {
    it('rewords the latest commit message exactly', async () => {
       await resetRepo();
 
-      const filePath = path.join(tmpDir, 'note.txt');
-      await fs.writeFile(filePath, 'alpha');
-      await $`git add note.txt`;
-      await $`git commit -m ${'initial subject'} -m ${'initial body line'}`;
+      await $`git commit --allow-empty --no-verify -m ${'initial subject'} -m ${'initial body line'}`;
 
       const expectedMessage = 'updated subject\n\nupdated body line 1\nupdated body line 2';
       await configureRewordEditor(tmpDir, expectedMessage);
@@ -68,13 +65,11 @@ describe('gdx reword', async () => {
       await resetRepo();
 
       const filePath = path.join(tmpDir, 'note.txt');
+      await $`git commit --allow-empty --no-verify -m ${'first subject'} -m ${'first body line'}`;
+
       await fs.writeFile(filePath, 'alpha');
       await $`git add note.txt`;
-      await $`git commit -m ${'first subject'} -m ${'first body line'}`;
-
-      await fs.writeFile(filePath, 'beta');
-      await $`git add note.txt`;
-      await $`git commit -m ${'second subject'} -m ${'second body line'}`;
+      await $`git commit --no-verify -m ${'second subject'} -m ${'second body line'}`;
 
       const originalLatestMessage = await readCommitMessage(tmpDir, 'HEAD');
 

@@ -65,7 +65,7 @@ describe('gdx parallel join conflict preview', async () => {
       await fs.writeFile(path.join(tmpDir, 'clean.txt'), 'base\n');
       await $`${git$} add conflict.txt`;
       await $`${git$} add clean.txt`;
-      await $`${git$} commit -m ${'Add conflict base'}`;
+      await $`${git$} commit --no-verify -m ${'Add conflict base'}`;
 
       const alias = 'conflict-preview';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -84,12 +84,12 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'conflict.txt'), 'origin change\n');
       await $`${git$} -C ${tmpDir} add conflict.txt`;
-      await $`${git$} -C ${tmpDir} commit -m ${'Origin change'}`;
+      await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Origin change'}`;
 
       await fs.writeFile(path.join(forkPath, 'conflict.txt'), 'fork change\n');
       await fs.writeFile(path.join(forkPath, 'clean.txt'), 'base\nclean change\n');
       await $`${git$} -C ${forkPath} add conflict.txt clean.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Fork change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '-i', '--keep']);
       expect(await parallel(joinCtx)).toBe(0);
@@ -120,7 +120,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'clean-base.txt'), 'base\n');
       await $`${git$} add clean-base.txt`;
-      await $`${git$} commit -m ${'Add clean base'}`;
+      await $`${git$} commit --no-verify -m ${'Add clean base'}`;
 
       const alias = 'clean-preview';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -139,7 +139,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(forkPath, 'clean-base.txt'), 'base\nclean change\n');
       await $`${git$} -C ${forkPath} add clean-base.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Clean change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Clean change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '-i', '--keep']);
       expect(await parallel(joinCtx)).toBe(0);
@@ -161,7 +161,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'clean-status.txt'), 'base\n');
       await $`${git$} add clean-status.txt`;
-      await $`${git$} commit -m ${'Add clean status base'}`;
+      await $`${git$} commit --no-verify -m ${'Add clean status base'}`;
 
       const alias = 'clean-status';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -180,7 +180,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(forkPath, 'clean-status.txt'), 'base\nclean change\n');
       await $`${git$} -C ${forkPath} add clean-status.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Clean change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Clean change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '-i', '--keep']);
       expect(await parallel(joinCtx)).toBe(0);
@@ -203,7 +203,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'conflict-status.txt'), 'base\n');
       await $`${git$} add conflict-status.txt`;
-      await $`${git$} commit -m ${'Add conflict status base'}`;
+      await $`${git$} commit --no-verify -m ${'Add conflict status base'}`;
 
       const alias = 'conflict-status';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -222,11 +222,11 @@ describe('gdx parallel join conflict preview', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'conflict-status.txt'), 'origin change\n');
       await $`${git$} -C ${tmpDir} add conflict-status.txt`;
-      await $`${git$} -C ${tmpDir} commit -m ${'Origin change'}`;
+      await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Origin change'}`;
 
       await fs.writeFile(path.join(forkPath, 'conflict-status.txt'), 'fork change\n');
       await $`${git$} -C ${forkPath} add conflict-status.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Fork change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '-i', '--keep']);
       expect(await parallel(joinCtx)).toBe(0);
@@ -246,7 +246,7 @@ describe('gdx parallel join conflict preview', async () => {
       await setTestGitConfig(tmpDir, 'core.autocrlf', 'false');
       await setTestGitConfig(tmpDir, 'core.safecrlf', 'false');
 
-      await $`${git$} commit --allow-empty -m ${'Empty base'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Empty base'}`;
 
       const alias = 'empty-status';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -263,7 +263,7 @@ describe('gdx parallel join conflict preview', async () => {
       );
       const forkPath = path.join(worktreeRoot, alias);
 
-      await $`${git$} -C ${forkPath} commit --allow-empty -m ${'Empty change'}`;
+      await $`${git$} -C ${forkPath} commit --allow-empty --no-verify -m ${'Empty change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '-i', '--keep']);
       expect(await parallel(joinCtx)).toBe(0);

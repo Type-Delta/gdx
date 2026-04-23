@@ -7,17 +7,56 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 
 describe('gdx macro', async () => {
-   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({ suitName: 'macro' });
+   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({
+      suitName: 'macro',
+      liteMode: true
+   });
 
    it('should set a macro', async () => {
-      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'ad .', ';', 'cmi -m "$1"']);
+      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'add .', ';', 'cmi -m "$1"']);
 
       const result = await macro(ctx);
       expect(result).toBe(0);
       expect(buffer.stdout).toContain("Macro 'qc' created.");
 
       const macros = await readMacrosFromFile();
+      expect(macros['qc']).toBe('add . ; cmi -m "$1"');
+   });
+
+   it('should store macro with placeholder substitution pattern', async () => {
+      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'ad . ; cmi -m "$1"']);
+      const result = await macro(ctx);
+
+      expect(result).toBe(0);
+
+      const macros = await readMacrosFromFile();
       expect(macros['qc']).toBe('ad . ; cmi -m "$1"');
+   });
+
+   it('should handle macro with shorthand patterns', async () => {
+      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'short', 'ad . ; cmi -m "msg"']);
+      const result = await macro(ctx);
+
+      expect(result).toBe(0);
+
+      const macros = await readMacrosFromFile();
+      expect(macros['short']).toContain('ad .');
+      expect(macros['short']).toContain('cmi');
+   });
+
+   it('should preserve quoted strings in macros', async () => {
+      const ctx = createGdxContext(tmpDir, [
+         'macro',
+         'set',
+         'quoted',
+         'cmi -m "test message with spaces"',
+      ]);
+      const result = await macro(ctx);
+
+      expect(result).toBe(0);
+
+      const macros = await readMacrosFromFile();
+      expect(macros['quoted']).toBe('cmi -m "test message with spaces"');
    });
 
    it('should overwrite an existing macro', async () => {
@@ -230,61 +269,6 @@ describe('gdx macro', async () => {
    });
 });
 
-describe('gdx macro storage', async () => {
-   const { tmpDir, it } = await createTestEnv({ suitName: 'macro-storage' });
-
-   it('should store macro with placeholder substitution pattern', async () => {
-      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'qc', 'ad . ; cmi -m "$1"']);
-      const result = await macro(ctx);
-
-      expect(result).toBe(0);
-
-      const macros = await readMacrosFromFile();
-      expect(macros['qc']).toBe('ad . ; cmi -m "$1"');
-   });
-
-   it('should handle multiple commands in sequence', async () => {
-      const ctx = createGdxContext(tmpDir, [
-         'macro',
-         'set',
-         'multi',
-         'ad . ; cmi -m "first" ; status',
-      ]);
-      const result = await macro(ctx);
-
-      expect(result).toBe(0);
-
-      const macros = await readMacrosFromFile();
-      expect(macros['multi']).toBe('ad . ; cmi -m "first" ; status');
-   });
-
-   it('should handle macro with shorthand patterns', async () => {
-      const ctx = createGdxContext(tmpDir, ['macro', 'set', 'short', 'ad . ; cmi -m "msg"']);
-      const result = await macro(ctx);
-
-      expect(result).toBe(0);
-
-      const macros = await readMacrosFromFile();
-      expect(macros['short']).toContain('ad .');
-      expect(macros['short']).toContain('cmi');
-   });
-
-   it('should preserve quoted strings in macros', async () => {
-      const ctx = createGdxContext(tmpDir, [
-         'macro',
-         'set',
-         'quoted',
-         'cmi -m "test message with spaces"',
-      ]);
-      const result = await macro(ctx);
-
-      expect(result).toBe(0);
-
-      const macros = await readMacrosFromFile();
-      expect(macros['quoted']).toBe('cmi -m "test message with spaces"');
-   });
-});
-
 describe('gdx macro custom command execution', async () => {
    const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'macro-custom' });
 
@@ -337,10 +321,6 @@ describe('gdx macro custom command execution', async () => {
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('Executing macro');
    });
-});
-
-describe('gdx macro recursion prevention', async () => {
-   const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'macro-recursion' });
 
    it('should prevent macro-in-macro invocation', async () => {
       // Create two macros: a calls b

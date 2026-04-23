@@ -7,8 +7,8 @@ describe('gdx tag move', async () => {
    const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'tag-move' });
 
    it('moves an annotated tag to another commit while preserving metadata', async () => {
-      await $`git commit --allow-empty -m ${'tag-move base 1'}`;
-      await $`git commit --allow-empty -m ${'tag-move base 2'}`;
+      await $`git commit --no-verify --allow-empty -m ${'tag-move base 1'}`;
+      await $`git commit --no-verify --allow-empty -m ${'tag-move base 2'}`;
 
       const targetCommit = (await $`git rev-parse HEAD~1`).stdout.trim();
       await $`git tag -a my-tag -m ${'release tag body'}`;
@@ -37,8 +37,8 @@ describe('gdx tag move', async () => {
    });
 
    it('supports alias `mv` for `move`', async () => {
-      await $`git commit --allow-empty -m ${'tag-mv base 1'}`;
-      await $`git commit --allow-empty -m ${'tag-mv base 2'}`;
+      await $`git commit --no-verify --allow-empty -m ${'tag-mv base 1'}`;
+      await $`git commit --no-verify --allow-empty -m ${'tag-mv base 2'}`;
 
       const targetCommit = (await $`git rev-parse HEAD~2`).stdout.trim();
       await $`git tag -a my-tag-alias -m ${'alias move tag'}`;

@@ -16,7 +16,7 @@ describe('gdx graph', async () => {
       try {
          // We can't use --unset bc the value would failback to global config if set
          // thus we set it to empty string
-          await setTestGitConfig(tmpDir, 'user.email', '');
+         await setTestGitConfig(tmpDir, 'user.email', '');
 
          const result = await graph(ctx);
          expect(result).toBe(1);
@@ -24,7 +24,7 @@ describe('gdx graph', async () => {
          expect(buffer.stderr.toLowerCase()).toContain('user email not configured');
       } finally {
          // Restore email for next tests
-          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
+         await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 
@@ -37,13 +37,13 @@ describe('gdx graph', async () => {
 
    it('should generate graph with commits', async () => {
       // Create some commits
-      await $`${git$} commit --allow-empty -m ${'commit 1'}`;
-      await $`${git$} commit --allow-empty -m ${'commit 2'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'commit 1'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'commit 2'}`;
       const result = await graph(ctx);
 
       expect(result).toBe(0);
-      // We expect some output. The graph uses special chars, but we can check for "Generating commit graph"
-      expect(buffer.stdout).toContain('Generating commit graph');
+      // We expect some output. The graph uses special chars for days with commits, so we can check for those.
+      expect(buffer.stdout).toContain('■');
    });
 
    it('should respect --email flag', async () => {
@@ -55,7 +55,7 @@ describe('gdx graph', async () => {
    });
 
    it('should support --all flag without configured email', async () => {
-       await setTestGitConfig(tmpDir, 'user.email', '');
+      await setTestGitConfig(tmpDir, 'user.email', '');
 
       try {
          const allCtx = createGdxContext(tmpDir, ['graph', '--all']);
@@ -63,7 +63,7 @@ describe('gdx graph', async () => {
          expect(result).toBe(0);
          expect(buffer.stdout).toContain('all authors');
       } finally {
-          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
+         await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 
@@ -75,10 +75,10 @@ describe('gdx graph', async () => {
       try {
          // Create commits with specific dates
          // Friday Dec 22, 2023 (Today)
-         await $`${git$} commit --allow-empty -m ${'Fri commit'} --date=${'2023-12-22T12:00:00'}`;
+         await $`${git$} commit --allow-empty --no-verify -m ${'Fri commit'} --date=${'2023-12-22T12:00:00'}`;
 
          // Wednesday Dec 20, 2023
-         await $`${git$} commit --allow-empty -m ${'Wed commit'} --date=${'2023-12-20T12:00:00'}`;
+         await $`${git$} commit --allow-empty --no-verify -m ${'Wed commit'} --date=${'2023-12-20T12:00:00'}`;
 
          buffer.stdout = '';
          const result = await graph(ctx);

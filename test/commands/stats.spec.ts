@@ -18,7 +18,7 @@ import {
 } from '@/utils/testHelper';
 
 describe('gdx stats', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv({
+   const { tmpDir, $, buffer, it, resetRepo } = await createTestEnv({
       autoResetBuffer: true,
       suitName: 'stats'
    });
@@ -62,23 +62,45 @@ describe('gdx stats', async () => {
    });
 
    it('should calculate stats for empty repo', async () => {
-      await seedLanguageCatalog();
-      const result = await stats(ctx);
+      // Reset repo to remove initial commit and ensure empty state
+      const headTarget = fs.readFileSync(path.join(tmpDir, '.git', 'HEAD'), 'utf-8').trim();
+      if (headTarget.startsWith('ref:')) {
+         const refPath = path.join(tmpDir, '.git', headTarget.slice(5));
+         if (fs.existsSync(refPath)) {
+            fs.unlinkSync(refPath);
+         }
+         else {
+            throw new Error(`Repo with packed refs is not supported.`);
+         }
+      }
 
-      expect(result).toBe(0);
-      // Should print stats (likely 0 commits)
-      expect(buffer.stdout).toContain('Total Commits');
-      expect(buffer.stdout).toContain('First Commit');
+      try {
+         await seedLanguageCatalog();
+         const result = await stats(ctx);
+
+         expect(result).toBe(0);
+         // Should print stats (likely 0 commits)
+         expect(buffer.stdout).toContain('Total Commits');
+         expect(buffer.stdout).toContain('First Commit');
+         const totalCommits = /Total Commits:\s+(\d+)/.exec(stripAnsiColor(buffer.stdout));
+         expect(totalCommits).toBeTruthy();
+         expect(totalCommits![1]).toBe('0');
+      } finally {
+         resetRepo('full');
+      }
    });
 
    it('should calculate stats with commits', async () => {
       await seedLanguageCatalog();
-      await $`${git$} commit --allow-empty -m ${'commit 1'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'commit 1'}`;
       const result = await stats(ctx);
 
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('Total Commits');
-      // We can't easily parse the output as it might be formatted, but we can check for presence of key strings.
+
+      const totalCommits = /Total Commits:\s+(\d+)/.exec(stripAnsiColor(buffer.stdout));
+      expect(totalCommits).toBeTruthy();
+      expect(totalCommits![1]).toBe('2'); // 1 from initial commit + 1 above
    });
 
    it('should respect --author flag', async () => {
@@ -111,7 +133,7 @@ describe('gdx stats', async () => {
          expect(buffer.stdout).toContain('Most Active User');
          expect(buffer.stdout).toContain('First Commit');
       } finally {
-          await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
+         await setTestGitConfig(tmpDir, 'user.email', 'test@example.com');
       }
    });
 
@@ -128,11 +150,11 @@ describe('gdx stats', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'main.ts'), 'line 1\nline 2\nline 3\nline 4\n');
       await $`${git$} add main.ts`;
-      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit -m ${'alice change'}`;
+      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --no-verify -m ${'alice change'}`;
 
       await fs.writeFile(path.join(tmpDir, 'main.ts'), 'line 1\nline 2\nline 3\n');
       await $`${git$} add main.ts`;
-      await $`${git$} -c user.name=${'Bob'} -c user.email=${'bob@example.com'} commit -m ${'bob change'}`;
+      await $`${git$} -c user.name=${'Bob'} -c user.email=${'bob@example.com'} commit --no-verify -m ${'bob change'}`;
 
       const allCtx = createGdxContext(tmpDir, ['stats', '--all']);
       const result = await stats(allCtx);
@@ -147,15 +169,13 @@ describe('gdx stats', async () => {
 
       const submoduleRepoPath = path.join(tmpDir, 'submodule-src');
       await $`${git$} init ${submoduleRepoPath}`;
-       await setTestGitConfig(submoduleRepoPath, 'user.name', 'Test User');
-       await setTestGitConfig(submoduleRepoPath, 'user.email', 'test@example.com');
-      await fs.writeFile(path.join(submoduleRepoPath, 'README.md'), 'submodule\n');
-      await $`${git$} -C ${submoduleRepoPath} add README.md`;
-      await $`${git$} -C ${submoduleRepoPath} commit -m ${'init submodule repo'}`;
+      await setTestGitConfig(submoduleRepoPath, 'user.name', 'Test User');
+      await setTestGitConfig(submoduleRepoPath, 'user.email', 'test@example.com');
+      await $`${git$} -C ${submoduleRepoPath} commit --allow-empty --no-verify -m ${'init submodule repo'}`;
 
       await addSubmodule(git$, tmpDir, submoduleRepoPath, 'deps/sub-one');
       await $`${git$} add .gitmodules deps/sub-one`;
-      await $`${git$} commit -m ${'add submodule'}`;
+      await $`${git$} commit --no-verify -m ${'add submodule'}`;
 
       const result = await stats(ctx);
       expect(result).toBe(0);
@@ -189,9 +209,9 @@ describe('gdx stats', async () => {
    it('should show oldest commit as first commit for selected scope', async () => {
       await seedLanguageCatalog();
 
-      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --allow-empty -m ${'alice 1'}`;
-      await $`${git$} -c user.name=${'Bob'} -c user.email=${'bob@example.com'} commit --allow-empty -m ${'bob 1'}`;
-      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --allow-empty -m ${'alice 2'}`;
+      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --no-verify --allow-empty -m ${'alice 1'}`;
+      await $`${git$} -c user.name=${'Bob'} -c user.email=${'bob@example.com'} commit --no-verify --allow-empty -m ${'bob 1'}`;
+      await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --no-verify --allow-empty -m ${'alice 2'}`;
 
       const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'alice@example.com']);
       const result = await stats(authorCtx);
@@ -252,12 +272,12 @@ describe('gdx stats', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'balance.ts'), 'a\nb\nc\nd\n');
       await $`${git$} add balance.ts`;
-      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit -m ${'add ts lines'}`;
+      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit --no-verify -m ${'add ts lines'}`;
 
       await fs.writeFile(path.join(tmpDir, 'balance.ts'), '');
       await fs.writeFile(path.join(tmpDir, 'net.js'), 'const now = true;\n');
       await $`${git$} add balance.ts net.js`;
-      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit -m ${'remove ts and add js'}`;
+      await $`${git$} -c user.name=${'Metric User'} -c user.email=${'metric@example.com'} commit --no-verify -m ${'remove ts and add js'}`;
 
       const netCtx = createGdxContext(tmpDir, [
          'stats',
@@ -278,12 +298,12 @@ describe('gdx stats', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'auto-mode.ts'), 'a\nb\nc\nd\n');
       await $`${git$} add auto-mode.ts`;
-      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit -m ${'add auto-mode ts lines'}`;
+      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit --no-verify -m ${'add auto-mode ts lines'}`;
 
       await fs.writeFile(path.join(tmpDir, 'auto-mode.ts'), '');
       await fs.writeFile(path.join(tmpDir, 'auto-mode.js'), 'const after = true;\n');
       await $`${git$} add auto-mode.ts auto-mode.js`;
-      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit -m ${'replace ts with js in auto mode'}`;
+      await $`${git$} -c user.name=${'Auto User'} -c user.email=${'auto@example.com'} commit --no-verify -m ${'replace ts with js in auto mode'}`;
 
       const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'auto@example.com']);
       const authorResult = await stats(authorCtx);
@@ -303,12 +323,12 @@ describe('gdx stats', async () => {
 
       await fs.writeFile(path.join(tmpDir, 'override.ts'), 'a\nb\nc\nd\n');
       await $`${git$} add override.ts`;
-      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit -m ${'add override ts lines'}`;
+      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit --no-verify -m ${'add override ts lines'}`;
 
       await fs.writeFile(path.join(tmpDir, 'override.ts'), '');
       await fs.writeFile(path.join(tmpDir, 'override.js'), 'const after = true;\n');
       await $`${git$} add override.ts override.js`;
-      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit -m ${'replace ts with js in override mode'}`;
+      await $`${git$} -c user.name=${'Override User'} -c user.email=${'override@example.com'} commit --no-verify -m ${'replace ts with js in override mode'}`;
 
       const allActivityCtx = createGdxContext(tmpDir, [
          'stats',
@@ -361,7 +381,7 @@ describe('gdx stats', async () => {
       try {
          await fs.writeFile(path.join(tmpDir, 'offline-test.ts'), 'const z = 1;\n');
          await $`${git$} add .`;
-         await $`${git$} commit -m ${'offline lang catalog test'}`;
+         await $`${git$} commit --no-verify -m ${'offline lang catalog test'}`;
 
          const result = await stats(ctx);
          expect(result).toBe(0);

@@ -11,10 +11,6 @@ describe('gdx stash drop X..Y (stash.dropRange())', async () => {
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
 
-   // create initial commits
-   await $`${git$} commit --allow-empty -m ${'Initial commit'}`;
-
-   // create some stashes
    for (let i = 0; i < 5; i++) {
       await fs.writeFile(`${tmpDir}/file${i}.txt`, `Content for file ${i}`);
       await $`${git$} add .`;

@@ -14,6 +14,7 @@ export {
    readdirSync,
    appendFileSync,
    unlinkSync,
+   cpSync,
    constants,
 } from 'fs';
 
@@ -30,6 +31,7 @@ export {
    writeFile,
    appendFile,
    readFile,
+   cp,
 } from 'fs/promises';
 
 /**

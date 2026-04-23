@@ -28,7 +28,7 @@ describe('gdx nocap', async () => {
 
    it('should return 0 when a commit exists', async () => {
       // Create a commit
-      await $`${git$} commit --allow-empty -m ${'My Initial commit'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'My Initial commit'}`;
       buffer.stdout = '';
       buffer.stderr = '';
 

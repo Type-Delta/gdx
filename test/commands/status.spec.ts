@@ -52,8 +52,8 @@ describe('gdx status', async () => {
          if (!git) throw new Error('Git not found');
 
          await $({ cwd: submoduleDir })`${git} init`;
-          await setTestGitConfig(submoduleDir, 'user.name', 'Test User');
-          await setTestGitConfig(submoduleDir, 'user.email', 'test@example.com');
+         await setTestGitConfig(submoduleDir, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleDir, 'user.email', 'test@example.com');
 
          // Create a file in submodule and commit it
          fs.writeFileSync(path.join(submoduleDir, 'sub.txt'), 'submodule content');
@@ -68,18 +68,11 @@ describe('gdx status', async () => {
             submoduleCreated = true;
          } catch (err) {
             // If submodule add fails, skip remaining tests
-            console.log('Failed to add submodule:', err);
-            return;
+            throw new Error('Failed to add submodule: ' + err);
          }
       }
 
-      // Verify submodule exists
       const submodulePath = path.join(tmpDir, 'mysubmodule');
-      if (!fs.existsSync(submodulePath)) {
-         console.log('Submodule path does not exist, skipping test');
-         return;
-      }
-
       // Create a dirty file in the submodule
       fs.writeFileSync(path.join(submodulePath, 'dirty.txt'), 'dirty content');
 
@@ -103,10 +96,7 @@ describe('gdx status', async () => {
    });
 
    it('should show recursive status with --recursive flag', async () => {
-      // Skip if submodule wasn't created
-      if (!submoduleCreated) {
-         return;
-      }
+      expect(submoduleCreated, 'Expected submodule to be created in previous test, but it was not.').toBe(true);
 
       // Reuse the submodule from previous test
       const submodulePath = path.join(tmpDir, 'mysubmodule');
@@ -131,10 +121,7 @@ describe('gdx status', async () => {
    });
 
    it('should handle status with --short flag recursively', async () => {
-      // Skip if submodule wasn't created
-      if (!submoduleCreated) {
-         return;
-      }
+      expect(submoduleCreated, 'Expected submodule to be created in previous test, but it was not.').toBe(true);
 
       const submodulePath = path.join(tmpDir, 'mysubmodule');
 
@@ -171,8 +158,8 @@ describe('gdx status', async () => {
       if (!git) throw new Error('Git not found');
 
       await $({ cwd: freshDir })`${git} init`;
-       await setTestGitConfig(freshDir, 'user.name', 'Test User');
-       await setTestGitConfig(freshDir, 'user.email', 'test@example.com');
+      await setTestGitConfig(freshDir, 'user.name', 'Test User');
+      await setTestGitConfig(freshDir, 'user.email', 'test@example.com');
       await $({ cwd: freshDir })`${git} commit --allow-empty -m ${'Initial commit'}`;
 
       buffer.stdout = '';
@@ -189,10 +176,7 @@ describe('gdx status', async () => {
    });
 
    it('should show relative paths from current directory', async () => {
-      // Skip if submodule wasn't created
-      if (!submoduleCreated) {
-         return;
-      }
+      expect(submoduleCreated, 'Expected submodule to be created in previous test, but it was not.').toBe(true);
 
       const submodulePath = path.join(tmpDir, 'mysubmodule');
 

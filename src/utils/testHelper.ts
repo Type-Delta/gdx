@@ -79,6 +79,15 @@ type GlobalWithTestHooks = typeof globalThis & {
    __GDX_TEST_LLM_HOOKS?: TestLLMHooks;
 };
 
+/**
+ * Helper function to reset the git repository to its initial state.
+ *
+ * Reset behavior:
+ * - For 'full' reset: Resets the repository to the initial commit, discarding all changes, branches, and commits made during the test. This is useful for tests that need a completely clean slate.
+ * - For 'worktree' reset: Resets the working tree to the initial commit but preserves the git history (branches and commits). This is faster than a full reset and can be used for tests that only need to revert file changes without affecting the git objects.
+ */
+type ResetRepoFunction = (mode?: 'full' | 'worktree') => Promise<void>;
+
 class TestEnvTracker {
    sysClipboard: string[] = [];
    subprocessStack: string[] = [];
@@ -242,7 +251,7 @@ export async function createTestEnv(
    const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
 
    const setupTasks = [
-      options.liteMode ? Promise.resolve(noop) : initGitRepo(_$, tmpMockProjDir), // Initialize a git repository
+      options.liteMode ? Promise.resolve(noop as ResetRepoFunction) : initGitRepo(_$, tmpMockProjDir, tmpDir), // Initialize a git repository
       options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, ''), // Empty global git config
    ];
 
@@ -254,7 +263,7 @@ export async function createTestEnv(
       setupTasks.push(fs.writeFile(gdxConfigPath, '', 'utf-8'));
    }
 
-   const [resetRepo] = await Promise.all(setupTasks as Promise<() => Promise<void>>[]);
+   const resetRepo: ResetRepoFunction = (await Promise.all(setupTasks))[0] as ResetRepoFunction;
 
    resetConfig();
    resetCache();
@@ -284,7 +293,7 @@ export async function createTestEnv(
    };
 }
 
-async function initGitRepo(_$: typeof $, repoPath: string) {
+async function initGitRepo(_$: typeof $, repoPath: string, tempDir: string): Promise<ResetRepoFunction> {
    await _$`${gitExePath!} init`;
 
    // Set user config
@@ -298,9 +307,20 @@ async function initGitRepo(_$: typeof $, repoPath: string) {
       throw new Error('Failed to create initial commit in test git repo.');
    }
 
-   return async () => {
+   // Create .git backup dir
+   const gitBakPath = path.join(tempDir, 'tmp', `.git.bak-${Date.now()}`);
+   fs.cpSync(path.join(repoPath, '.git'), gitBakPath, { recursive: true });
+
+   return async (mode = 'worktree') => {
+      if (mode === 'full') {
+         // Restore .git from backup to reset all git state (branches, commits, config, etc)
+         fs.rmSync(path.join(repoPath, '.git'), { recursive: true, force: true });
+         fs.cpSync(gitBakPath, path.join(repoPath, '.git'), { recursive: true });
+      }
+
       // Reset repo to initial commit
-      await _$`${gitExePath!} reset --hard ${hash}`;
+      await _$`${gitExePath!} -C ${repoPath} reset --hard ${hash}`;
+      await _$`${gitExePath!} -C ${repoPath} clean -fdx`;
    };
 }
 

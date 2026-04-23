@@ -91,7 +91,7 @@ describe('gdx parallel', async () => {
 
    it('should fork a new worktree', async () => {
       // Need a commit to branch off
-      await $`${git$} commit --allow-empty -m ${'Initial commit'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Initial commit'}`;
 
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
       const result = await parallel(forkCtx);
@@ -131,7 +131,7 @@ describe('gdx parallel', async () => {
       fs.writeFileSync(path.join(tmpDir, 'secrets', 'nested', 'inner.txt'), 'inner');
       fs.writeFileSync(path.join(tmpDir, '.gitignore'), '.env\n# comment\nnotes*.txt\n');
       await $`${git$} -C ${tmpDir} add .gitignore`;
-      await $`${git$} -C ${tmpDir} commit -m ${'Add gitignore for env'} `;
+      await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Add gitignore for env'} `;
 
       fs.writeFileSync(
          configPath,
@@ -208,8 +208,7 @@ describe('gdx parallel', async () => {
             fs.rm(path.join(tmpDir, '.gitignore'), { force: true }),
          ]);
 
-         await resetRepo();
-         await $`${git$} -C ${tmpDir} clean -fd`;
+         await resetRepo('worktree');
          fs.writeFileSync(configPath, originalConfig, 'utf-8');
          resetConfig();
          resetCache();
@@ -217,7 +216,7 @@ describe('gdx parallel', async () => {
    });
 
    it('should fork from a specific ref', async () => {
-      await $`${git$} commit --allow-empty -m ${'Ref base'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Ref base'}`;
       const refCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-ref', refCommit]);
@@ -240,13 +239,13 @@ describe('gdx parallel', async () => {
 
       expect(forkHead).toBe(refCommit);
 
-      await resetRepo();
+      await resetRepo('worktree');
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-ref']);
       await parallel(removeCtx);
    });
 
    it('should fork and join a branch-tracked worktree', async () => {
-      await $`${git$} commit --allow-empty -m ${'Branch base'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Branch base'}`;
 
       const alias = 'feature-branch';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias]);
@@ -273,7 +272,7 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(forkPath, 'branch-file.txt'), 'branch');
       await $`${git$} -C ${forkPath} add branch-file.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Branch change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Branch change'}`;
 
       await fs.rm(path.join(forkPath, '.env.local'), { force: true });
       await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
@@ -369,10 +368,7 @@ describe('gdx parallel', async () => {
       const forkGit$ = [gitExec, '-C', forkPath];
 
       for (let i = 1; i <= 4; i++) {
-         const filename = `short-hint-${i}.txt`;
-         fs.writeFileSync(path.join(forkPath, filename), `short-hint-${i}`);
-         await $`${forkGit$} add ${filename}`;
-         await $`${forkGit$} commit -m ${`Add short hint ${i}`}`;
+         await $`${forkGit$} commit --allow-empty --no-verify -m ${`Add short hint ${i}`}`;
       }
 
       await fs.rm(path.join(forkPath, '.env.local'), { force: true });
@@ -483,10 +479,7 @@ describe('gdx parallel', async () => {
       const forkGit$ = [gitExe, '-C', forkPath];
 
       for (let i = 1; i <= 4; i++) {
-         const filename = `short-${i}.txt`;
-         fs.writeFileSync(path.join(forkPath, filename), `short-${i}`);
-         await $`${forkGit$} add ${filename}`;
-         await $`${forkGit$} commit -m ${`Add short ${i}`}`;
+         await $`${forkGit$} commit --allow-empty --no-verify -m ${`Add short ${i}`}`;
       }
 
       await fs.rm(path.join(forkPath, '.env.local'), { force: true });
@@ -528,10 +521,7 @@ describe('gdx parallel', async () => {
 
       const commitMessages = ['Merged list 1', 'Merged list 2', 'Merged list 3'];
       for (const message of commitMessages) {
-         const filename = `${message.replace(/\s+/g, '-').toLowerCase()}.txt`;
-         fs.writeFileSync(path.join(forkPath, filename), message);
-         await $`${forkGit$} add ${filename}`;
-         await $`${forkGit$} commit -m ${message}`;
+         await $`${forkGit$} commit --allow-empty --no-verify -m ${message}`;
       }
 
       await fs.rm(path.join(forkPath, '.env.local'), { force: true });
@@ -565,9 +555,7 @@ describe('gdx parallel', async () => {
          await $`${git$} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${git$} -C ${submoduleRoot} add README.md`;
-         await $`${git$} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${git$} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleSha = (await $`${git$} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
          const submoduleUrl = asUnixPath(submoduleRoot);
@@ -575,7 +563,7 @@ describe('gdx parallel', async () => {
          await $`${git$} -C ${tmpDir} update-index --add --cacheinfo 160000 ${submoduleSha} ${'deps/submodule'}`;
          fs.writeFileSync(path.join(tmpDir, '.gitmodules'), gitmodulesContent);
          await $`${git$} -C ${tmpDir} add .gitmodules`;
-         await $`${git$} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-submodule']);
          expect(await parallel(forkCtx)).toBe(0);
@@ -607,8 +595,7 @@ describe('gdx parallel', async () => {
          } finally {
             await $`${git$} worktree prune --expire now`;
             await fs.rm(forkPath, { recursive: true, force: true });
-            await resetRepo();
-            await $`${git$} -C ${tmpDir} clean -fd`;
+            await resetRepo('worktree');
          }
       },
       { timeout: 15000 }
@@ -624,14 +611,12 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          await addSubmodule(git$, tmpDir, submoduleUrl, 'deps/submodule');
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${'deps/submodule'}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-deinit']);
          expect(await parallel(forkCtx)).toBe(0);
@@ -669,8 +654,7 @@ describe('gdx parallel', async () => {
          } finally {
             await forceRemoveWorktreePath(forkPath);
             await fs.rm(path.join(tmpDir, 'deps'), { recursive: true, force: true });
-            await resetRepo();
-            await $`${git$} -C ${tmpDir} clean -fd`;
+            await resetRepo('worktree');
          }
       },
       { timeout: 15000 }
@@ -831,13 +815,8 @@ describe('gdx parallel', async () => {
       const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
       const forkGit$ = [Array.isArray(git$) ? git$[0] : git$, '-C', forkPath];
 
-      fs.writeFileSync(path.join(forkPath, 'fork-sync.txt'), 'fork');
-      await $`${forkGit$} add fork-sync.txt`;
-      await $`${forkGit$} commit -m ${'Fork sync commit'}`;
-
-      fs.writeFileSync(path.join(tmpDir, 'origin-sync.txt'), 'origin');
-      await $`${git$} add origin-sync.txt`;
-      await $`${git$} commit -m ${'Origin sync commit'}`;
+      await $`${forkGit$} commit --allow-empty --no-verify -m ${'Fork sync commit'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Origin sync commit'}`;
       const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const metaPath = path.join(forkPath, '.git-parallel.json');
@@ -879,13 +858,8 @@ describe('gdx parallel', async () => {
       const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
       const forkGit$ = [Array.isArray(git$) ? git$[0] : git$, '-C', forkPath];
 
-      fs.writeFileSync(path.join(forkPath, 'fork-sync-dirty.txt'), 'fork');
-      await $`${forkGit$} add fork-sync-dirty.txt`;
-      await $`${forkGit$} commit -m ${'Fork sync dirty commit'}`;
-
-      fs.writeFileSync(path.join(tmpDir, 'origin-sync-dirty.txt'), 'origin');
-      await $`${git$} add origin-sync-dirty.txt`;
-      await $`${git$} commit -m ${'Origin sync dirty commit'}`;
+      await $`${forkGit$} commit --allow-empty --no-verify -m ${'Fork sync dirty commit'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Origin sync dirty commit'}`;
       const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const dirtyFile = path.join(tmpDir, 'origin-untracked-sync.txt');
@@ -923,13 +897,11 @@ describe('gdx parallel', async () => {
       const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
       const forkGit$ = [Array.isArray(git$) ? git$[0] : git$, '-C', forkPath];
 
-      fs.writeFileSync(path.join(forkPath, 'shared-sync.txt'), 'fork change\n');
-      await $`${forkGit$} add shared-sync.txt`;
-      await $`${forkGit$} commit -m ${'Fork branch sync commit'}`;
+      await $`${forkGit$} commit --allow-empty --no-verify -m ${'Fork branch sync commit'}`;
 
       fs.writeFileSync(path.join(tmpDir, 'shared-sync.txt'), 'origin change\n');
       await $`${git$} add shared-sync.txt`;
-      await $`${git$} commit -m ${'Origin branch sync commit'}`;
+      await $`${git$} commit --no-verify -m ${'Origin branch sync commit'}`;
 
       fs.writeFileSync(path.join(forkPath, 'scratch.txt'), 'local dirty');
       const syncFailCtx = createGdxContext(tmpDir, ['parallel', 'sync', alias]);
@@ -965,7 +937,7 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(tmpDir, 'pick-origin.txt'), 'from origin');
       await $`${git$} add pick-origin.txt`;
-      await $`${git$} commit -m ${'Origin pick commit'}`;
+      await $`${git$} commit --no-verify -m ${'Origin pick commit'}`;
       const originCommit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const pickCtx = createGdxContext(forkPath, ['parallel', 'pick', 'origin', originCommit]);
@@ -989,15 +961,13 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-pick';
          await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const alias = 'feature-pick-sub';
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
@@ -1011,7 +981,7 @@ describe('gdx parallel', async () => {
          const originSubmodulePath = path.join(tmpDir, submodulePath);
          fs.writeFileSync(path.join(forkSubmodulePath, 'pick-sub.txt'), 'sub pick');
          await $`${gitExe} -C ${forkSubmodulePath} add pick-sub.txt`;
-         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule pick commit'}`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule pick commit'}`;
          const subCommit = (
             await $`${gitExe} -C ${forkSubmodulePath} rev-parse HEAD`
          ).stdout.trim();
@@ -1033,7 +1003,7 @@ describe('gdx parallel', async () => {
          expect(originSubLog).toBe('Submodule pick commit');
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Record submodule pick'}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Record submodule pick'}`;
 
          const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
          const removeResult = await parallel(removeCtx);
@@ -1049,7 +1019,7 @@ describe('gdx parallel', async () => {
       resetCache();
       const alias = 'feature-join-cursor';
 
-      await $`${git$} commit --allow-empty -m ${'Cursor base'}`;
+      await $`${git$} commit --allow-empty --no-verify -m ${'Cursor base'}`;
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
       expect(await parallel(forkCtx)).toBe(0);
 
@@ -1059,24 +1029,24 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(tmpDir, 'cursor-conflict.txt'), 'origin\n');
       await $`${git$} add cursor-conflict.txt`;
-      await $`${git$} commit -m ${'Origin cursor conflict'}`;
+      await $`${git$} commit --no-verify -m ${'Origin cursor conflict'}`;
 
       fs.writeFileSync(path.join(forkPath, 'cursor-a.txt'), 'a');
       await $`${forkGit$} add cursor-a.txt`;
-      await $`${forkGit$} commit -m ${'Cursor A'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Cursor A'}`;
 
       fs.writeFileSync(path.join(forkPath, 'cursor-shared.txt'), 'shared\n');
       await $`${forkGit$} add cursor-shared.txt`;
-      await $`${forkGit$} commit -m ${'Cursor B shared'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Cursor B shared'}`;
       const commitB = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
 
       fs.writeFileSync(path.join(tmpDir, 'cursor-shared.txt'), 'shared\n');
       await $`${git$} add cursor-shared.txt`;
-      await $`${git$} commit -m ${'Origin cursor shared'}`;
+      await $`${git$} commit --no-verify -m ${'Origin cursor shared'}`;
 
       fs.writeFileSync(path.join(forkPath, 'cursor-d.txt'), 'd');
       await $`${forkGit$} add cursor-d.txt`;
-      await $`${forkGit$} commit -m ${'Cursor D'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Cursor D'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
       expect(await parallel(joinCtx)).toBe(0);
@@ -1118,7 +1088,7 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(forkPath, 'conflict.txt'), 'fork-change');
       await $`${git$} -C ${forkPath} add conflict.txt`;
-      await $`${git$} -C ${forkPath} commit -m ${'Fork change'}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork change'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', 'feature-conflict']);
       const joinResult = await parallel(joinCtx);
@@ -1142,15 +1112,13 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-list';
          await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const alias = 'feature-sub-list';
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -1188,7 +1156,7 @@ describe('gdx parallel', async () => {
 
          fs.writeFileSync(path.join(forkPath, 'main.txt'), 'main');
          await $`${gitExe} -C ${forkPath} add main.txt`;
-         await $`${gitExe} -C ${forkPath} commit -m ${'Main change'}`;
+         await $`${gitExe} -C ${forkPath} commit --no-verify -m ${'Main change'}`;
 
          resetCache();
          const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
@@ -1208,8 +1176,7 @@ describe('gdx parallel', async () => {
             await forceRemoveWorktreePath(forkPath);
          }
 
-         await resetRepo();
-         await $`${gitExe} -C ${tmpDir} clean -fd`;
+         await resetRepo('worktree');
       },
       { timeout: 20000 }
    );
@@ -1257,21 +1224,21 @@ describe('gdx parallel', async () => {
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
          await $`${gitExe} -C ${forkSubmodulePath} add change-1.txt`;
-         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 1'}`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule change 1'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 1'}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule 1'}`;
 
          fs.writeFileSync(path.join(forkPath, 'main-1.txt'), 'main-1');
          await $`${gitExe} -C ${forkPath} add main-1.txt`;
-         await $`${gitExe} -C ${forkPath} commit -m ${'Main change 1'}`;
+         await $`${gitExe} -C ${forkPath} commit --no-verify -m ${'Main change 1'}`;
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
          await $`${gitExe} -C ${forkSubmodulePath} add change-2.txt`;
-         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 2'}`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule change 2'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 2'}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule 2'}`;
 
          const metaPath = path.join(forkPath, '.git-parallel.json');
          const metaRaw = fs.readFileSync(metaPath, 'utf-8');
@@ -1297,8 +1264,7 @@ describe('gdx parallel', async () => {
             await forceRemoveWorktreePath(forkPath);
          }
 
-         await resetRepo();
-         await $`${gitExe} -C ${tmpDir} clean -fd`;
+         await resetRepo('worktree');
       },
       { timeout: 20000 }
    );
@@ -1313,15 +1279,13 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-counter';
          await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const alias = 'feature-counter';
          const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
@@ -1343,17 +1307,17 @@ describe('gdx parallel', async () => {
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-1.txt'), 'sub-change-1');
          await $`${gitExe} -C ${forkSubmodulePath} add change-1.txt`;
-         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 1'}`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule change 1'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 1'}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule 1'}`;
 
          fs.writeFileSync(path.join(forkSubmodulePath, 'change-2.txt'), 'sub-change-2');
          await $`${gitExe} -C ${forkSubmodulePath} add change-2.txt`;
-         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule change 2'}`;
+         await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule change 2'}`;
 
          await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule 2'}`;
+         await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule 2'}`;
 
          resetCache();
          const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
@@ -1374,8 +1338,7 @@ describe('gdx parallel', async () => {
             await forceRemoveWorktreePath(forkPath);
          }
 
-         await resetRepo();
-         await $`${gitExe} -C ${tmpDir} clean -fd`;
+         await resetRepo('worktree');
       },
       { timeout: 20000 }
    );
@@ -1391,15 +1354,13 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-join';
          await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
          const originSubmodulePath = path.join(tmpDir, 'deps', 'submodule-join');
          await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
          await setTestGitConfig(originSubmodulePath, 'user.email', 'test@example.com');
@@ -1425,10 +1386,10 @@ describe('gdx parallel', async () => {
 
             fs.writeFileSync(path.join(forkSubmodulePath, 'join-change.txt'), 'sub-join');
             await $`${gitExe} -C ${forkSubmodulePath} add join-change.txt`;
-            await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule join change'}`;
+            await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule join change'}`;
 
             await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-            await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule for join'}`;
+            await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule for join'}`;
 
             const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
             const joinResult = await parallel(joinCtx);
@@ -1448,8 +1409,7 @@ describe('gdx parallel', async () => {
             if (forkPath) {
                await forceRemoveWorktreePath(forkPath);
             }
-            await resetRepo();
-            await $`${gitExe} -C ${tmpDir} clean -fd`;
+            await resetRepo('worktree');
          }
       },
       { timeout: 20000 }
@@ -1469,15 +1429,13 @@ describe('gdx parallel', async () => {
          await $`${gitExe} -C ${submoduleRoot} init`;
          await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
          await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
-         fs.writeFileSync(path.join(submoduleRoot, 'README.md'), 'submodule');
-         await $`${gitExe} -C ${submoduleRoot} add README.md`;
-         await $`${gitExe} -C ${submoduleRoot} commit -m ${'init submodule'}`;
+         await $`${gitExe} -C ${submoduleRoot} commit --allow-empty --no-verify -m ${'init submodule'}`;
 
          const submoduleUrl = asUnixPath(submoduleRoot);
          const submodulePath = 'deps/submodule-missing-origin';
          await addSubmodule(git$, tmpDir, submoduleUrl, submodulePath);
          await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
-         await $`${gitExe} -C ${tmpDir} commit -m ${'Add submodule'}`;
+         await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add submodule'}`;
 
          const originSubmodulePath = path.join(tmpDir, submodulePath);
          await setTestGitConfig(originSubmodulePath, 'user.name', 'Test User');
@@ -1506,9 +1464,8 @@ describe('gdx parallel', async () => {
             await $`${gitExe} -C ${altRepoRoot} init`;
             await setTestGitConfig(altRepoRoot, 'user.name', 'Test User');
             await setTestGitConfig(altRepoRoot, 'user.email', 'test@example.com');
-            fs.writeFileSync(path.join(altRepoRoot, 'ALT.md'), 'alt');
-            await $`${gitExe} -C ${altRepoRoot} add ALT.md`;
-            await $`${gitExe} -C ${altRepoRoot} commit -m ${'Alt commit'}`;
+            await $`${gitExe} -C ${altRepoRoot} commit --no-verify --allow-empty -m ${'Alt commit'}`;
+
             const altGitDirRaw = (
                await $`${gitExe} -C ${altRepoRoot} rev-parse --git-dir`
             ).stdout.trim();
@@ -1535,8 +1492,7 @@ describe('gdx parallel', async () => {
                await forceRemoveWorktreePath(forkPath);
             }
             env.isTTY = previousTTY;
-            await resetRepo();
-            await $`${gitExe} -C ${tmpDir} clean -fd`;
+            await resetRepo('worktree');
          }
       },
       { timeout: 20000 }
@@ -1563,12 +1519,12 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(forkPath, 'duplicate.txt'), 'duplicate');
       await $`${forkGit$} add duplicate.txt`;
-      await $`${forkGit$} commit -m ${'Duplicate change'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Duplicate change'}`;
       await $`${forkGit$} reset --hard HEAD`;
 
       fs.writeFileSync(path.join(tmpDir, 'duplicate.txt'), 'duplicate');
       await $`${git$} -C ${tmpDir} add duplicate.txt`;
-      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate change origin'}`;
+      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Duplicate change origin'}`;
 
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
       const joinResult = await parallel(joinCtx);
@@ -1607,7 +1563,7 @@ describe('gdx parallel', async () => {
 
          fs.writeFileSync(path.join(forkPath, 'join-skip.txt'), 'join-skip');
          await $`${forkGit$} add join-skip.txt`;
-         await $`${forkGit$} commit -m ${'Join skip commit'}`;
+         await $`${forkGit$} commit --no-verify -m ${'Join skip commit'}`;
 
          const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
          await $`${git$} -C ${tmpDir} merge --no-edit ${forkHead}`;
@@ -1678,10 +1634,10 @@ describe('gdx parallel', async () => {
 
             fs.writeFileSync(path.join(forkSubmodulePath, 'branch-join.txt'), 'sub-join');
             await $`${gitExe} -C ${forkSubmodulePath} add branch-join.txt`;
-            await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Submodule branch join change'}`;
+            await $`${gitExe} -C ${forkSubmodulePath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Submodule branch join change'}`;
 
             await $`${gitExe} -C ${forkPath} add ${submodulePath}`;
-            await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Bump submodule for branch join'}`;
+            await $`${gitExe} -C ${forkPath} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Bump submodule for branch join'}`;
 
             const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
             const joinResult = await parallel(joinCtx);
@@ -1701,8 +1657,7 @@ describe('gdx parallel', async () => {
             if (forkPath) {
                await forceRemoveWorktreePath(forkPath);
             }
-            await resetRepo();
-            await $`${gitExe} -C ${tmpDir} clean -fd`;
+            await resetRepo('worktree');
          }
       },
       { timeout: 20000 }
@@ -1729,12 +1684,12 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(forkPath, 'duplicate-status.txt'), 'duplicate');
       await $`${forkGit$} add duplicate-status.txt`;
-      await $`${forkGit$} commit -m ${'Duplicate status change'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Duplicate status change'}`;
       await $`${forkGit$} reset --hard HEAD`;
 
       fs.writeFileSync(path.join(tmpDir, 'duplicate-status.txt'), 'duplicate');
       await $`${git$} -C ${tmpDir} add duplicate-status.txt`;
-      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit -m ${'Duplicate status change origin'}`;
+      await $`${git$} -C ${tmpDir} -c user.name=${'Test User'} -c user.email=${'test@example.com'} -c committer.name=${'Test User'} -c committer.email=${'test@example.com'} commit --no-verify -m ${'Duplicate status change origin'}`;
 
       env.isTTY = false;
       const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
@@ -1767,7 +1722,7 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(tmpDir, 'dispatch-pick.txt'), 'dispatch');
       await $`${git$} add dispatch-pick.txt`;
-      await $`${git$} commit -m ${'Dispatch pick commit'}`;
+      await $`${git$} commit --no-verify -m ${'Dispatch pick commit'}`;
       const commit = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
       const parsed = stripGitGlobalArgs(['-C', forkPath, 'parallel', 'pick', 'origin', commit]);
@@ -1823,7 +1778,7 @@ describe('gdx parallel', async () => {
 
       fs.writeFileSync(path.join(forkPath, 'dispatch-join.txt'), 'dispatch-join');
       await $`${forkGit$} add dispatch-join.txt`;
-      await $`${forkGit$} commit -m ${'Dispatch join commit'}`;
+      await $`${forkGit$} commit --no-verify -m ${'Dispatch join commit'}`;
 
       const parsed = stripGitGlobalArgs(['-C', tmpDir, 'parallel', 'join', alias, '--keep']);
       const gitExec = Array.isArray(git$) ? git$[0] : git$;
