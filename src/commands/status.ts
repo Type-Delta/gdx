@@ -50,13 +50,17 @@ async function getSubmodules(git$: string | string[]): Promise<Submodule[]> {
 }
 
 /**
- * Runs git status for a specific submodule
+ * Runs git status for a specific submodule.
+ * @param git$ - Git executable path or command array.
+ * @param submodulePath - Absolute path to the submodule.
+ * @param args - Arguments to pass to git status.
+ * @returns The stdout output, or null when the command fails.
  */
 async function getSubmoduleStatus(
    git$: string | string[],
    submodulePath: string,
    args: string[]
-): Promise<string> {
+): Promise<string | null> {
    try {
       const result = await $`${git$} -C ${submodulePath} ${buildSubmoduleStatusArgs(args)}`;
       return result.stdout;
@@ -70,7 +74,7 @@ async function getSubmoduleStatus(
          `Failed to get status for submodule ${submodulePath}. \n${err.toString({ color: true })}`,
          'status'
       );
-      return '';
+      return null;
    }
 }
 
@@ -100,16 +104,21 @@ function hasExplicitColorFlag(args: string[]): boolean {
 export default async function status(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
-   // Check if recursive flag is present
-   const hasRecursive = args.includes('-r') || args.includes('--recursive');
+   const statusArgs = args.slice(1);
+   let hasRecursive = false;
+
+   while (statusArgs.popOption('-r')) {
+      hasRecursive = true;
+   }
+
+   while (statusArgs.popOption('--recursive')) {
+      hasRecursive = true;
+   }
 
    if (!hasRecursive) {
       // No recursive flag, just pass through to git status
-      return await $inherit`${git$} status ${args.slice(1)}`.then((r) => r.exitCode ?? 0);
+      return await $inherit`${git$} status ${statusArgs}`.then((r) => r.exitCode ?? 0);
    }
-
-   // Remove recursive flags from args for passing to git status
-   const statusArgs = args.slice(1).filter((arg) => arg !== '-r' && arg !== '--recursive');
 
    try {
       const repoRoot = await getRepoRootCached(git$);
@@ -143,10 +152,13 @@ export default async function status(ctx: GdxContext): Promise<number> {
          // Get status for this submodule
          const submoduleStatus = await getSubmoduleStatus(git$, absolutePath, statusArgs);
 
+         if (submoduleStatus === null) {
+            quickPrint(`${ncc('Dim')}Unable to get status for this submodule.${ncc()}\n`);
+            continue;
+         }
+
          if (submoduleStatus) {
             quickPrint(submoduleStatus);
-         } else {
-            quickPrint(`${ncc('Dim')}Unable to get status for this submodule.${ncc()}\n`);
          }
       }
 
