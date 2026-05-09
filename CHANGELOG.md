@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Medoid-based diverse commit sampling for guideline learning. This greatly improves learning for commit message generation.
+
+### Fixed
+
+- `gdx status --recursive` not properly handling git's arguments for submodule status.
+- Optimized internal usage of `git config` to own implementation for better performance, especially on Windows where spawning git processes is expensive.
+
 ## Version 0.4.3 - 2026-04-19
 
 ### Added
