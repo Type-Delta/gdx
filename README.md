@@ -13,7 +13,7 @@
 
 `gdx` is a drop-in wrapper for the Git CLI. It doesn't replace Git; it just makes it less... unpleasant.
 
-It wraps standard git commands with intelligent shorthands and adds powerful new capabilities that Git is missing like safety rails for destructive actions (undoable `reset --hard`), introduces new workflows for parallel editing and local analytics.
+It wraps standard git commands with intelligent shorthands and adds powerful new capabilities that Git is missing like safety rails for destructive actions (undoable `reset --hard`), new workflows for parallel editing and local analytics, git output enhancements, and AI-powered commit message generation.
 
 **Why gdx?**
 
@@ -131,8 +131,9 @@ Invoke-Expression (& { (gdx --init pwsh | Out-String) })
 
 ```bash
 gdx s             # -> git status
+gdx sta           # -> git stash
+gdx statu         # -> git status
 gdx lg            # -> git log --oneline --graph --all --decorate
-gdx lg export     # -> Exports git log to a markdown file
 gdx pl -au        # -> git pull --allow-unrelated-histories
 gdx ps -fl        # -> git push --force-with-lease
 gdx reset ~2      # -> git reset HEAD~2
@@ -225,6 +226,10 @@ gdx commit auto   # Generates a commit message based on staged changes, then com
 gdx cmi auto --no-commit --copy
 # You can also configure which LLM to use with `gdx-config`
 ```
+
+Unlike most AI commit message generators, by default `gdx` creates messages generation guidelines and instructions based on your repo's history and conventions.
+This ensures the generated messages fit your project's style and tone.
+Said guidelines are updated every month to reflect your evolving commit style.
 
 ### 8. Fun & Analytics
 
