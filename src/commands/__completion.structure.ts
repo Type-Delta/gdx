@@ -16,6 +16,7 @@ import { structure as macroStructure } from './macro';
 import { structure as submoduleStructure } from './submodule';
 import { structure as rewordStructure } from './reword';
 import { structure as tagStructure } from './tag';
+import { structure as snapStructure } from './snap';
 
 /**
  * command structure for command extensions that doesn't a dedicated source file
@@ -78,4 +79,5 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    submodule: submoduleStructure,
    reword: rewordStructure,
    tag: tagStructure,
+   snap: snapStructure,
 };

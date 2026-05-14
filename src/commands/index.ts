@@ -16,6 +16,7 @@ import submodule from './submodule';
 import reword from './reword';
 import tag from './tag';
 import __completion from './__completion';
+import snap from './snap';
 
 export default {
    __completion,
@@ -36,4 +37,5 @@ export default {
    submodule,
    reword,
    tag,
+   snap,
 };

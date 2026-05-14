@@ -405,6 +405,8 @@ export async function dispatch(
             return cmd.macro(ctx);
          case 'reword':
             return cmd.reword(ctx);
+         case 'snap':
+            return cmd.snap(ctx);
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(

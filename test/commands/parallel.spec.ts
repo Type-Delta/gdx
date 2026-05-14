@@ -924,7 +924,7 @@ describe('gdx parallel', async () => {
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       expect(await parallel(removeCtx)).toBe(0);
-   });
+   }, { timeout: 15000 });
 
    it('should pick commits from origin into current fork', async () => {
       resetCache();

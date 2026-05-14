@@ -157,6 +157,7 @@ export const GDX_COMMANDS = [
    'macro',
    'cache',
    'doctor',
+   'snap',
 ];
 
 export const GDX_SHORTHANDS = [
@@ -229,3 +230,10 @@ export const COMMIT_HEADER_SAMPLE_LIMIT = 50;
 export const COMMIT_MEDOID_SAMPLE_LIMIT = 25;
 export const COMMIT_EXAMPLE_LIMIT = 10;
 export const COMMIT_HEADER_PREFIX_LENGTH = 28;
+
+// Snapshot constants
+export const SNAP_VERSION = 1;
+export const SNAP_FILE_EXTENSION = '.gdxsnap';
+export const SNAP_HASH_LENGTH = 64;
+export const SNAP_SHORT_HASH_LENGTH = 7;
+export const SNAP_META_FILE_NAME = 'GDX_SNAP_META';

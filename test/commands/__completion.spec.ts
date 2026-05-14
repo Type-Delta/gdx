@@ -61,6 +61,18 @@ describe('gdx __completion', async () => {
       delete process.env.GDX_CMP_IDX;
    });
 
+   it('suggests snap at the root level', async () => {
+      process.env.GDX_CMP_IDX = '0';
+
+      const ctx = createGdxContext(tmpDir, ['__completion', 'sn']);
+      const exitCode = await completion(ctx);
+
+      expect(exitCode).toBe(0);
+      expect(buffer.stdout).toContain('snap');
+
+      delete process.env.GDX_CMP_IDX;
+   });
+
    it('suggests git commands at root level', async () => {
       process.env.GDX_CMP_IDX = '0';
 

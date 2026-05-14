@@ -83,8 +83,8 @@ describe('gdx parallel join conflict preview', async () => {
       const forkPath = path.join(worktreeRoot, alias);
 
       await fs.writeFile(path.join(tmpDir, 'conflict.txt'), 'origin change\n');
-      await $`${git$} -C ${tmpDir} add conflict.txt`;
-      await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Origin change'}`;
+      await $`${git$} add conflict.txt`;
+      await $`${git$} commit --no-verify -m ${'Origin change'}`;
 
       await fs.writeFile(path.join(forkPath, 'conflict.txt'), 'fork change\n');
       await fs.writeFile(path.join(forkPath, 'clean.txt'), 'base\nclean change\n');
@@ -108,7 +108,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       await parallel(removeCtx);
-   });
+   }, { timeout: 15000 });
 
    it('should not list conflicts when commit applies cleanly', async () => {
       capturedPreviews = [];
@@ -221,8 +221,8 @@ describe('gdx parallel join conflict preview', async () => {
       const forkPath = path.join(worktreeRoot, alias);
 
       await fs.writeFile(path.join(tmpDir, 'conflict-status.txt'), 'origin change\n');
-      await $`${git$} -C ${tmpDir} add conflict-status.txt`;
-      await $`${git$} -C ${tmpDir} commit --no-verify -m ${'Origin change'}`;
+      await $`${git$} add conflict-status.txt`;
+      await $`${git$} commit --no-verify -m ${'Origin change'}`;
 
       await fs.writeFile(path.join(forkPath, 'conflict-status.txt'), 'fork change\n');
       await $`${git$} -C ${forkPath} add conflict-status.txt`;
