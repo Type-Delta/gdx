@@ -2,6 +2,7 @@ import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
+import { revParseCached } from '@/modules/git';
 import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { SNAP_FILE_EXTENSION, SNAP_SHORT_HASH_LENGTH } from '@/consts';
 
@@ -42,7 +43,7 @@ describe('gdx snap full', async () => {
       await fs.writeFile(path.join(tmpDir, 'full.txt'), 'full restore\n', 'utf-8');
       await $`${git$} add full.txt`;
       await $`${git$} commit --no-verify -m ${'Add full restore file'}`;
-      const originalHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+      const originalHead = (await revParseCached(git$, 'HEAD')).trim();
 
       const snapshotResult = await snap(createGdxContext(tmpDir, ['snap', 'full']));
       expect(snapshotResult).toBe(0);
@@ -63,7 +64,7 @@ describe('gdx snap full', async () => {
       expect(await fs.readFile(path.join(restoreDir, 'full.txt'), 'utf-8')).toBe('full restore\n');
 
       const gitExec = Array.isArray(git$) ? git$[0] : git$;
-      const restoredHead = (await $`${gitExec} -C ${restoreDir} rev-parse HEAD`).stdout.trim();
+      const restoredHead = (await revParseCached(gitExec, 'HEAD', restoreDir)).trim();
       const restoredStatus = (await $`${gitExec} -C ${restoreDir} status --porcelain=v1`).stdout.trim();
 
       expect(restoredHead).toBe(originalHead);

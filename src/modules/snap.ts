@@ -15,6 +15,7 @@ import {
 import { getGitConfigValue, getRepoRootCached, revParseCached } from '@/modules/git';
 import { $ } from '@/modules/shell';
 import { asUnixPath } from '@/utils/path';
+import { walkDir } from '@/modules/fs';
 
 type SnapshotType = 'worktree' | 'full';
 type SnapshotEntryKind = 'file';
@@ -190,8 +191,10 @@ export async function createFullSnapshot(git$: string | string[]): Promise<Creat
  * @returns Sorted snapshot list entries.
  */
 export async function listSnapshots(git$: string | string[]): Promise<SnapshotListEntry[]> {
-   const currentRepo = await getCurrentRepoInfo(git$);
-   const entries = await rebuildSnapshotIndex();
+   const [currentRepo, entries] = await Promise.all([
+      getCurrentRepoInfo(git$),
+      rebuildSnapshotIndex(),
+   ]);
 
    if (!currentRepo) {
       return entries;
@@ -341,8 +344,7 @@ async function resolveSnapshotByPrefix(hashPrefix: string): Promise<SnapshotList
 }
 
 async function loadSnapshotArchive(archivePath: string): Promise<LoadedSnapshot> {
-   const fflate = await loadFflate();
-   const archiveBytes = await fs.readFile(archivePath);
+   const [fflate, archiveBytes] = await Promise.all([loadFflate(), fs.readFile(archivePath)]);
    const extracted = fflate.unzipSync(toUint8Array(archiveBytes));
    const metaEntry = extracted[SNAP_META_FILE_NAME];
 
@@ -595,17 +597,15 @@ async function loadAllSnapshots(): Promise<SnapshotListEntry[]> {
    const files = (await fs.readdir(objectsDir))
       .filter((file) => file.endsWith(SNAP_FILE_EXTENSION))
       .sort((a, b) => a.localeCompare(b));
-   const snapshots: SnapshotListEntry[] = [];
-
-   for (const fileName of files) {
+   const snapshots = await Promise.all(files.map(async (fileName) => {
       const archivePath = path.join(objectsDir, fileName);
       const loaded = await loadSnapshotArchive(archivePath);
-      snapshots.push({
+      return {
          hash: loaded.hash,
          archivePath,
          meta: loaded.meta,
-      });
-   }
+      };
+   }));
 
    return snapshots.sort(
       (a, b) => Date.parse(b.meta.createdAt) - Date.parse(a.meta.createdAt) || a.hash.localeCompare(b.hash)
@@ -613,24 +613,30 @@ async function loadAllSnapshots(): Promise<SnapshotListEntry[]> {
 }
 
 async function getSnapshotRepoInfo(git$: string | string[]): Promise<SnapshotRepoInfo> {
-   const repoRoot = await getRepoRootCached(git$);
-   const rootCommitOutput = (await runGitStdout(git$, ['rev-list', '--max-parents=0', 'HEAD'])).trim();
+   const repoRootPromise = getRepoRootCached(git$);
+   const [repoRoot, rootCommitRaw, headCommitRaw, headRef, branchNameRaw, originUrlRaw] = await Promise.all([
+      repoRootPromise,
+      runGitStdout(git$, ['rev-list', '--max-parents=0', 'HEAD']),
+      revParseCached(git$, ['HEAD']),
+      runGitStdout(git$, ['symbolic-ref', '-q', 'HEAD'])
+         .then((output) => output.trim() || null)
+         .catch(() => null),
+      revParseCached(git$, ['--abbrev-ref', 'HEAD']),
+      repoRootPromise.then((repoRoot) =>
+         getGitConfigValue(git$, 'remote.origin.url', repoRoot)
+      ),
+   ]);
+
+   const rootCommitOutput = rootCommitRaw.trim();
    const rootCommit = rootCommitOutput.split(/\r?\n/).filter(Boolean)[0] || '';
-   const headCommit = (await revParseCached(git$, ['HEAD'])).trim();
+   const headCommit = headCommitRaw.trim();
    if (!repoRoot || !rootCommit || !headCommit) {
       throw new Error('Snapshots require a repository with at least one commit.');
    }
 
-   let headRef: string | null = null;
-   try {
-      headRef = (await runGitStdout(git$, ['symbolic-ref', '-q', 'HEAD'])).trim() || null;
-   } catch {
-      headRef = null;
-   }
-
-   const branchNameOutput = (await runGitStdout(git$, ['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
+   const branchNameOutput = branchNameRaw.trim();
    const branchName = branchNameOutput && branchNameOutput !== 'HEAD' ? branchNameOutput : null;
-   const originUrl = (await getGitConfigValue(git$, 'remote.origin.url', repoRoot)).trim() || null;
+   const originUrl = originUrlRaw.trim() || null;
    const repoLabel = path.basename(repoRoot);
    const repoIdentity = crypto
       .createHash('sha1')
@@ -653,7 +659,7 @@ async function getSnapshotRepoInfo(git$: string | string[]): Promise<SnapshotRep
 
 async function getCurrentRepoInfo(git$: string | string[]): Promise<SnapshotRepoInfo | null> {
    try {
-      const repoRoot = (await runGitStdout(git$, ['rev-parse', '--show-toplevel'])).trim();
+      const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim();
       if (!repoRoot) return null;
       return await getSnapshotRepoInfo(git$);
    } catch {
@@ -674,15 +680,15 @@ function isSameRepository(meta: SnapMetadata | SnapshotRepoInfo, repoInfo: Snaps
 }
 
 async function ensureSnapshotDirectories(): Promise<void> {
-   for (const dirPath of [
+   await Promise.all([
       getSnapshotRootPath(),
       getSnapshotObjectsDirPath(),
       getSnapshotTmpDirPath(),
-   ]) {
+   ].map(async (dirPath) => {
       if (!fs.existsSync(dirPath)) {
-         fs.mkdirSync(dirPath, { recursive: true });
+         await fs.mkdir(dirPath, { recursive: true });
       }
-   }
+   }));
 }
 
 function getSnapshotRootPath(): string {
@@ -724,7 +730,7 @@ async function collectDirectorySnapshotEntries(
 ): Promise<SnapshotEntry[]> {
    const entries: SnapshotEntry[] = [];
 
-   await walkDirectory(rootDir, async (filePath) => {
+   await walkDir(rootDir, async (filePath) => {
       const relativePath = normalizeArchiveRelativePath(path.relative(rootDir, filePath));
       const fileData = await fs.readFile(filePath);
       entries.push({
@@ -737,32 +743,13 @@ async function collectDirectorySnapshotEntries(
    return entries;
 }
 
-async function walkDirectory(
-   dirPath: string,
-   visitor: (filePath: string) => Promise<void>
-): Promise<void> {
-   const dirEntries = await fs.readdir(dirPath, { withFileTypes: true });
-
-   for (const entry of dirEntries.sort((a, b) => a.name.localeCompare(b.name))) {
-      const entryPath = path.join(dirPath, entry.name);
-      if (entry.isDirectory()) {
-         await walkDirectory(entryPath, visitor);
-         continue;
-      }
-
-      if (entry.isFile()) {
-         await visitor(entryPath);
-      }
-   }
-}
-
 async function cleanGitBackupDirectory(gitDir: string): Promise<void> {
    const worktreesPath = path.join(gitDir, 'worktrees');
    if (fs.existsSync(worktreesPath)) {
       await fs.rm(worktreesPath, { recursive: true, force: true });
    }
 
-   await walkDirectory(gitDir, async (filePath) => {
+   await walkDir(gitDir, async (filePath) => {
       const baseName = path.basename(filePath);
       if (baseName.endsWith('.lock') || baseName === 'gc.log') {
          await fs.rm(filePath, { force: true });

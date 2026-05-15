@@ -2,6 +2,7 @@ import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
+import { revParseCached } from '@/modules/git';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { SNAP_FILE_EXTENSION, SNAP_SHORT_HASH_LENGTH } from '@/consts';
 
@@ -63,7 +64,7 @@ describe('gdx snap worktree', async () => {
       await $`${git$} add .gitignore tracked.txt staged.txt`;
       await $`${git$} commit --no-verify -m ${'Add tracked base'}`;
 
-      const originalBranch = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const originalBranch = (await revParseCached(git$, ['--abbrev-ref', 'HEAD'])).trim();
 
       await fs.writeFile(path.join(tmpDir, 'tracked.txt'), 'base\nunstaged\n', 'utf-8');
       await fs.writeFile(path.join(tmpDir, 'staged.txt'), 'staged content\n', 'utf-8');
@@ -105,7 +106,7 @@ describe('gdx snap worktree', async () => {
       );
       expect(forceApplyResult).toBe(0);
 
-      const restoredBranch = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const restoredBranch = (await revParseCached(git$, ['--abbrev-ref', 'HEAD'])).trim();
       const stagedNames = (await $`${git$} diff --cached --name-only`).stdout;
       const unstagedNames = (await $`${git$} diff --name-only`).stdout;
 

@@ -86,3 +86,29 @@ export function isChildrenOf(parentDirPath: string, childPath: string): boolean 
    if (child === parent) return true;
    return child.startsWith(`${parent}/`);
 }
+
+/**
+ * Recursively walks through a directory and applies an asynchronous visitor function to each file.
+ * The directory entries are processed in sorted order for consistency.
+ * @param dirPath The path of the directory to walk.
+ * @param visitor An asynchronous function that takes a file path as an argument.
+ * @returns A promise that resolves when the entire directory has been processed.
+ */
+export async function walkDir(
+   dirPath: string,
+   visitor: (filePath: string) => Promise<void> | void
+): Promise<void> {
+   const dirEntries = fs.readdirSync(dirPath, { withFileTypes: true });
+
+   for (const entry of dirEntries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const entryPath = path.join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+         await walkDir(entryPath, visitor);
+         continue;
+      }
+
+      if (entry.isFile()) {
+         await visitor(entryPath);
+      }
+   }
+}
