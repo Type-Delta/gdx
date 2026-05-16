@@ -233,6 +233,77 @@ export async function applySnapshot(
 }
 
 /**
+ * Imports a snapshot archive into the local snapshot object store.
+ * @param snapshotPath - Path to a .gdxsnap archive.
+ * @returns Imported snapshot index entry.
+ */
+export async function importSnapshot(snapshotPath: string): Promise<SnapshotListEntry> {
+   const sourcePath = path.resolve(snapshotPath);
+   if (!sourcePath.endsWith(SNAP_FILE_EXTENSION)) {
+      throw new Error(`Snapshot file must use the ${SNAP_FILE_EXTENSION} extension.`);
+   }
+
+   if (!fs.existsSync(sourcePath)) {
+      throw new Error(`Snapshot file '${snapshotPath}' does not exist.`);
+   }
+
+   const sourceStat = await fs.stat(sourcePath);
+   if (!sourceStat.isFile()) {
+      throw new Error(`Snapshot path '${snapshotPath}' is not a file.`);
+   }
+
+   const loaded = await loadSnapshotArchive(sourcePath);
+   const hash = buildLoadedSnapshotHash(loaded);
+   const archivePath = path.join(getSnapshotObjectsDirPath(), `${hash}${SNAP_FILE_EXTENSION}`);
+
+   await ensureSnapshotDirectories();
+   if (fs.normalizeSync(sourcePath) !== fs.normalizeSync(archivePath)) {
+      await fs.cp(sourcePath, archivePath);
+   }
+
+   const entries = await rebuildSnapshotIndex();
+   const imported = entries.find((entry) => entry.hash === hash);
+   if (!imported) {
+      throw new Error(`Imported snapshot '${snapshotPath}' could not be indexed.`);
+   }
+
+   return imported;
+}
+
+/**
+ * Exports a stored snapshot archive to a directory or explicit .gdxsnap file path.
+ * @param hashPrefix - Full or short snapshot hash prefix.
+ * @param destination - Directory path or destination file path ending with .gdxsnap.
+ * @returns The exported file path and snapshot entry.
+ */
+export async function exportSnapshot(
+   hashPrefix: string,
+   destination: string
+): Promise<{ snapshot: SnapshotListEntry; destinationPath: string }> {
+   if (!destination.trim()) {
+      throw new Error('Missing export destination. Usage: gdx snap export <hash> <dest>.');
+   }
+
+   const snapshot = await resolveSnapshotByPrefix(hashPrefix);
+   const resolvedDestination = path.resolve(destination);
+   const defaultExportFileName = `${snapshot.meta.repoLabel}-${snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SNAP_FILE_EXTENSION}`;
+   const destinationPath = resolvedDestination.endsWith(SNAP_FILE_EXTENSION)
+      ? resolvedDestination
+      : path.join(resolvedDestination, defaultExportFileName);
+   const destinationDir = path.dirname(destinationPath);
+
+   if (!fs.existsSync(destinationDir)) {
+      await fs.mkdir(destinationDir, { recursive: true });
+   }
+
+   await fs.cp(snapshot.archivePath, destinationPath);
+   return {
+      snapshot,
+      destinationPath,
+   };
+}
+
+/**
  * Returns the snapshot storage directory path.
  * @returns Snapshot root directory.
  */
@@ -307,6 +378,29 @@ function buildSnapshotHash(
    }
 
    return hash.digest('hex').slice(0, SNAP_HASH_LENGTH);
+}
+
+/**
+ * Recomputes the canonical snapshot hash for an archive loaded from any file name.
+ * @param snapshot - Loaded snapshot archive.
+ * @returns Canonical snapshot hash.
+ */
+function buildLoadedSnapshotHash(snapshot: LoadedSnapshot): string {
+   const entries: SnapshotEntry[] = [];
+
+   for (const [entryPath, data] of snapshot.entries.entries()) {
+      if (entryPath === SNAP_META_FILE_NAME) {
+         continue;
+      }
+
+      entries.push({
+         path: entryPath,
+         data,
+         kind: 'file',
+      });
+   }
+
+   return buildSnapshotHash(snapshot.meta, snapshot.meta.type, entries);
 }
 
 async function writeSnapshotArchive(

@@ -9,16 +9,18 @@ import {
    applySnapshot,
    createFullSnapshot,
    createWorktreeSnapshot,
+   exportSnapshot,
+   importSnapshot,
    listSnapshots,
 } from '@/modules/snap';
 import Logger from '@/utils/logger';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 
-const SUBCOMMANDS = ['worktree', 'full', 'list', 'apply'];
+const SUBCOMMANDS = ['worktree', 'full', 'list', 'apply', 'import', 'export'];
 
 /**
- * Creates, lists, and applies repository snapshot archives.
+ * Creates, lists, applies, imports, and exports repository snapshot archives.
  * @param ctx - GDX execution context.
  * @returns Exit code.
  */
@@ -83,6 +85,34 @@ export default async function snap(ctx: GdxContext): Promise<number> {
             );
             return 0;
          }
+         case 'import': {
+            const targets = args.slice(2).filter(Boolean);
+
+            if (targets.length !== 1) {
+               Logger.error('Usage: gdx snap import <snapshot-path>', 'snap');
+               return 1;
+            }
+
+            const imported = await importSnapshot(targets[0]);
+            quickPrint(
+               `${ncc('Green')}Imported snapshot ${imported.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${imported.meta.type})${ncc()}`
+            );
+            return 0;
+         }
+         case 'export': {
+            const targets = args.slice(2).filter(Boolean);
+
+            if (targets.length !== 2) {
+               Logger.error('Usage: gdx snap export <hash> <dest>', 'snap');
+               return 1;
+            }
+
+            const exported = await exportSnapshot(targets[0], targets[1]);
+            quickPrint(
+               `${ncc('Green')}Exported snapshot ${exported.snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${exported.destinationPath})${ncc()}`
+            );
+            return 0;
+         }
          default:
             if (candidates && candidates.length > 0) {
                Logger.warn(
@@ -132,7 +162,7 @@ export const help = {
       return strWrap(
          litedent`
          ${bright + _2PointGradient('SNAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Create, list, and apply portable repository snapshots.
+         Create, list, apply, import, and export portable repository snapshots.
 
          ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
          ${cyan}${EXECUTABLE_NAME} snap worktree${reset} stores the current HEAD, staged changes, unstaged changes,
@@ -146,6 +176,10 @@ export const help = {
          ${cyan}${EXECUTABLE_NAME} snap apply <hash>${reset} restores a snapshot by unique hash prefix.
          Applying over a dirty worktree requires ${cyan}--force${reset}. Full snapshots require ${cyan}--force${reset}
          when replacing an existing repository.
+
+         ${cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${reset} copies a .gdxsnap archive into local snapshot storage.
+
+         ${cyan}${EXECUTABLE_NAME} snap export <hash> <dest>${reset} copies a snapshot to a directory or explicit .gdxsnap path.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -155,7 +189,7 @@ export const help = {
          }
       );
    },
-   short: 'Create, list, and apply portable worktree/full repository snapshots.',
+   short: 'Create, list, apply, import, and export portable repository snapshots.',
    usage: () => {
       const cyan = ncc('Cyan');
       const dim = ncc('Dim');
@@ -166,12 +200,15 @@ export const help = {
          ${cyan}${EXECUTABLE_NAME} snap full${reset}
          ${cyan}${EXECUTABLE_NAME} snap list${reset}
          ${cyan}${EXECUTABLE_NAME} snap apply <hash> ${dim}[--force]${reset}
+         ${cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${reset}
+         ${cyan}${EXECUTABLE_NAME} snap export <hash> <dest>${reset}
 
          Examples:
             ${cyan}${EXECUTABLE_NAME} snap worktree${reset + dim} # Save current staged/unstaged/untracked state${reset}
             ${cyan}${EXECUTABLE_NAME} snap full${reset + dim}     # Save a full git-data backup${reset}
             ${cyan}${EXECUTABLE_NAME} snap list${reset + dim}     # Show available snapshots${reset}
-            ${cyan}${EXECUTABLE_NAME} snap apply a1b2c3d --force${reset + dim} # Restore a snapshot${reset}`,
+            ${cyan}${EXECUTABLE_NAME} snap apply a1b2c3d --force${reset + dim} # Restore a snapshot${reset}
+            ${cyan}${EXECUTABLE_NAME} snap export a1b2c3d ./snapshots${reset + dim} # Copy out a snapshot archive${reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -190,5 +227,7 @@ export const structure = {
       apply: {
          $allOf: ['--force'],
       },
+      import: {},
+      export: {},
    },
 } as const satisfies CommandStructure;

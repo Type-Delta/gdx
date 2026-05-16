@@ -190,4 +190,44 @@ describe('gdx snap worktree', async () => {
       expect(applyResult).toBe(1);
       expect(getCombinedOutput(buffer).toLowerCase()).toContain('ambiguous');
    });
+
+   it('exports snapshots to file or directory destinations and imports them again', async () => {
+      await resetState();
+
+      await fs.writeFile(path.join(tmpDir, 'portable.txt'), 'base\n', 'utf-8');
+      await $`${git$} add portable.txt`;
+      await $`${git$} commit --no-verify -m ${'Add portable base'}`;
+      await fs.writeFile(path.join(tmpDir, 'portable.txt'), 'base\nchanged\n', 'utf-8');
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree']))).toBe(0);
+
+      const archives = await listSnapshotArchives(tmpRootDir);
+      expect(archives.length).toBe(1);
+      const snapshotHash = archives[0].replace(new RegExp(`${SNAP_FILE_EXTENSION}$`), '');
+      const shortHash = snapshotHash.slice(0, SNAP_SHORT_HASH_LENGTH);
+      const exportDir = path.join(tmpRootDir, 'exported-snapshots');
+      const exportFilePath = path.join(tmpRootDir, 'portable-copy.gdxsnap');
+      const defaultExportFileName = `${path.basename(tmpDir)}-${shortHash}${SNAP_FILE_EXTENSION}`;
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', shortHash, exportDir]))).toBe(0);
+      expect(fs.existsSync(path.join(exportDir, defaultExportFileName))).toBe(true);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', shortHash, exportFilePath]))).toBe(0);
+      expect(fs.existsSync(exportFilePath)).toBe(true);
+
+      await $`${git$} reset --hard HEAD`;
+      await fs.rm(path.join(tmpRootDir, 'tmp', 'gdx'), { recursive: true, force: true });
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'import', exportFilePath]))).toBe(0);
+
+      const importedArchives = await listSnapshotArchives(tmpRootDir);
+      expect(importedArchives).toEqual([`${snapshotHash}${SNAP_FILE_EXTENSION}`]);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'list']))).toBe(0);
+      expect(buffer.stdout).toContain(shortHash);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'apply', shortHash, '--force']))).toBe(0);
+      expect(await fs.readFile(path.join(tmpDir, 'portable.txt'), 'utf-8')).toBe('base\nchanged\n');
+      expect((await $`${git$} diff --name-only`).stdout).toContain('portable.txt');
+   });
 });
