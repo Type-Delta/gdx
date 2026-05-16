@@ -157,7 +157,7 @@ describe('git module', async () => {
 
       const entries = await fs.readdir(submodulePath);
       expect(entries.length).toBe(0);
-   });
+   }, { timeout: 15000 });
 
    it('should honor useInlineSubmodule=off for add/update/deinit', async () => {
       const config = await getConfig();

@@ -217,10 +217,10 @@ export async function listSnapshots(git$: string | string[]): Promise<SnapshotLi
  */
 export async function applySnapshot(
    git$: string | string[],
-   hashPrefix: string,
+   selector: string,
    force = false
 ): Promise<SnapshotListEntry> {
-   const snapshot = await resolveSnapshotByPrefix(hashPrefix);
+   const snapshot = await resolveSnapshotSelector(git$, selector);
    const loaded = await loadSnapshotArchive(snapshot.archivePath);
 
    if (loaded.meta.type === 'worktree') {
@@ -230,6 +230,52 @@ export async function applySnapshot(
    }
 
    return snapshot;
+}
+
+/**
+ * Applies a snapshot by hash prefix and removes it after a successful apply.
+ * @param git$ - Git executable path or command array.
+ * @param hashPrefix - Full or short snapshot hash prefix.
+ * @param force - Whether to allow destructive apply actions.
+ * @returns The applied and removed snapshot entry.
+ */
+export async function popSnapshot(
+   git$: string | string[],
+   selector: string,
+   force = false
+): Promise<SnapshotListEntry> {
+   const snapshot = await resolveSnapshotSelector(git$, selector);
+   const loaded = await loadSnapshotArchive(snapshot.archivePath);
+
+   if (loaded.meta.type === 'worktree') {
+      await applyWorktreeSnapshot(git$, loaded, force);
+   } else {
+      await applyFullSnapshot(git$, loaded, force);
+   }
+
+   await fs.rm(snapshot.archivePath, { force: true });
+   await rebuildSnapshotIndex();
+   return snapshot;
+}
+
+/**
+ * Removes one or more snapshots by hash, index selector, or inclusive index range.
+ * @param git$ - Git executable path or command array.
+ * @param selectors - Snapshot hash prefixes, ~index selectors, or ranges such as 2..6.
+ * @returns Removed snapshot entries.
+ */
+export async function dropSnapshots(
+   git$: string | string[],
+   selectors: string[]
+): Promise<SnapshotListEntry[]> {
+   const snapshots = await resolveSnapshotSelectors(git$, selectors);
+
+   for (const snapshot of snapshots) {
+      await fs.rm(snapshot.archivePath, { force: true });
+   }
+
+   await rebuildSnapshotIndex();
+   return snapshots;
 }
 
 /**
@@ -277,14 +323,15 @@ export async function importSnapshot(snapshotPath: string): Promise<SnapshotList
  * @returns The exported file path and snapshot entry.
  */
 export async function exportSnapshot(
-   hashPrefix: string,
+   git$: string | string[],
+   selector: string,
    destination: string
 ): Promise<{ snapshot: SnapshotListEntry; destinationPath: string }> {
    if (!destination.trim()) {
       throw new Error('Missing export destination. Usage: gdx snap export <hash> <dest>.');
    }
 
-   const snapshot = await resolveSnapshotByPrefix(hashPrefix);
+   const snapshot = await resolveSnapshotSelector(git$, selector);
    const resolvedDestination = path.resolve(destination);
    const defaultExportFileName = `${snapshot.meta.repoLabel}-${snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SNAP_FILE_EXTENSION}`;
    const destinationPath = resolvedDestination.endsWith(SNAP_FILE_EXTENSION)
@@ -440,6 +487,89 @@ async function resolveSnapshotByPrefix(hashPrefix: string): Promise<SnapshotList
    }
 
    return matches[0];
+}
+
+async function resolveSnapshotSelector(
+   git$: string | string[],
+   selector: string
+): Promise<SnapshotListEntry> {
+   const normalizedSelector = selector.trim();
+   const indexMatch = normalizedSelector.match(/^~(\d*)$/);
+   if (!indexMatch) {
+      return await resolveSnapshotByPrefix(normalizedSelector);
+   }
+
+   const index = indexMatch[1] ? Number(indexMatch[1]) : 0;
+   return await resolveSnapshotByIndex(git$, index);
+}
+
+async function resolveSnapshotSelectors(
+   git$: string | string[],
+   selectors: string[]
+): Promise<SnapshotListEntry[]> {
+   const resolved: SnapshotListEntry[] = [];
+   const seenHashes = new Set<string>();
+
+   for (const selector of selectors) {
+      const snapshots = selector.includes('..')
+         ? await resolveSnapshotRange(git$, selector)
+         : [await resolveSnapshotSelector(git$, selector)];
+
+      for (const snapshot of snapshots) {
+         if (seenHashes.has(snapshot.hash)) {
+            continue;
+         }
+
+         seenHashes.add(snapshot.hash);
+         resolved.push(snapshot);
+      }
+   }
+
+   return resolved;
+}
+
+async function resolveSnapshotByIndex(
+   git$: string | string[],
+   index: number
+): Promise<SnapshotListEntry> {
+   if (!Number.isInteger(index) || index < 0) {
+      throw new Error(`Invalid snapshot index '${index}'.`);
+   }
+
+   const snapshots = await listSnapshots(git$);
+   const snapshot = snapshots[index];
+   if (!snapshot) {
+      throw new Error(`No snapshot found at index ${index}.`);
+   }
+
+   return snapshot;
+}
+
+async function resolveSnapshotRange(
+   git$: string | string[],
+   selector: string
+): Promise<SnapshotListEntry[]> {
+   const snapshots = await listSnapshots(git$);
+   const [start, end] = selector.split('..')
+      .map((s, i) =>
+         s === ''
+            ? (i ? snapshots.length - 1 : 0)
+            : parseInt(s, 10)
+      );
+
+   if (isNaN(start) || isNaN(end) || start > end) {
+      throw new Error(`Invalid snapshot range '${selector}'.`);
+   }
+
+   if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start) {
+      throw new Error(`Invalid snapshot range '${selector}'.`);
+   }
+
+   if (start >= snapshots.length || end >= snapshots.length) {
+      throw new Error(`Snapshot range '${selector}' is outside the list bounds.`);
+   }
+
+   return snapshots.slice(start, end + 1);
 }
 
 async function loadSnapshotArchive(archivePath: string): Promise<LoadedSnapshot> {
@@ -654,7 +784,7 @@ async function extractFullGitDirectory(snapshot: LoadedSnapshot, destination: st
    }
 
    if (extractedCount === 0) {
-      throw new Error('Snapshot archive does not contain any full git backup entries.');
+      throw new Error('This Snapshot archive does not contain any full git backup entries.');
    }
 
    for (const relativeDir of [

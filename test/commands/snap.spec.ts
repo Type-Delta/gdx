@@ -31,6 +31,7 @@ describe('gdx snap worktree', async () => {
    });
    const { default: snap } = await import('@/commands/snap');
    const { dispatch } = await import('@/cli/dispatch');
+   const { listSnapshots } = await import('@/modules/snap');
    const { git$ } = createGdxContext(tmpDir);
 
    async function resetState(): Promise<void> {
@@ -209,10 +210,10 @@ describe('gdx snap worktree', async () => {
       const exportFilePath = path.join(tmpRootDir, 'portable-copy.gdxsnap');
       const defaultExportFileName = `${path.basename(tmpDir)}-${shortHash}${SNAP_FILE_EXTENSION}`;
 
-      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', shortHash, exportDir]))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', '~', exportDir]))).toBe(0);
       expect(fs.existsSync(path.join(exportDir, defaultExportFileName))).toBe(true);
 
-      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', shortHash, exportFilePath]))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'export', '~0', exportFilePath]))).toBe(0);
       expect(fs.existsSync(exportFilePath)).toBe(true);
 
       await $`${git$} reset --hard HEAD`;
@@ -226,8 +227,77 @@ describe('gdx snap worktree', async () => {
       expect(await snap(createGdxContext(tmpDir, ['snap', 'list']))).toBe(0);
       expect(buffer.stdout).toContain(shortHash);
 
-      expect(await snap(createGdxContext(tmpDir, ['snap', 'apply', shortHash, '--force']))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'apply', '~', '--force']))).toBe(0);
       expect(await fs.readFile(path.join(tmpDir, 'portable.txt'), 'utf-8')).toBe('base\nchanged\n');
       expect((await $`${git$} diff --name-only`).stdout).toContain('portable.txt');
+   });
+
+   it('pops snapshots only after a successful apply', async () => {
+      await resetState();
+
+      await fs.writeFile(path.join(tmpDir, 'pop.txt'), 'base\n', 'utf-8');
+      await $`${git$} add pop.txt`;
+      await $`${git$} commit --no-verify -m ${'Add pop base'}`;
+      await fs.writeFile(path.join(tmpDir, 'pop.txt'), 'base\nsnapshot\n', 'utf-8');
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree']))).toBe(0);
+
+      const archives = await listSnapshotArchives(tmpRootDir);
+      expect(archives.length).toBe(1);
+      const snapshotHash = archives[0].replace(new RegExp(`${SNAP_FILE_EXTENSION}$`), '');
+
+      await $`${git$} reset --hard HEAD`;
+      await fs.writeFile(path.join(tmpDir, 'dirty-pop.txt'), 'dirty\n', 'utf-8');
+
+      const failedPopResult = await snap(createGdxContext(tmpDir, ['snap', 'pop', '~']));
+      expect(failedPopResult).toBe(1);
+      expect(getCombinedOutput(buffer)).toContain('Working tree is dirty');
+      expect(await listSnapshotArchives(tmpRootDir)).toEqual([`${snapshotHash}${SNAP_FILE_EXTENSION}`]);
+
+      const popResult = await snap(createGdxContext(tmpDir, ['snap', 'pop', '~0', '--force']));
+      expect(popResult).toBe(0);
+      expect(await fs.readFile(path.join(tmpDir, 'pop.txt'), 'utf-8')).toBe('base\nsnapshot\n');
+      expect(await listSnapshotArchives(tmpRootDir)).toEqual([]);
+
+      const listResult = await snap(createGdxContext(tmpDir, ['snap', 'list']));
+      expect(listResult).toBe(0);
+      expect(buffer.stdout).toContain('No snapshots found');
+   });
+
+   it('shows list indexes and drops snapshots by index ranges and selectors', async () => {
+      await resetState();
+
+      await fs.writeFile(path.join(tmpDir, 'drop-range.txt'), 'base\n', 'utf-8');
+      await $`${git$} add drop-range.txt`;
+      await $`${git$} commit --no-verify -m ${'Add drop range base'}`;
+
+      for (const value of ['one', 'two', 'three', 'four']) {
+         await fs.writeFile(path.join(tmpDir, 'drop-range.txt'), `base\n${value}\n`, 'utf-8');
+         expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree']))).toBe(0);
+         await Bun.sleep(5);
+      }
+
+      const listed = await listSnapshots(git$);
+      expect(listed.length).toBe(4);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'list']))).toBe(0);
+      expect(buffer.stdout).toContain('#');
+      expect(buffer.stdout).toContain('0');
+      expect(buffer.stdout).toContain('3');
+
+      const hashesByIndex = listed.map((snapshot) => snapshot.hash);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'drop', '1..2']))).toBe(0);
+      expect((await listSnapshots(git$)).map((snapshot) => snapshot.hash)).toEqual([
+         hashesByIndex[0],
+         hashesByIndex[3],
+      ]);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'drop', '~']))).toBe(0);
+      expect((await listSnapshots(git$)).map((snapshot) => snapshot.hash)).toEqual([
+         hashesByIndex[3],
+      ]);
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'drop', '0..']))).toBe(0);
+      expect(await listSnapshotArchives(tmpRootDir)).toEqual([]);
    });
 });
