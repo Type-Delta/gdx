@@ -147,6 +147,18 @@ describe('gdx snap worktree', async () => {
       expect(buffer.stdout).toContain('full');
    });
 
+   it('warns instead of running worktree snapshots outside a repository', async () => {
+      await resetState();
+
+      const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
+      const outsideDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-outside-worktree-'));
+
+      expect(await snap(createGdxContext(outsideDir, ['snap']))).toBe(0);
+      expect(await snap(createGdxContext(outsideDir, ['snap', 'worktree']))).toBe(0);
+      expect(getCombinedOutput(buffer)).toContain('Worktree snapshots require running inside a git repository');
+      expect(getCombinedOutput(buffer)).not.toContain('exit code 129');
+   });
+
    it('rejects ambiguous hash prefixes', async () => {
       await resetState();
 

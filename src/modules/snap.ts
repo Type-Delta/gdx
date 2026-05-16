@@ -13,7 +13,7 @@ import {
    TEMP_DIR,
 } from '@/consts';
 import { getGitConfigValue, getRepoRootCached, revParseCached } from '@/modules/git';
-import { $ } from '@/modules/shell';
+import { $, spinner } from '@/modules/shell';
 import { asUnixPath } from '@/utils/path';
 import { walkDir } from '@/modules/fs';
 
@@ -156,10 +156,12 @@ export async function createWorktreeSnapshot(
  * @returns Snapshot creation result with hash and archive path.
  */
 export async function createFullSnapshot(git$: string | string[]): Promise<CreateSnapshotResult> {
+   const spinnerCtrl = spinner({ message: 'Collecting repository info...' });
    const repoInfo = await getSnapshotRepoInfo(git$);
    const repoRoot = repoInfo.repoRoot;
    const rawCommonDir = (await revParseCached(git$, ['--git-common-dir'])).trim();
    if (!rawCommonDir) {
+      spinnerCtrl.stop();
       throw new Error('Unable to resolve the git common directory for this repository.');
    }
 
@@ -172,6 +174,7 @@ export async function createFullSnapshot(git$: string | string[]): Promise<Creat
 
    try {
       fs.cpSync(commonGitDir, stageGitDir, { recursive: true });
+      spinnerCtrl.setMessage('Creating snapshot archive...');
       await cleanGitBackupDirectory(stageGitDir);
 
       const gitExec = getGitExec(git$);
@@ -179,8 +182,10 @@ export async function createFullSnapshot(git$: string | string[]): Promise<Creat
       await $`${gitExec} --git-dir ${stageGitDir} gc --prune=now`;
 
       const entries = await collectDirectorySnapshotEntries(stageGitDir, 'full/git');
+      spinnerCtrl.setMessage('Finalizing snapshot...');
       return await finalizeSnapshotArchive('full', repoInfo, entries);
    } finally {
+      spinnerCtrl.stop();
       fs.rmSync(stageRoot, { recursive: true, force: true });
    }
 }
@@ -516,18 +521,18 @@ async function applyFullSnapshot(
       return;
    }
 
-   const targetDir = getGitCommandDirectory(git$);
-   if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
+   const parentDir = getGitCommandDirectory(git$);
+   const targetDir = path.join(parentDir, snapshot.meta.repoLabel);
+   if (fs.existsSync(targetDir)) {
+      if (!force) {
+         throw new Error(`Target directory '${targetDir}' already exists. Use --force to replace it.`);
+      }
+      await fs.rm(targetDir, { recursive: true, force: true });
    }
 
+   fs.mkdirSync(targetDir, { recursive: true });
+
    const gitDirPath = path.join(targetDir, '.git');
-   if (fs.existsSync(gitDirPath)) {
-      if (!force) {
-         throw new Error(`Target directory '${targetDir}' already contains a .git directory. Use --force to replace it.`);
-      }
-      await fs.rm(gitDirPath, { recursive: true, force: true });
-   }
 
    await extractFullGitDirectory(snapshot, gitDirPath);
 

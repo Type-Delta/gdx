@@ -37,7 +37,7 @@ describe('gdx snap full', async () => {
       await fs.rm(path.join(tmpRootDir, 'tmp', 'gdx'), { recursive: true, force: true });
    }
 
-   it('creates a single-file full snapshot and restores it into a non-repo directory', async () => {
+   it('creates a single-file full snapshot and restores it into a project folder outside a repo', async () => {
       await resetState();
 
       await fs.writeFile(path.join(tmpDir, 'full.txt'), 'full restore\n', 'utf-8');
@@ -54,21 +54,61 @@ describe('gdx snap full', async () => {
 
       const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
       const restoreDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-full-restore-'));
+      const restoredProjectDir = path.join(restoreDir, path.basename(tmpDir));
 
       const restoreResult = await snap(
          createGdxContext(restoreDir, ['snap', 'apply', snapshotHash.slice(0, SNAP_SHORT_HASH_LENGTH)])
       );
       expect(restoreResult).toBe(0);
 
-      expect(fs.existsSync(path.join(restoreDir, '.git'))).toBe(true);
-      expect(await fs.readFile(path.join(restoreDir, 'full.txt'), 'utf-8')).toBe('full restore\n');
+      expect(fs.existsSync(path.join(restoreDir, '.git'))).toBe(false);
+      expect(fs.existsSync(path.join(restoredProjectDir, '.git'))).toBe(true);
+      expect(await fs.readFile(path.join(restoredProjectDir, 'full.txt'), 'utf-8')).toBe('full restore\n');
 
       const gitExec = Array.isArray(git$) ? git$[0] : git$;
-      const restoredHead = (await revParseCached(gitExec, 'HEAD', restoreDir)).trim();
-      const restoredStatus = (await $`${gitExec} -C ${restoreDir} status --porcelain=v1`).stdout.trim();
+      const restoredHead = (await revParseCached(gitExec, 'HEAD', restoredProjectDir)).trim();
+      const restoredStatus = (await $`${gitExec} -C ${restoredProjectDir} status --porcelain=v1`).stdout.trim();
 
       expect(restoredHead).toBe(originalHead);
       expect(restoredStatus).toBe('');
+   });
+
+   it('requires --force before replacing an existing project folder outside a repo', async () => {
+      await resetState();
+
+      await fs.writeFile(path.join(tmpDir, 'force.txt'), 'force restore\n', 'utf-8');
+      await $`${git$} add force.txt`;
+      await $`${git$} commit --no-verify -m ${'Add force restore file'}`;
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'full']))).toBe(0);
+      const archives = await listSnapshotArchives(tmpRootDir);
+      expect(archives.length).toBe(1);
+      const snapshotHash = archives[0].replace(new RegExp(`${SNAP_FILE_EXTENSION}$`), '');
+
+      const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
+      const restoreDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-full-force-'));
+      const restoredProjectDir = path.join(restoreDir, path.basename(tmpDir));
+      fs.mkdirSync(restoredProjectDir, { recursive: true });
+      await fs.writeFile(path.join(restoredProjectDir, 'existing.txt'), 'existing\n', 'utf-8');
+
+      const rejectedResult = await snap(
+         createGdxContext(restoreDir, ['snap', 'apply', snapshotHash.slice(0, SNAP_SHORT_HASH_LENGTH)])
+      );
+      expect(rejectedResult).toBe(1);
+      expect(getCombinedOutput(buffer)).toContain('already exists');
+      expect(await fs.readFile(path.join(restoredProjectDir, 'existing.txt'), 'utf-8')).toBe('existing\n');
+
+      const forcedResult = await snap(
+         createGdxContext(restoreDir, [
+            'snap',
+            'apply',
+            snapshotHash.slice(0, SNAP_SHORT_HASH_LENGTH),
+            '--force',
+         ])
+      );
+      expect(forcedResult).toBe(0);
+      expect(fs.existsSync(path.join(restoredProjectDir, 'existing.txt'))).toBe(false);
+      expect(await fs.readFile(path.join(restoredProjectDir, 'force.txt'), 'utf-8')).toBe('force restore\n');
    });
 
    it('rejects applying a snapshot into a different root history', async () => {

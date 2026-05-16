@@ -3,6 +3,7 @@ import { ncc, strJustify, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { EXECUTABLE_NAME, GDX_VPALETTE, SNAP_SHORT_HASH_LENGTH } from '@/consts';
 import global from '@/global';
+import { revParseCached } from '@/modules/git';
 import { _2PointGradient } from '@/modules/graphics';
 import {
    applySnapshot,
@@ -34,6 +35,11 @@ export default async function snap(ctx: GdxContext): Promise<number> {
                return 0;
             }
          case 'worktree': {
+            if (!(await isInsideGitRepository(ctx.git$))) {
+               Logger.warn('Worktree snapshots require running inside a git repository.', 'snap');
+               return 0;
+            }
+
             const result = await createWorktreeSnapshot(ctx.git$);
             printCreatedSnapshot(result.hash, result.meta.type, result.meta.createdAt, result.existed);
             return 0;
@@ -108,6 +114,14 @@ function printCreatedSnapshot(
 
 function formatDateTime(value: string): string {
    return value.replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+}
+
+async function isInsideGitRepository(git$: string | string[]): Promise<boolean> {
+   try {
+      return (await revParseCached(git$, ['--is-inside-work-tree'])).trim() === 'true';
+   } catch {
+      return false;
+   }
 }
 
 export const help = {
