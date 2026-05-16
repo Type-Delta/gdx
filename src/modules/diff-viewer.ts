@@ -1,4 +1,4 @@
-import { Err, estimateStrComplexity, ex_length, ncc, strSlice, strWrap, yuString } from '@lib/Tools';
+import { Err, estimateStrComplexity, ex_length, ncc, strLimit, strSlice, strWrap, yuString } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
 import * as fs from '@/modules/fs';
 import type { ChangeObject } from 'diff';
@@ -750,11 +750,13 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
-      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(diffText);
+      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(
+         this.options.preambleLines.join('') + diffText
+      );
       this.widthRedundancyLv = Math.max(0, this.redundancyLv);
 
       this.logger.debug(
-         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}`
+         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}, width redundancy level: ${this.widthRedundancyLv}`,
       );
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
       this.updateRenderedLines();
@@ -954,7 +956,7 @@ export class DiffViewerRenderer implements PagerRenderer {
             bgCode = CATPPUCCIN_VPALETTE.base;
             break;
          case 'hunk':
-            rendered.push(this.renderHunkHeader(line.content, width));
+            rendered.push(this.renderHunkHeader(line.content, width, contentWidth));
             return rendered;
          case 'header':
             rendered.push(this.renderFileHeader(line.content, width));
@@ -1102,11 +1104,13 @@ export class DiffViewerRenderer implements PagerRenderer {
       return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${ncc()}`;
    }
 
-   private renderHunkHeader(content: string, width: number): string {
+   private renderHunkHeader(content: string, width: number, contentWidth: number): string {
       const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
+      content = strLimit(content, contentWidth, 'end', this.redundancyLv);
+
       return this.padLineWithBg(
-         `    ↕   ${fgRgb(CATPPUCCIN_VPALETTE.cyan)}${STYLES.italic(content)}`,
-         width,
+         `${ncc('Dim') + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,
+         width + 1,
          bgCode
       );
    }
