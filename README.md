@@ -203,6 +203,9 @@ but more commands will be added in the future. (feel free to request what comman
 >
 > If you want to disable the enhanced output altogether, you can set `enhancedOutput` to `false` in the config.
 
+> [!TIP]
+> Enhanced `gdx show` allows you to navigate between commits in the pager with ←→ keys. This is especially useful when viewing a file's history.
+
 ### 6. Advanced Stash Management
 
 Git stash is great until you need to clean it up.

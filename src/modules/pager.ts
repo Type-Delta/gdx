@@ -10,6 +10,8 @@ import { CATPPUCCIN_VPALETTE } from '@/consts';
 export interface PagerAction {
    /** Key(s) that trigger the action */
    key: string | string[];
+   /** Optional human-readable key label for the status bar */
+   displayKey?: string;
    /** Action label for status bar */
    label: string;
    /** Action identifier to return */
@@ -89,7 +91,7 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
          ? context.actions
             .map((action) => {
                const keys = Array.isArray(action.key) ? action.key : [action.key];
-               const keyLabel = keys[0] ?? '';
+               const keyLabel = action.displayKey ?? keys[0] ?? '';
                if (!keyLabel) return '';
                return `${bright}${keyLabel}${normal} ${action.label}`;
             })
@@ -97,17 +99,17 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
             .join(`${dim},${normal} `)
          : '';
       const navHint = actionHint
-         ? `${bright}↑ ↓ b n${normal} navigate, ${bright}q${normal} quit`
-         : `${bright}↑ ↓ b n Home End${normal} to navigate, ${bright}q${normal} quit`;
+         ? `${bright}↑ ↓ b n${normal} navigate${dim},${normal} ${bright}q${normal} quit`
+         : `${bright}↑ ↓ b n Home End${normal} to navigate${dim},${normal} ${bright}q${normal} quit`;
       const locationInfo = actionHint
          ? `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`
          : `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`;
 
       const leftParts = [statusText, navHint, actionHint].filter(Boolean);
       return (
-         '  ' +
+         ' ' +
          strJustify(
-            [leftParts.join('  '), locationInfo],
+            [leftParts.join(' '), locationInfo],
             termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
             {
                align: 'spacebetween',
