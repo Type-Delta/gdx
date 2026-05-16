@@ -21,7 +21,7 @@ import {
    EXECUTABLE_NAME,
    STATS_EST,
    GDX_VPALETTE,
-   KNOWN_GIT_FAULT_FILE_HUBRISTICS,
+   KNOWN_GIT_FAULT_FILE_HEURISTICS,
 } from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
@@ -484,7 +484,7 @@ function parseTopContributor(raw: string, projectChangedLines: number): TopContr
          if (changedLines <= 0) continue;
 
          const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
-         if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase())) {
+         if (KNOWN_GIT_FAULT_FILE_HEURISTICS.includes(path.extname(filePath).toLowerCase())) {
             continue;
          }
 
@@ -675,7 +675,7 @@ function parseNumStat(raw: string): ParsedNumStat {
       if (changed <= 0) continue;
 
       const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
-      if (KNOWN_GIT_FAULT_FILE_HUBRISTICS.includes(path.extname(filePath).toLowerCase())) continue;
+      if (KNOWN_GIT_FAULT_FILE_HEURISTICS.includes(path.extname(filePath).toLowerCase())) continue;
 
       totalAdded += added;
       totalRemoved += removed;

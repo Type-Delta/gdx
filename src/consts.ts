@@ -112,6 +112,48 @@ export const SENSITIVE_CONTENTS_REGEXES = [
    /-----\s*BEGIN PRIVATE KEY\s*-----/i,
 ];
 
+export const EXTENSION_LANG_MAP: Record<string, string> = {
+   ts: 'typescript',
+   tsx: 'tsx',
+   js: 'javascript',
+   mjs: 'javascript',
+   cjs: 'javascript',
+   jsx: 'jsx',
+   json: 'json',
+   md: 'markdown',
+   css: 'css',
+   scss: 'scss',
+   html: 'html',
+   vue: 'vue',
+   svelte: 'svelte',
+   py: 'python',
+   rb: 'ruby',
+   go: 'go',
+   rs: 'rust',
+   java: 'java',
+   kt: 'kotlin',
+   swift: 'swift',
+   c: 'c',
+   cpp: 'cpp',
+   h: 'c',
+   hpp: 'cpp',
+   sh: 'bash',
+   bash: 'bash',
+   zsh: 'bash',
+   yml: 'yaml',
+   yaml: 'yaml',
+   toml: 'toml',
+   xml: 'xml',
+   sql: 'sql',
+   dockerfile: 'dockerfile',
+   docker: 'dockerfile',
+   makefile: 'makefile',
+   cmake: 'cmake',
+   lua: 'lua',
+   perl: 'perl',
+   php: 'php',
+};
+
 // Source of Truth
 export const ONE_DAY_MS = 1000 * 60 * 60 * 24;
 export const CACHE_PATH = path.join(TEMP_DIR, 'gdx', CACHE_FILE_NAME);
@@ -202,7 +244,7 @@ export const GIT_GLOBAL_OPTIONS_NO_VALUES = [
 /**
  * The list of files that git sometimes missinterprets as text and tries to diff, but are actually binary.
  */
-export const KNOWN_GIT_FAULT_FILE_HUBRISTICS = [
+export const KNOWN_GIT_FAULT_FILE_HEURISTICS = [
    '.pdf',
    '.doc',
    '.docx',

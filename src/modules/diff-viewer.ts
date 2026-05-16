@@ -17,7 +17,7 @@ import {
 import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
 import { spinner } from './shell';
-import { CATPPUCCIN_VPALETTE, INLINE_DIFF_MERGE_DISTANCE, TUI_THEME } from '@/consts';
+import { CATPPUCCIN_VPALETTE, EXTENSION_LANG_MAP, INLINE_DIFF_MERGE_DISTANCE, TUI_THEME } from '@/consts';
 import { DiffModule, ShikijsCliModule } from '@/common/types';
 import { quickPrint } from '@/utils/utilities';
 
@@ -332,46 +332,7 @@ export function canUseDiffViewer(): boolean {
 
 function detectLanguage(fileName: string): BundledLanguage {
    const ext = fileName.split('.').pop()?.toLowerCase() || '';
-   const langMap: Record<string, string> = {
-      ts: 'typescript',
-      tsx: 'tsx',
-      js: 'javascript',
-      jsx: 'jsx',
-      json: 'json',
-      md: 'markdown',
-      css: 'css',
-      scss: 'scss',
-      html: 'html',
-      vue: 'vue',
-      svelte: 'svelte',
-      py: 'python',
-      rb: 'ruby',
-      go: 'go',
-      rs: 'rust',
-      java: 'java',
-      kt: 'kotlin',
-      swift: 'swift',
-      c: 'c',
-      cpp: 'cpp',
-      h: 'c',
-      hpp: 'cpp',
-      sh: 'bash',
-      bash: 'bash',
-      zsh: 'bash',
-      yml: 'yaml',
-      yaml: 'yaml',
-      toml: 'toml',
-      xml: 'xml',
-      sql: 'sql',
-      dockerfile: 'dockerfile',
-      docker: 'dockerfile',
-      makefile: 'makefile',
-      cmake: 'cmake',
-      lua: 'lua',
-      perl: 'perl',
-      php: 'php',
-   };
-   return (langMap[ext] as BundledLanguage) || 'text';
+   return (EXTENSION_LANG_MAP[ext] as BundledLanguage) || 'text';
 }
 
 function formatUnifiedRange(start: number, count: number): string {
