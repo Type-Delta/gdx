@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import {
+   buildEnhancedShowDiffText,
+   buildShowPreamble,
    buildShowArgsForCommit,
    buildShowCommitNavigationPlan,
 } from '@/modules/show-navigation';
@@ -8,6 +10,66 @@ import * as fs from '@/modules/fs';
 import { createTestEnv } from '@/utils/testHelper';
 
 describe('show navigation helpers', async () => {
+   it('should append relative ref to the commit line and file stats under the message', () => {
+      const preamble = buildShowPreamble({
+         preamble: [
+            'commit abc123456789',
+            'Author: Test User <test@example.com>',
+            'Date:   Sat May 16 12:00:00 2026 +0700',
+            '',
+            '    subject',
+            '',
+         ],
+         relativeRef: 'HEAD~3',
+         stat: ' README.md | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)',
+      });
+
+      expect(preamble).toEqual([
+         'Commit: abc123456789 (HEAD~3)',
+         'Author: Test User <test@example.com>',
+         'Date:   Sat May 16 12:00:00 2026 +0700',
+         '',
+         '    subject',
+         '',
+         ' README.md | 2 +-',
+         ' 1 file changed, 1 insertion(+), 1 deletion(-)',
+      ]);
+   });
+
+   it('should rebuild enhanced show text with enriched preamble before the diff body', () => {
+      const diffText = [
+         'commit abc123456789',
+         'Author: Test User <test@example.com>',
+         'Date:   Sat May 16 12:00:00 2026 +0700',
+         '',
+         '    subject',
+         '',
+         'diff --git a/README.md b/README.md',
+         'index 1111111..2222222 100644',
+      ].join('\n');
+
+      expect(
+         buildEnhancedShowDiffText(diffText, {
+            relativeRef: 'HEAD',
+            stat: ' README.md | 1 +\n 1 file changed, 1 insertion(+)',
+         })
+      ).toBe(
+         [
+            'Commit: abc123456789 (HEAD)',
+            'Author: Test User <test@example.com>',
+            'Date:   Sat May 16 12:00:00 2026 +0700',
+            '',
+            '    subject',
+            '',
+            ' README.md | 1 +',
+            ' 1 file changed, 1 insertion(+)',
+            '',
+            'diff --git a/README.md b/README.md',
+            'index 1111111..2222222 100644',
+         ].join('\n')
+      );
+   });
+
    it('should preserve pathspec filters when building navigation args', () => {
       const plan = buildShowCommitNavigationPlan(['aaa', '--', 'README.md']);
 

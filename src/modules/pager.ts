@@ -84,6 +84,8 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
       const bright = ncc('Bright');
       const normal = ncc('Normal');
       const dim = ncc('Dim');
+      const cyan = fgRgb(CATPPUCCIN_VPALETTE.cyan);
+      const white = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
       const statusText =
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
@@ -93,23 +95,26 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
                const keys = Array.isArray(action.key) ? action.key : [action.key];
                const keyLabel = action.displayKey ?? keys[0] ?? '';
                if (!keyLabel) return '';
-               return `${bright}${keyLabel}${normal} ${action.label}`;
+               return `${bright + cyan}${keyLabel}${white + normal} ${action.label}`;
             })
             .filter(Boolean)
             .join(`${dim},${normal} `)
          : '';
       const navHint = actionHint
-         ? `${bright}↑ ↓ b n${normal} navigate${dim},${normal} ${bright}q${normal} quit`
-         : `${bright}↑ ↓ b n Home End${normal} to navigate${dim},${normal} ${bright}q${normal} quit`;
-      const locationInfo = actionHint
-         ? `ln ${bright}${current}${normal} of ${bright}${total}${current === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`
-         : `lines ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`;
+         ? `${bright + cyan}↑ ↓ b n${white + normal} navigate${dim},${normal} ${bright + cyan}q${white + normal} quit${dim},${normal}`
+         : `${bright + cyan}↑ ↓ b n Home End${white + normal} to navigate${dim},${normal} ${bright + cyan}q${white + normal} quit`;
 
-      const leftParts = [statusText, navHint, actionHint].filter(Boolean);
+      const leftParts = [statusText, navHint, actionHint]
+         .filter(Boolean)
+         .join(' ');
+
+      const locationInfo = (ex_length(leftParts, 0) > termWidth * 0.6)
+         ? `ln ${bright}${current}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`
+         : `ln ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`;
       return (
-         ' ' +
+         '  ' +
          strJustify(
-            [leftParts.join(' '), locationInfo],
+            [leftParts, locationInfo],
             termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
             {
                align: 'spacebetween',

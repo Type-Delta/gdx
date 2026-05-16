@@ -1,7 +1,13 @@
+import { ncc } from '@lib/Tools';
+
 import { GdxContext } from '@/common/types';
 import { isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
 import { $, spinner } from '@/modules/shell';
+import { fgRgb } from './graphics';
+import { CATPPUCCIN_VPALETTE } from '@/consts';
+import { resolveHeadRelativeCommitRef, revParseCached } from './git';
 
+const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 const SHOW_PREVIOUS_COMMIT_ACTION = 'previousCommit';
 const SHOW_NEXT_COMMIT_ACTION = 'nextCommit';
 const LEFT_ARROW_KEY = '\x1b[D';
@@ -129,7 +135,100 @@ function clearInteractiveScreen(): void {
  * @returns Full commit hash.
  */
 async function resolveShowCommit(git$: GdxContext['git$'], ref: string): Promise<string> {
-   return (await $`${git$} rev-parse --verify ${`${ref}^{commit}`}`).stdout.trim();
+   return revParseCached(git$, ['--verify', `${ref}^{commit}`]);
+}
+
+/**
+ * Loads the file-stat section for the shown commit while preserving show options and pathspecs.
+ * @param git$ - Git executable/context from GdxContext.
+ * @param showArgs - Arguments passed after `gdx show`.
+ * @param plan - Parsed commit navigation plan for the original arguments.
+ * @param commit - Commit hash to show stats for.
+ * @returns The raw stat output from git show.
+ */
+async function getShowCommitStat(
+   git$: GdxContext['git$'],
+   showArgs: string[],
+   plan: ShowCommitNavigationPlan,
+   commit: string
+): Promise<string> {
+   return (
+      await $`${git$} -c color.ui=never show --stat --format= ${buildShowArgsForCommit(
+         showArgs,
+         plan,
+         commit
+      )}`
+   ).stdout
+      .trimEnd()
+      .replace(/(\W)(\++)/g, `$1${ncc('Green')}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
+      .replace(/(-+)/g, `${ncc('Red')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
+}
+
+/**
+ * Splits a git-show output into its preamble and diff body.
+ * @param diffText - Raw git show output.
+ * @returns Preamble lines and diff body.
+ */
+export function separateShowPreamble(diffText: string): { body: string; preamble: string[] } {
+   const lines = diffText.split('\n');
+   const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
+   if (firstDiffIndex === -1) return { body: diffText, preamble: [] };
+   return {
+      body: lines.slice(firstDiffIndex).join('\n'),
+      preamble: lines.slice(0, firstDiffIndex),
+   };
+}
+
+/**
+ * Builds the enhanced `gdx show` preamble from the raw git-show header.
+ * @param options - Preamble source lines plus optional relative ref and file stats.
+ * @returns Preamble lines for the diff viewer.
+ */
+export function buildShowPreamble(options: {
+   preamble: string[];
+   relativeRef?: string;
+   stat?: string;
+}): string[] {
+   const { relativeRef, stat } = options;
+   const lines = options.preamble.slice();
+   const commitLineIndex = lines.findIndex((line) => /^commit [0-9a-f]{7,40}\b/i.test(line));
+
+   if (relativeRef && commitLineIndex !== -1 && !lines[commitLineIndex].includes(relativeRef)) {
+      lines[commitLineIndex] = `Commit:${lines[commitLineIndex].slice(6)} (${relativeRef})`;
+   }
+
+   while (lines.length > 0 && lines[lines.length - 1] === '') {
+      lines.pop();
+   }
+
+   const trimmedStat = stat?.trimEnd();
+   if (trimmedStat) {
+      lines.push('');
+      lines.push(...trimmedStat.split('\n'));
+   }
+
+   return lines;
+}
+
+/**
+ * Adds enhanced metadata to the raw git-show output before it reaches the diff viewer.
+ * @param diffText - Raw git show output.
+ * @param options - Optional relative ref and file stats to append.
+ * @returns Enriched show output.
+ */
+export function buildEnhancedShowDiffText(
+   diffText: string,
+   options: { relativeRef?: string; stat?: string }
+): string {
+   const { body, preamble } = separateShowPreamble(diffText);
+   if (preamble.length === 0) return diffText;
+
+   const preambleLines = buildShowPreamble({
+      preamble,
+      relativeRef: options.relativeRef,
+      stat: options.stat,
+   });
+   return [...preambleLines, '', body].join('\n');
 }
 
 /**
@@ -181,7 +280,6 @@ async function viewShowCommit(
       showLoading && preloadedDiffText === undefined
          ? spinner({
             message: 'Loading commit...',
-            interval: 10,
          })
          : undefined;
 
@@ -195,9 +293,15 @@ async function viewShowCommit(
                commit
             )}`
          ).stdout;
+      const [relativeRef, stat] = await Promise.all([
+         resolveHeadRelativeCommitRef(ctx.git$, commit, false),
+         getShowCommitStat(ctx.git$, showArgs, plan, commit),
+      ]);
       spinnerCtrl?.stop();
+
       if (!diffText || !isGitDiffOutput(diffText)) return undefined;
-      return await viewDiff(diffText, {
+
+      return await viewDiff(buildEnhancedShowDiffText(diffText, { relativeRef, stat }), {
          actions: [
             {
                key: LEFT_ARROW_KEY,

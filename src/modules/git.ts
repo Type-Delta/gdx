@@ -14,7 +14,7 @@ import { asUnixPath } from '@/utils/path';
 import { quickPrint } from '@/utils/utilities';
 import { $, $inherit } from './shell';
 import { ArgsSet } from './arguments';
-import { Result } from '@/common/types';
+import { GdxContext, Result } from '@/common/types';
 
 export interface WorktreeEntry {
    path: string;
@@ -172,14 +172,14 @@ async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promi
    return repoRoot;
 }
 
-function getGitScope(git$: string | string[], worktreePath?: string): string {
+function getGitScope(git$: GdxContext['git$'], worktreePath?: string): string {
    const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
    const basePath = worktreePath ? path.resolve(worktreePath) : process.cwd();
    return `${gitKey}|${basePath}`;
 }
 
 function resolveGitExecAndRepoPath(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    repoPath?: string
 ): { gitExec: string; repoPath: string } {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
@@ -330,7 +330,7 @@ async function buildGitPathMtimeSignature(
  * @returns The resolved output string, or empty string on failure.
  */
 export async function revParseCached(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    ref: string | string[],
    repoPath?: string
 ): Promise<string> {
@@ -355,7 +355,7 @@ export async function revParseCached(
  * @returns The resolved SHA, or `null` if resolution fails.
  */
 export async function resolveRefShaCached(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    ref: string,
    options?: {
       type?: 'commit' | 'tag' | 'tree' | 'blob';
@@ -377,7 +377,7 @@ export async function resolveRefShaCached(
  * @param git$ - Git executable path or command array.
  * @returns True if inside a Git worktree, false otherwise.
  */
-export async function assertInGitWorktree(git$: string | string[]): Promise<boolean> {
+export async function assertInGitWorktree(git$: GdxContext['git$']): Promise<boolean> {
    const output = (await revParseCached(git$, ['--is-inside-work-tree'])).trim();
    if (output !== 'true') {
       Logger.error('This command must be run inside a git repository.', 'git');
@@ -393,7 +393,7 @@ export async function assertInGitWorktree(git$: string | string[]): Promise<bool
  * @returns An object containing the SHA and message of the stash entry, or null if not found.
  */
 export async function getStashEntry(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    index: number
 ): Promise<{ sha: string; message: string } | null> {
    const cache = await getCache();
@@ -422,7 +422,7 @@ export async function getStashEntry(
  * @returns A promise that resolves when the stash is restored.
  */
 export async function restoreStash(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    sha: string,
    message: string
 ): Promise<void> {
@@ -465,7 +465,7 @@ export function normalizeRemoteUrl(rawUrl: string): string {
  * @param git$ - Git executable path or command array.
  * @returns The name of the default remote, or null if no remotes exist.
  */
-export async function getDefaultRemoteName(git$: string | string[]): Promise<string | null> {
+export async function getDefaultRemoteName(git$: GdxContext['git$']): Promise<string | null> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.defaultRemoteName', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
@@ -511,7 +511,7 @@ export async function getDefaultRemoteName(git$: string | string[]): Promise<str
  * @param git$ - Git executable path or command array.
  * @returns The normalized remote URL, or null if no remote is found.
  */
-export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<string | null> {
+export async function getNormalizedRemoteUrl(git$: GdxContext['git$']): Promise<string | null> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.normalizedRemoteUrl', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
@@ -546,7 +546,7 @@ export async function getNormalizedRemoteUrl(git$: string | string[]): Promise<s
  * @param git$ - Git executable path or command array.
  * @returns The absolute path to the main worktree root directory.
  */
-export async function getMainWorktreeRoot(git$: string | string[]): Promise<string> {
+export async function getMainWorktreeRoot(git$: GdxContext['git$']): Promise<string> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.mainWorktreeRoot', getGitScope(git$));
    const cached = await cache.getOneOff<string>(cacheKey);
@@ -610,11 +610,39 @@ export async function getMainWorktreeRoot(git$: string | string[]): Promise<stri
  * @returns True if a cherry-pick is in progress, false otherwise.
  */
 export async function hasCherryPickInProgress(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    originPath: string
 ): Promise<boolean> {
    const cherryPickHeadPath = await getGitPath(git$, originPath, 'CHERRY_PICK_HEAD');
    return !!cherryPickHeadPath && fs.existsSync(cherryPickHeadPath);
+}
+
+/**
+ * Resolves a commit to a first-parent ref relative to HEAD.
+ * @param git$ - Git executable/context from GdxContext.
+ * @param commit - Full commit hash to describe.
+ * @param verifyAncestorship - Whether to verify that the commit is actually an ancestor of HEAD. If false, the function may return a relative ref that may not be poitning to the expected commit. This can happen if commit is on a different branch e.g. from merged history.
+ * @returns HEAD, HEAD~N, or undefined when the commit is not on HEAD's first-parent history.
+ */
+export async function resolveHeadRelativeCommitRef(
+   git$: GdxContext['git$'],
+   commit: string,
+   verifyAncestorship: boolean = true
+): Promise<string | undefined> {
+   const head = (await revParseCached(git$, ['--verify', 'HEAD']));
+   if (head === commit) return 'HEAD';
+
+   const distanceText = (await $`${git$} rev-list --first-parent --count ${`${commit}..HEAD`}`)
+      .stdout.trim();
+   const distance = Number(distanceText);
+   if (!Number.isInteger(distance) || distance < 1) return undefined;
+
+   if (!verifyAncestorship) {
+      return `HEAD~${distance}`;
+   }
+
+   const relativeCommit = await revParseCached(git$, ['--verify', `HEAD~${distance}^{commit}`]);
+   return relativeCommit === commit ? `HEAD~${distance}` : undefined;
 }
 
 /**
@@ -635,7 +663,7 @@ async function getInlineGitConfigMode(): Promise<InlineGitConfigMode> {
  * @returns Ordered list from lowest to highest precedence.
  */
 async function getGitConfigLookupFiles(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    repoPath: string
 ): Promise<string[]> {
    const files: string[] = [];
@@ -682,7 +710,7 @@ function getDefaultGlobalGitConfigPath(): string {
 }
 
 async function resolveGitConfigFilePath(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    repoPath: string,
    scope: GitConfigScope = 'local'
 ): Promise<string | null> {
@@ -819,11 +847,11 @@ function getGitConfigValueFromParsed(
    const subsection = parts.length > 2 ? parts.slice(1, -1).join('.') : null;
    const sectionCandidates = subsection
       ? [
-            `${section} "${subsection}"`,
-            `${section} "${subsection.replace(/\./g, '\\.')}"`,
-            `${section} '${subsection}'`,
-            `${section}.${subsection}`,
-         ]
+         `${section} "${subsection}"`,
+         `${section} "${subsection.replace(/\./g, '\\.')}"`,
+         `${section} '${subsection}'`,
+         `${section}.${subsection}`,
+      ]
       : [section];
 
    let sectionValue: unknown;
@@ -1030,7 +1058,7 @@ async function writeParsedGitConfigToFile(
  * @returns Resolved value or empty string.
  */
 export async function getGitConfigValue(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    configKey: string,
    repoPath?: string
 ): Promise<string> {
@@ -1068,7 +1096,7 @@ export async function getGitConfigValue(
  * @param options - Write options.
  */
 export async function setGitConfigValue(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    configKey: string,
    value: string,
    options?: GitConfigWriteOptions
@@ -1123,7 +1151,7 @@ export async function setGitConfigValue(
  * @param options - Unset options.
  */
 export async function unsetGitConfigValue(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    configKey: string,
    options?: GitConfigUnsetOptions
 ): Promise<void> {
@@ -1171,7 +1199,7 @@ export async function unsetGitConfigValue(
  * @returns Matching key/value entries.
  */
 export async function getGitConfigRegexp(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    keyPattern: string,
    options?: { repoPath?: string; filePath?: string }
 ): Promise<Array<{ key: string; value: string }>> {
@@ -1288,7 +1316,7 @@ function removeGitConfigSectionFromText(
  * @param sectionName - Section expression like submodule.foo.
  */
 export async function removeGitConfigSection(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    repoPath: string,
    sectionName: string
 ): Promise<void> {
@@ -1324,7 +1352,7 @@ export async function removeGitConfigSection(
  * @returns The git config value as a string, or empty string if not found.
  */
 export async function getGitConfigCached(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    configKey: string
 ): Promise<string> {
    const cache = await getCache();
@@ -1364,7 +1392,7 @@ export async function getGitConfigCached(
  * @returns Array of branch names.
  */
 export async function getGitBranchesCached(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    remote: boolean = false
 ): Promise<string[]> {
    const cache = await getCache();
@@ -1405,7 +1433,7 @@ export async function getGitBranchesCached(
  * @param git$ - Git executable reference.
  * @returns Array of tag names.
  */
-export async function getGitTagsCached(git$: string | string[]): Promise<string[]> {
+export async function getGitTagsCached(git$: GdxContext['git$']): Promise<string[]> {
    const cache = await getCache();
    const cacheKey = 'git.tags';
 
@@ -1441,7 +1469,7 @@ export async function getGitTagsCached(git$: string | string[]): Promise<string[
  * @returns True if the author exists, false otherwise.
  */
 export async function getGitAuthorExistsCached(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    email: string
 ): Promise<boolean> {
    const cache = await getCache();
@@ -1472,7 +1500,7 @@ export async function getGitAuthorExistsCached(
  * @param git$ - Git executable path or command array.
  * @returns The upstream ref (e.g., origin/main) or null if none is configured.
  */
-export async function getTrackedUpstreamRef(git$: string | string[]): Promise<string | null> {
+export async function getTrackedUpstreamRef(git$: GdxContext['git$']): Promise<string | null> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.trackedUpstreamRef', getGitScope(git$));
    const cached = await cache.getOneOff<string | null>(cacheKey);
@@ -1494,7 +1522,7 @@ export async function getTrackedUpstreamRef(git$: string | string[]): Promise<st
  * Gets git version, cached for the session.
  * Cache key: 'git.version'
  */
-export async function getGitVersionCached(git$: string | string[]): Promise<string> {
+export async function getGitVersionCached(git$: GdxContext['git$']): Promise<string> {
    const cache = await getCache();
    const cacheKey = 'git.version';
 
@@ -1525,7 +1553,7 @@ export async function getGitVersionCached(git$: string | string[]): Promise<stri
  * Gets git repository root, cached for the session.
  * Cache key: 'git.repoRoot'
  */
-export async function getRepoRootCached(git$: string | string[]): Promise<string> {
+export async function getRepoRootCached(git$: GdxContext['git$']): Promise<string> {
    const cache = await getCache();
    const cwd = process.cwd();
    const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
@@ -1580,7 +1608,7 @@ export function normalizeStatusPath(rawPath: string): string {
  * @param git$ - Git executable path or command array.
  * @returns A list of parsed worktree entries.
  */
-export async function getWorktreeList(git$: string | string[]): Promise<WorktreeEntry[]> {
+export async function getWorktreeList(git$: GdxContext['git$']): Promise<WorktreeEntry[]> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.worktreeList', getGitScope(git$));
    const cached = await cache.getOneOff<WorktreeEntry[]>(cacheKey);
@@ -1636,7 +1664,7 @@ export async function getWorktreeList(git$: string | string[]): Promise<Worktree
  * Useful after worktree add/remove operations.
  * @param git$ - Git executable path or command array.
  */
-export async function invalidateWorktreeListCache(git$: string | string[]): Promise<void> {
+export async function invalidateWorktreeListCache(git$: GdxContext['git$']): Promise<void> {
    const cache = await getCache();
    const cacheKey = createCacheKey('git.worktreeList', getGitScope(git$));
    await cache.deleteOneOff(cacheKey);
@@ -1649,7 +1677,7 @@ export async function invalidateWorktreeListCache(git$: string | string[]): Prom
  * @returns The matching entry or null if not found.
  */
 export async function getWorktreeEntry(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string
 ): Promise<WorktreeEntry | null> {
    const entries = await getWorktreeList(git$);
@@ -1661,7 +1689,7 @@ export async function getWorktreeEntry(
  * Prunes worktree metadata for missing directories.
  * @param git$ - Git executable path or command array.
  */
-export async function pruneWorktrees(git$: string | string[]): Promise<void> {
+export async function pruneWorktrees(git$: GdxContext['git$']): Promise<void> {
    try {
       await $`${git$} worktree prune --expire now`;
    } catch (err) {
@@ -1679,7 +1707,7 @@ export async function pruneWorktrees(git$: string | string[]): Promise<void> {
  * @returns The resolved absolute path or null if unavailable.
  */
 export async function getGitPath(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string,
    gitPath: string
 ): Promise<string | null> {
@@ -1825,7 +1853,7 @@ export async function getRevParseCached(
  * @returns A list of active operation labels.
  */
 export async function getWorktreeOperations(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string
 ): Promise<string[]> {
    const checks = [
@@ -2155,7 +2183,7 @@ async function cloneSubmoduleWithSeparateGitDir(
  * @param submodulePath - Relative path of the submodule in the superproject.
  */
 export async function addSubmodule(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string,
    submoduleUrl: string,
    submodulePath: string,
@@ -2254,7 +2282,7 @@ export async function addSubmodule(
  * @returns A list of submodule entries.
  */
 export async function getSubmodules(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string
 ): Promise<SubmoduleEntry[]> {
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
@@ -2362,7 +2390,7 @@ export async function getSubmodules(
 }
 
 export async function invalidateSubmodulesCache(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string
 ): Promise<void> {
    const cache = await getCache();
@@ -2379,7 +2407,7 @@ export async function invalidateSubmodulesCache(
  * @returns A list of dirty submodule paths.
  */
 export async function getDirtySubmodules(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string,
    submodules: SubmoduleEntry[]
 ): Promise<string[]> {
@@ -2427,7 +2455,7 @@ export async function getDirtySubmodules(
  * @param worktreePath - The worktree root path.
  */
 export async function deinitSubmodules(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string,
    options?: DeinitSubmoduleOptions
 ): Promise<void> {
@@ -2542,7 +2570,7 @@ export async function deinitSubmodules(
  * @param options - Update behavior options.
  */
 export async function updateSubmodules(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    worktreePath: string,
    options?: UpdateSubmoduleOptions
 ): Promise<void> {
@@ -2724,7 +2752,7 @@ export async function updateSubmodules(
  * @param git$ - Git executable path or command array.
  * @param worktreePath - The worktree root path.
  */
-export async function initSubmodules(git$: string | string[], worktreePath: string): Promise<void> {
+export async function initSubmodules(git$: GdxContext['git$'], worktreePath: string): Promise<void> {
    await updateSubmodules(git$, worktreePath, {
       recursive: true,
    });
@@ -2779,7 +2807,7 @@ function formatGitOutput(output: unknown): string {
  * @returns An array of unmerged file paths.
  */
 export async function getUnmergedPaths(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    originPath: string
 ): Promise<string[]> {
    try {
@@ -2799,7 +2827,7 @@ export async function getUnmergedPaths(
  * @param originPath - The path to the Git repository.
  */
 export async function stageResolvedConflicts(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    originPath: string
 ): Promise<void> {
    const unmergedPaths = await getUnmergedPaths(git$, originPath);
@@ -2815,7 +2843,7 @@ export async function stageResolvedConflicts(
  * @returns True if the cherry-pick is empty, false otherwise.
  */
 export async function isCherryPickEmpty(
-   git$: string | string[],
+   git$: GdxContext['git$'],
    originPath: string
 ): Promise<boolean> {
    const unmergedPaths = await getUnmergedPaths(git$, originPath);
@@ -2934,7 +2962,7 @@ export function forceColorArgs(): string[] {
  */
 export async function expandRelativeRef(
    args: ArgsSet,
-   git$: string | string[],
+   git$: GdxContext['git$'],
    startIdx: number = 0
 ): Promise<Result<void>> {
    for (let i = startIdx; i < args.length; i++) {
