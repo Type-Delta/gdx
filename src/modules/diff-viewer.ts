@@ -573,7 +573,7 @@ async function highlightDiffWithContext(
    if (codeLines.length === 0) return result;
 
    const newLines = codeLines.filter((line) => line.type !== 'delete');
-   const deletedLines = codeLines.filter((line) => line.type === 'delete');
+   const oldLines = codeLines.filter((line) => line.type !== 'add');
 
    try {
       const shiki = await getShiki();
@@ -583,8 +583,7 @@ async function highlightDiffWithContext(
             if (line.newLineNum !== undefined) changedLines.add(line.newLineNum);
          });
 
-         const fileContext = await readFileContext(diff.newFileName, changedLines, 20, workingDir);
-
+         const fileContext = await readFileContext(diff.newFileName, changedLines, 60, workingDir);
          const hasUsableContext = isFileContextCompatible(newLines, fileContext);
 
          Logger.debug(
@@ -628,12 +627,12 @@ async function highlightDiffWithContext(
          }
       }
 
-      if (deletedLines.length > 0) {
-         const code = deletedLines.map((line) => line.content).join('\n');
+      if (oldLines.length > 0) {
+         const code = oldLines.map((line) => line.content).join('\n');
          const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
          const highlightedLines = highlighted.split('\n');
-         for (let i = 0; i < deletedLines.length; i++) {
-            if (highlightedLines[i]) result.set(deletedLines[i], highlightedLines[i]);
+         for (let i = 0; i < oldLines.length; i++) {
+            if (highlightedLines[i]) result.set(oldLines[i], highlightedLines[i]);
          }
       }
    } catch (e) {
@@ -1071,7 +1070,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       return this.padLineWithBg(
          `${ncc('Dim') + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,
-         width + 1,
+         width,
          bgCode
       );
    }
