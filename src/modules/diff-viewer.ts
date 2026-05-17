@@ -1,6 +1,5 @@
 import { Err, estimateStrComplexity, ex_length, ncc, strLimit, strSlice, strWrap, yuString } from '@lib/Tools';
 import { CheckCache } from '@lib/Tools';
-import * as fs from '@/modules/fs';
 import type { ChangeObject } from 'diff';
 
 import {
@@ -16,10 +15,22 @@ import {
 } from './pager';
 import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
-import { spinner } from './shell';
-import { CATPPUCCIN_VPALETTE, EXTENSION_LANG_MAP, INLINE_DIFF_MERGE_DISTANCE, TUI_THEME } from '@/consts';
-import { DiffModule, ShikijsCliModule } from '@/common/types';
+import { $, spinner, SpinnerContoller } from './shell';
+import {
+   CATPPUCCIN_VPALETTE,
+   EXTENSION_LANG_MAP,
+   INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH,
+   INLINE_DIFF_MERGE_DISTANCE,
+   INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH,
+   TUI_THEME,
+   DIFF_HEADER_LINE_REGEX,
+   ANSI_SGR_REGEX,
+   DIFF_HEADER_TEXT_REGEX
+} from '@/consts';
+import { DiffModule, GdxContext, ShikijsCliModule } from '@/common/types';
 import { quickPrint } from '@/utils/utilities';
+import { getConfig } from '@/common/config';
+import { getCache } from '@/common/cache';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -28,16 +39,21 @@ const STYLES = {
    dim: (str: string) => `\x1b[2m${str}\x1b[22m`,
 };
 
-const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
-const DIFF_HEADER_TEXT_REGEX = /^diff --(git|cc|combined)\b/m;
-const ANSI_SGR_REGEX = /^\x1b\[[0-9;]*m/;
-
 /** Options for the diff viewer */
 export interface DiffViewerOptions extends PagerOptions {
    theme?: string;
    workingDir?: string;
    preambleLines?: string[];
    disableSyntaxHighlighting?: boolean;
+   git$?: GdxContext['git$'];
+   highlighting?: DiffHighlightingOptions;
+}
+
+interface DiffHighlightingOptions {
+   useAdditionalContext?: boolean;
+   maxHunkSize?: number;
+   oldRevision?: string;
+   newRevision?: string;
 }
 
 interface UnifiedPatchHunk {
@@ -82,6 +98,11 @@ interface AnsiCharToken {
    char: string;
 }
 
+interface HighlightedFullFileCacheEntry {
+   contentLength: number;
+   highlightedLines?: string[];
+}
+
 interface ParsedDiff {
    fileName: string;
    oldFileName: string;
@@ -106,19 +127,19 @@ async function getDiffLib(): Promise<DiffModule> {
 }
 
 /**
- * Compacts adjacent inline diff segments that have the same type.
+ * Defragments adjacent inline diff segments that have the same type.
  * @param segments - Inline segments to normalize.
- * @returns Compacted inline segments.
+ * @returns Defragmented inline segments.
  */
-function compactInlineSegments(segments: InlineDiffSegment[]): InlineDiffSegment[] {
-   const compacted: InlineDiffSegment[] = [];
+function defragInlineSegments(segments: InlineDiffSegment[]): InlineDiffSegment[] {
+   const defraged: InlineDiffSegment[] = [];
    for (const segment of segments) {
       if (!segment.value) continue;
-      const last = compacted[compacted.length - 1];
+      const last = defraged[defraged.length - 1];
       if (last && last.type === segment.type) last.value += segment.value;
-      else compacted.push({ ...segment });
+      else defraged.push({ ...segment });
    }
-   return compacted;
+   return defraged;
 }
 
 /**
@@ -167,19 +188,122 @@ function shouldMergeGap(changes: ChangeObject<string>[], index: number, maxGap: 
 /**
  * Creates mixed inline segments that include unchanged, deleted, and added chunks.
  * Used for compact single-line replacement rendering.
- * @param changes - Character-level diff changes.
+ *
+ * Also merges tiny unchanged regions in segments to "unchanged" segments to simulate character-level diff.
+ *
+ * @param changes - Word-level diff changes.
  * @returns Inline segments preserving both deleted and added chunks.
  */
 function buildMergedInlineSegments(changes: ChangeObject<string>[]): InlineDiffSegment[] {
-   const segments = changes.map((change, index) => {
-      const type = change.removed
-         ? ('delete' as const)
-         : change.added || shouldMergeGap(changes, index, INLINE_DIFF_MERGE_DISTANCE)
-            ? ('add' as const)
-            : ('same' as const);
-      return { type, value: change.value };
-   });
-   return compactInlineSegments(segments);
+   const segments: InlineDiffSegment[] = [];
+   let lastSegment: string | null = null;
+
+   for (let i = 0; i < changes.length; i++) {
+      const change = changes[i];
+      const length = change.value.length;
+
+      if (change.removed) {
+         if (lastSegment && lastSegment.length < length) {
+            if (change.value.startsWith(lastSegment)) {
+               segments.splice(i - 1, 1, {
+                  type: 'same',
+                  value: lastSegment
+               }, {
+                  type: 'delete',
+                  value: change.value.slice(lastSegment.length)
+               });
+               continue;
+            }
+            else if (change.value.endsWith(lastSegment)) {
+               segments.splice(i - 1, 1,
+                  {
+                     type: 'delete',
+                     value: change.value.slice(0, length - lastSegment.length)
+                  }, {
+                  type: 'same',
+                  value: lastSegment
+               });
+               continue;
+            }
+         }
+         else if (lastSegment && lastSegment.length > length) {
+            if (lastSegment.startsWith(change.value)) {
+               segments.splice(i - 1, 1, {
+                  type: 'same',
+                  value: change.value
+               }, {
+                  type: 'add',
+                  value: lastSegment.slice(length)
+               });
+               continue;
+            }
+            else if (lastSegment.endsWith(change.value)) {
+               segments.splice(i - 1, 1, {
+                  type: 'add',
+                  value: lastSegment.slice(0, lastSegment.length - length)
+               }, {
+                  type: 'same',
+                  value: change.value
+               });
+               continue;
+            }
+         }
+         lastSegment = change.value;
+         segments.push({ type: 'delete', value: change.value });
+         continue;
+      }
+      if (change.added) {
+         if (lastSegment && lastSegment.length < length) {
+            if (change.value.startsWith(lastSegment)) {
+               segments.splice(i - 1, 1, {
+                  type: 'same',
+                  value: lastSegment
+               }, {
+                  type: 'add',
+                  value: change.value.slice(lastSegment.length)
+               });
+               continue;
+            }
+            else if (change.value.endsWith(lastSegment)) {
+               segments.splice(i - 1, 1, {
+                  type: 'add',
+                  value: change.value.slice(0, length - lastSegment.length)
+               }, {
+                  type: 'same',
+                  value: lastSegment
+               });
+               continue;
+            }
+         }
+         else if (lastSegment && lastSegment.length > length) {
+            if (lastSegment.startsWith(change.value)) {
+               segments.splice(i - 1, 1, {
+                  type: 'same',
+                  value: change.value
+               }, {
+                  type: 'delete',
+                  value: lastSegment.slice(length)
+               });
+               continue;
+            }
+            else if (lastSegment.endsWith(change.value)) {
+               segments.splice(i - 1, 1, {
+                  type: 'delete',
+                  value: lastSegment.slice(0, lastSegment.length - length)
+               }, {
+                  type: 'same',
+                  value: change.value
+               });
+               continue;
+            }
+         }
+         lastSegment = change.value;
+         segments.push({ type: 'add', value: change.value });
+         continue;
+      }
+      segments.push({ type: 'same', value: change.value });
+   };
+   return defragInlineSegments(segments);
 }
 
 /**
@@ -208,7 +332,7 @@ function buildLineInlineSegments(
          segments.push({ type: 'same', value: change.value });
       }
    }
-   return compactInlineSegments(segments);
+   return defragInlineSegments(segments);
 }
 
 /**
@@ -219,12 +343,11 @@ function buildLineInlineSegments(
  * @return True to display in separate form, false to display in merged form.
  */
 function shouldDisplayMultiline(singleLineChanges: ChangeObject<string>[]): boolean {
-   const largestSegmentLen = 3;
    let sequenceLength = 0;
    for (const diff of singleLineChanges) {
-      if (sequenceLength > 2) return true;
+      if (sequenceLength > INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH) return true;
 
-      if (diff.count > largestSegmentLen) {
+      if (diff.count > INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH) {
          sequenceLength = 0;
          continue;
       }
@@ -237,7 +360,7 @@ function shouldDisplayMultiline(singleLineChanges: ChangeObject<string>[]): bool
       }
    }
 
-   return sequenceLength > 1;
+   return sequenceLength > INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH;
 }
 
 /**
@@ -283,7 +406,7 @@ function splitInlineSegmentsByLines(
    }
 
    for (let i = 0; i < result.length; i++) {
-      result[i] = compactInlineSegments(result[i]);
+      result[i] = defragInlineSegments(result[i]);
    }
 
    return result;
@@ -426,7 +549,14 @@ export async function printCommitMessageDiff(oldText: string, newText: string): 
    for (const line of renderedLines) quickPrint(line);
 }
 
-function parseDiffOutput(diffText: string): ParsedDiff[] {
+/**
+ * Parses unified diff text into structured data with file info and line-level changes.
+ * Designed to handle standard git diff formats, including combined diffs with multiple parents.
+ *
+ * @param diffText - Raw unified diff text to parse.
+ * @return Parsed diff data with file names, language, and line-level change info.
+ */
+export function parseDiffOutput(diffText: string): ParsedDiff[] {
    const results: ParsedDiff[] = [];
    const lines = diffText.split('\n');
    let currentDiff: ParsedDiff | null = null;
@@ -538,33 +668,11 @@ function parseDiffOutput(diffText: string): ParsedDiff[] {
    return results;
 }
 
-async function readFileContext(
-   filePath: string,
-   changedLines: Set<number>,
-   contextRadius: number,
-   workingDir?: string
-): Promise<Map<number, string>> {
-   const contextLines = new Map<number, string>();
-   if (changedLines.size === 0) return contextLines;
-   try {
-      const fullPath = workingDir ? `${workingDir}/${filePath}` : filePath;
-      const content = await fs.readFile(fullPath, 'utf-8');
-      const lines = content.split('\n');
-      const minLine = Math.max(0, Math.min(...changedLines) - contextRadius);
-      const maxLine = Math.min(lines.length - 1, Math.max(...changedLines) + contextRadius);
-      for (let i = minLine; i <= maxLine; i++) {
-         contextLines.set(i + 1, lines[i]);
-      }
-   } catch {
-      /* File might not exist */
-   }
-   return contextLines;
-}
-
 async function highlightDiffWithContext(
    diff: ParsedDiff,
    theme: string,
-   workingDir?: string
+   highlighting: Required<DiffHighlightingOptions>,
+   git$?: GdxContext['git$']
 ): Promise<Map<DiffLine, string>> {
    const result = new Map<DiffLine, string>();
    const codeLines = diff.lines.filter(
@@ -573,57 +681,46 @@ async function highlightDiffWithContext(
    if (codeLines.length === 0) return result;
 
    const newLines = codeLines.filter((line) => line.type !== 'delete');
-   const oldLines = codeLines.filter((line) => line.type !== 'add');
+   const oldLines = codeLines.filter((line) => !(line.type === 'add' || line.type === 'modify'));
 
    try {
       const shiki = await getShiki();
+      if (highlighting.useAdditionalContext && git$) {
+         await Promise.all([
+            highlightFullFileSide({
+               git$,
+               diff,
+               lines: newLines,
+               lineNumberKey: 'newLineNum',
+               path: diff.newFileName,
+               revision: highlighting.newRevision,
+               maxHunkSize: highlighting.maxHunkSize,
+               theme,
+               shiki,
+               result,
+            }),
+            highlightFullFileSide({
+               git$,
+               diff,
+               lines: oldLines,
+               lineNumberKey: 'oldLineNum',
+               path: diff.oldFileName,
+               revision: highlighting.oldRevision,
+               maxHunkSize: highlighting.maxHunkSize,
+               theme,
+               shiki,
+               result,
+            }),
+         ]);
+         return result;
+      }
+
       if (newLines.length > 0) {
-         const changedLines = new Set<number>();
-         newLines.forEach((line) => {
-            if (line.newLineNum !== undefined) changedLines.add(line.newLineNum);
-         });
-
-         const fileContext = await readFileContext(diff.newFileName, changedLines, 60, workingDir);
-         const hasUsableContext = isFileContextCompatible(newLines, fileContext);
-
-         Logger.debug(
-            `Highlighting diff for ${diff.newFileName} with ${codeLines.length} changed lines and ${fileContext.size} lines of context from FS`,
-            'diff-viewer'
-         );
-
-         if (fileContext.size > 0 && hasUsableContext) {
-            const minLine = Math.min(...fileContext.keys());
-            const maxLine = Math.max(...fileContext.keys());
-            const contextArray: string[] = [];
-            for (let i = minLine; i <= maxLine; i++) contextArray.push(fileContext.get(i) || '');
-
-            const highlighted = await shiki.codeToANSI(
-               contextArray.join('\n'),
-               diff.lang,
-               theme as never
-            );
-
-            const highlightedLines = highlighted.split('\n');
-            for (const line of newLines) {
-               const lineNum = line.newLineNum;
-               if (lineNum !== undefined) {
-                  const idx = lineNum - minLine;
-                  if (idx >= 0 && idx < highlightedLines.length)
-                     result.set(line, highlightedLines[idx]);
-               }
-            }
-         } else {
-            Logger.debug(
-               `No additional context from FS for ${diff.newFileName}, using what we have from git`,
-               'diff-viewer'
-            );
-
-            const code = newLines.map((line) => line.content).join('\n');
-            const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
-            const highlightedLines = highlighted.split('\n');
-            for (let i = 0; i < newLines.length; i++) {
-               if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
-            }
+         const code = newLines.map((line) => line.content).join('\n');
+         const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+         const highlightedLines = highlighted.split('\n');
+         for (let i = 0; i < newLines.length; i++) {
+            if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
          }
       }
 
@@ -645,19 +742,107 @@ async function highlightDiffWithContext(
    return result;
 }
 
-function isFileContextCompatible(lines: DiffLine[], fileContext: Map<number, string>): boolean {
-   if (fileContext.size === 0) return false;
+async function highlightFullFileSide(options: {
+   git$: GdxContext['git$'];
+   diff: ParsedDiff;
+   lines: DiffLine[];
+   lineNumberKey: 'oldLineNum' | 'newLineNum';
+   path: string;
+   revision: string;
+   maxHunkSize: number;
+   theme: string;
+   shiki: ShikijsCliModule;
+   result: Map<DiffLine, string>;
+}): Promise<void> {
+   const {
+      git$,
+      diff,
+      lines,
+      lineNumberKey,
+      path,
+      revision,
+      maxHunkSize,
+      theme,
+      shiki,
+      result
+   } = options;
+   if (lines.length === 0) return;
 
-   let checked = 0;
+   const highlightedFile = await getHighlightedFullFileLines({
+      git$,
+      path,
+      revision,
+      lang: diff.lang,
+      theme,
+      maxHunkSize,
+      shiki,
+   });
+   if (!highlightedFile) return;
 
-   for (const line of lines) {
-      if (line.newLineNum === undefined) continue;
-      const contextLine = fileContext.get(line.newLineNum);
-      if (contextLine === undefined || contextLine !== line.content) return false;
-      checked++;
+   if (highlightedFile.contentLength > maxHunkSize) {
+      Logger.debug(
+         `Skipping syntax highlighting for ${revision}:${path}; file size exceeds ${maxHunkSize} chars limit.`,
+         'diff-viewer'
+      );
+      return;
    }
 
-   return checked > 0;
+   for (const line of lines) {
+      const lineNum = line[lineNumberKey];
+      if (lineNum === undefined) continue;
+      const highlightedLine = highlightedFile.highlightedLines?.[lineNum - 1];
+      if (highlightedLine !== undefined) result.set(line, highlightedLine);
+   }
+}
+
+async function getHighlightedFullFileLines(options: {
+   git$: GdxContext['git$'];
+   path: string;
+   revision: string;
+   lang: BundledLanguage;
+   theme: string;
+   maxHunkSize: number;
+   shiki: ShikijsCliModule;
+}): Promise<HighlightedFullFileCacheEntry | null> {
+   const { git$, path, revision, lang, theme, maxHunkSize, shiki } = options;
+   const cache = await getCache();
+   const cacheKey = [
+      'diffViewer',
+      'highlightedFullFile',
+      Array.isArray(git$) && git$[1] ? encodeCacheKeyPart(git$[1]) : 'd',
+      encodeCacheKeyPart(revision),
+      encodeCacheKeyPart(path),
+      encodeCacheKeyPart(theme),
+   ].join('.');
+   const cached = await cache.getOneOff<HighlightedFullFileCacheEntry>(cacheKey);
+   if (cached) return cached;
+
+   let content: string;
+   try {
+      content = (await $`${git$} show ${`${revision}:${path}`}`).stdout;
+   } catch {
+      return null;
+   }
+
+   if (content.length > maxHunkSize) {
+      const entry = {
+         contentLength: content.length,
+      } satisfies HighlightedFullFileCacheEntry;
+      await cache.setOneOff(cacheKey, entry);
+      return entry;
+   }
+
+   const highlighted = await shiki.codeToANSI(content, lang, theme as never);
+   const entry = {
+      contentLength: content.length,
+      highlightedLines: highlighted.split('\n'),
+   } satisfies HighlightedFullFileCacheEntry;
+   await cache.setOneOff(cacheKey, entry);
+   return entry;
+}
+
+function encodeCacheKeyPart(value: string): string {
+   return Buffer.from(value).toString('base64url');
 }
 
 export class DiffViewerRenderer implements PagerRenderer {
@@ -704,8 +889,23 @@ export class DiffViewerRenderer implements PagerRenderer {
          showStatus: true,
          preambleLines: [],
          disableSyntaxHighlighting: false,
+         git$: undefined,
+         highlighting: {
+            useAdditionalContext: true,
+            maxHunkSize: 200000,
+            oldRevision: 'HEAD^',
+            newRevision: 'HEAD',
+            ...options.highlighting,
+         },
          ...options,
       } as Required<DiffViewerOptions>;
+      this.options.highlighting = {
+         useAdditionalContext: true,
+         maxHunkSize: 200000,
+         oldRevision: 'HEAD^',
+         newRevision: 'HEAD',
+         ...this.options.highlighting,
+      };
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + yuString(this.options));
 
       this.lastWidth = getTerminalWidth();
@@ -722,7 +922,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       this.updateRenderedLines();
    }
 
-   async prepareHighlighting(): Promise<void> {
+   async prepareHighlighting(spinnerCtrl?: SpinnerContoller): Promise<void> {
       await Logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
 
       if (this.options.disableSyntaxHighlighting) {
@@ -730,6 +930,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          return;
       }
 
+      const highlightPromises: Promise<void>[] = [];
       for (const diff of this.parsedDiffs) {
          const codeLines = diff.lines.filter(
             (l) =>
@@ -739,16 +940,23 @@ export class DiffViewerRenderer implements PagerRenderer {
                l.type === 'modify'
          );
          if (codeLines.length === 0) continue;
-         const highlightedMap = await highlightDiffWithContext(
+         const prom = highlightDiffWithContext(
             diff,
             this.options.theme,
-            this.options.workingDir
-         );
-         codeLines.forEach((line) => {
-            const highlighted = highlightedMap.get(line);
-            if (highlighted !== undefined) line.highlightedContent = highlighted;
-         });
+            this.options.highlighting as Required<DiffHighlightingOptions>,
+            this.options.git$
+         )
+            .then((highlightedMap) => {
+               codeLines.forEach((line) => {
+                  const highlighted = highlightedMap.get(line);
+                  if (highlighted !== undefined) line.highlightedContent = highlighted;
+               });
+            });
+         highlightPromises.push(prom);
       }
+
+      spinnerCtrl?.setMessage('Highlighting diffs...');
+      await Promise.all(highlightPromises);
       Logger.time('Post-processing after highlighting', () => this.updateRenderedLines());
       // fs.writeFileSync('parsed-diffs-debug.json', JSON.stringify(this.parsedDiffs.map(l =>
       //    l.lines
@@ -787,9 +995,11 @@ export class DiffViewerRenderer implements PagerRenderer {
       if (!hasReplacementBlock) return;
 
       let diffChars: DiffModule['diffChars'] | undefined;
+      let diffWordsWithSpace: DiffModule['diffWordsWithSpace'] | undefined;
       try {
          const diffLib = await getDiffLib();
          diffChars = diffLib.diffChars;
+         diffWordsWithSpace = diffLib.diffWordsWithSpace;
       } catch (e) {
          this.logger.warn(`Inline diff module failed to load: ${Err.from(e)}`);
          return;
@@ -833,7 +1043,7 @@ export class DiffViewerRenderer implements PagerRenderer {
             if (isSingleLineReplacement) {
                const oldLine = deletedLines[0];
                const newLine = addedLines[0];
-               changes = diffChars(oldLine.content, newLine.content);
+               changes = diffWordsWithSpace(oldLine.content, newLine.content);
                const inlineSegments = buildMergedInlineSegments(changes);
                deletedText = oldLine.content;
                addedText = newLine.content;
@@ -1206,22 +1416,29 @@ export async function viewDiff(
       return pager(diffText, { ...options, showLineNumbers: false });
    }
 
-   const spinnerCtrl =
-      diffText.length > 10000
-         ? spinner({
-            message: 'Preparing diff viewer...',
-            interval: 10,
-         })
-         : undefined;
+   const spinnerCtrl = spinner({
+      message: diffText.length > 10000 ? 'Preparing diff viewer...' : undefined,
+      interval: 10,
+   });
 
    const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);
+   const config = await getConfig();
+   const highlightingConfig = {
+      useAdditionalContext: config.get<boolean>('viewer.highlighting.useAdditionalContext', true),
+      maxHunkSize: config.get<number>('viewer.highlighting.maxHunkSize', 200000),
+      ...options.highlighting,
+   };
 
    Logger.time('Preparing diff highlighting');
-   const renderer = new DiffViewerRenderer(diffBody, { ...options, preambleLines });
-   await renderer.prepareHighlighting();
+   const renderer = new DiffViewerRenderer(diffBody, {
+      ...options,
+      preambleLines,
+      highlighting: highlightingConfig,
+   });
+   await renderer.prepareHighlighting(spinnerCtrl);
    clearTerminalCache();
    renderer.onResize(getTerminalWidth(), getTerminalHeight());
-   spinnerCtrl?.stop();
+   spinnerCtrl.stop();
    Logger.timeEnd('Preparing diff highlighting', 'diff-viewer');
 
    return pagerWithRenderer(renderer, options);
@@ -1233,8 +1450,6 @@ export async function viewDiff(
 export function isGitDiffOutput(text: string): boolean {
    return DIFF_HEADER_TEXT_REGEX.test(text);
 }
-
-export { parseDiffOutput };
 
 function parseDiffHeader(
    line: string

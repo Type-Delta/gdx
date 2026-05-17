@@ -112,6 +112,10 @@ export const SENSITIVE_CONTENTS_REGEXES = [
    /-----\s*BEGIN PRIVATE KEY\s*-----/i,
 ];
 
+export const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
+export const DIFF_HEADER_TEXT_REGEX = /^diff --(git|cc|combined)\b/m;
+export const ANSI_SGR_REGEX = /^\x1b\[[0-9;]*m/;
+
 export const EXTENSION_LANG_MAP: Record<string, string> = {
    ts: 'typescript',
    tsx: 'tsx',
@@ -265,7 +269,32 @@ export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
 export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
 
 // Diff viewer constants
+/**
+ * Determines distance in which nearby changes of the same type will be merged into a single change, consuming "same" (unchanged) changes in between. This is to prevent fragmentation of changes into many tiny changes when there are multiple nearby changes separated by small unchanged regions.
+ *
+ * The higher this value, less fragmented the diff will be.
+ */
 export const INLINE_DIFF_MERGE_DISTANCE = 7;
+/**
+ * A group of changes can be displayed in two ways:
+ * 1. As a single "modify" line, where deleted and added changes are shown as a single line with the old content replaced by the new content.
+ * 2. As separate "delete" and "add" lines, where the deleted line shows the old content and the added line shows the new content.
+ *
+ * This threshold determines is part of parameters for deciding which way to display a group of changes. It determines number of "added" and "removed" (deleted) segments that can be close to each other (within the distance defined by INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH). In short, it determines how sophisticated the diff can be to display as a single "modify" line.
+ *
+ * The higher this value, the denser the add/remove segments can be together, resulting in more "modify" lines and less separate "add"/"delete" lines.
+ */
+export const INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH = 3;
+/**
+ * A group of changes can be displayed in two ways:
+ * 1. As a single "modify" line, where deleted and added changes are shown as a single line with the old content replaced by the new content.
+ * 2. As separate "delete" and "add" lines, where the deleted line shows the old content and the added line shows the new content.
+ *
+ * This threshold determines is part of parameters for deciding which way to display a group of changes. It determines the maximum length to be considered the same sequence as previous segments. Segments larger that this number will break the sequence because it pushes the changes farther apart, making it less dense.
+ *
+ * The higher this value, the longer the segments can be to still be considered part of the same sequence, resulting in more "modify" lines and less separate "add"/"delete" lines.
+ */
+export const INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH = 7;
 
 // Commit guideline learning constants
 export const COMMIT_HEADER_SAMPLE_LIMIT = 50;

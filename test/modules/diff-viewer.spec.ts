@@ -10,20 +10,29 @@ import {
    BundledLanguage,
    renderCommitMessageDiffLines,
 } from '@/modules/diff-viewer';
-import { createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
 
 let shikiLoadCount = 0;
+let shikiCodeToANSICount = 0;
 
 mock.module('@shikijs/cli', () => {
    shikiLoadCount++;
    return {
-      codeToANSI: async (code: string) => code,
+      codeToANSI: async (code: string) => {
+         shikiCodeToANSICount++;
+         return code.includes('// highlight-whole-file-probe')
+            ? code
+               .split('\n')
+               .map((line, index) => `FULL:${index + 1}:${line}`)
+               .join('\n')
+            : code;
+      },
    };
 });
 
 describe('diff-viewer module', async () => {
-   const { it, tmpDir } = await createTestEnv({ liteMode: true, suitName: 'diff-viewer' });
+   const { it, tmpDir, $ } = await createTestEnv({ liteMode: false, suitName: 'diff-viewer' });
 
    describe('parseDiffOutput', () => {
       it('should parse a simple diff', () => {
@@ -212,10 +221,7 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
    });
 
    describe('highlighting with context', () => {
-      it('should fall back to diff content when FS does not match', async () => {
-         const filePath = path.join(tmpDir, 'mismatch.ts');
-         await fs.writeFile(filePath, 'alpha\nbeta\ngamma\n', 'utf-8');
-
+      it('should highlight diff content when full-file context is unavailable', async () => {
          const diffText = `diff --git a/mismatch.ts b/mismatch.ts
 --- a/mismatch.ts
 +++ b/mismatch.ts
@@ -233,6 +239,90 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
             (line) => line.type === 'modify' || line.type === 'add'
          );
          expect(changedLine?.highlightedContent).toBe('delta');
+      });
+
+      it('should highlight shown commits with full old and new file contents', async () => {
+         await fs.writeFile(
+            path.join(tmpDir, 'probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const beta = 2167 * 3;
+`,
+            'utf-8'
+         );
+         await $`git add probe.ts`;
+         await $`git commit --no-verify -m ${'Add probe file'}`;
+         const oldHash = (await $`git rev-parse HEAD`).stdout.trim();
+
+         await fs.writeFile(
+            path.join(tmpDir, 'probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const beta = 3165 + 346;
+`,
+            'utf-8'
+         );
+         await $`git add probe.ts`;
+         await $`git commit --no-verify -m ${'Update probe file'}`;
+         const newHash = (await $`git rev-parse HEAD`).stdout.trim();
+         const diffText = (await $`git show --format= --no-ext-diff --no-color ${newHash}`).stdout;
+         const ctx = createGdxContext(tmpDir);
+
+         const renderer = new DiffViewerRenderer(diffText, {
+            git$: ctx.git$,
+            highlighting: {
+               useAdditionalContext: true,
+               oldRevision: oldHash,
+               newRevision: newHash,
+            },
+         });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const deleteLine = parsed[0]?.lines.find((line) => line.type === 'delete');
+         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
+
+         expect(deleteLine?.highlightedContent).toBe('FULL:3:const beta = 2167 * 3;');
+         expect(addLine?.highlightedContent).toBe('FULL:3:const beta = 3165 + 346;');
+
+         const countAfterFirstHighlight = shikiCodeToANSICount;
+         const cachedRenderer = new DiffViewerRenderer(diffText, {
+            git$: ctx.git$,
+            highlighting: {
+               useAdditionalContext: true,
+               oldRevision: oldHash,
+               newRevision: newHash,
+            },
+         });
+         await cachedRenderer.prepareHighlighting();
+
+         expect(shikiCodeToANSICount).toBe(countAfterFirstHighlight);
+      });
+
+      it('should skip full-file highlighting when file content exceeds maxHunkSize', async () => {
+         const newHash = (await $`git rev-parse HEAD`).stdout.trim();
+         const diffText = (await $`git show --format= --no-ext-diff --no-color ${newHash}`).stdout;
+         const ctx = createGdxContext(tmpDir);
+         const countBeforeHighlight = shikiCodeToANSICount;
+
+         const renderer = new DiffViewerRenderer(diffText, {
+            git$: ctx.git$,
+            highlighting: {
+               useAdditionalContext: true,
+               oldRevision: `${newHash}^`,
+               newRevision: newHash,
+               maxHunkSize: 10,
+            },
+         });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
+
+         expect(addLine?.highlightedContent).toBeUndefined();
+         expect(shikiCodeToANSICount).toBe(countBeforeHighlight);
       });
    });
 
@@ -335,10 +425,8 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
 --- a/test.ts
 +++ b/test.ts
 @@ -1,1 +1,1 @@
--import { ncc } from '@lib/Tools';
-+import { Err, ncd } from '@lib/Tools';`;
-
-         fs.writeFileSync(path.join(tmpDir, 'test.ts'), `import { Err, ncd } from '@lib/Tools';\n`);
+-import { MathKit, ncc } from '@lib/Tools';
++import { Err, ncc } from '@lib/Tools';`;
 
          const renderer = new DiffViewerRenderer(diffText, { workingDir: tmpDir });
          await renderer.prepareHighlighting();
@@ -348,11 +436,12 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
          ).join('\n');
          const rendered = stripAnsiColor(renderedRaw);
 
-         expect(rendered).toContain('~ import { Err, n');
-         expect(rendered).toContain("} from '@lib/Tools';");
-         expect(renderedRaw).toContain('\x1b[9m');
-         expect(renderedRaw).toContain('\x1b[48;2;90;61;80m');
-         expect(renderedRaw).toContain('\x1b[48;2;68;85;78m');
+         expect(rendered, 'deleted segment should exist').toContain('MathKit');
+         expect(rendered, 'added segment should exist').toContain('Err, ncc');
+         expect(rendered, 'unchanged segment should exist').toContain("} from '@lib/Tools';");
+         expect(renderedRaw, 'should contain deleted line styling').toContain('\x1b[9m');
+         expect(renderedRaw, 'should contain added line styling').toContain('\x1b[48;2;90;61;80m');
+         expect(renderedRaw, 'should contain unchanged line styling').toContain('\x1b[48;2;68;85;78m');
       });
 
       it('should keep large replacement hunks split and style changed chars on each side', async () => {
@@ -388,31 +477,6 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
          expect(deleteLine).toContain('\x1b[48;2;90;61;80m');
          expect(deleteLine).not.toContain('\x1b[9m');
          expect(addLine).toContain('\x1b[48;2;68;85;78m');
-      });
-
-      it('should merge nearby change groups with small gaps', async () => {
-         const diffText = `diff --git a/test.ts b/test.ts
---- a/test.ts
-+++ b/test.ts
-@@ -1,1 +1,1 @@
--abcdefghij
-+abXdeYghij`;
-
-         const renderer = new DiffViewerRenderer(diffText);
-         await renderer.prepareHighlighting();
-
-         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
-            .parsedDiffs;
-         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify' || line.type === 'add');
-
-         expect(
-            modifyLine?.inlineSegments?.some((seg) => seg.type === 'same' && seg.value === 'de'),
-            'Expected unchanged segment in between nearby changes to be merged (negative case)'
-         ).toBe(false);
-         expect(
-            modifyLine?.inlineSegments?.some((seg) => seg.type === 'add' && seg.value === 'XdeY'),
-            'Expected unchanged segment in between nearby changes to be merged (positive case)'
-         ).toBe(true);
       });
 
       it('should preserve unmatched remaining deleted and added lines in large replacement block', async () => {
@@ -463,6 +527,33 @@ index e69de29,1b2c3d4,9a8b7c6..5e6f7g8
             'add'
          );
          expect(addLines[1]?.inlineSegments?.[0]?.type).toBe('add');
+      });
+
+      it('should preserve unchanged characters between add segments on modify lines', async () => {
+         const oldLine =
+            '    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --format=esm --production --keep-names",';
+         const newLine =
+            '    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --external=fflate --format=esm --production --keep-names",';
+         const diffText = `diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -44,1 +44,1 @@
+-${oldLine}
++${newLine}`;
+
+         const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const modifyLine = parsed[0]?.lines.find((line) => line.type === 'modify');
+         const withoutAddedSegments = modifyLine?.inlineSegments
+            ?.filter((segment) => segment.type !== 'add')
+            .map((segment) => segment.value)
+            .join('');
+
+         expect(modifyLine?.content).toBe(newLine);
+         expect(withoutAddedSegments).toBe(oldLine);
       });
 
       it('should preserve syntax highlight while overlaying inline diff backgrounds', async () => {

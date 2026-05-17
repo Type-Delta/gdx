@@ -33,6 +33,12 @@ export interface GdxConfig {
       init?: string;
       envPaths?: string;
    };
+   viewer?: {
+      highlighting?: {
+         useAdditionalContext?: boolean;
+         maxHunkSize?: number;
+      };
+   };
    defaultEditor: string;
    enhancedOutput?: boolean;
    useInlineSubmodule?: 'off' | 'internal' | 'all';
@@ -88,6 +94,12 @@ export const DEFAULT_CONFIG: GdxConfig = {
       init: 'submodule,env',
       envPaths: '',
    },
+   viewer: {
+      highlighting: {
+         useAdditionalContext: true,
+         maxHunkSize: 200000,
+      },
+   },
    defaultEditor: 'code',
    enhancedOutput: true,
    useInlineSubmodule: 'internal',
@@ -115,6 +127,8 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    'parallel.init': 'GDX_PARALLEL_INIT',
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
+   'viewer.highlighting.useAdditionalContext': 'GDX_VIEWER_HIGHLIGHTING_USE_ADDITIONAL_CONTEXT',
+   'viewer.highlighting.maxHunkSize': 'GDX_VIEWER_HIGHLIGHTING_MAX_HUNK_SIZE',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
    useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
@@ -152,6 +166,12 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       'Comma-separated list specifying what to init for new forks (submodule, env, pkg)',
    'parallel.envPaths':
       'Colon-separated list of .gitignore patterns for env files to copy into new forks',
+   viewer: 'Configuration for enhanced terminal viewers',
+   'viewer.highlighting': 'Configuration for syntax highlighting in enhanced viewers',
+   'viewer.highlighting.useAdditionalContext':
+      'Highlight diffs by loading full old/new file contents from git object history when commit refs are available',
+   'viewer.highlighting.maxHunkSize':
+      'Maximum full file size in characters to syntax-highlight when additional context is enabled',
    defaultEditor: 'Default code editor to open files with',
    enhancedOutput:
       "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",

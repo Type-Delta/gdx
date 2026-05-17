@@ -316,6 +316,11 @@ async function viewShowCommit(
                action: SHOW_NEXT_COMMIT_ACTION,
             },
          ],
+         git$: ctx.git$,
+         highlighting: {
+            oldRevision: `${commit}^`,
+            newRevision: commit,
+         },
       });
    } catch (e) {
       spinnerCtrl?.stop();
