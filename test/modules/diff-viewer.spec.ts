@@ -300,7 +300,7 @@ const beta = 3165 + 346;
          expect(shikiCodeToANSICount).toBe(countAfterFirstHighlight);
       });
 
-      it('should skip full-file highlighting when file content exceeds maxHunkSize', async () => {
+      it('should fall back to diff-context highlighting when file content exceeds maxHunkSize', async () => {
          const newHash = (await $`git rev-parse HEAD`).stdout.trim();
          const diffText = (await $`git show --format= --no-ext-diff --no-color ${newHash}`).stdout;
          const ctx = createGdxContext(tmpDir);
@@ -321,8 +321,8 @@ const beta = 3165 + 346;
             .parsedDiffs;
          const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
 
-         expect(addLine?.highlightedContent).toBeUndefined();
-         expect(shikiCodeToANSICount).toBe(countBeforeHighlight);
+         expect(addLine?.highlightedContent).toBe('FULL:3:const beta = 3165 + 346;');
+         expect(shikiCodeToANSICount).toBeGreaterThan(countBeforeHighlight);
       });
    });
 

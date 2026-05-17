@@ -1,5 +1,14 @@
-import { Err, estimateStrComplexity, ex_length, ncc, strLimit, strSlice, strWrap, yuString } from '@lib/Tools';
-import { CheckCache } from '@lib/Tools';
+import {
+   Err,
+   estimateStrComplexity,
+   ex_length,
+   ncc,
+   strLimit,
+   strSlice,
+   strWrap,
+   yuString,
+   CheckCache,
+} from '@lib/Tools';
 import type { ChangeObject } from 'diff';
 
 import {
@@ -102,6 +111,8 @@ interface HighlightedFullFileCacheEntry {
    contentLength: number;
    highlightedLines?: string[];
 }
+
+type FullFileHighlightResult = 'highlighted' | 'unavailable' | 'limited';
 
 interface ParsedDiff {
    fileName: string;
@@ -686,7 +697,7 @@ async function highlightDiffWithContext(
    try {
       const shiki = await getShiki();
       if (highlighting.useAdditionalContext && git$) {
-         await Promise.all([
+         const fullFileResults = await Promise.all([
             highlightFullFileSide({
                git$,
                diff,
@@ -712,26 +723,16 @@ async function highlightDiffWithContext(
                result,
             }),
          ]);
+
+         if (fullFileResults.includes('limited')) {
+            result.clear();
+            await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
+         }
+
          return result;
       }
 
-      if (newLines.length > 0) {
-         const code = newLines.map((line) => line.content).join('\n');
-         const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
-         const highlightedLines = highlighted.split('\n');
-         for (let i = 0; i < newLines.length; i++) {
-            if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
-         }
-      }
-
-      if (oldLines.length > 0) {
-         const code = oldLines.map((line) => line.content).join('\n');
-         const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
-         const highlightedLines = highlighted.split('\n');
-         for (let i = 0; i < oldLines.length; i++) {
-            if (highlightedLines[i]) result.set(oldLines[i], highlightedLines[i]);
-         }
-      }
+      await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
    } catch (e) {
       Logger.error(
          `Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`,
@@ -742,6 +743,44 @@ async function highlightDiffWithContext(
    return result;
 }
 
+/**
+ * Highlights only the lines present in the parsed diff.
+ * @param options - Diff context lines and highlighter dependencies.
+ */
+async function highlightDiffContextLines(options: {
+   diff: ParsedDiff;
+   theme: string;
+   shiki: ShikijsCliModule;
+   newLines: DiffLine[];
+   oldLines: DiffLine[];
+   result: Map<DiffLine, string>;
+}): Promise<void> {
+   const { diff, theme, shiki, newLines, oldLines, result } = options;
+
+   if (newLines.length > 0) {
+      const code = newLines.map((line) => line.content).join('\n');
+      const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+      const highlightedLines = highlighted.split('\n');
+      for (let i = 0; i < newLines.length; i++) {
+         if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
+      }
+   }
+
+   if (oldLines.length > 0) {
+      const code = oldLines.map((line) => line.content).join('\n');
+      const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+      const highlightedLines = highlighted.split('\n');
+      for (let i = 0; i < oldLines.length; i++) {
+         if (highlightedLines[i]) result.set(oldLines[i], highlightedLines[i]);
+      }
+   }
+}
+
+/**
+ * Highlights diff lines by looking them up in syntax-highlighted full-file content.
+ * @param options - Full-file lookup and highlighter dependencies.
+ * @returns Whether the side was highlighted, unavailable, or over the size limit.
+ */
 async function highlightFullFileSide(options: {
    git$: GdxContext['git$'];
    diff: ParsedDiff;
@@ -753,7 +792,7 @@ async function highlightFullFileSide(options: {
    theme: string;
    shiki: ShikijsCliModule;
    result: Map<DiffLine, string>;
-}): Promise<void> {
+}): Promise<FullFileHighlightResult> {
    const {
       git$,
       diff,
@@ -766,7 +805,7 @@ async function highlightFullFileSide(options: {
       shiki,
       result
    } = options;
-   if (lines.length === 0) return;
+   if (lines.length === 0) return 'unavailable';
 
    const highlightedFile = await getHighlightedFullFileLines({
       git$,
@@ -777,14 +816,14 @@ async function highlightFullFileSide(options: {
       maxHunkSize,
       shiki,
    });
-   if (!highlightedFile) return;
+   if (!highlightedFile) return 'unavailable';
 
    if (highlightedFile.contentLength > maxHunkSize) {
       Logger.debug(
          `Skipping syntax highlighting for ${revision}:${path}; file size exceeds ${maxHunkSize} chars limit.`,
          'diff-viewer'
       );
-      return;
+      return 'limited';
    }
 
    for (const line of lines) {
@@ -793,6 +832,8 @@ async function highlightFullFileSide(options: {
       const highlightedLine = highlightedFile.highlightedLines?.[lineNum - 1];
       if (highlightedLine !== undefined) result.set(line, highlightedLine);
    }
+
+   return 'highlighted';
 }
 
 async function getHighlightedFullFileLines(options: {
@@ -1196,7 +1237,9 @@ export class DiffViewerRenderer implements PagerRenderer {
 
             if (lastStyles) splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
             rendered.push(this.padLineWithBg(g + bgRgb(bgCode) + splitted[i], width, gutterBgCode));
-            if (i !== splitted.length - 1) lastStyles = inferAnsiStyles(splitted[i]);
+            // v we put gutter here because the color of the sign should be consistent across wrapped lines.
+            // Sign color are design to leak into the content color that acts as default text color for that line.
+            if (i !== splitted.length - 1) lastStyles = inferAnsiStyles(g + splitted[i]);
          }
       } else {
          rendered.push(
