@@ -11,7 +11,7 @@ import { _2PointGradient } from '@/modules/graphics';
 import * as fs from '@/modules/fs';
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
-import { CacheStructure, ZCacheStructure } from '@/common/schema';
+import { assertSchema, CacheStructure, ZCacheStructure } from '@/common/schema';
 import litedent from '@/utils/litedent';
 
 
@@ -244,7 +244,7 @@ async function loadCacheFile(): Promise<CacheStructure | null> {
       const parsed = JSON.parse(content) as CacheStructure;
 
       try {
-         ZCacheStructure(parsed); // Validate structure and types
+         assertSchema(ZCacheStructure, parsed); // Validate structure and types
       }
       catch {
          return null;

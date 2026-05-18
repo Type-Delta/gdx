@@ -5,6 +5,7 @@ import { Err } from '@lib/Tools';
 
 import { INFINITE_TTL_EXPIRES_AT, getCache } from '@/common/cache';
 import {
+   assertSchema,
    type LanguageRecord,
    type StoredLanguageCatalog,
    ZStoredLanguageCatalog,
@@ -90,7 +91,7 @@ export function inferLanguageFromPath(
    const filename = path.basename(filePath);
 
    // First check for exact filename match (e.g. "Makefile")
-   const byFilename = catalog.languages.find((lang) => lang.filenames.includes(filename));
+   const byFilename = catalog.languages.find((lang) => lang.filenames?.includes(filename));
    if (byFilename) return byFilename;
 
    // Then check for extension match (e.g. ".js")
@@ -213,7 +214,7 @@ function removeConflictingExtensions(languages: LanguageRecord[]): LanguageRecor
 
    const sanitized: LanguageRecord[] = [];
    for (const language of languages) {
-      if (LANGUAGE_WHITELIST.includes(language.id)) {
+      if (language.id !== undefined && LANGUAGE_WHITELIST.includes(language.id)) {
          sanitized.push(language);
          continue;
       }
@@ -299,7 +300,7 @@ function parseColorToDecimal(colorInput: unknown): number | null {
  */
 function parseStoredLanguageCatalog(value: unknown): StoredLanguageCatalog | null {
    try {
-      return ZStoredLanguageCatalog(value);
+      return assertSchema(ZStoredLanguageCatalog, value);
    } catch {
       return null;
    }

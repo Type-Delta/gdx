@@ -14,7 +14,7 @@ import {
 } from '@/consts';
 import Logger from '@/utils/logger';
 import { getConfig } from '../config';
-import { CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
+import { assertSchema, CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
 
 const DEFAULT_CACHE: CacheStructure = {
    meta: {
@@ -153,7 +153,7 @@ export class CacheService {
 
          try {
             // Check version mismatch (auto-invalidate on cache version & structure change)
-            ZCacheStructure(parsed); // Validate structure and types
+            assertSchema(ZCacheStructure, parsed); // Validate structure and types
          } catch {
             this.logger.warn(
                'Cache file structure is outdated or invalid. Cache will be reset on next write.'

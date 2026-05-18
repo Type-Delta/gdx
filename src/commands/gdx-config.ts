@@ -3,7 +3,7 @@ import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
-import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
+import { coerceConfigStringValue, CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
@@ -20,8 +20,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       ncc('Dim') +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         ncc()
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      ncc()
    );
 
    for (const { key } of flatDefaults) {
@@ -131,81 +131,19 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   // Try to parse value based on expected type
-   const defaultValue = config.get(key);
-   let parsedValue: any = value;
-
-   // TODO: make a proper schema validation
-   if (key === 'useInlineSubmodule') {
-      const allowed = ['off', 'internal', 'all'];
-      if (!allowed.includes(value)) {
-         Logger.error(
-            `Expected one of ${allowed.join(', ')} for '${key}', got '${value}'`,
-            'gdx-config'
-         );
-         return 1;
-      }
+   const parsed = coerceConfigStringValue(key, value);
+   if (!parsed.ok) {
+      Logger.error('Validation failed: ' + parsed.message, 'gdx-config');
+      return 1;
    }
 
-   if (key === 'useInlineGitConfig') {
-      const allowed = ['off', 'internal'];
-      if (!allowed.includes(value)) {
-         Logger.error(
-            `Expected one of ${allowed.join(', ')} for '${key}', got '${value}'`,
-            'gdx-config'
-         );
-         return 1;
-      }
-   }
-
-   if (typeof defaultValue === 'number') {
-      const num = Number(value);
-      if (isNaN(num)) {
-         Logger.error(`Expected a number for '${key}', got '${value}'`, 'gdx-config');
-         return 1;
-      }
-      parsedValue = num;
-   } else if (Array.isArray(defaultValue)) {
-      let parsedArray: unknown;
-      try {
-         parsedArray = JSON.parse(value);
-      } catch {
-         Logger.error(
-            `Expected a JSON array for '${key}', got '${value}'. Example: ["**/*.foo"]`,
-            'gdx-config'
-         );
-         return 1;
-      }
-
-      if (!Array.isArray(parsedArray)) {
-         Logger.error(
-            `Expected a JSON array for '${key}', got '${value}'. Example: ["**/*.foo"]`,
-            'gdx-config'
-         );
-         return 1;
-      }
-
-      const defaultElementType = defaultValue.find((entry) => entry != null);
-      if (typeof defaultElementType === 'string') {
-         const hasNonString = parsedArray.some((entry) => typeof entry !== 'string');
-         if (hasNonString) {
-            Logger.error(`Expected all array values for '${key}' to be strings.`, 'gdx-config');
-            return 1;
-         }
-      }
-
-      parsedValue = parsedArray;
-   } else if (typeof defaultValue === 'boolean') {
-      parsedValue = value.toLowerCase() === 'true';
-   }
-
-   await config.set(key, parsedValue);
+   await config.set(key, parsed.value);
    await config.save();
 
    // Mask API key in output
    const displayValue = key.toLowerCase().includes('key')
-      ? strClamp(String(parsedValue), 20, 'mid', -1)
-      : parsedValue;
+      ? strClamp(String(parsed.value), 20, 'mid', -1)
+      : parsed.value;
 
    quickPrint(`${ncc('Green')}Configuration updated: ${key} = ${displayValue}${ncc()}`);
    return 0;

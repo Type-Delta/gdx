@@ -1,40 +1,58 @@
-import * as bd from 'banditypes';
+import { Type, type Static, type TSchema } from '@sinclair/typebox/type';
+import { Value } from '@sinclair/typebox/value';
 
 import { GDX_CACHE_SCHEMA_VERSION } from '@/consts';
 
-const ZCacheMetadata = bd.object({
-   version: bd.string(),
-   cacheSchemaVersion: bd.enums([GDX_CACHE_SCHEMA_VERSION]), // single value enum is literal
-   createdAt: bd.number(),
-   updatedAt: bd.number(),
-   lastPruneAt: bd.number(),
+/**
+ * Asserts that a value matches a TypeBox schema.
+ *
+ * @param schema - TypeBox schema to validate against.
+ * @param value - Unknown value to validate.
+ * @returns The validated value typed from the schema.
+ */
+export function assertSchema<T extends TSchema>(schema: T, value: unknown): Static<T> {
+   if (Value.Check(schema, value)) {
+      return value as Static<T>;
+   }
+
+   const firstError = [...Value.Errors(schema, value)][0];
+   const path = firstError?.path ? `${firstError.path}: ` : '';
+   throw new Error(`${path}${firstError?.message ?? 'Value does not match schema'}`);
+}
+
+const ZCacheMetadata = Type.Object({
+   version: Type.String(),
+   cacheSchemaVersion: Type.Literal(GDX_CACHE_SCHEMA_VERSION),
+   createdAt: Type.Number(),
+   updatedAt: Type.Number(),
+   lastPruneAt: Type.Number(),
 });
 
-const ZCacheEntryMetadata = bd.object({
-   createdAt: bd.number(),
-   updatedAt: bd.number(),
-   expiresAt: bd.number(),
+const ZCacheEntryMetadata = Type.Object({
+   createdAt: Type.Number(),
+   updatedAt: Type.Number(),
+   expiresAt: Type.Number(),
 });
-export type CacheEntryMetadata = bd.Infer<typeof ZCacheEntryMetadata>;
+export type CacheEntryMetadata = Static<typeof ZCacheEntryMetadata>;
 
-export const ZLanguageRecord = bd.object({
-   name: bd.string(),
-   extensions: bd.array(bd.string()),
-   filenames: bd.array(bd.string()),
-   color: bd.number(),
-   id: bd.number(),
+export const ZLanguageRecord = Type.Object({
+   name: Type.String(),
+   extensions: Type.Array(Type.String()),
+   filenames: Type.Optional(Type.Array(Type.String())),
+   color: Type.Number(),
+   id: Type.Optional(Type.Number()),
 });
-export type LanguageRecord = bd.Infer<typeof ZLanguageRecord>;
+export type LanguageRecord = Static<typeof ZLanguageRecord>;
 
-export const ZStoredLanguageCatalog = bd.object({
-   lastUpdatedAt: bd.string(),
-   languages: bd.array(ZLanguageRecord),
+export const ZStoredLanguageCatalog = Type.Object({
+   lastUpdatedAt: Type.String(),
+   languages: Type.Array(ZLanguageRecord),
 });
-export type StoredLanguageCatalog = bd.Infer<typeof ZStoredLanguageCatalog>;
+export type StoredLanguageCatalog = Static<typeof ZStoredLanguageCatalog>;
 
-export const ZCacheStructure = bd.object({
+export const ZCacheStructure = Type.Object({
    meta: ZCacheMetadata,
-   data: bd.record(bd.unknown()),
-   entryMeta: bd.record(ZCacheEntryMetadata),
+   data: Type.Record(Type.String(), Type.Unknown()),
+   entryMeta: Type.Record(Type.String(), ZCacheEntryMetadata),
 });
-export type CacheStructure = bd.Infer<typeof ZCacheStructure>;
+export type CacheStructure = Static<typeof ZCacheStructure>;

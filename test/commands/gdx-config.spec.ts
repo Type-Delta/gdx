@@ -99,6 +99,20 @@ describe('gdx gdx-config', async () => {
       expect(config.get<string[]>('commit.noisyFiles', [])).toEqual(['**/*.foo']);
    });
 
+   it('should validate comma-separated parallel.init values', async () => {
+      const setCtx = createGdxContext(tmpDir, ['gdx-config', 'parallel.init', 'submodule,env,pkg']);
+      expect(await gdxConfig(setCtx)).toBe(0);
+
+      const config = await getConfig();
+      expect(config.get<string>('parallel.init')).toBe('submodule,env,pkg');
+   });
+
+   it('should reject unknown comma-separated parallel.init values', async () => {
+      const invalidCtx = createGdxContext(tmpDir, ['gdx-config', 'parallel.init', 'submodule,nope']);
+      expect(await gdxConfig(invalidCtx)).toBe(1);
+      expect(buffer.stderr).toContain("Invalid value for 'parallel.init'");
+   });
+
    it('should handle invalid keys gracefully', async () => {
       const ctx = createGdxContext(tmpDir, ['gdx-config', 'invalid.key']);
       const result = await gdxConfig(ctx);

@@ -3,7 +3,14 @@ import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 import * as fs from '@/modules/fs';
-import { GdxConfig, DEFAULT_CONFIG, ENV_MAPPINGS } from './schema';
+import {
+   coerceConfigStringValue,
+   DEFAULT_CONFIG,
+   ENV_MAPPINGS,
+   GdxConfig,
+   getConfigValueSchema,
+   validateConfigValue,
+} from './schema';
 import { CONFIG_PATH, KEYCHAIN_SERVICE, LEGACY_CONFIG_PATH, SECURE_CONF_KEYS } from '@/consts';
 import { Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
@@ -149,6 +156,12 @@ export class ConfigService {
     * Secure keys are stored in the system keychain instead of the config file.
     */
    async set(keyPath: string, value: any): Promise<void> {
+      const validation = validateConfigValue(keyPath, value);
+      if (!validation.valid) {
+         this.logger.warn(`${validation.message ?? `Invalid value for '${keyPath}'.`} Ignoring value.`);
+         return;
+      }
+
       const keys = keyPath.split('.');
       let target: any = this.config;
 
@@ -161,24 +174,6 @@ export class ConfigService {
       }
 
       const lastKey = keys[keys.length - 1];
-
-      // Validate type against default config
-      const defaultValue = this.get(keyPath);
-      if (defaultValue !== undefined) {
-         if (defaultValue === null) {
-            if (value !== null && typeof value !== 'string') {
-               this.logger.warn(
-                  `Type mismatch for '${keyPath}'. Expected string or null, got ${typeof value}. Ignoring value.`
-               );
-               return;
-            }
-         } else if (typeof value !== typeof defaultValue) {
-            this.logger.warn(
-               `Type mismatch for '${keyPath}'. Expected ${typeof defaultValue}, got ${typeof value}. Ignoring value.`
-            );
-            return;
-         }
-      }
 
       // If this is a secure key, store it in keychain
       if (SECURE_CONF_KEYS.includes(keyPath)) {
@@ -251,8 +246,9 @@ export class ConfigService {
             const currentPath = path ? `${path}.${key}` : key;
             const sourceValue = source[key];
             const targetValue = target[key];
+            const valueSchema = getConfigValueSchema(currentPath);
 
-            if (targetValue === undefined) {
+            if (!valueSchema) {
                // Unknown key - silently ignore
                continue;
             }
@@ -274,20 +270,13 @@ export class ConfigService {
                   );
                }
             } else {
-               if (targetValue === null) {
-                  if (sourceValue === null || typeof sourceValue === 'string') {
-                     target[key] = sourceValue;
-                  } else {
-                     this.logger.warn(
-                        `Type mismatch for '${currentPath}'. Expected string or null, got ${typeof sourceValue}. Ignoring value.`
-                     );
-                  }
-               } else if (typeof sourceValue !== typeof targetValue) {
-                  this.logger.warn(
-                     `Type mismatch for '${currentPath}'. Expected ${typeof targetValue}, got ${typeof sourceValue}. Ignoring value.`
-                  );
-               } else {
+               const validation = validateConfigValue(currentPath, sourceValue);
+               if (validation.valid) {
                   target[key] = sourceValue;
+               } else {
+                  this.logger.warn(
+                     `${validation.message ?? `Invalid value for '${currentPath}'.`} Ignoring value.`
+                  );
                }
             }
          }
@@ -342,43 +331,13 @@ export class ConfigService {
       for (const [keyPath, envVar] of Object.entries(ENV_MAPPINGS)) {
          const envValue = process.env[envVar];
          if (envValue !== undefined) {
-            const defaultValue = this.get(keyPath);
-            let parsedValue: any = envValue;
-
-            // Try to parse based on expected type
-            if (defaultValue === null) {
-               parsedValue = envValue;
-            } else if (Array.isArray(defaultValue)) {
-               try {
-                  const parsed = JSON.parse(envValue);
-                  if (!Array.isArray(parsed)) {
-                     this.logger.warn(
-                        `Environment variable ${envVar} must be a JSON array. Ignoring.`
-                     );
-                     continue;
-                  }
-                  parsedValue = parsed;
-               } catch {
-                  this.logger.warn(
-                     `Environment variable ${envVar} has invalid JSON array value '${envValue}'. Ignoring.`
-                  );
-                  continue;
-               }
-            } else if (typeof defaultValue === 'number') {
-               const num = Number(envValue);
-               if (!isNaN(num)) {
-                  parsedValue = num;
-               } else {
-                  this.logger.warn(
-                     `Environment variable ${envVar} has invalid number value '${envValue}'. Ignoring.`
-                  );
-                  continue;
-               }
-            } else if (typeof defaultValue === 'boolean') {
-               parsedValue = envValue.toLowerCase() === 'true';
+            const parsed = coerceConfigStringValue(keyPath, envValue);
+            if (!parsed.ok) {
+               this.logger.warn(`Environment variable ${envVar}: ${parsed.message}. Ignoring.`);
+               continue;
             }
 
-            this.set(keyPath, parsedValue);
+            this.set(keyPath, parsed.value);
          }
       }
    }
