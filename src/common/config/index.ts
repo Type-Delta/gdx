@@ -2,18 +2,17 @@
 import path from 'path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
+import { Err } from '@lib/Tools';
+
 import * as fs from '@/modules/fs';
 import {
-   coerceConfigStringValue,
    DEFAULT_CONFIG,
    ENV_MAPPINGS,
    GdxConfig,
-   getConfigValueSchema,
-   validateConfigValue,
 } from './schema';
 import { CONFIG_PATH, KEYCHAIN_SERVICE, LEGACY_CONFIG_PATH, SECURE_CONF_KEYS } from '@/consts';
-import { Err } from '@lib/Tools';
 import Logger from '@/utils/logger';
+import { coerceConfigStringValue, getConfigValueSchema, validateConfigValue } from '@/modules/typebox';
 
 type KeytarApi = {
    getPassword(service: string, account: string): Promise<string | null>;
@@ -143,7 +142,7 @@ export class ConfigService {
          } catch (err) {
             this.logger.warn(
                `Failed to load secure key '${keyPath}' from keychain:\n` +
-                  Err.from(err).toString({ color: true })
+               Err.from(err).toString({ color: true })
             );
          }
       }
@@ -183,7 +182,7 @@ export class ConfigService {
          } catch (err) {
             this.logger.warn(
                `Failed to save secure key '${keyPath}' to keychain:\n` +
-                  Err.from(err).toString({ color: true })
+               Err.from(err).toString({ color: true })
             );
          }
       }

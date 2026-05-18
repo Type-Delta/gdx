@@ -1,4 +1,4 @@
-import { FormatRegistry } from '@sinclair/typebox/type';
+import { FormatRegistry } from '@/modules/typebox';
 
 const PARALLEL_INIT_VALUES = ['submodule', 'env', 'pkg'] as const;
 

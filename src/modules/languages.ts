@@ -5,7 +5,6 @@ import { Err } from '@lib/Tools';
 
 import { INFINITE_TTL_EXPIRES_AT, getCache } from '@/common/cache';
 import {
-   assertSchema,
    type LanguageRecord,
    type StoredLanguageCatalog,
    ZStoredLanguageCatalog,
@@ -19,6 +18,7 @@ import {
 } from '@/consts';
 import Logger from '@/utils/logger';
 import { SpinnerContoller } from './shell';
+import { assertSchema } from './typebox';
 
 type YamlParser = typeof yaml;
 

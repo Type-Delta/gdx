@@ -14,7 +14,8 @@ import {
 } from '@/consts';
 import Logger from '@/utils/logger';
 import { getConfig } from '../config';
-import { assertSchema, CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
+import { CacheEntryMetadata, CacheStructure, ZCacheStructure } from '../schema';
+import { assertSchema } from '@/modules/typebox';
 
 const DEFAULT_CACHE: CacheStructure = {
    meta: {

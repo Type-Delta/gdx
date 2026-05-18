@@ -3,13 +3,14 @@ import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
-import { coerceConfigStringValue, CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
+import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
+import { coerceConfigStringValue } from '@/modules/typebox';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
