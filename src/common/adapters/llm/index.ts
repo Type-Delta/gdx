@@ -14,9 +14,9 @@ export async function getLLMProvider(): Promise<LLMProvider> {
       return new MockLLMAdapter(
          providerType === 'mock'
             ? {
-                 responseDelayMs: 2300,
-                 streamDelayMs: 10,
-              }
+               responseDelayMs: 2300,
+               streamDelayMs: 10,
+            }
             : {}
       );
    }
@@ -36,13 +36,19 @@ export async function getLLMProvider(): Promise<LLMProvider> {
    }
 
    switch (providerType.toLowerCase()) {
-      case 'openrouter':
-         return new OpenAIAdapter(apiKey, OPENROUTER_API_BASE, model, {
+      case 'openrouter': {
+         const adapter = new OpenAIAdapter(apiKey, OPENROUTER_API_BASE, model, {
             'HTTP-Referer': 'https://github.com/Type-Delta/gdx/tree/main',
             'X-Title': 'GDX',
          });
-      case 'openai':
-         return new OpenAIAdapter(apiKey, undefined, model);
+         await adapter.initClient();
+         return adapter;
+      }
+      case 'openai': {
+         const adapter = new OpenAIAdapter(apiKey, undefined, model);
+         await adapter.initClient();
+         return adapter;
+      }
       default:
          throw new Err(`Unsupported LLM provider: ${providerType}`, 'UNSUPPORTED_LLM_PROVIDER');
    }

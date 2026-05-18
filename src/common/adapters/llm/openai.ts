@@ -1,11 +1,18 @@
-import OpenAI from 'openai';
+import type OpenAI from 'openai';
 import { Err, isError } from '@lib/Tools';
 
 import { LLMProvider, LLMRequest, OpenAICouldHaveReasoningChunk, StreamChunk } from './types';
 
+let OpenAIModule: Awaited<typeof import('openai')>['default'] | null = null;
+
 export class OpenAIAdapter implements LLMProvider {
-   private client: OpenAI;
+   private client?: OpenAI;
    private defaultModel: string;
+   private options: {
+      apiKey: string,
+      baseURL?: string;
+      defaultHeaders?: Record<string, string>;
+   } | undefined;
 
    constructor(
       apiKey: string,
@@ -13,15 +20,28 @@ export class OpenAIAdapter implements LLMProvider {
       defaultModel: string = 'gpt-5-nano',
       defaultHeaders?: Record<string, string>
    ) {
-      this.client = new OpenAI({
+      this.options = {
          apiKey,
          baseURL,
          defaultHeaders,
-      });
+      };
       this.defaultModel = defaultModel;
    }
 
+   async initClient(): Promise<void> {
+      if (!OpenAIModule) {
+         const importedModule = await import('openai');
+         OpenAIModule = importedModule.default;
+      }
+
+      this.client = new OpenAIModule(this.options);
+      this.options = undefined;
+   }
+
    async generate(request: LLMRequest): Promise<string> {
+      if (!this.client) {
+         throw new Err('OpenAI client not initialized. Call initClient() before using.', 'DEVELOPER_ERROR');
+      }
       const completion = await this.client.chat.completions.create({
          messages: [{ role: 'user', content: request.prompt }],
          model: request.model || this.defaultModel,
@@ -35,6 +55,9 @@ export class OpenAIAdapter implements LLMProvider {
 
    async *streamGenerate(request: LLMRequest): AsyncGenerator<StreamChunk> {
       try {
+         if (!this.client) {
+            throw new Err('OpenAI client not initialized. Call initClient() before using.', 'DEVELOPER_ERROR');
+         }
          const stream = await this.client.chat.completions.create({
             messages: [{ role: 'user', content: request.prompt }],
             model: request.model || this.defaultModel,
