@@ -108,7 +108,10 @@ const revParseRepoRootCache = new Map<string, string>();
 type GitRevParseFeatureScope = 'workspace' | 'gitPath' | 'head' | 'upstream' | 'refs';
 
 const REV_PARSE_OPTIONS_WITH_VALUE = new Set(['--git-path']);
-const gitConfigFileCache = new Map<string, { mtime: number | null; content: Record<string, unknown> }>();
+const gitConfigFileCache = new Map<
+   string,
+   { mtime: number | null; content: Record<string, unknown> }
+>();
 
 function createCacheKey(prefix: string, scope: string): string {
    const hash = crypto.createHash('sha1').update(scope).digest('hex');
@@ -629,11 +632,12 @@ export async function resolveHeadRelativeCommitRef(
    commit: string,
    verifyAncestorship: boolean = true
 ): Promise<string | undefined> {
-   const head = (await revParseCached(git$, ['--verify', 'HEAD']));
+   const head = await revParseCached(git$, ['--verify', 'HEAD']);
    if (head === commit) return 'HEAD';
 
-   const distanceText = (await $`${git$} rev-list --first-parent --count ${`${commit}..HEAD`}`)
-      .stdout.trim();
+   const distanceText = (
+      await $`${git$} rev-list --first-parent --count ${`${commit}..HEAD`}`
+   ).stdout.trim();
    const distance = Number(distanceText);
    if (!Number.isInteger(distance) || distance < 1) return undefined;
 
@@ -672,8 +676,8 @@ async function getGitConfigLookupFiles(
       const systemPath = process.env.GIT_CONFIG_SYSTEM?.trim()
          ? process.env.GIT_CONFIG_SYSTEM
          : process.platform === 'win32'
-            ? 'C:/ProgramData/Git/config'
-            : '/etc/gitconfig';
+           ? 'C:/ProgramData/Git/config'
+           : '/etc/gitconfig';
       files.push(systemPath);
    }
 
@@ -785,7 +789,10 @@ async function readParsedGitConfig(configFilePath: string): Promise<Record<strin
    try {
       const content = await fs.readFile(resolvedPath, 'utf-8');
       const parserSafeContent = preprocessGitConfigForIniParser(content);
-      const parsed = parseIni(parserSafeContent, { bracketedArray: false }) as Record<string, unknown>;
+      const parsed = parseIni(parserSafeContent, { bracketedArray: false }) as Record<
+         string,
+         unknown
+      >;
       gitConfigFileCache.set(resolvedPath, { mtime, content: parsed });
       return parsed;
    } catch {
@@ -847,11 +854,11 @@ function getGitConfigValueFromParsed(
    const subsection = parts.length > 2 ? parts.slice(1, -1).join('.') : null;
    const sectionCandidates = subsection
       ? [
-         `${section} "${subsection}"`,
-         `${section} "${subsection.replace(/\./g, '\\.')}"`,
-         `${section} '${subsection}'`,
-         `${section}.${subsection}`,
-      ]
+           `${section} "${subsection}"`,
+           `${section} "${subsection.replace(/\./g, '\\.')}"`,
+           `${section} '${subsection}'`,
+           `${section}.${subsection}`,
+        ]
       : [section];
 
    let sectionValue: unknown;
@@ -862,14 +869,23 @@ function getGitConfigValueFromParsed(
 
    if (sectionValue === undefined) return null;
 
-   if (subsection && typeof sectionValue === 'object' && sectionValue && !Array.isArray(sectionValue)) {
-      const maybeNested = getCaseInsensitiveProperty(sectionValue as Record<string, unknown>, subsection);
+   if (
+      subsection &&
+      typeof sectionValue === 'object' &&
+      sectionValue &&
+      !Array.isArray(sectionValue)
+   ) {
+      const maybeNested = getCaseInsensitiveProperty(
+         sectionValue as Record<string, unknown>,
+         subsection
+      );
       if (maybeNested !== undefined) {
          sectionValue = maybeNested;
       }
    }
 
-   if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue)) return null;
+   if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue))
+      return null;
    const raw = getCaseInsensitiveProperty(sectionValue as Record<string, unknown>, key);
    return toGitConfigString(raw);
 }
@@ -902,7 +918,8 @@ function flattenParsedGitConfigEntries(
    const entries: Array<{ key: string; value: string }> = [];
 
    for (const [rawSection, sectionValue] of Object.entries(parsedConfig)) {
-      if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue)) continue;
+      if (!sectionValue || typeof sectionValue !== 'object' || Array.isArray(sectionValue))
+         continue;
 
       const parsedSection = parseGitIniSectionKey(rawSection);
       const sectionObj = sectionValue as Record<string, unknown>;
@@ -923,7 +940,9 @@ function flattenParsedGitConfigEntries(
    return entries;
 }
 
-function splitGitConfigKey(configKey: string): { section: string; key: string; subsection: string | null } | null {
+function splitGitConfigKey(
+   configKey: string
+): { section: string; key: string; subsection: string | null } | null {
    const parts = configKey
       .split('.')
       .map((part) => part.trim())
@@ -1067,7 +1086,8 @@ export async function getGitConfigValue(
 
    if (mode === 'off') {
       try {
-         const { stdout } = await $`${resolved.gitExec} -C ${resolved.repoPath} config ${configKey}`;
+         const { stdout } =
+            await $`${resolved.gitExec} -C ${resolved.repoPath} config ${configKey}`;
          return stdout.trim();
       } catch {
          return '';
@@ -1129,7 +1149,9 @@ export async function setGitConfigValue(
       bracketedArray: false,
    }) as Record<string, unknown>;
 
-   const updated = updateParsedGitConfigValue(parsed, configKey, value, { add: options?.add === true });
+   const updated = updateParsedGitConfigValue(parsed, configKey, value, {
+      add: options?.add === true,
+   });
    if (!updated) {
       throw new Err(`Invalid config key '${configKey}'.`);
    }
@@ -2237,9 +2259,9 @@ export async function addSubmodule(
    const gitMarker = path.join(submoduleRepoPath, '.git');
    const markerIsDirectory = fs.existsSync(gitMarker)
       ? await fs
-         .stat(gitMarker)
-         .then((stat) => stat.isDirectory())
-         .catch(() => false)
+           .stat(gitMarker)
+           .then((stat) => stat.isDirectory())
+           .catch(() => false)
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
       await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
@@ -2655,9 +2677,9 @@ export async function updateSubmodules(
       const gitMarker = path.join(submoduleRepoPath, '.git');
       const markerIsDirectory = fs.existsSync(gitMarker)
          ? await fs
-            .stat(gitMarker)
-            .then((stat) => stat.isDirectory())
-            .catch(() => false)
+              .stat(gitMarker)
+              .then((stat) => stat.isDirectory())
+              .catch(() => false)
          : false;
 
       if (!fs.existsSync(gitMarker) || markerIsDirectory) {
@@ -2752,7 +2774,10 @@ export async function updateSubmodules(
  * @param git$ - Git executable path or command array.
  * @param worktreePath - The worktree root path.
  */
-export async function initSubmodules(git$: GdxContext['git$'], worktreePath: string): Promise<void> {
+export async function initSubmodules(
+   git$: GdxContext['git$'],
+   worktreePath: string
+): Promise<void> {
    await updateSubmodules(git$, worktreePath, {
       recursive: true,
    });

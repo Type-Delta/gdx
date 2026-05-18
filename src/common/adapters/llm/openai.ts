@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { Err, isError } from '@lib/Tools';
+
 import { LLMProvider, LLMRequest, OpenAICouldHaveReasoningChunk, StreamChunk } from './types';
 
 export class OpenAIAdapter implements LLMProvider {

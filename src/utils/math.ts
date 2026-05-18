@@ -21,7 +21,12 @@
  * range(5, undefined, 1, { x: 0, y: 0 }); // returns [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]
  */
 // Overloads (order matters): function overload first to ensure correct inference
-export function range<R>(start: number, stop: number | undefined, step: number | undefined, fill: (i: number) => R): R[];
+export function range<R>(
+   start: number,
+   stop: number | undefined,
+   step: number | undefined,
+   fill: (i: number) => R
+): R[];
 export function range(start: number, stop?: number, step?: number): number[];
 export function range<T = number>(start: number, stop?: number, step?: number, fill?: T): T[];
 export function range(start: number, stop?: number, step: number = 1, fill?: unknown): unknown[] {
@@ -30,19 +35,17 @@ export function range(start: number, stop?: number, step: number = 1, fill?: unk
       start = 0;
    }
 
-   if (step === 0) throw new Error('Step parameter cannot be zero as it would create an infinite loop.');
+   if (step === 0)
+      throw new Error('Step parameter cannot be zero as it would create an infinite loop.');
 
    const result: unknown[] = [];
    for (let i = start; i < stop; i += step) {
       let fillValue: unknown = i;
 
       if (fill !== undefined) {
-         if (fill === null)
-            fillValue = null;
-         else if (typeof fill === 'function')
-            fillValue = fill(i);
-         else if (typeof fill === 'object')
-            fillValue = { ...(fill as object) };
+         if (fill === null) fillValue = null;
+         else if (typeof fill === 'function') fillValue = fill(i);
+         else if (typeof fill === 'object') fillValue = { ...(fill as object) };
          else fillValue = fill;
       }
 

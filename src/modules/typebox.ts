@@ -46,7 +46,6 @@ export const Value = {
    Errors,
 } as const;
 
-
 export interface ConfigValidationResult {
    valid: boolean;
    message?: string;
@@ -65,8 +64,9 @@ export function getConfigValueSchema(keyPath: string): TSchema | undefined {
    let schema: TSchema | undefined = GdxConfigSchema;
 
    for (const key of keyPath.split('.')) {
-      const properties: Record<string, TSchema> | undefined = (schema as ObjectSchemaLike | undefined)
-         ?.properties;
+      const properties: Record<string, TSchema> | undefined = (
+         schema as ObjectSchemaLike | undefined
+      )?.properties;
       schema = properties?.[key];
       if (!schema) return undefined;
    }
@@ -202,5 +202,7 @@ function getSchemaVariants(schema: TSchema): TSchema[] {
 
 function acceptsNull(schema: TSchema): boolean {
    if ((schema as { type?: string }).type === 'null') return true;
-   return getSchemaVariants(schema).some((variant) => (variant as { type?: string }).type === 'null');
+   return getSchemaVariants(schema).some(
+      (variant) => (variant as { type?: string }).type === 'null'
+   );
 }

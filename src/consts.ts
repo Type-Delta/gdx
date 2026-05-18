@@ -5,6 +5,7 @@ import { RgbVec } from './modules/graphics';
 
 import pkg from '../package.json';
 import { inferBool } from './utils/utilities';
+import { ncc } from '@lib/Tools';
 
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 
@@ -71,6 +72,30 @@ export const CATPPUCCIN_VPALETTE = {
    cyan: [148, 226, 213],
    lavender: [180, 190, 254],
 } as const satisfies Record<string, RgbVec>;
+
+export const SGR = {
+   reset: ncc(),
+   normal: ncc('Normal'),
+
+   black: ncc('Black'),
+   white: ncc('White'),
+   red: ncc('Red'),
+   green: ncc('Green'),
+   yellow: ncc('Yellow'),
+   blue: ncc('Blue'),
+   magenta: ncc('Magenta'),
+   cyan: ncc('Cyan'),
+
+   dim: ncc('Dim'),
+   italic: ncc('Italic'),
+   bright: ncc('Bright'),
+   invert: ncc('Invert'),
+   underline: ncc('Underline'),
+
+   bgWhite: ncc('BgWhite'),
+   bgRed: ncc('BgRed'),
+   bgYellow: ncc('BgYellow'),
+} as const satisfies Record<string, string>;
 
 // from unicode-animations package. value prerendered for performance
 export const DEFAULT_SPINNER: readonly string[] = [
@@ -258,7 +283,7 @@ export const KNOWN_GIT_FAULT_FILE_HEURISTICS = [
    '.jpg',
    '.jpeg',
    '.gif',
-]
+];
 
 // Language catalog constants
 export const LANGUAGE_SOURCE_URL =

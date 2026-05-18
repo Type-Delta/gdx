@@ -5,12 +5,13 @@ import {
    syncMacrosToCache,
    isFilePath,
 } from '@/modules/macro';
-import { Err, ncc, strWrap } from '@lib/Tools';
+import { Err, strWrap } from '@lib/Tools';
+
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
-import { EXECUTABLE_NAME, GDX_VPALETTE } from '@/consts';
+import { EXECUTABLE_NAME, GDX_VPALETTE, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import litedent from '@/utils/litedent';
@@ -151,9 +152,9 @@ async function macroSet(ctx: GdxContext): Promise<number> {
       await cache.set('macro.all', macros, { maxAgeMinutes: 1440 });
 
       if (isOverwrite) {
-         quickPrint(ncc('Yellow') + `Macro '${name}' updated.` + ncc());
+         quickPrint(SGR.yellow + `Macro '${name}' updated.` + SGR.reset);
       } else {
-         quickPrint(ncc('Green') + `Macro '${name}' created.` + ncc());
+         quickPrint(SGR.green + `Macro '${name}' created.` + SGR.reset);
       }
 
       return 0;
@@ -179,18 +180,18 @@ async function macroList(): Promise<number> {
       const names = Object.keys(macros);
 
       if (names.length === 0) {
-         quickPrint(ncc('Dim') + 'No macros defined.' + ncc());
+         quickPrint(SGR.dim + 'No macros defined.' + SGR.reset);
          return 0;
       }
 
-      quickPrint(ncc('Cyan') + ncc('Bright') + 'Macros:' + ncc());
+      quickPrint(SGR.cyan + SGR.bright + 'Macros:' + SGR.reset);
 
       for (const name of names.sort()) {
          const script = macros[name];
          const preview = script.length > 80 ? script.substring(0, 77) + '...' : script;
          // Replace newlines with space for single-line display
          const previewOneLine = preview.replace(/\s+/g, ' ');
-         quickPrint(`  ${ncc('Green')}${name}${ncc()}: ${ncc('Dim')}${previewOneLine}${ncc()}`);
+         quickPrint(`  ${SGR.green}${name}${SGR.reset}: ${SGR.dim}${previewOneLine}${SGR.reset}`);
       }
 
       return 0;
@@ -229,7 +230,7 @@ async function macroDrop(ctx: GdxContext): Promise<number> {
       const cache = await getCache();
       await cache.set('macro.all', macros, { maxAgeMinutes: 1440 });
 
-      quickPrint(ncc('Yellow') + `Macro '${name}' deleted.` + ncc());
+      quickPrint(SGR.yellow + `Macro '${name}' deleted.` + SGR.reset);
       return 0;
    } catch (err) {
       const error = Err.from(err);
@@ -245,7 +246,7 @@ async function macroDrop(ctx: GdxContext): Promise<number> {
 async function macroSync(): Promise<number> {
    try {
       await syncMacrosToCache();
-      quickPrint(ncc('Green') + 'Macros synced to cache.' + ncc());
+      quickPrint(SGR.green + 'Macros synced to cache.' + SGR.reset);
       return 0;
    } catch (err) {
       const error = Err.from(err);
@@ -263,32 +264,29 @@ export default macro;
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('MACRO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('MACRO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Define reusable gdx command sequences.
 
-         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Macros are stored and executed by name:
-         ${cyan}${EXECUTABLE_NAME} <name> [args]${reset}.
+         ${SGR.cyan}${EXECUTABLE_NAME} <name> [args]${SGR.reset}.
          They run through the gdx dispatcher, so both gdx custom commands and git commands work.
 
-         ${bright + _2PointGradient('PLACEHOLDERS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         - ${cyan}$1, $2, ...${reset} : positional args passed to the macro
-         - ${cyan}$*${reset} : all args (consumes the rest)
+         ${SGR.bright + _2PointGradient('PLACEHOLDERS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         - ${SGR.cyan}$1, $2, ...${SGR.reset} : positional args passed to the macro
+         - ${SGR.cyan}$*${SGR.reset} : all args (consumes the rest)
 
-         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - set <name> <script|file>: Save a macro script.
          - list: Show macros with a short preview.
          - drop <name>: Delete a macro.
          - sync: Refresh cache from macro.json.
 
-         ${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - Use semicolons to chain commands.
-         - You can read the script from stdin: ${cyan}${EXECUTABLE_NAME} macro set <name> < file.txt${reset}.
+         - You can read the script from stdin: ${SGR.cyan}${EXECUTABLE_NAME} macro set <name> < file.txt${SGR.reset}.
          - Macros cannot invoke other macros.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -301,21 +299,18 @@ export const help = {
    },
    short: 'Create and manage reusable command macros.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> <script|file>${reset}
-         ${cyan}${EXECUTABLE_NAME} macro set ${dim}<name> < <file>${reset}
-         ${cyan}${EXECUTABLE_NAME} macro list${reset}
-         ${cyan}${EXECUTABLE_NAME} macro drop ${dim}<name>${reset}
-         ${cyan}${EXECUTABLE_NAME} macro sync${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} macro set ${SGR.dim}<name> <script|file>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} macro set ${SGR.dim}<name> < <file>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} macro list${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} macro drop ${SGR.dim}<name>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} macro sync${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} macro set qc 'ad . ; cmi -m "$1"' ${reset + dim}# Save a macro with args${reset}
-            ${cyan}${EXECUTABLE_NAME} qc "ship it" ${reset + dim}# Run macro by name${reset}
-            ${cyan}${EXECUTABLE_NAME} macro set build ./script.txt ${reset + dim}# Load from file${reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} macro set qc 'ad . ; cmi -m "$1"' ${SGR.reset + SGR.dim}# Save a macro with args${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} qc "ship it" ${SGR.reset + SGR.dim}# Run macro by name${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} macro set build ./script.txt ${SGR.reset + SGR.dim}# Load from file${SGR.reset}
          `,
          Math.min(100, global.terminalWidth - 4),
          {

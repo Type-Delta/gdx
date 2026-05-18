@@ -1,7 +1,7 @@
 import { Err, ncc } from '@lib/Tools';
 
 import cmd from '@/commands';
-import { GDX_COMMANDS } from '@/consts';
+import { GDX_COMMANDS, SGR } from '@/consts';
 import { $, execGit } from '@/modules/shell';
 import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
@@ -53,10 +53,10 @@ export async function dispatch(
          const macroArgs = args.slice(1);
 
          quickPrint(
-            ncc('Dim') +
-            ncc('Magenta') +
-            `※ ${ncc('White') + ncc('Bright')} Executing macro '${macroName}'...` +
-            ncc()
+            SGR.dim +
+               SGR.magenta +
+               `※ ${SGR.white + SGR.bright} Executing macro '${macroName}'...` +
+               SGR.reset
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -204,7 +204,7 @@ export async function dispatch(
                } catch (e) {
                   Logger.info(
                      'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
-                     Err.from(e)
+                        Err.from(e)
                   );
                }
             }
@@ -266,9 +266,9 @@ export async function dispatch(
                         return 1;
                      } else {
                         quickPrint(
-                           ncc('Yellow') +
-                           'Lint failed, but proceeding with push (warning mode).' +
-                           ncc()
+                           SGR.yellow +
+                              'Lint failed, but proceeding with push (warning mode).' +
+                              SGR.reset
                         );
                      }
                   }
@@ -421,10 +421,10 @@ export async function dispatch(
    if (state.inMacro || originalArgs.some((a, i) => args[i] !== a)) {
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
-         ncc('Dim') +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${ncc('White') + ncc('Bright')}git ${escapeCmdArgs(args).join(' ')}` +
-         ncc()
+         SGR.dim +
+            ncc(rgbVec2decimal(colorVec), 'fg') +
+            `$ ${SGR.white + SGR.bright}git ${escapeCmdArgs(args).join(' ')}` +
+            SGR.reset
       );
    }
 

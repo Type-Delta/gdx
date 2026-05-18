@@ -3,7 +3,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 
-import { CheckCache, ncc, strWrap } from '@lib/Tools';
+import { CheckCache, strWrap } from '@lib/Tools';
 
 import { GdxContext, SpinnerOptions } from '@/common/types';
 import type { LLMRequest } from '@/common/adapters/llm';
@@ -16,6 +16,7 @@ import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
 import { stripAnsiColor } from '@/modules/graphics';
+import { SGR } from '@/consts';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
@@ -29,11 +30,11 @@ const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === '
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
 
 if (USE_NATIVE_SUBMODULE_IN_TESTS) {
-   console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
+   console.log(SGR.yellow + 'Using native git submodules in tests' + SGR.reset);
 }
 
 if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
-   console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
+   console.log(SGR.yellow + 'Using native git config in tests' + SGR.reset);
 }
 
 interface TestSystem {
@@ -61,7 +62,6 @@ interface TestEnvOptions {
     * If true, initializes the test environment with a custom test harness that captures stdout, stderr, and logs, and provides a custom 'it' function for defining tests. If false, it does not set up the test harness, allowing tests to run without interception of stdio and using the default 'it' function from the testing framework. Default is true (test harness will be initialized). Set to false if you want to manage stdio capture and test definitions manually or if you want to run a benchmark without the overhead of the test harness.
     */
    initTestHarness?: boolean;
-
 }
 
 interface EnvController {
@@ -205,7 +205,9 @@ export async function createTestEnv(
    await clearTestEnvs();
    fs.mkdirSync(baseTestEnvDir, { recursive: true });
 
-   const tmpDir = fs.mkdtempSync(baseTestEnvDir + (options.suitName ? `/${options.suitName}-` : '/'));
+   const tmpDir = fs.mkdtempSync(
+      baseTestEnvDir + (options.suitName ? `/${options.suitName}-` : '/')
+   );
    const tmpDirName = path.basename(tmpDir);
 
    console.time('createTestEnv ' + tmpDirName + (options.liteMode ? ' (lite)' : ''));
@@ -222,8 +224,7 @@ export async function createTestEnv(
       isTTY: true,
    };
 
-   if (!options.initTestHarness)
-      tracker = overrideModules(tracker, tmpDir, envController);
+   if (!options.initTestHarness) tracker = overrideModules(tracker, tmpDir, envController);
 
    const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = () => {
@@ -251,7 +252,9 @@ export async function createTestEnv(
    const gdxConfigDir = gdxConfigPath ? path.dirname(gdxConfigPath) : undefined;
 
    const setupTasks = [
-      options.liteMode ? Promise.resolve(noop as ResetRepoFunction) : initGitRepo(_$, tmpMockProjDir, tmpDir), // Initialize a git repository
+      options.liteMode
+         ? Promise.resolve(noop as ResetRepoFunction)
+         : initGitRepo(_$, tmpMockProjDir, tmpDir), // Initialize a git repository
       options.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, ''), // Empty global git config
    ];
 
@@ -293,7 +296,11 @@ export async function createTestEnv(
    };
 }
 
-async function initGitRepo(_$: typeof $, repoPath: string, tempDir: string): Promise<ResetRepoFunction> {
+async function initGitRepo(
+   _$: typeof $,
+   repoPath: string,
+   tempDir: string
+): Promise<ResetRepoFunction> {
    await _$`${gitExePath!} init`;
 
    // Set user config
@@ -301,7 +308,9 @@ async function initGitRepo(_$: typeof $, repoPath: string, tempDir: string): Pro
    await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
 
    // Create initial commit to ensure HEAD exists
-   const cmiOutput = (await _$`${gitExePath!} commit --allow-empty --no-verify -m ${'Initial commit'}`).stdout;
+   const cmiOutput = (
+      await _$`${gitExePath!} commit --allow-empty --no-verify -m ${'Initial commit'}`
+   ).stdout;
    const hash = cmiOutput.match(/^\[.* ([a-f0-9]{7,40})\]/m)?.[1];
    if (!hash) {
       throw new Error('Failed to create initial commit in test git repo.');
@@ -379,7 +388,7 @@ function overrideModules(
                stop: () => {
                   tracker.spinnerStatus = 'stopped';
                },
-               setMessage: () => { },
+               setMessage: () => {},
                options: {} as Required<SpinnerOptions>,
             } satisfies SpinnerContoller;
          },
@@ -475,17 +484,17 @@ function attachTestLivecycleHook(
    afterEach((done) => {
       if (tracker.testSystem.lastTestStatus === 'failed') {
          console.log(
-            ncc('Dim') + '\nTest failed. Captured stdout:\n ' + ncc(),
+            SGR.dim + '\nTest failed. Captured stdout:\n ' + SGR.reset,
             strWrap(buffer.stdout, 100, { indent: 2 })
          );
          if (buffer.stderr)
             console.log(
-               ncc('Dim') + 'Captured stderr:\n ' + ncc(),
+               SGR.dim + 'Captured stderr:\n ' + SGR.reset,
                strWrap(buffer.stderr, 100, { indent: 2 })
             );
          if (buffer.logs)
             console.log(
-               ncc('Dim') + 'Captured logs:\n ' + ncc(),
+               SGR.dim + 'Captured logs:\n ' + SGR.reset,
                strWrap(buffer.logs, 100, { indent: 2 })
             );
       }

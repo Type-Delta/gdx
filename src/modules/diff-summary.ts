@@ -332,7 +332,7 @@ function parseNameStatusZ(raw: string): NameStatusEntry[] {
    const tokens = raw.split('\0').filter((token) => token.length > 0);
    const entries: NameStatusEntry[] = [];
 
-   for (let i = 0; i < tokens.length;) {
+   for (let i = 0; i < tokens.length; ) {
       const status = tokens[i++];
       if (!status) break;
 
@@ -393,8 +393,8 @@ function parseNumstatZ(raw: string, movePathMap: Map<string, string[]>): Map<str
       const resolvedPath = movedPaths.includes(nextPath)
          ? nextPath
          : movedPaths.length === 1
-            ? movedPaths[0]
-            : nextPath;
+           ? movedPaths[0]
+           : nextPath;
       i += 2;
 
       result.set(resolvedPath, {
@@ -679,8 +679,8 @@ function formatFileStatLine(file: ClassifiedFile): string {
          moveSimilarity.driftPercent == null
             ? '(similarity unknown)'
             : moveSimilarity.driftPercent === 0
-               ? '(identical)'
-               : `(drift ~${moveSimilarity.driftPercent}%)`;
+              ? '(identical)'
+              : `(drift ~${moveSimilarity.driftPercent}%)`;
       return `- ${file.status[0]} [${moveKind}] ${file.oldPath || file.path} -> ${file.path} ${driftLabel}`;
    }
 

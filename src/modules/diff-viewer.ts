@@ -2,13 +2,13 @@ import {
    Err,
    estimateStrComplexity,
    ex_length,
-   ncc,
    strLimit,
    strSlice,
    strWrap,
    yuString,
    CheckCache,
 } from '@lib/Tools';
+
 import type { ChangeObject } from 'diff';
 
 import {
@@ -34,7 +34,8 @@ import {
    TUI_THEME,
    DIFF_HEADER_LINE_REGEX,
    ANSI_SGR_REGEX,
-   DIFF_HEADER_TEXT_REGEX
+   DIFF_HEADER_TEXT_REGEX,
+   SGR,
 } from '@/consts';
 import { DiffModule, GdxContext, ShikijsCliModule } from '@/common/types';
 import { quickPrint } from '@/utils/utilities';
@@ -216,46 +217,62 @@ function buildMergedInlineSegments(changes: ChangeObject<string>[]): InlineDiffS
       if (change.removed) {
          if (lastSegment && lastSegment.length < length) {
             if (change.value.startsWith(lastSegment)) {
-               segments.splice(i - 1, 1, {
-                  type: 'same',
-                  value: lastSegment
-               }, {
-                  type: 'delete',
-                  value: change.value.slice(lastSegment.length)
-               });
-               continue;
-            }
-            else if (change.value.endsWith(lastSegment)) {
-               segments.splice(i - 1, 1,
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'same',
+                     value: lastSegment,
+                  },
                   {
                      type: 'delete',
-                     value: change.value.slice(0, length - lastSegment.length)
-                  }, {
-                  type: 'same',
-                  value: lastSegment
-               });
+                     value: change.value.slice(lastSegment.length),
+                  }
+               );
+               continue;
+            } else if (change.value.endsWith(lastSegment)) {
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'delete',
+                     value: change.value.slice(0, length - lastSegment.length),
+                  },
+                  {
+                     type: 'same',
+                     value: lastSegment,
+                  }
+               );
                continue;
             }
-         }
-         else if (lastSegment && lastSegment.length > length) {
+         } else if (lastSegment && lastSegment.length > length) {
             if (lastSegment.startsWith(change.value)) {
-               segments.splice(i - 1, 1, {
-                  type: 'same',
-                  value: change.value
-               }, {
-                  type: 'add',
-                  value: lastSegment.slice(length)
-               });
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'same',
+                     value: change.value,
+                  },
+                  {
+                     type: 'add',
+                     value: lastSegment.slice(length),
+                  }
+               );
                continue;
-            }
-            else if (lastSegment.endsWith(change.value)) {
-               segments.splice(i - 1, 1, {
-                  type: 'add',
-                  value: lastSegment.slice(0, lastSegment.length - length)
-               }, {
-                  type: 'same',
-                  value: change.value
-               });
+            } else if (lastSegment.endsWith(change.value)) {
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'add',
+                     value: lastSegment.slice(0, lastSegment.length - length),
+                  },
+                  {
+                     type: 'same',
+                     value: change.value,
+                  }
+               );
                continue;
             }
          }
@@ -266,45 +283,62 @@ function buildMergedInlineSegments(changes: ChangeObject<string>[]): InlineDiffS
       if (change.added) {
          if (lastSegment && lastSegment.length < length) {
             if (change.value.startsWith(lastSegment)) {
-               segments.splice(i - 1, 1, {
-                  type: 'same',
-                  value: lastSegment
-               }, {
-                  type: 'add',
-                  value: change.value.slice(lastSegment.length)
-               });
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'same',
+                     value: lastSegment,
+                  },
+                  {
+                     type: 'add',
+                     value: change.value.slice(lastSegment.length),
+                  }
+               );
+               continue;
+            } else if (change.value.endsWith(lastSegment)) {
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'add',
+                     value: change.value.slice(0, length - lastSegment.length),
+                  },
+                  {
+                     type: 'same',
+                     value: lastSegment,
+                  }
+               );
                continue;
             }
-            else if (change.value.endsWith(lastSegment)) {
-               segments.splice(i - 1, 1, {
-                  type: 'add',
-                  value: change.value.slice(0, length - lastSegment.length)
-               }, {
-                  type: 'same',
-                  value: lastSegment
-               });
-               continue;
-            }
-         }
-         else if (lastSegment && lastSegment.length > length) {
+         } else if (lastSegment && lastSegment.length > length) {
             if (lastSegment.startsWith(change.value)) {
-               segments.splice(i - 1, 1, {
-                  type: 'same',
-                  value: change.value
-               }, {
-                  type: 'delete',
-                  value: lastSegment.slice(length)
-               });
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'same',
+                     value: change.value,
+                  },
+                  {
+                     type: 'delete',
+                     value: lastSegment.slice(length),
+                  }
+               );
                continue;
-            }
-            else if (lastSegment.endsWith(change.value)) {
-               segments.splice(i - 1, 1, {
-                  type: 'delete',
-                  value: lastSegment.slice(0, lastSegment.length - length)
-               }, {
-                  type: 'same',
-                  value: change.value
-               });
+            } else if (lastSegment.endsWith(change.value)) {
+               segments.splice(
+                  i - 1,
+                  1,
+                  {
+                     type: 'delete',
+                     value: lastSegment.slice(0, lastSegment.length - length),
+                  },
+                  {
+                     type: 'same',
+                     value: change.value,
+                  }
+               );
                continue;
             }
          }
@@ -313,7 +347,7 @@ function buildMergedInlineSegments(changes: ChangeObject<string>[]): InlineDiffS
          continue;
       }
       segments.push({ type: 'same', value: change.value });
-   };
+   }
    return defragInlineSegments(segments);
 }
 
@@ -365,8 +399,7 @@ function shouldDisplayMultiline(singleLineChanges: ChangeObject<string>[]): bool
 
       if (diff.added) {
          sequenceLength++;
-      }
-      else if (diff.removed) {
+      } else if (diff.removed) {
          sequenceLength++;
       }
    }
@@ -476,15 +509,18 @@ function formatUnifiedRange(start: number, count: number): string {
 
 function colorizeUnifiedPatchLine(line: string): string {
    if (CheckCache.supportsColor <= 0) return line;
-   const reset = ncc();
-   if (line.startsWith('@@')) return `${ncc('Cyan')}${line}${reset}`;
-   if (line.startsWith('+')) return `${ncc('Green')}${line}${reset}`;
-   if (line.startsWith('-')) return `${ncc('Red')}${line}${reset}`;
-   if (line.startsWith('\\')) return `${ncc('Dim')}${line}${reset}`;
+
+   if (line.startsWith('@@')) return `${SGR.cyan}${line}${SGR.reset}`;
+   if (line.startsWith('+')) return `${SGR.green}${line}${SGR.reset}`;
+   if (line.startsWith('-')) return `${SGR.red}${line}${SGR.reset}`;
+   if (line.startsWith('\\')) return `${SGR.dim}${line}${SGR.reset}`;
    return line;
 }
 
-async function buildCommitMessagePatch(oldText: string, newText: string): Promise<{
+async function buildCommitMessagePatch(
+   oldText: string,
+   newText: string
+): Promise<{
    patchBodyLines: string[];
    rendererDiffText: string;
 }> {
@@ -492,18 +528,15 @@ async function buildCommitMessagePatch(oldText: string, newText: string): Promis
    const structuredPatch = diffLib.structuredPatch as StructuredPatchFn | undefined;
 
    if (!structuredPatch) {
-      throw new Err('Diff module does not provide structuredPatch.', 'DIFF_STRUCTURED_PATCH_UNAVAILABLE');
+      throw new Err(
+         'Diff module does not provide structuredPatch.',
+         'DIFF_STRUCTURED_PATCH_UNAVAILABLE'
+      );
    }
 
-   const patch = structuredPatch(
-      'a/COMMIT_EDITMSG',
-      'b/COMMIT_EDITMSG',
-      oldText,
-      newText,
-      '',
-      '',
-      { context: 3 }
-   );
+   const patch = structuredPatch('a/COMMIT_EDITMSG', 'b/COMMIT_EDITMSG', oldText, newText, '', '', {
+      context: 3,
+   });
 
    const patchBodyLines: string[] = [];
    for (const hunk of patch.hunks || []) {
@@ -793,18 +826,8 @@ async function highlightFullFileSide(options: {
    shiki: ShikijsCliModule;
    result: Map<DiffLine, string>;
 }): Promise<FullFileHighlightResult> {
-   const {
-      git$,
-      diff,
-      lines,
-      lineNumberKey,
-      path,
-      revision,
-      maxHunkSize,
-      theme,
-      shiki,
-      result
-   } = options;
+   const { git$, diff, lines, lineNumberKey, path, revision, maxHunkSize, theme, shiki, result } =
+      options;
    if (lines.length === 0) return 'unavailable';
 
    const highlightedFile = await getHighlightedFullFileLines({
@@ -951,13 +974,13 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
-      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(
-         this.options.preambleLines.join('') + diffText
-      );
+      this.redundancyLv =
+         options.redundancyLv ??
+         estimateStrComplexity(this.options.preambleLines.join('') + diffText);
       this.widthRedundancyLv = Math.max(0, this.redundancyLv);
 
       this.logger.debug(
-         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}, width redundancy level: ${this.widthRedundancyLv}`,
+         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}, width redundancy level: ${this.widthRedundancyLv}`
       );
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
       this.updateRenderedLines();
@@ -986,13 +1009,12 @@ export class DiffViewerRenderer implements PagerRenderer {
             this.options.theme,
             this.options.highlighting as Required<DiffHighlightingOptions>,
             this.options.git$
-         )
-            .then((highlightedMap) => {
-               codeLines.forEach((line) => {
-                  const highlighted = highlightedMap.get(line);
-                  if (highlighted !== undefined) line.highlightedContent = highlighted;
-               });
+         ).then((highlightedMap) => {
+            codeLines.forEach((line) => {
+               const highlighted = highlightedMap.get(line);
+               if (highlighted !== undefined) line.highlightedContent = highlighted;
             });
+         });
          highlightPromises.push(prom);
       }
 
@@ -1022,7 +1044,8 @@ export class DiffViewerRenderer implements PagerRenderer {
             while (
                i < diff.lines.length &&
                (diff.lines[i].type === 'add' || diff.lines[i].type === 'delete')
-            ) i++;
+            )
+               i++;
 
             const block = diff.lines.slice(blockStart, i);
             const hasAdd = block.some((line) => line.type === 'add');
@@ -1120,7 +1143,10 @@ export class DiffViewerRenderer implements PagerRenderer {
             }
 
             const deleteSegments = buildLineInlineSegments(changes, 'delete');
-            if (deleteSegments.length > 0 && inlineSegmentsToText(deleteSegments) === deletedText!) {
+            if (
+               deleteSegments.length > 0 &&
+               inlineSegmentsToText(deleteSegments) === deletedText!
+            ) {
                const deleteLineSegments = splitInlineSegmentsByLines(
                   deleteSegments,
                   deletedLines.length
@@ -1178,12 +1204,12 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       const displayContent = line.inlineSegments
          ? this.renderInlineSegments(
-            line.inlineSegments,
-            line.type,
-            bgCode,
-            line.highlightedContent || line.content,
-            line.content
-         )
+              line.inlineSegments,
+              line.type,
+              bgCode,
+              line.highlightedContent || line.content,
+              line.content
+           )
          : line.highlightedContent || line.content;
       const lineNum = line.newLineNum ?? line.oldLineNum;
       const lineNumStr =
@@ -1314,7 +1340,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
    private padLineWithBg(str: string, width: number, bgColor: RgbVec): string {
       const padding = Math.max(0, width - ex_length(str, this.widthRedundancyLv));
-      return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${ncc()}`;
+      return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${SGR.reset}`;
    }
 
    private renderHunkHeader(content: string, width: number, contentWidth: number): string {
@@ -1322,7 +1348,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       content = strLimit(content, contentWidth, 'end', this.redundancyLv);
 
       return this.padLineWithBg(
-         `${ncc('Dim') + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,
+         `${SGR.dim + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,
          width,
          bgCode
       );
@@ -1424,16 +1450,12 @@ export class DiffViewerRenderer implements PagerRenderer {
    render(startLine: number, height: number, width: number): string[] {
       const result: string[] = [];
       const bgCode = bgRgb(this.options.backgroundColor);
-      const emptyLine = `${bgCode}${' '.repeat(width)}${ncc()}`
+      const emptyLine = `${bgCode}${' '.repeat(width)}${SGR.reset}`;
       const renderLLen = this.renderedLines.length;
 
       for (let i = 0; i < height - 1; i++) {
          const lineIndex = startLine + i;
-         result.push(
-            lineIndex < renderLLen
-               ? this.renderedLines[lineIndex]
-               : emptyLine
-         );
+         result.push(lineIndex < renderLLen ? this.renderedLines[lineIndex] : emptyLine);
       }
       return result;
    }

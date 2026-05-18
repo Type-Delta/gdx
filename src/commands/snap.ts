@@ -1,7 +1,7 @@
-import { ncc, strJustify, strWrap } from '@lib/Tools';
+import { strJustify, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { EXECUTABLE_NAME, GDX_VPALETTE, SNAP_SHORT_HASH_LENGTH } from '@/consts';
+import { EXECUTABLE_NAME, GDX_VPALETTE, SNAP_SHORT_HASH_LENGTH, SGR } from '@/consts';
 import global from '@/global';
 import { revParseCached } from '@/modules/git';
 import { _2PointGradient } from '@/modules/graphics';
@@ -45,30 +45,40 @@ export default async function snap(ctx: GdxContext): Promise<number> {
             }
 
             const result = await createWorktreeSnapshot(ctx.git$);
-            printCreatedSnapshot(result.hash, result.meta.type, result.meta.createdAt, result.existed);
+            printCreatedSnapshot(
+               result.hash,
+               result.meta.type,
+               result.meta.createdAt,
+               result.existed
+            );
             return 0;
          }
          case 'full': {
             const result = await createFullSnapshot(ctx.git$);
-            printCreatedSnapshot(result.hash, result.meta.type, result.meta.createdAt, result.existed);
+            printCreatedSnapshot(
+               result.hash,
+               result.meta.type,
+               result.meta.createdAt,
+               result.existed
+            );
             return 0;
          }
          case 'list': {
             const snapshots = await listSnapshots(ctx.git$);
             if (snapshots.length === 0) {
-               quickPrint(`${ncc('Yellow')}No snapshots found.${ncc()}`);
+               quickPrint(`${SGR.yellow}No snapshots found.${SGR.reset}`);
                return 0;
             }
 
             const hashWidth = SNAP_SHORT_HASH_LENGTH + 2;
             const indexWidth = Math.max(4, String(snapshots.length - 1).length + 2);
             quickPrint(
-               `${ncc('Bright')}${strJustify('#', indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Hash', hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Type', 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Created', 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}Repo${ncc()}`
+               `${SGR.bright}${strJustify('#', indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Hash', hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Type', 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Created', 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}Repo${SGR.reset}`
             );
 
             for (const [index, snapshot] of snapshots.entries()) {
                quickPrint(
-                  `${strJustify(String(index), indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${ncc('Cyan')}${strJustify(snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH), hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${ncc()}${strJustify(snapshot.meta.type, 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify(formatDateTime(snapshot.meta.createdAt), 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${snapshot.meta.repoLabel}`
+                  `${strJustify(String(index), indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.cyan}${strJustify(snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH), hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.reset}${strJustify(snapshot.meta.type, 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify(formatDateTime(snapshot.meta.createdAt), 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${snapshot.meta.repoLabel}`
                );
             }
             return 0;
@@ -84,7 +94,7 @@ export default async function snap(ctx: GdxContext): Promise<number> {
 
             const applied = await applySnapshot(ctx.git$, targets[0], force);
             quickPrint(
-               `${ncc('Green')}Applied snapshot ${applied.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${applied.meta.type})${ncc()}`
+               `${SGR.green}Applied snapshot ${applied.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SGR.reset} ${SGR.dim}(${applied.meta.type})${SGR.reset}`
             );
             return 0;
          }
@@ -99,7 +109,7 @@ export default async function snap(ctx: GdxContext): Promise<number> {
 
             const popped = await popSnapshot(ctx.git$, targets[0], force);
             quickPrint(
-               `${ncc('Green')}Popped snapshot ${popped.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${popped.meta.type})${ncc()}`
+               `${SGR.green}Popped snapshot ${popped.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SGR.reset} ${SGR.dim}(${popped.meta.type})${SGR.reset}`
             );
             return 0;
          }
@@ -107,13 +117,16 @@ export default async function snap(ctx: GdxContext): Promise<number> {
             const targets = args.slice(2).filter(Boolean);
 
             if (targets.length === 0) {
-               Logger.error('Usage: gdx snap drop <hash|~index|range> [...<hash|~index|range>]', 'snap');
+               Logger.error(
+                  'Usage: gdx snap drop <hash|~index|range> [...<hash|~index|range>]',
+                  'snap'
+               );
                return 1;
             }
 
             const dropped = await dropSnapshots(ctx.git$, targets);
             const suffix = dropped.length === 1 ? '' : 's';
-            quickPrint(`${ncc('Green')}Dropped ${dropped.length} snapshot${suffix}${ncc()}`);
+            quickPrint(`${SGR.green}Dropped ${dropped.length} snapshot${suffix}${SGR.reset}`);
             return 0;
          }
          case 'import': {
@@ -126,7 +139,7 @@ export default async function snap(ctx: GdxContext): Promise<number> {
 
             const imported = await importSnapshot(targets[0]);
             quickPrint(
-               `${ncc('Green')}Imported snapshot ${imported.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${imported.meta.type})${ncc()}`
+               `${SGR.green}Imported snapshot ${imported.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SGR.reset} ${SGR.dim}(${imported.meta.type})${SGR.reset}`
             );
             return 0;
          }
@@ -140,7 +153,7 @@ export default async function snap(ctx: GdxContext): Promise<number> {
 
             const exported = await exportSnapshot(ctx.git$, targets[0], targets[1]);
             quickPrint(
-               `${ncc('Green')}Exported snapshot ${exported.snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${ncc()} ${ncc('Dim')}(${exported.destinationPath})${ncc()}`
+               `${SGR.green}Exported snapshot ${exported.snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH)}${SGR.reset} ${SGR.dim}(${exported.destinationPath})${SGR.reset}`
             );
             return 0;
          }
@@ -169,7 +182,7 @@ function printCreatedSnapshot(
    const shortHash = hash.slice(0, SNAP_SHORT_HASH_LENGTH);
    const verb = existed ? 'Reused' : 'Created';
    quickPrint(
-      `${ncc('Green')}${verb}${ncc()} ${type} snapshot ${ncc('Cyan')}${shortHash}${ncc()} ${ncc('Dim')}(${formatDateTime(createdAt)})${ncc()}`
+      `${SGR.green}${verb}${SGR.reset} ${type} snapshot ${SGR.cyan}${shortHash}${SGR.reset} ${SGR.dim}(${formatDateTime(createdAt)})${SGR.reset}`
    );
 }
 
@@ -187,34 +200,31 @@ async function isInsideGitRepository(git$: string | string[]): Promise<boolean> 
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('SNAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('SNAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Create, list, apply, remove, import, and export portable repository snapshots.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         ${cyan}${EXECUTABLE_NAME} snap worktree${reset} stores the current HEAD, staged changes, unstaged changes,
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap worktree${SGR.reset} stores the current HEAD, staged changes, unstaged changes,
          and untracked non-ignored files in a single archive.
 
-         ${cyan}${EXECUTABLE_NAME} snap full${reset} stores a full backup of the repository git data in a single archive.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset} stores a full backup of the repository git data in a single archive.
 
-         ${cyan}${EXECUTABLE_NAME} snap list${reset} lists snapshots for the current repository, or every snapshot when
+         ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset} lists snapshots for the current repository, or every snapshot when
          invoked outside a repository.
 
-         ${cyan}${EXECUTABLE_NAME} snap apply <hash|~index>${reset} restores a snapshot by hash prefix or list index.
-         ${cyan}${EXECUTABLE_NAME} snap pop <hash|~index>${reset} restores a snapshot and removes it after a successful apply.
-         Applying or popping over a dirty worktree requires ${cyan}--force${reset}. Full snapshots require
-         ${cyan}--force${reset} when replacing an existing repository.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap apply <hash|~index>${SGR.reset} restores a snapshot by hash prefix or list index.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap pop <hash|~index>${SGR.reset} restores a snapshot and removes it after a successful apply.
+         Applying or popping over a dirty worktree requires ${SGR.cyan}--force${SGR.reset}. Full snapshots require
+         ${SGR.cyan}--force${SGR.reset} when replacing an existing repository.
 
-         ${cyan}${EXECUTABLE_NAME} snap drop <hash|~index|range> [...<hash|~index|range>]${reset} removes snapshots. Ranges are inclusive
-         list indexes, such as ${cyan}2..6${reset} or ${cyan}3..${reset}.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap drop <hash|~index|range> [...<hash|~index|range>]${SGR.reset} removes snapshots. Ranges are inclusive
+         list indexes, such as ${SGR.cyan}2..6${SGR.reset} or ${SGR.cyan}3..${SGR.reset}.
 
-         ${cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${reset} copies a .gdxsnap archive into local snapshot storage.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${SGR.reset} copies a .gdxsnap archive into local snapshot storage.
 
-         ${cyan}${EXECUTABLE_NAME} snap export <hash|~index> <dest>${reset} copies a snapshot to a directory or explicit .gdxsnap path.
+         ${SGR.cyan}${EXECUTABLE_NAME} snap export <hash|~index> <dest>${SGR.reset} copies a snapshot to a directory or explicit .gdxsnap path.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -226,29 +236,26 @@ export const help = {
    },
    short: 'Create, list, apply, remove, import, and export portable repository snapshots.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} snap [worktree]${reset}
-         ${cyan}${EXECUTABLE_NAME} snap full${reset}
-         ${cyan}${EXECUTABLE_NAME} snap list${reset}
-         ${cyan}${EXECUTABLE_NAME} snap apply <hash|~index> ${dim}[--force]${reset}
-         ${cyan}${EXECUTABLE_NAME} snap pop <hash|~index> ${dim}[--force]${reset}
-         ${cyan}${EXECUTABLE_NAME} snap drop <hash|~index|range> ${dim}[...targets]${reset}
-         ${cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${reset}
-         ${cyan}${EXECUTABLE_NAME} snap export <hash|~index> <dest>${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap [worktree]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap apply <hash|~index> ${SGR.dim}[--force]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap pop <hash|~index> ${SGR.dim}[--force]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap drop <hash|~index|range> ${SGR.dim}[...targets]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap import <snapshot-path>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap export <hash|~index> <dest>${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} snap worktree${reset + dim} # Save current staged/unstaged/untracked state${reset}
-            ${cyan}${EXECUTABLE_NAME} snap full${reset + dim}     # Save a full git-data backup${reset}
-            ${cyan}${EXECUTABLE_NAME} snap list${reset + dim}     # Show available snapshots${reset}
-            ${cyan}${EXECUTABLE_NAME} snap apply a1b2c3d --force${reset + dim} # Restore a snapshot${reset}
-            ${cyan}${EXECUTABLE_NAME} snap apply ~ --force${reset + dim}       # Restore newest listed snapshot${reset}
-            ${cyan}${EXECUTABLE_NAME} snap pop a1b2c3d --force${reset + dim}   # Restore and remove a snapshot${reset}
-            ${cyan}${EXECUTABLE_NAME} snap drop 2..6 ~0${reset + dim}          # Remove snapshots by index range and selector${reset}
-            ${cyan}${EXECUTABLE_NAME} snap export a1b2c3d ./snapshots${reset + dim} # Copy out a snapshot archive${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} snap worktree${SGR.reset + SGR.dim} # Save current staged/unstaged/untracked state${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset + SGR.dim}     # Save a full git-data backup${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset + SGR.dim}     # Show available snapshots${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap apply a1b2c3d --force${SGR.reset + SGR.dim} # Restore a snapshot${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap apply ~ --force${SGR.reset + SGR.dim}       # Restore newest listed snapshot${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap pop a1b2c3d --force${SGR.reset + SGR.dim}   # Restore and remove a snapshot${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap drop 2..6 ~0${SGR.reset + SGR.dim}          # Remove snapshots by index range and selector${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap export a1b2c3d ./snapshots${SGR.reset + SGR.dim} # Copy out a snapshot archive${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

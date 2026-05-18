@@ -45,7 +45,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
       if (parsedConfig.invalid.length > 0) {
          warnings.push(
             `Unknown parallel.init values: ${parsedConfig.invalid.join(', ')}. ` +
-            'Valid values: submodule, env, pkg.'
+               'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -53,7 +53,7 @@ export async function runWorktreeInit(options: WorktreeInitOptions): Promise<voi
       if (parsedNoInit.invalid.length > 0) {
          warnings.push(
             `Unknown --no-init values: ${parsedNoInit.invalid.join(', ')}. ` +
-            'Valid values: submodule, env, pkg.'
+               'Valid values: submodule, env, pkg.'
          );
       }
 
@@ -492,7 +492,7 @@ function readPackageManager(packageJsonPath: string, warnings: string[]): Packag
       if (declared) {
          warnings.push(
             `Unsupported packageManager '${declared}' in package.json. ` +
-            'Supported: npm, pnpm, bun.'
+               'Supported: npm, pnpm, bun.'
          );
       }
    } catch (err) {

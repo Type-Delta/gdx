@@ -1,11 +1,11 @@
-import { ncc, strWrap, toShortNum } from '@lib/Tools';
+import { strWrap, toShortNum } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec, spinner } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
 import { assertInGitWorktree, getTrackedUpstreamRef } from '@/modules/git';
-import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, GDX_VPALETTE } from '@/consts';
+import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, GDX_VPALETTE, SGR } from '@/consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
@@ -80,7 +80,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
          printLWarning(
             'Spelling',
             `At HEAD~${index} found ${result.issues.length} potential spelling issue(s) in commit messages.\n\n` +
-            prettyFormatIssues(result, commitMsg)
+               prettyFormatIssues(result, commitMsg)
          );
       }
    }
@@ -163,10 +163,10 @@ export default async function lint(ctx: GdxContext): Promise<number> {
       Logger.error(`Lint failed with ${errors} errors and ${warnings} warnings.`, 'lint');
       return 1;
    } else if (warnings > 0) {
-      quickPrint(ncc('Yellow') + `\nLint passed with ${warnings} warnings.` + ncc());
+      quickPrint(SGR.yellow + `\nLint passed with ${warnings} warnings.` + SGR.reset);
       return 0;
    } else {
-      quickPrint(ncc('Green') + '\nNo problems found.' + ncc());
+      quickPrint(SGR.green + '\nNo problems found.' + SGR.reset);
       return 0;
    }
 }
@@ -177,14 +177,14 @@ function printLWarning(subject: string, message: string) {
    });
 
    quickPrint(
-      ncc('BgYellow') +
-      ncc('Bright') +
-      ncc('Black') +
-      ' LWARN ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Yellow')} ${message}` +
-      ncc()
+      SGR.bgYellow +
+         SGR.bright +
+         SGR.black +
+         ' LWARN ' +
+         SGR.reset +
+         SGR.invert +
+         ` ${subject} ${SGR.reset + SGR.yellow} ${message}` +
+         SGR.reset
    );
 }
 
@@ -194,35 +194,32 @@ function printLError(subject: string, message: string) {
    });
 
    quickPrint(
-      ncc('BgRed') +
-      ncc('Bright') +
-      ncc('White') +
-      ' LERROR ' +
-      ncc() +
-      ncc('Invert') +
-      ` ${subject} ${ncc() + ncc('Red')} ${message}` +
-      ncc()
+      SGR.bgRed +
+         SGR.bright +
+         SGR.white +
+         ' LERROR ' +
+         SGR.reset +
+         SGR.invert +
+         ` ${subject} ${SGR.reset + SGR.red} ${message}` +
+         SGR.reset
    );
 }
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('LINT', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('LINT', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
 
-         ${bright + _2PointGradient('CHECKS PERFORMED', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('CHECKS PERFORMED', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - Spelling: Checks for typos in commit messages using cspell.
          - Sensitive Content: Scans for API keys, tokens, and private keys.
          - Conflict Markers: Checks for leftover merge conflict markers.
          - File Size: Warns if files exceed the configured size limit (default 1MB).
 
-         ${bright + _2PointGradient('CONFIGURATION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${cyan}${EXECUTABLE_NAME} gdx-config${reset}\`:
+         ${SGR.bright + _2PointGradient('CONFIGURATION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         You can configure the behavior in your ~/.gdx/.gdxrc.toml file or \`${SGR.cyan}${EXECUTABLE_NAME} gdx-config${SGR.reset}\`:
          [lint]
          onPushBehavior = "off" | "error" | "warning"  # Default: "off"
          maxFileSizeKb = 1024                          # Default: 1024 KB
@@ -237,15 +234,12 @@ export const help = {
    },
    short: 'Lint outgoing commits for format, spelling, sensitive data, and more.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} lint${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} lint${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} lint ${reset + dim}# Run lint checks on outgoing commits${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} lint ${SGR.reset + SGR.dim}# Run lint checks on outgoing commits${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

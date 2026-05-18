@@ -1,10 +1,8 @@
-import { ncc } from '@lib/Tools';
-
 import { GdxContext } from '@/common/types';
 import { isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
 import { $, spinner } from '@/modules/shell';
 import { fgRgb } from './graphics';
-import { CATPPUCCIN_VPALETTE } from '@/consts';
+import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 import { resolveHeadRelativeCommitRef, revParseCached } from './git';
 
 const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
@@ -160,8 +158,8 @@ async function getShowCommitStat(
       )}`
    ).stdout
       .trimEnd()
-      .replace(/(\W)(\++)/g, `$1${ncc('Green')}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
-      .replace(/(-+)/g, `${ncc('Red')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
+      .replace(/(\W)(\++)/g, `$1${SGR.green}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
+      .replace(/(-+)/g, `${SGR.red}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
 }
 
 /**
@@ -279,8 +277,8 @@ async function viewShowCommit(
    const spinnerCtrl =
       showLoading && preloadedDiffText === undefined
          ? spinner({
-            message: 'Loading commit...',
-         })
+              message: 'Loading commit...',
+           })
          : undefined;
 
    try {

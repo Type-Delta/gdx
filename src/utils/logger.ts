@@ -3,7 +3,7 @@ import path from 'path';
 
 import { cleanString, jsTime, ncc, strWrap } from '@lib/Tools';
 
-import { LOG_FILE_SIZE_LIMIT, LOG_PATH, SHOULD_WRITE_LOGS, VERSION } from '@/consts';
+import { LOG_FILE_SIZE_LIMIT, LOG_PATH, SHOULD_WRITE_LOGS, VERSION, SGR } from '@/consts';
 import global from '@/global';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
@@ -76,13 +76,13 @@ class Logger {
       message: string;
       module: string;
    }> = [
-         {
-            timestamp: new Date().toISOString(),
-            level: 'info',
-            message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
-            module: 'logger',
-         },
-      ];
+      {
+         timestamp: new Date().toISOString(),
+         level: 'info',
+         message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
+         module: 'logger',
+      },
+   ];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
@@ -155,13 +155,13 @@ class Logger {
 
       const formattedMessage =
          ncc(bgColor) +
-         ncc('Bright') +
-         ncc('White') +
+         SGR.bright +
+         SGR.white +
          ` ${badge} ` +
-         ncc() +
-         ncc('Invert') +
-         ` ${moduleName} ${ncc() + ncc(messageColor)} ${wrappedMessage}` +
-         ncc();
+         SGR.reset +
+         SGR.invert +
+         ` ${moduleName} ${SGR.reset + ncc(messageColor)} ${wrappedMessage}` +
+         SGR.reset;
 
       if (level === 'fatal' || level === 'error') {
          process.stderr.write(formattedMessage + '\n');
@@ -198,12 +198,12 @@ class Logger {
    /**
     * Starts a timer with the given label. If only the label is provided, it stores the start time internally and returns void.
     * If a function is also provided, it executes the function and logs the time taken with the given label, then returns the function's result.
-     * @param label The label for the timer.
-     * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
-     * @returns The result of the function if provided, otherwise void.
+    * @param label The label for the timer.
+    * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
+    * @returns The result of the function if provided, otherwise void.
     */
-   public time(label: string): void
-   public time<T>(label: string, fn: () => T): T
+   public time(label: string): void;
+   public time<T>(label: string, fn: () => T): T;
    public time<T>(label: string, fn?: () => T): T | void {
       if (!fn) {
          Logger.timeLabels.set(label, performance.now());
@@ -216,7 +216,7 @@ class Logger {
    /**
     * Ends a timer with the given label and logs the time taken. The label must have been previously started with the time() method.
     * @param label The label for the timer to end.
-     * @returns void
+    * @returns void
     */
    public timeEnd(label: string): void {
       Logger.timeEnd(label, this.moduleName);
@@ -224,15 +224,15 @@ class Logger {
 
    /**
     * Starts a timer with the given label, executes the provided async function, and logs the time taken with the given label. Then returns the function's result.
-     * @param label The label for the timer.
-     * @param fn The async function to execute and time.
-     * @returns The result of the async function.
-     * @example
-     * await logger.timeAsync('fetchData', async () => {
-     *    const data = await fetchDataFromAPI();
-     *    return data;
-     * });
-     * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
+    * @param label The label for the timer.
+    * @param fn The async function to execute and time.
+    * @returns The result of the async function.
+    * @example
+    * await logger.timeAsync('fetchData', async () => {
+    *    const data = await fetchDataFromAPI();
+    *    return data;
+    * });
+    * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
     */
    public async timeAsync<T>(label: string, fn: () => Promise<T>): Promise<T> {
       return await Logger.timeAsync(label, fn, this.moduleName);
@@ -265,18 +265,22 @@ class Logger {
 
    /**
     * Starts a timer with the given label, executes the provided async function, and logs the time taken with the given label. Then returns the function's result.
-     * @param label The label for the timer.
-     * @param fn The async function to execute and time.
-     * @param moduleName Optional module name for logging. Defaults to 'gdx'.
-     * @returns The result of the async function.
-     * @example
-     * await Logger.timeAsync('fetchData', async () => {
-     *    const data = await fetchDataFromAPI();
-     *    return data;
-     * }, 'myModule');
-     * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
+    * @param label The label for the timer.
+    * @param fn The async function to execute and time.
+    * @param moduleName Optional module name for logging. Defaults to 'gdx'.
+    * @returns The result of the async function.
+    * @example
+    * await Logger.timeAsync('fetchData', async () => {
+    *    const data = await fetchDataFromAPI();
+    *    return data;
+    * }, 'myModule');
+    * // Logs: "fetchData took 123ms" under 'myModule' and returns the fetched data.
     */
-   public static async timeAsync<T>(label: string, fn: () => T | Promise<T>, moduleName: string = 'gdx'): Promise<T> {
+   public static async timeAsync<T>(
+      label: string,
+      fn: () => T | Promise<T>,
+      moduleName: string = 'gdx'
+   ): Promise<T> {
       const start = performance.now();
       try {
          return await fn();
@@ -290,13 +294,13 @@ class Logger {
    /**
     * Starts a timer with the given label. If only the label is provided, it stores the start time internally and returns void.
     * If a function is also provided, it executes the function and logs the time taken with the given label, then returns the function's result.
-     * @param label The label for the timer.
-     * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
-     * @param moduleName Optional module name for logging. Defaults to 'gdx'.
-     * @returns The result of the function if provided, otherwise void.
+    * @param label The label for the timer.
+    * @param fn Optional function to execute and time. If not provided, the timer will just store the start time.
+    * @param moduleName Optional module name for logging. Defaults to 'gdx'.
+    * @returns The result of the function if provided, otherwise void.
     */
-   public static time(label: string): void
-   public static time<T>(label: string, fn: () => T, moduleName?: string): T
+   public static time(label: string): void;
+   public static time<T>(label: string, fn: () => T, moduleName?: string): T;
    public static time<T>(label: string, fn?: () => T, moduleName: string = 'gdx'): T | void {
       const start = performance.now();
       if (!fn) {

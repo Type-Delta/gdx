@@ -11,10 +11,14 @@ export async function getLLMProvider(): Promise<LLMProvider> {
    let providerType = config.get<string>('llm.provider') || 'openai';
 
    if (process.env.NODE_ENV === 'test' || providerType === 'mock') {
-      return new MockLLMAdapter(providerType === 'mock' ? {
-         responseDelayMs: 2300,
-         streamDelayMs: 10,
-      } : {});
+      return new MockLLMAdapter(
+         providerType === 'mock'
+            ? {
+                 responseDelayMs: 2300,
+                 streamDelayMs: 10,
+              }
+            : {}
+      );
    }
 
    const apiKey = await config.getSecure<string>('llm.apiKey');

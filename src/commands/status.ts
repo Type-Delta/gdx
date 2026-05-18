@@ -1,11 +1,11 @@
 import path from 'path';
 
-import { CheckCache, Err, ncc, strWrap } from '@lib/Tools';
+import { CheckCache, Err, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, $inherit } from '@/modules/shell';
 import { quickPrint } from '@/utils/utilities';
-import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
+import { GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
@@ -126,7 +126,7 @@ export default async function status(ctx: GdxContext): Promise<number> {
 
       // Show main repository status first
       quickPrint(
-         `${ncc('Cyan')}${ncc('Bright')}━━━ Repository Root${ncc()}${ncc('Dim')} (${path.relative(currentDir, repoRoot) || '.'})${ncc()}\n`
+         `${SGR.cyan}${SGR.bright}━━━ Repository Root${SGR.reset}${SGR.dim} (${path.relative(currentDir, repoRoot) || '.'})${SGR.reset}\n`
       );
 
       await $inherit`${git$} status ${statusArgs}`;
@@ -135,7 +135,7 @@ export default async function status(ctx: GdxContext): Promise<number> {
       const submodules = await getSubmodules(git$);
 
       if (submodules.length === 0) {
-         quickPrint(`\n${ncc('Dim')}No submodules found.${ncc()}`);
+         quickPrint(`\n${SGR.dim}No submodules found.${SGR.reset}`);
          return 0;
       }
 
@@ -146,14 +146,14 @@ export default async function status(ctx: GdxContext): Promise<number> {
 
          // Print submodule header
          quickPrint(
-            `\n${ncc('Cyan')}${ncc('Bright')}━━━ Submodule: ${submodule.path}${ncc()}${ncc('Dim')} (${relativePath})${ncc()}\n`
+            `\n${SGR.cyan}${SGR.bright}━━━ Submodule: ${submodule.path}${SGR.reset}${SGR.dim} (${relativePath})${SGR.reset}\n`
          );
 
          // Get status for this submodule
          const submoduleStatus = await getSubmoduleStatus(git$, absolutePath, statusArgs);
 
          if (submoduleStatus === null) {
-            quickPrint(`${ncc('Dim')}Unable to get status for this submodule.${ncc()}\n`);
+            quickPrint(`${SGR.dim}Unable to get status for this submodule.${SGR.reset}\n`);
             continue;
          }
 
@@ -171,35 +171,32 @@ export default async function status(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('STATUS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('STATUS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Show the working tree status for the repository and optionally all submodules.
 
-         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         \`${cyan}${EXECUTABLE_NAME} status${reset}\` is a wrapper around \`${cyan}git status${reset}\` with added support for recursive submodule status checking. When the \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
+         ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         \`${SGR.cyan}${EXECUTABLE_NAME} status${SGR.reset}\` is a wrapper around \`${SGR.cyan}git status${SGR.reset}\` with added support for recursive submodule status checking. When the \`${SGR.cyan}--recursive${SGR.reset}\` or \`${SGR.cyan}-r${SGR.reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
 
-         ${bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         When \`${cyan}--recursive${reset}\` or \`${cyan}-r${reset}\` is specified:
+         ${SGR.bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         When \`${SGR.cyan}--recursive${SGR.reset}\` or \`${SGR.cyan}-r${SGR.reset}\` is specified:
          - Shows status of the main repository first
          - Then shows status for each submodule with clear headers
          - Displays both absolute submodule paths and paths relative to your current directory
-         - All other \`${cyan}git status${reset}\` flags are passed through to each status check
+         - All other \`${SGR.cyan}git status${SGR.reset}\` flags are passed through to each status check
 
-         ${bright + _2PointGradient('EXAMPLES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         ${cyan}${EXECUTABLE_NAME} status --recursive${reset}
+         ${SGR.bright + _2PointGradient('EXAMPLES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} status --recursive${SGR.reset}
             Show status for repository and all submodules
 
-         ${cyan}${EXECUTABLE_NAME} s -r${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} s -r${SGR.reset}
             Same as above using shorthand
 
-         ${cyan}${EXECUTABLE_NAME} status -r --short${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} status -r --short${SGR.reset}
             Show short format status recursively
 
-         ${cyan}${EXECUTABLE_NAME} status --recursive --porcelain${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} status --recursive --porcelain${SGR.reset}
             Show porcelain format status recursively
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -212,17 +209,14 @@ export const help = {
    },
    short: 'Show working tree status with optional recursive submodule support',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} status ${dim}[--recursive|-r] [<git-status-options>]${reset}
-         ${cyan}${EXECUTABLE_NAME} s ${dim}[--recursive|-r] [<git-status-options>]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} status ${SGR.dim}[--recursive|-r] [<git-status-options>]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} s ${SGR.dim}[--recursive|-r] [<git-status-options>]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} status --recursive ${reset + dim}# Show status for repo and all submodules${reset}
-            ${cyan}${EXECUTABLE_NAME} s -r --short ${reset + dim}# Short format with submodules${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} status --recursive ${SGR.reset + SGR.dim}# Show status for repo and all submodules${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} s -r --short ${SGR.reset + SGR.dim}# Short format with submodules${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

@@ -1,8 +1,11 @@
 import { ArgsSet } from '@/modules/arguments';
 import { RgbVec } from '@/modules/graphics';
+import { ncc } from '@lib/Tools';
 
 export type DiffModule = Awaited<typeof import('diff')>;
 export type ShikijsCliModule = Awaited<typeof import('@shikijs/cli')>;
+
+export type NCCStyle = Parameters<typeof ncc>[0];
 
 export interface GdxContext {
    args: ArgsSet;
@@ -164,4 +167,4 @@ export interface CommandArgNode {
  * @template T - The type of the successful value.
  * @template E - The type of the error (defaults to Error).
  */
-export type Result<T, E = Error> = { value: T, error?: never } | { value?: never, error: E };
+export type Result<T, E = Error> = { value: T; error?: never } | { value?: never; error: E };

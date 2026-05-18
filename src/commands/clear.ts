@@ -1,12 +1,12 @@
 import * as fs from '@/modules/fs';
 import path from 'path';
 
-import { ncc, strWrap, yuString } from '@lib/Tools';
+import { strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { $, $inherit, $prompt, execGit } from '../modules/shell';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR } from '../consts';
+import { EXECUTABLE_NAME, ONE_DAY_MS, TEMP_DIR, SGR } from '../consts';
 import Logger from '../utils/logger';
 import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
@@ -36,19 +36,19 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    // LIST subcommand
    if (subCommand === 'list') {
-      quickPrint(`${ncc('Cyan')}Project:${ncc()} ${projectName}`);
-      quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${branchName}`);
-      quickPrint(`${ncc('Cyan')}Backup location:${ncc()} ${osTemp}`);
-      quickPrint(`${ncc('Cyan')}Use \`git clear pardon\` to restore the latest backup.${ncc()}\n`);
+      quickPrint(`${SGR.cyan}Project:${SGR.reset} ${projectName}`);
+      quickPrint(`${SGR.cyan}Branch:${SGR.reset} ${branchName}`);
+      quickPrint(`${SGR.cyan}Backup location:${SGR.reset} ${osTemp}`);
+      quickPrint(`${SGR.cyan}Use \`git clear pardon\` to restore the latest backup.${SGR.reset}\n`);
       quickPrint(
-         `${ncc('Cyan')}Looking for backup patch files matching:${ncc()} ${backupFileBlob}\n`
+         `${SGR.cyan}Looking for backup patch files matching:${SGR.reset} ${backupFileBlob}\n`
       );
 
       const backupFiles = await getBackupFiles(osTemp, prefix, suffix);
 
       if (backupFiles.length === 0) {
          quickPrint(
-            `${ncc('Yellow')}No backup patch files found for project '${projectName}' on branch '${branchName}'.${ncc()}`
+            `${SGR.yellow}No backup patch files found for project '${projectName}' on branch '${branchName}'.${SGR.reset}`
          );
          return 0;
       }
@@ -59,14 +59,14 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          const ageDays = (now.getTime() - file.stats.mtime.getTime()) / ONE_DAY_MS;
          const createdStr = file.stats.mtime.toISOString().replace('T', ' ').split('.')[0];
 
-         let color = ncc('Dim');
+         let color = SGR.dim;
          if (file.stats.mtime.toDateString() === now.toDateString()) {
-            color = ncc('White');
+            color = SGR.white;
          } else if (ageDays >= 6) {
-            color = ncc('Red'); // Dim Red isn't standard, using Red
+            color = SGR.red; // Dim Red isn't standard, using Red
          }
 
-         quickPrint(`${color}backup@${i}: ${createdStr} - ${file.name}${ncc()}`);
+         quickPrint(`${color}backup@${i}: ${createdStr} - ${file.name}${SGR.reset}`);
       }
       return 0;
    }
@@ -134,7 +134,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
          await $inherit`${git$} apply ${latestBackup.path}`;
          fs.unlinkSync(latestBackup.path);
          quickPrint(
-            `${ncc('Cyan')}Pardon applied successfully from backup: ${ncc('Bright')}${latestBackup.path}${ncc()}`
+            `${SGR.cyan}Pardon applied successfully from backup: ${SGR.bright}${latestBackup.path}${SGR.reset}`
          );
          await $inherit`${git$} status`;
       } catch (err) {
@@ -155,7 +155,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    ]);
 
    if (!hasCachedChanges && !hasUnstagedChanges && !hasUntrackedFiles) {
-      quickPrint(`${ncc('Cyan')}No changes to clear. Working directory is clean.${ncc()}`);
+      quickPrint(`${SGR.cyan}No changes to clear. Working directory is clean.${SGR.reset}`);
       await $inherit`${git$} status`;
       return 0;
    }
@@ -183,7 +183,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    }
 
    quickPrint(
-      `${ncc('Cyan')}Backup of all changes saved to: ${ncc('Bright')}${backupFilePath}${ncc()}\n${ncc('Cyan')}(\`git clear pardon\` to undo)${ncc()}`
+      `${SGR.cyan}Backup of all changes saved to: ${SGR.bright}${backupFilePath}${SGR.reset}\n${SGR.cyan}(\`git clear pardon\` to undo)${SGR.reset}`
    );
 
    await $inherit`${git$} reset --hard HEAD`;
@@ -195,22 +195,19 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('CLEAR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('CLEAR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Safely backup and clear local working changes.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${cyan}git reset --hard${reset}\` and \`${cyan}git clean -fd${reset}\`. The latest patch is kept so you can restore it with \`${cyan}${EXECUTABLE_NAME} clear pardon${reset}\`.
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${SGR.cyan}git reset --hard${SGR.reset}\` and \`${SGR.cyan}git clean -fd${SGR.reset}\`. The latest patch is kept so you can restore it with \`${SGR.cyan}${EXECUTABLE_NAME} clear pardon${SGR.reset}\`.
 
-         ${bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Show available backup patch files for this project/branch.
          - pardon: Restore the most recent backup patch.
 
-         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          All files (tracked and untracked) are backed up before clearing. Pardon requires a clean working directory.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -223,17 +220,14 @@ export const help = {
    },
    short: 'Backup and clear local changes, with a restore (pardon) option.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} clear ${dim}[list|pardon]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} clear ${SGR.dim}[list|pardon]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} clear ${reset + dim}# Create backup patch and clear working tree${reset}
-            ${cyan}${EXECUTABLE_NAME} clear list ${reset + dim}# Show recent backup patches${reset}
-            ${cyan}${EXECUTABLE_NAME} clear pardon ${reset + dim}# Restore the latest backup patch${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} clear ${SGR.reset + SGR.dim}# Create backup patch and clear working tree${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} clear list ${SGR.reset + SGR.dim}# Show recent backup patches${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} clear pardon ${SGR.reset + SGR.dim}# Restore the latest backup patch${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

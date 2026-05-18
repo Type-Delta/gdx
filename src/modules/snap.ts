@@ -85,36 +85,38 @@ let fflateModulePromise: Promise<FflateModule> | null = null;
 export async function createWorktreeSnapshot(
    git$: string | string[]
 ): Promise<CreateSnapshotResult> {
-   const [repoInfo, stagedPatchRaw, unstagedPatchRaw, stagedStatuses, untrackedOutput] = await Promise.all([
-      getSnapshotRepoInfo(git$),
-      runGitStdout(git$, [
-         '-c',
-         'color.ui=never',
-         'diff',
-         '--cached',
-         '--binary',
-         '--no-color',
-         '--no-ext-diff',
-      ]),
-      runGitStdout(git$, [
-         '-c',
-         'color.ui=never',
-         'diff',
-         '--binary',
-         '--no-color',
-         '--no-ext-diff',
-      ]),
-      runGitStdout(git$, ['diff', '--cached', '--name-status', '-z'])
-         .then(parseNameStatusNullSeparated),
-      runGitStdout(git$, [
-         '-c',
-         'core.quotePath=false',
-         'ls-files',
-         '--others',
-         '--exclude-standard',
-         '-z',
-      ]),
-   ]);
+   const [repoInfo, stagedPatchRaw, unstagedPatchRaw, stagedStatuses, untrackedOutput] =
+      await Promise.all([
+         getSnapshotRepoInfo(git$),
+         runGitStdout(git$, [
+            '-c',
+            'color.ui=never',
+            'diff',
+            '--cached',
+            '--binary',
+            '--no-color',
+            '--no-ext-diff',
+         ]),
+         runGitStdout(git$, [
+            '-c',
+            'color.ui=never',
+            'diff',
+            '--binary',
+            '--no-color',
+            '--no-ext-diff',
+         ]),
+         runGitStdout(git$, ['diff', '--cached', '--name-status', '-z']).then(
+            parseNameStatusNullSeparated
+         ),
+         runGitStdout(git$, [
+            '-c',
+            'core.quotePath=false',
+            'ls-files',
+            '--others',
+            '--exclude-standard',
+            '-z',
+         ]),
+      ]);
 
    const repoRoot = repoInfo.repoRoot;
    const encoder = new TextEncoder();
@@ -482,7 +484,9 @@ async function resolveSnapshotByPrefix(hashPrefix: string): Promise<SnapshotList
    }
 
    if (matches.length > 1) {
-      const candidates = matches.map((entry) => entry.hash.slice(0, SNAP_SHORT_HASH_LENGTH)).join(', ');
+      const candidates = matches
+         .map((entry) => entry.hash.slice(0, SNAP_SHORT_HASH_LENGTH))
+         .join(', ');
       throw new Error(`Snapshot hash prefix '${hashPrefix}' is ambiguous: ${candidates}.`);
    }
 
@@ -550,12 +554,9 @@ async function resolveSnapshotRange(
    selector: string
 ): Promise<SnapshotListEntry[]> {
    const snapshots = await listSnapshots(git$);
-   const [start, end] = selector.split('..')
-      .map((s, i) =>
-         s === ''
-            ? (i ? snapshots.length - 1 : 0)
-            : parseInt(s, 10)
-      );
+   const [start, end] = selector
+      .split('..')
+      .map((s, i) => (s === '' ? (i ? snapshots.length - 1 : 0) : parseInt(s, 10)));
 
    if (isNaN(start) || isNaN(end) || start > end) {
       throw new Error(`Invalid snapshot range '${selector}'.`);
@@ -702,7 +703,9 @@ async function applyFullSnapshot(
       }
 
       if (!force) {
-         throw new Error('Applying a full snapshot inside an existing repository requires --force.');
+         throw new Error(
+            'Applying a full snapshot inside an existing repository requires --force.'
+         );
       }
 
       const rawCommonDir = (await revParseCached(git$, ['--git-common-dir'])).trim();
@@ -749,7 +752,9 @@ async function applyFullSnapshot(
    const targetDir = path.join(parentDir, snapshot.meta.repoLabel);
    if (fs.existsSync(targetDir)) {
       if (!force) {
-         throw new Error(`Target directory '${targetDir}' already exists. Use --force to replace it.`);
+         throw new Error(
+            `Target directory '${targetDir}' already exists. Use --force to replace it.`
+         );
       }
       await fs.rm(targetDir, { recursive: true, force: true });
    }
@@ -765,7 +770,10 @@ async function applyFullSnapshot(
    await $`${gitExec} -C ${targetDir} clean -fd`;
 }
 
-async function extractFullGitDirectory(snapshot: LoadedSnapshot, destination: string): Promise<void> {
+async function extractFullGitDirectory(
+   snapshot: LoadedSnapshot,
+   destination: string
+): Promise<void> {
    let extractedCount = 0;
 
    for (const [entryPath, data] of snapshot.entries.entries()) {
@@ -826,35 +834,37 @@ async function loadAllSnapshots(): Promise<SnapshotListEntry[]> {
    const files = (await fs.readdir(objectsDir))
       .filter((file) => file.endsWith(SNAP_FILE_EXTENSION))
       .sort((a, b) => a.localeCompare(b));
-   const snapshots = await Promise.all(files.map(async (fileName) => {
-      const archivePath = path.join(objectsDir, fileName);
-      const loaded = await loadSnapshotArchive(archivePath);
-      return {
-         hash: loaded.hash,
-         archivePath,
-         meta: loaded.meta,
-      };
-   }));
+   const snapshots = await Promise.all(
+      files.map(async (fileName) => {
+         const archivePath = path.join(objectsDir, fileName);
+         const loaded = await loadSnapshotArchive(archivePath);
+         return {
+            hash: loaded.hash,
+            archivePath,
+            meta: loaded.meta,
+         };
+      })
+   );
 
    return snapshots.sort(
-      (a, b) => Date.parse(b.meta.createdAt) - Date.parse(a.meta.createdAt) || a.hash.localeCompare(b.hash)
+      (a, b) =>
+         Date.parse(b.meta.createdAt) - Date.parse(a.meta.createdAt) || a.hash.localeCompare(b.hash)
    );
 }
 
 async function getSnapshotRepoInfo(git$: string | string[]): Promise<SnapshotRepoInfo> {
    const repoRootPromise = getRepoRootCached(git$);
-   const [repoRoot, rootCommitRaw, headCommitRaw, headRef, branchNameRaw, originUrlRaw] = await Promise.all([
-      repoRootPromise,
-      runGitStdout(git$, ['rev-list', '--max-parents=0', 'HEAD']),
-      revParseCached(git$, ['HEAD']),
-      runGitStdout(git$, ['symbolic-ref', '-q', 'HEAD'])
-         .then((output) => output.trim() || null)
-         .catch(() => null),
-      revParseCached(git$, ['--abbrev-ref', 'HEAD']),
-      repoRootPromise.then((repoRoot) =>
-         getGitConfigValue(git$, 'remote.origin.url', repoRoot)
-      ),
-   ]);
+   const [repoRoot, rootCommitRaw, headCommitRaw, headRef, branchNameRaw, originUrlRaw] =
+      await Promise.all([
+         repoRootPromise,
+         runGitStdout(git$, ['rev-list', '--max-parents=0', 'HEAD']),
+         revParseCached(git$, ['HEAD']),
+         runGitStdout(git$, ['symbolic-ref', '-q', 'HEAD'])
+            .then((output) => output.trim() || null)
+            .catch(() => null),
+         revParseCached(git$, ['--abbrev-ref', 'HEAD']),
+         repoRootPromise.then((repoRoot) => getGitConfigValue(git$, 'remote.origin.url', repoRoot)),
+      ]);
 
    const rootCommitOutput = rootCommitRaw.trim();
    const rootCommit = rootCommitOutput.split(/\r?\n/).filter(Boolean)[0] || '';
@@ -896,7 +906,10 @@ async function getCurrentRepoInfo(git$: string | string[]): Promise<SnapshotRepo
    }
 }
 
-function isSameRepository(meta: SnapMetadata | SnapshotRepoInfo, repoInfo: SnapshotRepoInfo): boolean {
+function isSameRepository(
+   meta: SnapMetadata | SnapshotRepoInfo,
+   repoInfo: SnapshotRepoInfo
+): boolean {
    if (meta.rootCommit !== repoInfo.rootCommit) {
       return false;
    }
@@ -909,15 +922,15 @@ function isSameRepository(meta: SnapMetadata | SnapshotRepoInfo, repoInfo: Snaps
 }
 
 async function ensureSnapshotDirectories(): Promise<void> {
-   await Promise.all([
-      getSnapshotRootPath(),
-      getSnapshotObjectsDirPath(),
-      getSnapshotTmpDirPath(),
-   ].map(async (dirPath) => {
-      if (!fs.existsSync(dirPath)) {
-         await fs.mkdir(dirPath, { recursive: true });
-      }
-   }));
+   await Promise.all(
+      [getSnapshotRootPath(), getSnapshotObjectsDirPath(), getSnapshotTmpDirPath()].map(
+         async (dirPath) => {
+            if (!fs.existsSync(dirPath)) {
+               await fs.mkdir(dirPath, { recursive: true });
+            }
+         }
+      )
+   );
 }
 
 function getSnapshotRootPath(): string {
@@ -987,7 +1000,11 @@ async function cleanGitBackupDirectory(gitDir: string): Promise<void> {
 }
 
 async function isDirtyWorktree(git$: string | string[]): Promise<boolean> {
-   const statusOutput = await runGitStdout(git$, ['status', '--porcelain=v1', '--untracked-files=normal']);
+   const statusOutput = await runGitStdout(git$, [
+      'status',
+      '--porcelain=v1',
+      '--untracked-files=normal',
+   ]);
    return statusOutput.trim().length > 0;
 }
 
@@ -1026,7 +1043,10 @@ function validateSnapshotRelativePath(relativePath: string): string {
 }
 
 function parseNullSeparated(output: string): string[] {
-   return output.split('\0').map((item) => item.trim()).filter(Boolean);
+   return output
+      .split('\0')
+      .map((item) => item.trim())
+      .filter(Boolean);
 }
 
 function normalizePatchText(output: string): string {
@@ -1041,7 +1061,7 @@ function parseNameStatusNullSeparated(output: string): SnapshotPathStatus[] {
    const tokens = output.split('\0').filter(Boolean);
    const entries: SnapshotPathStatus[] = [];
 
-   for (let index = 0; index < tokens.length;) {
+   for (let index = 0; index < tokens.length; ) {
       const statusToken = tokens[index++] || '';
       const status = statusToken[0] || '';
       if (!status) {

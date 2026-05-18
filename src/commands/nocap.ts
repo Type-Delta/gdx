@@ -1,4 +1,4 @@
-import { ncc, strWrap, yuString } from '@lib/Tools';
+import { strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $, redrawText, spinner } from '@/modules/shell';
@@ -6,7 +6,7 @@ import { noop, quickPrint } from '@/utils/utilities';
 import { getLLMProvider } from '@/common/adapters/llm';
 import Logger from '@/utils/logger';
 import { nocapPrompt } from '@/templates/prompts';
-import { GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
+import { GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
@@ -33,9 +33,9 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       // Display the commit message
       const lines = latestCommitMessage.split('\n');
       for (const line of lines) {
-         quickPrint(`${ncc('Dim')}▐  ${ncc()}${line}`);
+         quickPrint(`${SGR.dim}▐  ${SGR.reset}${line}`);
       }
-      quickPrint(`\n${ncc('Cyan')}${ncc('Dim')}Reviewing your commit message...${ncc()}\n`);
+      quickPrint(`\n${SGR.cyan}${SGR.dim}Reviewing your commit message...${SGR.reset}\n`);
 
       // Get LLM provider and generate roast
       const llm = await getLLMProvider();
@@ -102,20 +102,18 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('NOCAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('NOCAP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Generate a playful roast for your latest commit message.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Reads the latest commit message authored by the configured git user and asks the configured LLM provider to produce a humorous "roast" or light-hearted commentary. Output is streamed to the terminal with progress spinners and incremental printing as the LLM responds.
 
-         ${bright + _2PointGradient('WHEN TO USE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('WHEN TO USE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Use when you want a quick, entertaining summary/critique of your most recent commit message before pushing, or as a lighthearted CI/gaming aid.
 
-         ${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          The command requires a valid git user.email in repo config and a configured LLM adapter. Network or LLM errors will print a colored error and return a non-zero exit code.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -128,15 +126,12 @@ export const help = {
    },
    short: 'Create a humorous critique of your latest commit message.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} nocap${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} nocap${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} nocap ${reset + dim}# Roast the latest commit by the configured git user${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} nocap ${SGR.reset + SGR.dim}# Roast the latest commit by the configured git user${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

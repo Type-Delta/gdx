@@ -1,10 +1,17 @@
 import path from 'path';
 
-import { Err, ncc, strWrap, yuString } from '@lib/Tools';
+import { Err, strWrap, yuString } from '@lib/Tools';
 
 import * as fs from '@/modules/fs';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { $, $inherit, spinner, SpinnerContoller, tokenizeCommand, whichExec } from '@/modules/shell';
+import {
+   $,
+   $inherit,
+   spinner,
+   SpinnerContoller,
+   tokenizeCommand,
+   whichExec,
+} from '@/modules/shell';
 import { getConfig } from '@/common/config';
 import {
    assertInGitWorktree,
@@ -14,7 +21,7 @@ import {
 } from '@/modules/git';
 import { noop, quickPrint } from '@/utils/utilities';
 import Logger from '@/utils/logger';
-import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR } from '@/consts';
+import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import litedent from '@/utils/litedent';
@@ -248,15 +255,21 @@ async function rewriteOlderCommit(
       await $`${worktreeGit} checkout --detach ${rewrittenTarget}`;
 
       const replayCommits = await listReplayCommits(git$, targetSha, headSha);
-      spinnerCtrl = replayCommits.length > 50 ? spinner({
-         message: `Replaying commits... (0/${replayCommits.length})`,
-      }) : null;
+      spinnerCtrl =
+         replayCommits.length > 50
+            ? spinner({
+                 message: `Replaying commits... (0/${replayCommits.length})`,
+              })
+            : null;
 
       let replayCounter = 0;
       for (const commit of replayCommits) {
          const cherryPickResult = await $`${worktreeGit} cherry-pick ${commit}`;
-         oldShaToNewShaMap[commit] = shaFromGitOutputRegex.exec(cherryPickResult.stdout)?.[1] || 'unknown';
-         spinnerCtrl?.setMessage(`Replaying commits... (${++replayCounter}/${replayCommits.length})`);
+         oldShaToNewShaMap[commit] =
+            shaFromGitOutputRegex.exec(cherryPickResult.stdout)?.[1] || 'unknown';
+         spinnerCtrl?.setMessage(
+            `Replaying commits... (${++replayCounter}/${replayCommits.length})`
+         );
       }
 
       spinnerCtrl?.setMessage('Repositioning HEAD...');
@@ -339,12 +352,13 @@ export default async function reword(ctx: GdxContext): Promise<number> {
          return 0;
       }
 
-      const renderedDiffPromise = renderCommitMessageDiffLines(originalMessage, updatedMessage).catch(
-         (error) => {
-            Logger.warn(`Failed to render commit message diff: ${Err.from(error).message}`, 'reword');
-            return [];
-         }
-      );
+      const renderedDiffPromise = renderCommitMessageDiffLines(
+         originalMessage,
+         updatedMessage
+      ).catch((error) => {
+         Logger.warn(`Failed to render commit message diff: ${Err.from(error).message}`, 'reword');
+         return [];
+      });
 
       const rewriteSummaryLines: string[] = [];
 
@@ -379,21 +393,18 @@ export default async function reword(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('REWORD', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('REWORD', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Update a commit message without rebase, no clean working directory required, and with safety checks to prevent history corruption. Ideal for quick fixes to recent commits.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Opens the selected commit message in your editor, then rewrites history as needed. By default, it rewords HEAD. Provide a commit SHA or a relative ref (e.g. ${cyan}~2${reset}) to target older commits.
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Opens the selected commit message in your editor, then rewrites history as needed. By default, it rewords HEAD. Provide a commit SHA or a relative ref (e.g. ${SGR.cyan}~2${SGR.reset}) to target older commits.
 
-         ${bright + _2PointGradient('CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Set ${cyan}reword.editor${reset} to override the global editor. When unset, ${cyan}defaultEditor${reset} is used.
+         ${SGR.bright + _2PointGradient('CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Set ${SGR.cyan}reword.editor${SGR.reset} to override the global editor. When unset, ${SGR.cyan}defaultEditor${SGR.reset} is used.
 
-         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Rewording rewrites commit history. Ensure you coordinate with collaborators before rewriting shared commits.
          If the commit you are rewording or later commits exist on a remote, you will need to force push after rewording. Always double-check the rewritten history before pushing.
          `,
@@ -407,17 +418,14 @@ export const help = {
    },
    short: 'Reword a commit message (defaults to HEAD).',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} reword ${dim}[<commit>]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} reword ${SGR.dim}[<commit>]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} reword${reset + dim}           # Reword the latest commit${reset}
-            ${cyan}${EXECUTABLE_NAME} reword ~2${reset + dim}        # Reword HEAD~2${reset}
-            ${cyan}${EXECUTABLE_NAME} reword deadbeef${reset + dim}  # Reword a specific commit${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} reword${SGR.reset + SGR.dim}           # Reword the latest commit${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} reword ~2${SGR.reset + SGR.dim}        # Reword HEAD~2${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} reword deadbeef${SGR.reset + SGR.dim}  # Reword a specific commit${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

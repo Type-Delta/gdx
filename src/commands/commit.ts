@@ -2,7 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import crypto from 'crypto';
 
-import { DataScienceKit, Err, SafeTrue, ncc, strWrap, yuString } from '@lib/Tools';
+import { DataScienceKit, Err, SafeTrue, strWrap, yuString } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
 import { $, $inherit, copyToClipboard, spinner, redrawText } from '@/modules/shell';
@@ -23,6 +23,7 @@ import {
    EXECUTABLE_NAME,
    TEMP_DIR,
    GDX_VPALETTE,
+   SGR,
 } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
@@ -127,7 +128,10 @@ function farthestPointSampleCommits(
 
          let minDistanceToSelected = Number.POSITIVE_INFINITY;
          for (const selectedIndex of selectedIndexes) {
-            const distance = getHeaderPrefixDistance(samples[i].header, samples[selectedIndex].header);
+            const distance = getHeaderPrefixDistance(
+               samples[i].header,
+               samples[selectedIndex].header
+            );
             if (distance < minDistanceToSelected) {
                minDistanceToSelected = distance;
             }
@@ -194,7 +198,10 @@ export async function learnCommitGuidelines(
       }
 
       // Step 2: compute medoid from latest 25 headers (or fewer if unavailable).
-      const medoidCandidates = headerSamples.slice(0, Math.min(COMMIT_MEDOID_SAMPLE_LIMIT, headerSamples.length));
+      const medoidCandidates = headerSamples.slice(
+         0,
+         Math.min(COMMIT_MEDOID_SAMPLE_LIMIT, headerSamples.length)
+      );
       const medoidPrefix = findHeaderMedoidPrefix(medoidCandidates.map((sample) => sample.header));
 
       if (!medoidPrefix) {
@@ -356,10 +363,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    const config = await getConfig();
    const showThinking = config.get<boolean>('llm.showThinking', true);
    const commitPattern = config.get<'inherit' | 'comprehensive'>('commit.commitPattern', 'inherit');
-   const noisyFilePatterns = config.get<string[]>(
-      'commit.noisyFiles',
-      []
-   );
+   const noisyFilePatterns = config.get<string[]>('commit.noisyFiles', []);
    const resolvedNoisyPatterns = Array.isArray(noisyFilePatterns)
       ? noisyFilePatterns.filter((entry) => typeof entry === 'string')
       : [];
@@ -374,7 +378,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
 
    if (!stagedSummary.hasChanges || stagedSummary.summary.trim().length === 0) {
       quickPrint(
-         `${ncc('Red')}No staged changes found. Please stage your changes before generating a commit message.${ncc()}`
+         `${SGR.red}No staged changes found. Please stage your changes before generating a commit message.${SGR.reset}`
       );
       return 1;
    }
@@ -398,7 +402,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       return 0;
    }
 
-   quickPrint(`${ncc('Cyan')}Generating commit message based on staged changes...${ncc()}\n`);
+   quickPrint(`${SGR.cyan}Generating commit message based on staged changes...${SGR.reset}\n`);
 
    try {
       const llm = await getLLMProvider();
@@ -450,7 +454,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             if (!hasReceivedContent) {
                hasReceivedContent = true;
                spin.stop();
-               quickPrint(`${ncc('Cyan')}Generated Commit Message:${ncc()}`);
+               quickPrint(`${SGR.cyan}Generated Commit Message:${SGR.reset}`);
             }
             quickPrint(response.chunk, '');
             generatedMsg += response.chunk;
@@ -488,7 +492,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
          }
          if (shouldCopy) {
             const copied = await copyToClipboard(generatedMsg);
-            if (copied) quickPrint(`${ncc('Cyan')}(message has been copied to clipboard)${ncc()}`);
+            if (copied) quickPrint(`${SGR.cyan}(message has been copied to clipboard)${SGR.reset}`);
             else Logger.warn('(failed to copy to clipboard)', 'commit');
          }
          return 0;
@@ -525,21 +529,18 @@ export default {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('COMMIT AUTO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('COMMIT AUTO', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Generate a commit message from staged changes using an LLM.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Analyze the staged diff and ask the configured LLM provider to produce a well-formed commit message (title and body). The generated text is streamed for interactive feedback; you may choose to commit it automatically or inspect/copy it first.
 
-         ${bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Use ${cyan}--no-commit (-nc)${reset} to prevent creating the commit (message will be printed). Use ${cyan}--copy (-cp)${reset} in combination with --no-commit to copy the message to the clipboard. Use ${cyan}--yes (-y)${reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). Use ${cyan}--describe (-d) <text>${reset} to provide a short human summary of the change intent so the model can prioritize relevant diff sections. Use ${cyan}--preview${reset} to print the complete generated prompt and exit (no LLM request, no commit). The tool writes a temporary message file when performing an interactive commit.
+         ${SGR.bright + _2PointGradient('FLAGS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Use ${SGR.cyan}--no-commit (-nc)${SGR.reset} to prevent creating the commit (message will be printed). Use ${SGR.cyan}--copy (-cp)${SGR.reset} in combination with --no-commit to copy the message to the clipboard. Use ${SGR.cyan}--yes (-y)${SGR.reset} to commit immediately without writing a temporary message file or opening an editor (ignored when --no-commit is set). Use ${SGR.cyan}--describe (-d) <text>${SGR.reset} to provide a short human summary of the change intent so the model can prioritize relevant diff sections. Use ${SGR.cyan}--preview${SGR.reset} to print the complete generated prompt and exit (no LLM request, no commit). The tool writes a temporary message file when performing an interactive commit.
 
-         ${bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('REQUIREMENTS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          A non-empty staged diff is required; the command will error if there are no staged changes.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -552,20 +553,17 @@ export const help = {
    },
    short: 'Extends git commit with ability to auto-generate messages using an LLM.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} commit auto ${dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y] [--describe|-d <text>] [--preview]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} commit auto ${SGR.dim}[--no-commit|-nc] [--copy|-cp] [--yes|-y] [--describe|-d <text>] [--preview]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} commit auto                    ${reset + dim}# Generate and commit using LLM-generated message${reset}
-            ${cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${reset + dim}# Print generated message without committing${reset}
-            ${cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${reset + dim}# Copy generated message to clipboard${reset}
-            ${cyan}${EXECUTABLE_NAME} commit auto --yes              ${reset + dim}# Commit immediately without editing${reset}
-            ${cyan}${EXECUTABLE_NAME} commit auto -d ${'"refactor parser + trim noisy lockfile diffs"'} ${reset + dim}# Add extra context for the LLM${reset}
-            ${cyan}${EXECUTABLE_NAME} commit auto --preview          ${reset + dim}# Print full LLM prompt and exit${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto                    ${SGR.reset + SGR.dim}# Generate and commit using LLM-generated message${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto --no-commit        ${SGR.reset + SGR.dim}# Print generated message without committing${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto --no-commit --copy ${SGR.reset + SGR.dim}# Copy generated message to clipboard${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto --yes              ${SGR.reset + SGR.dim}# Commit immediately without editing${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto -d ${'"refactor parser + trim noisy lockfile diffs"'} ${SGR.reset + SGR.dim}# Add extra context for the LLM${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} commit auto --preview          ${SGR.reset + SGR.dim}# Print full LLM prompt and exit${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

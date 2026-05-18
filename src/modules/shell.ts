@@ -7,7 +7,7 @@ import { CheckCache, Err, ncc, yuString } from '@lib/Tools';
 import { isExecutable, noop } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
-import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER } from '@/consts';
+import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
 import global from '@/global';
 import { writeFile } from 'fs/promises';
@@ -24,9 +24,6 @@ export interface SpinnerContoller {
 }
 
 const logger = new Logger('shell');
-const dim = ncc('Dim');
-const reset = ncc();
-const bright = ncc('Bright');
 
 /**
  * Indicates if the current process is running in a TTY (interactive terminal).
@@ -227,7 +224,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
             if (newline) process.stdout.write('\n');
          },
          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-         setMessage: (msg: string) => { },
+         setMessage: (msg: string) => {},
          options: options as Required<SpinnerOptions>,
       };
    }
@@ -236,7 +233,6 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    let gradientOffset = 0;
    let isRunning = true;
    let intervalId: NodeJS.Timeout | null = null;
-   const resetColor = ncc();
 
    const render = () => {
       if (!isRunning) return;
@@ -264,7 +260,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
                   ' ' +
                   ncc(rgbVec2decimal(options.gradientColorBg as RgbVec)) +
                   options.message +
-                  resetColor;
+                  SGR.reset;
             }
             gradientOffset += options.gradientSpeed ?? 0.1;
          } else {
@@ -497,7 +493,7 @@ function execaCustomLogger(_verboseLine: string, verboseObject: MinimalVerboseOb
 
    logger.debug(
       // @ts-expect-error -- known property
-      `${bright + dim}$ ${reset + verboseObject.escapedCommand + dim} (${exitType} in ${verboseObject['result']['durationMs']}ms)`
+      `${SGR.bright + SGR.dim}$ ${SGR.reset + verboseObject.escapedCommand + SGR.dim} (${exitType} in ${verboseObject['result']['durationMs']}ms)`
    );
 }
 

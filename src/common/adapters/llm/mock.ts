@@ -1,5 +1,5 @@
- 
 import { asyncSleep } from '@lib/Tools';
+
 import { LLMProvider, LLMRequest, StreamChunk } from './types';
 
 interface TestLLMHooks {
@@ -50,14 +50,12 @@ export class MockLLMAdapter implements LLMProvider {
       const prompt = hooks?.streamResponse ?? 'Mock response from LLM';
       const words = prompt.split(' ');
 
-      if (this.config.responseDelayMs! > 0)
-         await asyncSleep(this.config.responseDelayMs!);
+      if (this.config.responseDelayMs! > 0) await asyncSleep(this.config.responseDelayMs!);
 
       const thinking =
          `I should generate a mock response for prompt with ${words.length} words.`.split(' ');
       for (const thought of thinking) {
-         if (this.config.streamDelayMs! > 0)
-            await asyncSleep(this.config.streamDelayMs!);
+         if (this.config.streamDelayMs! > 0) await asyncSleep(this.config.streamDelayMs!);
 
          yield {
             chunk: undefined,
@@ -67,8 +65,7 @@ export class MockLLMAdapter implements LLMProvider {
       }
 
       for (const word of words) {
-         if (this.config.streamDelayMs! > 0)
-            await asyncSleep(this.config.streamDelayMs!);
+         if (this.config.streamDelayMs! > 0) await asyncSleep(this.config.streamDelayMs!);
 
          yield {
             chunk: word + ' ',

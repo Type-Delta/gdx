@@ -2,8 +2,13 @@ import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { MathKit, ncc, strWrap } from '@lib/Tools';
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { _2PointGradientInterp, _2PointGradient, rgbVec2decimal, colorMix } from '../modules/graphics';
-import { GDX_VPALETTE, EXECUTABLE_NAME } from '../consts';
+import {
+   _2PointGradientInterp,
+   _2PointGradient,
+   rgbVec2decimal,
+   colorMix,
+} from '../modules/graphics';
+import { GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { getGitConfigCached } from '@/modules/git';
@@ -36,24 +41,16 @@ export default async function graph(ctx: GdxContext): Promise<number> {
    if (!args.includes('--quiet')) {
       quickPrint(
          isAllScope
-            ? ncc('Cyan') + 'Generating commit graph for all authors' + ncc()
-            : ncc('Cyan') + `Generating commit graph for user: ` + ncc('Yellow') + email + ncc()
+            ? SGR.cyan + 'Generating commit graph for all authors' + SGR.reset
+            : SGR.cyan + `Generating commit graph for user: ` + SGR.yellow + email + SGR.reset
       );
    }
 
    const termWidth = global.terminalWidth;
    const graphWidth = termWidth - LABEL_WIDTH - RIGHT_MARGIN;
    const totalWeeks = Math.min(Math.floor(graphWidth / COL_WIDTH), 52); // limit to 1 year
-   const lowContColor = colorMix(
-      GDX_VPALETTE.OceanDeepBlue,
-      GDX_VPALETTE.MidnightBlack,
-      0.86
-   );
-   const noContColor = colorMix(
-      GDX_VPALETTE.OceanDeepBlue,
-      GDX_VPALETTE.MidnightBlack,
-      0.76
-   );
+   const lowContColor = colorMix(GDX_VPALETTE.OceanDeepBlue, GDX_VPALETTE.MidnightBlack, 0.86);
+   const noContColor = colorMix(GDX_VPALETTE.OceanDeepBlue, GDX_VPALETTE.MidnightBlack, 0.76);
 
    if (graphWidth < MIN_TERM_WIDTH) {
       Logger.error(
@@ -99,15 +96,15 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    quickPrint(
       '\n  ' +
-      ncc('Bright') +
-      _2PointGradient(
-         'Contribution Graph',
-         GDX_VPALETTE.OceanDeepBlue,
-         GDX_VPALETTE.OceanGreen,
-         0.12,
-         0.83
-      ) +
-      ` (Max: ${maxCommits} commits/day)\n`
+         SGR.bright +
+         _2PointGradient(
+            'Contribution Graph',
+            GDX_VPALETTE.OceanDeepBlue,
+            GDX_VPALETTE.OceanGreen,
+            0.12,
+            0.83
+         ) +
+         ` (Max: ${maxCommits} commits/day)\n`
    );
 
    // Draw header (month labels)
@@ -131,12 +128,12 @@ export default async function graph(ctx: GdxContext): Promise<number> {
          prevMonth = weekStartDate.getMonth();
       }
    }
-   quickPrint(ncc('Bright') + monthLabel + ncc());
+   quickPrint(SGR.bright + monthLabel + SGR.reset);
 
    // Draw graph rows (days of week)
    const dayLabels = ['   ', 'Mon', '   ', 'Wed', '   ', 'Fri', '   '];
    for (let day = 0; day < 7; day++) {
-      let row = ncc('Bright') + dayLabels[day] + ncc() + ' ';
+      let row = SGR.bright + dayLabels[day] + SGR.reset + ' ';
 
       for (let week = 0; week <= totalWeeks; week++) {
          const cellDate = new Date(startDate);
@@ -154,7 +151,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
          let color: string;
          let cellChar = '■';
          if (commitCount === 0) {
-            color = ncc('Dim') + ncc(rgbVec2decimal(noContColor));
+            color = SGR.dim + ncc(rgbVec2decimal(noContColor));
             cellChar = '▨'; // Different char for zero commits
          } else {
             const intensity = MathKit.clamp(commitCount / maxCommits, 0.15, 1);
@@ -166,7 +163,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
             color = ncc(rgbVec2decimal(interpColor));
          }
 
-         row += color + cellChar + ncc() + ' ';
+         row += color + cellChar + SGR.reset + ' ';
       }
 
       quickPrint('  ' + row);
@@ -178,22 +175,19 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('GRAPH', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Render a calendar-style contribution graph for a repository author or the whole repository.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Visualize commit activity as a calendar-like heatmap showing commit density by day for the last N weeks (limited by terminal width). Each cell is colored to indicate relative commit frequency and can be clamped to a maximum of 52 weeks.
 
-         ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Supply ${cyan}--email <email>${reset} to override the configured git user email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide commit graph across all authors. Use ${cyan}--quiet${reset} to suppress informational headers when embedding the graph in other scripts.
+         ${SGR.bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Supply ${SGR.cyan}--email <email>${SGR.reset} to override the configured git user email. Use ${SGR.cyan}--all${SGR.reset} or ${SGR.cyan}-a${SGR.reset} for project-wide commit graph across all authors. Use ${SGR.cyan}--quiet${SGR.reset} to suppress informational headers when embedding the graph in other scripts.
 
-         ${bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         The graph respects \`${cyan}global.terminalWidth${reset}\`. If the terminal is too narrow the command will bail with an error message.
+         ${SGR.bright + _2PointGradient('TERMINAL NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         The graph respects \`${SGR.cyan}global.terminalWidth${SGR.reset}\`. If the terminal is too narrow the command will bail with an error message.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -205,17 +199,14 @@ export const help = {
    },
    short: 'Render a calendar-style contribution graph for an author or all authors.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} graph ${dim}[--email <email>] [--all|-a] [--quiet]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} graph ${SGR.dim}[--email <email>] [--all|-a] [--quiet]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} graph ${reset + dim}# Graph for configured git user${reset}
-            ${cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${reset + dim}# Graph for specified author${reset}
-            ${cyan}${EXECUTABLE_NAME} graph --all ${reset + dim}# Graph for all authors${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} graph ${SGR.reset + SGR.dim}# Graph for configured git user${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} graph --email bob@example.com ${SGR.reset + SGR.dim}# Graph for specified author${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} graph --all ${SGR.reset + SGR.dim}# Graph for all authors${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

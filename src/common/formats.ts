@@ -25,7 +25,9 @@ FormatRegistry.Set(FORMATS.parallelInit, (value) => {
       .split(',')
       .map((entry) => entry.trim().toLowerCase())
       .filter((entry) => entry.length > 0)
-      .every((entry) => PARALLEL_INIT_VALUES.includes(entry as (typeof PARALLEL_INIT_VALUES)[number]));
+      .every((entry) =>
+         PARALLEL_INIT_VALUES.includes(entry as (typeof PARALLEL_INIT_VALUES)[number])
+      );
 });
 
 FormatRegistry.Set(FORMATS.colonSeparatedPatterns, (value) => {

@@ -41,7 +41,7 @@
     "test": "bun test",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --external=fflate --format=esm --production --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --external=fflate --format=esm --production --minify",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",

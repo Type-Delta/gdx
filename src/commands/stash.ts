@@ -1,11 +1,12 @@
-import { Err, ncc, strWrap } from '@lib/Tools';
+import { Err, strWrap } from '@lib/Tools';
+
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
 import { $inherit } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
-import { EXECUTABLE_NAME, TEMP_DIR } from '@/consts';
+import { EXECUTABLE_NAME, TEMP_DIR, SGR } from '@/consts';
 import { GDX_VPALETTE } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import { getStashEntry, restoreStash, getRepoRootCached } from '@/modules/git';
@@ -37,12 +38,12 @@ async function dropPardon(git$: string | string[]): Promise<number> {
          return 1;
       }
 
-      quickPrint(ncc('Cyan') + `Restoring ${op.entries.length} dropped stash(es)...` + ncc());
+      quickPrint(SGR.cyan + `Restoring ${op.entries.length} dropped stash(es)...` + SGR.reset);
 
       // Restore
       for (const entry of op.entries) {
          await restoreStash(git$, entry.sha, entry.message);
-         quickPrint(ncc('Green') + `  + Restored: ${entry.message}` + ncc());
+         quickPrint(SGR.green + `  + Restored: ${entry.message}` + SGR.reset);
       }
 
       return 0;
@@ -96,9 +97,9 @@ async function dropRange(
    }
 
    quickPrint(
-      ncc('Cyan') +
-      `Dropping stashes from ${ncc('Bright') + start + ncc() + ncc('Cyan')} to ${ncc('Bright') + end + ncc() + ncc('Cyan')} (inclusive)` +
-      ncc()
+      SGR.cyan +
+         `Dropping stashes from ${SGR.bright + start + SGR.reset + SGR.cyan} to ${SGR.bright + end + SGR.reset + SGR.cyan} (inclusive)` +
+         SGR.reset
    );
 
    for (let i = end; i >= start; i--) {
@@ -217,26 +218,23 @@ export default {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('STASH DROP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('STASH DROP', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Remove a stash entry or a range of stash entries.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Accepts a single stash index, a range like <start>..<end>, or defaults to the latest stash.
          Includes safety features:
-         - **Undoable**: You can restore the last dropped stash(es) with \`${cyan}${EXECUTABLE_NAME} stash drop pardon${reset}\`.
+         - **Undoable**: You can restore the last dropped stash(es) with \`${SGR.cyan}${EXECUTABLE_NAME} stash drop pardon${SGR.reset}\`.
 
-         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         - \`${cyan}drop <index>${reset}\`: Drop specific stash.
-         - \`${cyan}drop <start>..<end>${reset}\`: Drop range of stashes.
-         - \`${cyan}drop pardon${reset}\`: Undo the last drop operation.
+         ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         - \`${SGR.cyan}drop <index>${SGR.reset}\`: Drop specific stash.
+         - \`${SGR.cyan}drop <start>..<end>${SGR.reset}\`: Drop range of stashes.
+         - \`${SGR.cyan}drop pardon${SGR.reset}\`: Undo the last drop operation.
 
-         ${bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Dropped stashes are backed up temporarily. Use \`${cyan}pardon${reset}\` to bring them back.
+         ${SGR.bright + _2PointGradient('SAFETY', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Dropped stashes are backed up temporarily. Use \`${SGR.cyan}pardon${SGR.reset}\` to bring them back.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -248,21 +246,18 @@ export const help = {
    },
    short: 'Extends git stash with ability to drop entries and undo support (e.g. 0..3, pardon).',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} stash drop ${dim}[<stash> | <range> | pardon]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} stash drop ${SGR.dim}[<stash> | <range> | pardon]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} stash drop 0..0   ${reset + dim}# Drop the most recent stash${reset}
-            ${cyan}${EXECUTABLE_NAME} stash drop pardon ${reset + dim}# Restore last dropped stash${reset}
-            ${cyan}${EXECUTABLE_NAME} stash l           ${reset + dim}# Show stash list (alias for ${EXECUTABLE_NAME} stash list).${reset}
-            ${cyan}${EXECUTABLE_NAME} stash d 3         ${reset + dim}# Drop stash@{3}.${reset}
-            ${cyan}${EXECUTABLE_NAME} stash d 2..5      ${reset + dim}# Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).${reset}
-            ${cyan}${EXECUTABLE_NAME} stash p 1         ${reset + dim}# Pop stash@{1}.${reset}
-            ${cyan}${EXECUTABLE_NAME} stash c           ${reset + dim}# Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} stash drop 0..0   ${SGR.reset + SGR.dim}# Drop the most recent stash${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash drop pardon ${SGR.reset + SGR.dim}# Restore last dropped stash${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash l           ${SGR.reset + SGR.dim}# Show stash list (alias for ${EXECUTABLE_NAME} stash list).${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash d 3         ${SGR.reset + SGR.dim}# Drop stash@{3}.${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash d 2..5      ${SGR.reset + SGR.dim}# Drop stash@{5}, stash@{4}, stash@{3}, stash@{2} (safe ordering).${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash p 1         ${SGR.reset + SGR.dim}# Pop stash@{1}.${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stash c           ${SGR.reset + SGR.dim}# Clear all stashes (maps to ${EXECUTABLE_NAME} stash clear — destructive).${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

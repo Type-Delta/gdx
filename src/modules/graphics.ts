@@ -8,6 +8,7 @@ import {
    strJustify,
    strWrap,
 } from '@lib/Tools';
+import { SGR } from '@/consts';
 
 const _4bitColorMap = Object.entries(CONSTS.AnsiColorCodes);
 const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'] as const;
@@ -554,9 +555,7 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
                lastLineStyle = serializeAnsiStyles(inferAnsiStyles(wrappedLines[i]));
             }
 
-            wrapped.push(
-               ...wrappedLines
-            );
+            wrapped.push(...wrappedLines);
          }
          return wrapped.length ? wrapped : [''];
       })
@@ -566,7 +565,7 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
 
    const border = getBorder(borderStyle);
    const borderPrefix = getBorderPrefix(borderAnsiColor);
-   const borderSuffix = borderPrefix ? ncc() : '';
+   const borderSuffix = borderPrefix ? SGR.reset : '';
    const colorizeBorder = (text: string) =>
       borderPrefix ? `${borderPrefix}${text}${borderSuffix}` : text;
 
@@ -729,8 +728,8 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
          kind === 'top'
             ? border.topRight
             : kind === 'bottom'
-               ? border.bottomRight
-               : border.rightJoin;
+              ? border.bottomRight
+              : border.rightJoin;
 
       let line = colorizeBorder(left);
       for (let col = 0; col < cellWidths.length; col++) {

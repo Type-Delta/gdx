@@ -1,11 +1,11 @@
 import path from 'path';
 
-import { Err, jsTime, ncc, strJustify, strLimit, strWrap, yuString } from '@lib/Tools';
+import { Err, jsTime, strJustify, strLimit, strWrap, yuString } from '@lib/Tools';
 
 import { resetCache } from '@/common/cache';
 import { getConfig } from '@/common/config';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
-import { CACHE_PATH, GDX_VPALETTE, EXECUTABLE_NAME } from '@/consts';
+import { CACHE_PATH, GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import * as fs from '@/modules/fs';
@@ -15,13 +15,16 @@ import { CacheStructure, ZCacheStructure } from '@/common/schema';
 import litedent from '@/utils/litedent';
 import { assertSchema } from '@/modules/typebox';
 
-
 export default async function cache(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
-   const { match: subcommand, candidates } = progressiveMatch(
-      inputCommand,
-      ['list', 'prune', 'reset', 'delete', 'disable', 'enable']
-   );
+   const { match: subcommand, candidates } = progressiveMatch(inputCommand, [
+      'list',
+      'prune',
+      'reset',
+      'delete',
+      'disable',
+      'enable',
+   ]);
 
    switch (subcommand) {
       case 'list':
@@ -57,7 +60,7 @@ async function pruneCache(): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to prune.${ncc()}`);
+      quickPrint(`${SGR.yellow}No valid cache found. Nothing to prune.${SGR.reset}`);
       return 0;
    }
 
@@ -81,9 +84,9 @@ async function pruneCache(): Promise<number> {
    resetCache();
 
    if (prunedCount > 0) {
-      quickPrint(`${ncc('Green')}Pruned ${prunedCount} expired cache entries.${ncc()}`);
+      quickPrint(`${SGR.green}Pruned ${prunedCount} expired cache entries.${SGR.reset}`);
    } else {
-      quickPrint(`${ncc('Cyan')}No expired cache entries found.${ncc()}`);
+      quickPrint(`${SGR.cyan}No expired cache entries found.${SGR.reset}`);
    }
 
    return 0;
@@ -99,7 +102,7 @@ async function listCache(): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to list.${ncc()}`);
+      quickPrint(`${SGR.yellow}No valid cache found. Nothing to list.${SGR.reset}`);
       return 0;
    }
 
@@ -110,12 +113,12 @@ async function listCache(): Promise<number> {
    });
 
    if (keys.length === 0) {
-      quickPrint(`${ncc('Yellow')}No cache keys found.${ncc()}`);
+      quickPrint(`${SGR.yellow}No cache keys found.${SGR.reset}`);
       return 0;
    }
 
    quickPrint(
-      `${ncc('Cyan')}Cache:${ncc()} ${CACHE_PATH} ${ncc('Dim')}(${keys.length} keys)${ncc()}\n`
+      `${SGR.cyan}Cache:${SGR.reset} ${CACHE_PATH} ${SGR.dim}(${keys.length} keys)${SGR.reset}\n`
    );
 
    for (const keyPath of keys) {
@@ -123,21 +126,22 @@ async function listCache(): Promise<number> {
       if (!entry) continue;
 
       const ttlMs = entry.expiresAt - Date.now();
-      const ttlLabel = ttlMs <= 0
-         ? 'expired'
-         : entry.expiresAt >= Number.MAX_SAFE_INTEGER
-            ? 'N/A'
-            : jsTime.getTimeFromMS(ttlMs).modern();
-      let ttlColor = ncc('Green');
-      if (ttlMs <= 0) ttlColor = ncc('Dim');
-      else if (ttlMs < 60 * 60 * 1000) ttlColor = ncc('Red');
-      else if (ttlMs < 12 * 60 * 60 * 1000) ttlColor = ncc('Yellow');
+      const ttlLabel =
+         ttlMs <= 0
+            ? 'expired'
+            : entry.expiresAt >= Number.MAX_SAFE_INTEGER
+              ? 'N/A'
+              : jsTime.getTimeFromMS(ttlMs).modern();
+      let ttlColor = SGR.green;
+      if (ttlMs <= 0) ttlColor = SGR.dim;
+      else if (ttlMs < 60 * 60 * 1000) ttlColor = SGR.red;
+      else if (ttlMs < 12 * 60 * 60 * 1000) ttlColor = SGR.yellow;
 
       const value = getValueAtPath(cacheData.data, keyPath);
       const preview = formatPreview(value);
 
       quickPrint(
-         `${ncc('Cyan')}${strJustify(keyPath, 24, { align: 'left', redundancyLv: -1, overflow: 'collapse' })}${ncc()}  ttl=${ttlColor}${strJustify(ttlLabel, 12, { align: 'left', redundancyLv: -1, overflow: 'visible' })}${ncc()}  ${ncc('Dim')}preview=${preview}${ncc()}`
+         `${SGR.cyan}${strJustify(keyPath, 24, { align: 'left', redundancyLv: -1, overflow: 'collapse' })}${SGR.reset}  ttl=${ttlColor}${strJustify(ttlLabel, 12, { align: 'left', redundancyLv: -1, overflow: 'visible' })}${SGR.reset}  ${SGR.dim}preview=${preview}${SGR.reset}`
       );
    }
 
@@ -151,13 +155,13 @@ async function resetCacheFile(): Promise<number> {
       resetCache();
 
       if (!existsBefore) {
-         quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to delete.${ncc()}`);
+         quickPrint(`${SGR.yellow}No valid cache found. Nothing to delete.${SGR.reset}`);
          return 0;
       }
 
       const message = fs.existsSync(CACHE_PATH)
-         ? `${ncc('Yellow')}Cache file not removed: ${CACHE_PATH}${ncc()}`
-         : `${ncc('Green')}Cache file deleted: ${CACHE_PATH}${ncc()}`;
+         ? `${SGR.yellow}Cache file not removed: ${CACHE_PATH}${SGR.reset}`
+         : `${SGR.green}Cache file deleted: ${CACHE_PATH}${SGR.reset}`;
       quickPrint(message);
       return 0;
    } catch (err) {
@@ -181,7 +185,7 @@ async function expireCacheKeys(rawKeys: string[]): Promise<number> {
    }
 
    if (!cacheData) {
-      quickPrint(`${ncc('Yellow')}No valid cache found. Nothing to delete.${ncc()}`);
+      quickPrint(`${SGR.yellow}No valid cache found. Nothing to delete.${SGR.reset}`);
       return 0;
    }
 
@@ -203,7 +207,7 @@ async function expireCacheKeys(rawKeys: string[]): Promise<number> {
    }
 
    if (matchedKeys.size === 0) {
-      quickPrint(`${ncc('Yellow')}No matching cache keys found.${ncc()}`);
+      quickPrint(`${SGR.yellow}No matching cache keys found.${SGR.reset}`);
       return 0;
    }
 
@@ -221,11 +225,11 @@ async function expireCacheKeys(rawKeys: string[]): Promise<number> {
       cacheData.meta.updatedAt = now;
       await writeCacheFile(cacheData);
       resetCache();
-      quickPrint(`${ncc('Green')}Marked ${expiredCount} cache entries as expired.${ncc()}`);
+      quickPrint(`${SGR.green}Marked ${expiredCount} cache entries as expired.${SGR.reset}`);
       return 0;
    }
 
-   quickPrint(`${ncc('Yellow')}No matching cache keys found.${ncc()}`);
+   quickPrint(`${SGR.yellow}No matching cache keys found.${SGR.reset}`);
    return 0;
 }
 
@@ -235,7 +239,7 @@ async function setCacheEnabled(enabled: boolean): Promise<number> {
    await config.save();
 
    const state = enabled ? 'enabled' : 'disabled';
-   quickPrint(`${ncc('Green')}Cache ${state}.${ncc()}`);
+   quickPrint(`${SGR.green}Cache ${state}.${SGR.reset}`);
    return 0;
 }
 
@@ -246,8 +250,7 @@ async function loadCacheFile(): Promise<CacheStructure | null> {
 
       try {
          assertSchema(ZCacheStructure, parsed); // Validate structure and types
-      }
-      catch {
+      } catch {
          return null;
       }
 
@@ -346,14 +349,12 @@ function formatPreview(value: unknown): string {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('CACHE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('CACHE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Manually manage gdx cache entries and settings.
 
-         ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Show cache keys, TTL, and a short value preview.
          - prune: Remove expired entries from the cache file.
          - reset: Delete the entire cache file.
@@ -370,24 +371,21 @@ export const help = {
    },
    short: 'Manually manage gdx cache entries and settings.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} cache prune${reset}
-         ${cyan}${EXECUTABLE_NAME} cache reset${reset}
-         ${cyan}${EXECUTABLE_NAME} cache list${reset}
-         ${cyan}${EXECUTABLE_NAME} cache delete ${dim}<key|prefix> [more...]${reset}
-         ${cyan}${EXECUTABLE_NAME} cache enable${reset}
-         ${cyan}${EXECUTABLE_NAME} cache disable${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache prune${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache reset${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache list${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache delete ${SGR.dim}<key|prefix> [more...]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache enable${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} cache disable${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} cache list ${reset + dim}# List cached keys with TTL${reset}
-            ${cyan}${EXECUTABLE_NAME} cache prune ${reset + dim}# Remove expired cache entries${reset}
-            ${cyan}${EXECUTABLE_NAME} cache reset ${reset + dim}# Delete cache file entirely${reset}
-            ${cyan}${EXECUTABLE_NAME} cache delete git git.config ${reset + dim}# Expire by key/prefix${reset}
-            ${cyan}${EXECUTABLE_NAME} cache disable ${reset + dim}# Turn caching off${reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} cache list ${SGR.reset + SGR.dim}# List cached keys with TTL${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} cache prune ${SGR.reset + SGR.dim}# Remove expired cache entries${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} cache reset ${SGR.reset + SGR.dim}# Delete cache file entirely${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} cache delete git git.config ${SGR.reset + SGR.dim}# Expire by key/prefix${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} cache disable ${SGR.reset + SGR.dim}# Turn caching off${SGR.reset}
          `,
          Math.min(100, global.terminalWidth - 4),
          {

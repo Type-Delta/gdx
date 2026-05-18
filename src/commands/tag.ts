@@ -1,9 +1,9 @@
-import { Err, ncc, strWrap, yuString } from '@lib/Tools';
+import { Err, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { $ } from '@/modules/shell';
 import { assertInGitWorktree, expandRelativeRef, resolveRefShaCached } from '@/modules/git';
-import { EXECUTABLE_NAME, GDX_VPALETTE } from '@/consts';
+import { EXECUTABLE_NAME, GDX_VPALETTE, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import { quickPrint } from '@/utils/utilities';
@@ -103,9 +103,9 @@ export async function moveTag(ctx: GdxContext): Promise<number> {
       }
 
       quickPrint(
-         ncc('Green') +
-         `Moved tag '${tagName}' to ${ncc('Bright') + targetCommit.slice(0, 12) + ncc('Green')}.` +
-         ncc()
+         SGR.green +
+            `Moved tag '${tagName}' to ${SGR.bright + targetCommit.slice(0, 12) + SGR.green}.` +
+            SGR.reset
       );
       return 0;
    } catch (err) {
@@ -120,21 +120,18 @@ export default {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('TAG MOVE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('TAG MOVE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Move a tag to another commit.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          For annotated tags, recreates a new tag object from the existing tag object, replacing
-         only the target object line, then updates ${cyan}refs/tags/<name>${reset} to the new object.
-         For lightweight tags, updates ${cyan}refs/tags/<name>${reset} directly to the target commit.
+         only the target object line, then updates ${SGR.cyan}refs/tags/<name>${SGR.reset} to the new object.
+         For lightweight tags, updates ${SGR.cyan}refs/tags/<name>${SGR.reset} directly to the target commit.
 
-         ${bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         - Supports relative refs such as ${cyan}~3${reset} via GDX ref expansion.
+         ${SGR.bright + _2PointGradient('NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         - Supports relative refs such as ${SGR.cyan}~3${SGR.reset} via GDX ref expansion.
          - Supports both annotated and lightweight tags.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -147,16 +144,13 @@ export const help = {
    },
    short: 'Extends git tag with ability to move tags.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} tag move ${dim}<tag-name> <target-ref>${reset}
-         ${cyan}${EXECUTABLE_NAME} tag mv   ${dim}<tag-name> <target-ref>${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} tag move ${SGR.dim}<tag-name> <target-ref>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} tag mv   ${SGR.dim}<tag-name> <target-ref>${SGR.reset}
 
          Example:
-            ${cyan}${EXECUTABLE_NAME} tag mv my-tag ~3 ${reset + dim}# Move my-tag to HEAD~3${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} tag mv my-tag ~3 ${SGR.reset + SGR.dim}# Move my-tag to HEAD~3${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

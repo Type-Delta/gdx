@@ -22,6 +22,7 @@ import {
    STATS_EST,
    GDX_VPALETTE,
    KNOWN_GIT_FAULT_FILE_HEURISTICS,
+   SGR,
 } from '../consts';
 import global from '@/global';
 import { _2PointGradient } from '../modules/graphics';
@@ -150,8 +151,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          ? $`${git$} cat-file --batch-all-objects --batch-check=%(objectname):%(objectsize)`
          : Promise.resolve({ stdout: '' });
       const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
-      const firstCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
-      const lastCommitFormat = `%ar ${ncc() + ncc('Dim')}[at %h] (on %ad)` + ncc();
+      const firstCommitFormat = `%ar ${SGR.reset + SGR.dim}[at %h] (on %ad)` + SGR.reset;
+      const lastCommitFormat = `%ar ${SGR.reset + SGR.dim}[at %h] (on %ad)` + SGR.reset;
       const topContributorRawPromise = isAllScope
          ? $`${git$} log --all --format=%aN%x09%ae --numstat`
          : Promise.resolve({ stdout: '' });
@@ -225,7 +226,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       spinnerCtrl.setMessage('Detecting repository details...');
       const submoduleCount = submodules.length;
       const projectSuffix =
-         submoduleCount > 0 ? ncc('Dim') + ncc('White') + ` (${submoduleCount} submodules)` : '';
+         submoduleCount > 0 ? SGR.dim + SGR.white + ` (${submoduleCount} submodules)` : '';
 
       const remoteLinkInfo = buildRemoteLinkInfo(normalizedRemoteUrl);
       const linkedProjectName = remoteLinkInfo.repoUrl
@@ -327,17 +328,17 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          (isAllScope ? 0 : Buffer.byteLength(scopedLogStatsRes.stdout));
       const recordsParsed =
          projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
-      const orphanColor = garbageObjCounts.commit > 0 ? ncc('Red') : ncc('White') + ncc('Dim');
-      const orphanLabel = `${garbageObjCounts.commit} ${ncc('White') + ncc('Dim')}orphan${garbageObjCounts.commit === 1 ? '' : 's'}`;
+      const orphanColor = garbageObjCounts.commit > 0 ? SGR.red : SGR.white + SGR.dim;
+      const orphanLabel = `${garbageObjCounts.commit} ${SGR.white + SGR.dim}orphan${garbageObjCounts.commit === 1 ? '' : 's'}`;
       const totalCommitsSuffix = isAllScope
-         ? ` / ${orphanColor}${orphanLabel}${ncc()}`
-         : ` / ${ncc('Yellow')}${formatInteger(projectTotalCmi)}${ncc() + ncc('Dim')} all${ncc()} / ${orphanColor}${orphanLabel}${ncc()}`;
+         ? ` / ${orphanColor}${orphanLabel}${SGR.reset}`
+         : ` / ${SGR.yellow}${formatInteger(projectTotalCmi)}${SGR.reset + SGR.dim} all${SGR.reset} / ${orphanColor}${orphanLabel}${SGR.reset}`;
       const contributionLine = isAllScope
-         ? `  Most Active User:    ${ncc('Cyan')}${linkedTopContributor}${ncc()} (${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project)`
-         : `  Contributions:       ${ncc('Magenta')}${contributionPct}%${ncc()} of all lines changed in the project`;
+         ? `  Most Active User:    ${SGR.cyan}${linkedTopContributor}${SGR.reset} (${SGR.magenta}${contributionPct}%${SGR.reset} of all lines changed in the project)`
+         : `  Contributions:       ${SGR.magenta}${contributionPct}%${SGR.reset} of all lines changed in the project`;
       const header = [
-         `${ncc('Dim') + ncc('Italic')}Showing stats for ${scopeLabel} in ${projectName}${ncc()}`,
-         `${ncc('Dim')}Parsed ${toShortBytes(numStatSize)} of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${ncc()}`,
+         `${SGR.dim + SGR.italic}Showing stats for ${scopeLabel} in ${projectName}${SGR.reset}`,
+         `${SGR.dim}Parsed ${toShortBytes(numStatSize)} of ${toShortNum(recordsParsed, 1, 1e3, true)} numstat records in ${parseDuration}${SGR.reset}`,
       ];
       const useInlineHeader = ex_length(header[0] + header[1]) + 7 < global.terminalWidth;
       const headerText = useInlineHeader
@@ -353,7 +354,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             : `(${removedSize}, ${removedFuncs} fns or ${removedFiles} files)`;
       const objectInventoryLine =
          isAllScope && objectInventoryStats
-            ? `  Object Inventory:    ${ncc('Cyan')}${formatInteger(objectInventoryStats.totalObjects)}${ncc()} total ${ncc('Dim')}(${toShortBytes(objectInventoryStats.totalBytes)})${ncc()} / ${ncc('Yellow')}${formatInteger(objectInventoryStats.garbageObjects)}${ncc()} garbage ${ncc('Dim')}(${toShortBytes(objectInventoryStats.garbageBytes)})${ncc()}`
+            ? `  Object Inventory:    ${SGR.cyan}${formatInteger(objectInventoryStats.totalObjects)}${SGR.reset} total ${SGR.dim}(${toShortBytes(objectInventoryStats.totalBytes)})${SGR.reset} / ${SGR.yellow}${formatInteger(objectInventoryStats.garbageObjects)}${SGR.reset} garbage ${SGR.dim}(${toShortBytes(objectInventoryStats.garbageBytes)})${SGR.reset}`
             : '';
       const objectStatsBlock = objectInventoryLine ? `\n${objectInventoryLine}` : '';
 
@@ -361,50 +362,40 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       quickPrint(`${headerText}
 
   ─── ${usernameWithLink} Git Stats ───
-  Project:             ${ncc('Cyan')}${linkedProjectName}${ncc()}
-  Total Commits:       ${ncc('Green')}${formatInteger(scopedTotalCmi)}${ncc()} (today: ${todayCommits})${totalCommitsSuffix}${objectStatsBlock}
-  Total Lines Added:   ${ncc('Green')}+ ${formatInteger(totalAdded)} lines ${ncc()}${ncc('Dim')}${linesAddedHint + ncc()}
-  Total Lines Removed: ${ncc('Red')}- ${formatInteger(totalRemoved)} lines ${ncc()}${ncc('Dim')}${linesRemovedHint + ncc()}
+  Project:             ${SGR.cyan}${linkedProjectName}${SGR.reset}
+  Total Commits:       ${SGR.green}${formatInteger(scopedTotalCmi)}${SGR.reset} (today: ${todayCommits})${totalCommitsSuffix}${objectStatsBlock}
+  Total Lines Added:   ${SGR.green}+ ${formatInteger(totalAdded)} lines ${SGR.reset}${SGR.dim}${linesAddedHint + SGR.reset}
+  Total Lines Removed: ${SGR.red}- ${formatInteger(totalRemoved)} lines ${SGR.reset}${SGR.dim}${linesRemovedHint + SGR.reset}
 ${contributionLine}
-  Most Active Branch:  ${ncc('Cyan')}${topBranch}${ncc()} (${maxCommits} commits)
-  First Commit:        ${ncc('Yellow')}${firstCommitTime}${ncc()}
-  Last Commit:         ${ncc('Yellow')}${lastCommitTime}${ncc()}`);
+  Most Active Branch:  ${SGR.cyan}${topBranch}${SGR.reset} (${maxCommits} commits)
+  First Commit:        ${SGR.yellow}${firstCommitTime}${SGR.reset}
+  Last Commit:         ${SGR.yellow}${lastCommitTime}${SGR.reset}`);
 
       if (languageCatalog) {
-         const languageLabel = resolvedLanguageMetricMode === 'net'
-            ? 'Language Usage:'
-            : 'Language Activity:';
-         const legendLabel = resolvedLanguageMetricMode === 'net'
-            ? '(Net changes)'
-            : '(Aggregated changes)';
-         const languageBarWidth = MathKit.clamp(
-            global.terminalWidth - 21 - 2 - 2, 24, 56
-         );
+         const languageLabel =
+            resolvedLanguageMetricMode === 'net' ? 'Language Usage:' : 'Language Activity:';
+         const legendLabel =
+            resolvedLanguageMetricMode === 'net' ? '(Net changes)' : '(Aggregated changes)';
+         const languageBarWidth = MathKit.clamp(global.terminalWidth - 21 - 2 - 2, 24, 56);
          const languageFiles =
             resolvedLanguageMetricMode === 'net'
                ? scopedNumStat.netFiles.map((file) => ({
-                  filePath: file.filePath,
-                  lines: file.netLines,
-               }))
+                    filePath: file.filePath,
+                    lines: file.netLines,
+                 }))
                : scopedNumStat.activityFiles.map((file) => ({
-                  filePath: file.filePath,
-                  lines: file.activityLines,
-               }));
+                    filePath: file.filePath,
+                    lines: file.activityLines,
+                 }));
          const usageBar = renderLanguageUsageBar(languageCatalog, languageFiles, languageBarWidth);
 
          if (usageBar) {
-            const languageBarPrefix = '  ' + strJustify(
-               languageLabel,
-               21,
-               { align: 'left', redundancyLv: -1 }
-            );
-            const usageLegendPrefix = '  ' + strJustify(
-               legendLabel,
-               21,
-               { align: 'left', redundancyLv: -1 }
-            );
+            const languageBarPrefix =
+               '  ' + strJustify(languageLabel, 21, { align: 'left', redundancyLv: -1 });
+            const usageLegendPrefix =
+               '  ' + strJustify(legendLabel, 21, { align: 'left', redundancyLv: -1 });
             quickPrint(
-               `${languageBarPrefix}${usageBar.bar}\n${ncc('Dim') + usageLegendPrefix + ncc()}${usageBar.legend}${ncc()}\n`
+               `${languageBarPrefix}${usageBar.bar}\n${SGR.dim + usageLegendPrefix + SGR.reset}${usageBar.legend}${SGR.reset}\n`
             );
          }
       }
@@ -596,22 +587,19 @@ function buildUserProfileUrl(username: string, remoteInfo: RemoteLinkInfo): stri
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('STATS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Gather detailed contribution statistics for a git author in this repository.
 
-         ${bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language bar (activity or net), and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${cyan}git gc${reset}).
+         ${SGR.bright + _2PointGradient('WHAT IT COMPUTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Total commits by the selected scope, today's commits, lines added/removed, rough size estimates (bytes), estimated functions/files added or removed, contribution percentage of the project, most active branch, language bar (activity or net), and time of the last commit. In project-wide mode, it also shows total object count/size and garbage object count/size (objects that would be pruned by ${SGR.cyan}git gc${SGR.reset}).
 
-         ${bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('HOW IT WORKS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          The command runs multiple git queries in parallel to collect commit lists, per-commit numstat, branch lists and last-commit metadata. For large repos this may take some time; progress messages are shown while queries run.
 
-         ${bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         Use ${cyan}--author <email>${reset} to target a different author than the configured git user.email. Use ${cyan}--all${reset} or ${cyan}-a${reset} for project-wide stats across all authors. Use ${cyan}--lang-metric <auto|net|activity>${reset} to choose whether the language bar reflects net lines (added - removed), activity (added + removed), or automatic mode (project-wide net, author activity). Output includes a small visual graph invocation via the \`${cyan}graph${reset}\` command by default.
+         ${SGR.bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Use ${SGR.cyan}--author <email>${SGR.reset} to target a different author than the configured git user.email. Use ${SGR.cyan}--all${SGR.reset} or ${SGR.cyan}-a${SGR.reset} for project-wide stats across all authors. Use ${SGR.cyan}--lang-metric <auto|net|activity>${SGR.reset} to choose whether the language bar reflects net lines (added - removed), activity (added + removed), or automatic mode (project-wide net, author activity). Output includes a small visual graph invocation via the \`${SGR.cyan}graph${SGR.reset}\` command by default.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -623,18 +611,15 @@ export const help = {
    },
    short: 'Show contribution statistics for an author or the whole project.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} stats ${dim}[--author <email>] [--all|-a] [--lang-metric <auto|net|activity>]${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} stats ${SGR.dim}[--author <email>] [--all|-a] [--lang-metric <auto|net|activity>]${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} stats ${reset + dim}# Stats for configured git user${reset}
-            ${cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${reset + dim}# Stats for specified author${reset}
-            ${cyan}${EXECUTABLE_NAME} stats --all ${reset + dim}# Project-wide stats for all authors${reset}
-            ${cyan}${EXECUTABLE_NAME} stats --lang-metric net ${reset + dim}# Force net language usage in author scope${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} stats ${SGR.reset + SGR.dim}# Stats for configured git user${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stats --author alice@example.com ${SGR.reset + SGR.dim}# Stats for specified author${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stats --all ${SGR.reset + SGR.dim}# Project-wide stats for all authors${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} stats --lang-metric net ${SGR.reset + SGR.dim}# Force net language usage in author scope${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -948,20 +933,21 @@ function renderLanguageUsageBar(
    const bar =
       renderedBuckets
          .map((bucket) => `${ncc(bucket.color, 'fg')}${'━'.repeat(bucket.cols)}`)
-         .join('') + ncc();
+         .join('') + SGR.reset;
 
    const legend =
       topBuckets!
          .map(
-            (bucket, i) => `${ncc(bucket.color, 'fg')}●${ncc()} ${topBucketPcts[i]}% ${bucket.name}`
+            (bucket, i) =>
+               `${ncc(bucket.color, 'fg')}●${SGR.reset} ${topBucketPcts[i]}% ${bucket.name}`
          )
          .join(' ') +
-      ncc('Dim') +
+      SGR.dim +
       ' ' +
       (otherBuckets
          ? otherBuckets
-            .map((bucket) => `${ncc(bucket.color, 'fg')}●${ncc('White')} ${bucket.name}`)
-            .join(' ')
+              .map((bucket) => `${ncc(bucket.color, 'fg')}●${SGR.white} ${bucket.name}`)
+              .join(' ')
          : '');
 
    return { bar, legend };

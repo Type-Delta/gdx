@@ -1,9 +1,10 @@
 import path from 'path';
 
 import * as fs from './fs';
-import { MACRO_PATH } from '@/consts';
+import { MACRO_PATH, SGR } from '@/consts';
 import { getCache } from '@/common/cache';
-import { Err, ncc } from '@lib/Tools';
+import { Err } from '@lib/Tools';
+
 import Logger from '@/utils/logger';
 import { tokenizeCommand } from './shell';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
@@ -143,10 +144,10 @@ export async function executeMacro(
       if (substituted.length === 0) continue;
 
       quickPrint(
-         ncc('Dim') +
-            ncc('Cyan') +
-            `▶ Executing: ${ncc('White') + ncc('Bright')}gdx ${escapeCmdArgs(substituted).join(' ')}` +
-            ncc()
+         SGR.dim +
+            SGR.cyan +
+            `▶ Executing: ${SGR.white + SGR.bright}gdx ${escapeCmdArgs(substituted).join(' ')}` +
+            SGR.reset
       );
 
       // Create a context for this command

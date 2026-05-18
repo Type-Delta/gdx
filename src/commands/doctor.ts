@@ -2,10 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { execa } from 'execa';
 
-import { ncc, arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } from '@lib/Tools';
+import { arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } from '@lib/Tools';
+
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, VERSION } from '../consts';
+import { EXECUTABLE_NAME, GDX_RESULT_FILE, VERSION, SGR } from '../consts';
 import global from '@/global';
 import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
@@ -65,60 +66,73 @@ export default async function doctor(): Promise<number> {
       hasIssues = true;
    }
 
-   quickPrint(`Version: ${ncc('Cyan') + VERSION + ncc()}`);
-   quickPrint(`Platform: ${ncc('Magenta') + process.platform} (${process.arch})` + ncc());
+   quickPrint(`Version: ${SGR.cyan + VERSION + SGR.reset}`);
+   quickPrint(`Platform: ${SGR.magenta + process.platform} (${process.arch})` + SGR.reset);
    quickPrint(
-      `Runtime: ${ncc('Magenta') + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + ncc()}`
+      `Runtime: ${SGR.magenta + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + SGR.reset}`
    );
-   quickPrint(`Terminal color support index: ${ncc('Cyan') + (CheckCache.supportsColor) + ncc() + ncc('Dim')} ${CheckCache.supportsColor === 0 ? '(No color)' : CheckCache.supportsColor === 1 ? '(16 colors)' : CheckCache.supportsColor === 2 ? '(8bit color)' : CheckCache.supportsColor === 3 ? '(24bit True color)' : ''}` + ncc());
-   quickPrint(`TTY mode: ${ncc('Cyan') + (process.stdout.isTTY ? 'Yes' : 'No') + ncc()}`);
+   quickPrint(
+      `Terminal color support index: ${SGR.cyan + CheckCache.supportsColor + SGR.reset + SGR.dim} ${CheckCache.supportsColor === 0 ? '(No color)' : CheckCache.supportsColor === 1 ? '(16 colors)' : CheckCache.supportsColor === 2 ? '(8bit color)' : CheckCache.supportsColor === 3 ? '(24bit True color)' : ''}` +
+         SGR.reset
+   );
+   quickPrint(`TTY mode: ${SGR.cyan + (process.stdout.isTTY ? 'Yes' : 'No') + SGR.reset}`);
 
    // Detect runtimes
    try {
       const bunVer = await execa('bun', ['--version']);
-      quickPrint(`Bun: ${ncc('Cyan') + bunVer.stdout.trim() + ncc()}` + (!isBun ? ncc('Dim') + ` (inactive)` + ncc() : ''));
+      quickPrint(
+         `Bun: ${SGR.cyan + bunVer.stdout.trim() + SGR.reset}` +
+            (!isBun ? SGR.dim + ` (inactive)` + SGR.reset : '')
+      );
    } catch {
       quickPrint(`Bun: Not found`);
    }
 
    try {
       const nodeVer = await execa('node', ['--version']);
-      quickPrint(`Node: ${ncc('Cyan') + nodeVer.stdout.trim() + ncc()}` + (!isNode ? ncc('Dim') + ` (inactive)` + ncc() : ''));
+      quickPrint(
+         `Node: ${SGR.cyan + nodeVer.stdout.trim() + SGR.reset}` +
+            (!isNode ? SGR.dim + ` (inactive)` + SGR.reset : '')
+      );
    } catch {
       quickPrint(`Node: Not found`);
    }
 
    // Installation mode (native vs interpreted)
    quickPrint(
-      `Installation mode: ${isNative ? ncc('Green') + 'Native' + ncc() : ncc('Yellow') + 'Interpreted' + ncc()}` +
-      (process.env.NODE_ENV === 'production' ? '' : ncc('Bright') + ' (development mode)' + ncc())
+      `Installation mode: ${isNative ? SGR.green + 'Native' + SGR.reset : SGR.yellow + 'Interpreted' + SGR.reset}` +
+         (process.env.NODE_ENV === 'production'
+            ? ''
+            : SGR.bright + ' (development mode)' + SGR.reset)
    );
 
-   quickPrint(`Shell Integration: ${GDX_RESULT_FILE ? ncc('Green') + 'Yes' + ncc() : ncc('Red') + 'No' + ncc()}`);
+   quickPrint(
+      `Shell Integration: ${GDX_RESULT_FILE ? SGR.green + 'Yes' + SGR.reset : SGR.red + 'No' + SGR.reset}`
+   );
 
-   quickPrint(`Executable path: ${ncc('Cyan') + process.execPath + ncc()}`);
+   quickPrint(`Executable path: ${SGR.cyan + process.execPath + SGR.reset}`);
 
-   quickPrint(`Log file path: ${ncc('Cyan') + hyperlink(Logger.logFile, Logger.logFile) + ncc()}`);
+   quickPrint(`Log file path: ${SGR.cyan + hyperlink(Logger.logFile, Logger.logFile) + SGR.reset}`);
 
    const cache = await getCache();
    quickPrint(
-      `Cache file path: ${ncc('Cyan') + hyperlink(cache.cachePath, cache.cachePath) + ncc()}`
+      `Cache file path: ${SGR.cyan + hyperlink(cache.cachePath, cache.cachePath) + SGR.reset}`
    );
 
    // Detect git
    try {
       const gitVer = await execa('git', ['--version']);
-      quickPrint(`Git: ${ncc('Cyan') + gitVer.stdout.trim() + ncc()}`);
+      quickPrint(`Git: ${SGR.cyan + gitVer.stdout.trim() + SGR.reset}`);
 
       // Check path
       const whichGit = process.platform === 'win32' ? 'where' : 'which';
       const gitPath = await execa(whichGit, ['git']);
       const gitPaths = gitPath.stdout.trim().replaceAll('\n', '\n - ');
       quickPrint(
-         `Git path: ${gitPaths ? ncc('Green') + '\n - ' + gitPaths + ncc() : 'Not found in PATH'}`
+         `Git path: ${gitPaths ? SGR.green + '\n - ' + gitPaths + SGR.reset : 'Not found in PATH'}`
       );
    } catch {
-      quickPrint(ncc('Red') + `Git: Not found or error checking` + ncc());
+      quickPrint(SGR.red + `Git: Not found or error checking` + SGR.reset);
       hasIssues = true;
    }
 
@@ -129,9 +143,9 @@ export default async function doctor(): Promise<number> {
 
    // Native install info
    if (nativeInsInfo) {
-      quickPrint(`\nNative Install Info: ${ncc('Green') + nativeInsInfo + ncc()}`);
+      quickPrint(`\nNative Install Info: ${SGR.green + nativeInsInfo + SGR.reset}`);
    } else {
-      quickPrint(ncc('Bright') + `\nActionable next steps:` + ncc());
+      quickPrint(SGR.bright + `\nActionable next steps:` + SGR.reset);
 
       if (process.platform === 'win32' && process.arch === 'x64') {
          quickPrint(`To use prebuilt binary:`);
@@ -149,14 +163,12 @@ export default async function doctor(): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('DOCTOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DOCTOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Diagnose installation and environment.
 
-         ${bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Checks for native binary, runtimes, and provides installation guidance.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -169,15 +181,12 @@ export const help = {
    },
    short: 'Run a diagnostic check on gdx installation and environment.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} doctor${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} doctor${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} doctor ${reset + dim}# Diagnose installation and environment${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} doctor ${SGR.reset + SGR.dim}# Diagnose installation and environment${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

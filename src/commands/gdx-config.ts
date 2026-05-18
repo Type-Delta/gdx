@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { ncc, strClamp, strWrap, yuString } from '@lib/Tools';
+import { strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig } from '../common/config';
@@ -7,7 +7,7 @@ import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE } from '@/consts';
+import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE, SGR } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { coerceConfigStringValue } from '@/modules/typebox';
@@ -20,9 +20,9 @@ async function listConfig(): Promise<number> {
    let listStr = '';
 
    quickPrint(
-      ncc('Dim') +
-      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-      ncc()
+      SGR.dim +
+         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+         SGR.reset
    );
 
    for (const { key } of flatDefaults) {
@@ -37,9 +37,9 @@ async function listConfig(): Promise<number> {
          }
          if (section) {
             const sectionDesc = CONFIG_DESCRIPTIONS[section];
-            listStr += `${ncc('Magenta') + ncc('Bright')}[${section}]${ncc()}\n`;
+            listStr += `${SGR.magenta + SGR.bright}[${section}]${SGR.reset}\n`;
             if (sectionDesc) {
-               listStr += `${ncc('Dim')}# ${sectionDesc.split('\n').join('\n# ')}${ncc()}\n`;
+               listStr += `${SGR.dim}# ${sectionDesc.split('\n').join('\n# ')}${SGR.reset}\n`;
             }
          }
          currentSection.push(section);
@@ -85,11 +85,11 @@ async function listConfig(): Promise<number> {
 
       const marker = isDefault
          ? ''
-         : ` ${ncc() + ncc('Yellow') + ncc('Italic')}[Modified]${ncc() + ncc('Dim')}`;
-      const comment = description ? ` ${ncc('Dim')}#${marker} ${description}${ncc()}` : '';
+         : ` ${SGR.reset + SGR.yellow + SGR.italic}[Modified]${SGR.reset + SGR.dim}`;
+      const comment = description ? ` ${SGR.dim}#${marker} ${description}${SGR.reset}` : '';
       const pairStr = isUnset
-         ? `${ncc('Dim')}# ${ncc('Cyan') + fieldName + ncc('White')} = ${displayValue}${comment}${ncc()}\n`
-         : `${ncc('Cyan') + fieldName + ncc()} = ${displayValue}${comment}\n`;
+         ? `${SGR.dim}# ${SGR.cyan + fieldName + SGR.white} = ${displayValue}${comment}${SGR.reset}\n`
+         : `${SGR.cyan + fieldName + SGR.reset} = ${displayValue}${comment}\n`;
 
       if (currentSection[currentSection.length - 1] === '') listStr = pairStr + '\n' + listStr;
       else listStr += pairStr;
@@ -146,7 +146,7 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
       ? strClamp(String(parsed.value), 20, 'mid', -1)
       : parsed.value;
 
-   quickPrint(`${ncc('Green')}Configuration updated: ${key} = ${displayValue}${ncc()}`);
+   quickPrint(`${SGR.green}Configuration updated: ${key} = ${displayValue}${SGR.reset}`);
    return 0;
 }
 
@@ -169,7 +169,7 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    } else {
       quickPrint(
          litedent(
-            `${ncc('Cyan')}Usage:${ncc()}
+            `${SGR.cyan}Usage:${SGR.reset}
             gdx gdx-config list           - List all configuration
             gdx gdx-config path           - Show config file path
             gdx gdx-config <key>          - Get configuration value
@@ -182,17 +182,15 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const reset = ncc();
       return strWrap(
          `
-${bright + _2PointGradient('GDX-CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+${SGR.bright + _2PointGradient('GDX-CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 View and modify gdx configuration.
 
-${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
 
-${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 - list: Prints flattened configuration with defaults and modified markers.
 - path: Prints the path to the active config file used by gdx.
 - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
@@ -207,18 +205,15 @@ ${bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc10
    },
    short: 'View or modify gdx configuration settings.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          `
-${cyan}${EXECUTABLE_NAME} gdx-config list${reset}
-${cyan}${EXECUTABLE_NAME} gdx-config path${reset}
-${cyan}${EXECUTABLE_NAME} gdx-config ${dim}<key> [value]${reset}
+${SGR.cyan}${EXECUTABLE_NAME} gdx-config list${SGR.reset}
+${SGR.cyan}${EXECUTABLE_NAME} gdx-config path${SGR.reset}
+${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.dim}<key> [value]${SGR.reset}
 
 Examples:
-   ${cyan}${EXECUTABLE_NAME} gdx-config list ${reset + dim}# List all config keys and values${reset}
-   ${cyan}${EXECUTABLE_NAME} gdx-config editor.code true ${reset + dim}# Set value for a key${reset}`,
+   ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
+   ${SGR.cyan}${EXECUTABLE_NAME} gdx-config editor.code true ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

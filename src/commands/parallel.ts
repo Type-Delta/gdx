@@ -2,7 +2,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { ExecaError } from 'execa';
 
-import { ncc, yuString, hyperlink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
+import { yuString, hyperlink, strClamp, padEnd, strJustify, strWrap } from '@lib/Tools';
 
 import {
    $,
@@ -25,6 +25,7 @@ import {
    TEMP_DIR,
    GDX_VPALETTE,
    CATPPUCCIN_VPALETTE,
+   SGR,
 } from '@/consts';
 import { _2PointGradient, bgRgb, fgRgb } from '@/modules/graphics';
 import global from '@/global';
@@ -528,7 +529,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       const afterPrune = await getWorktreeEntry(git$, targetPath);
       if (!afterPrune) {
          spinnerCtrl.stop();
-         quickPrint(`${ncc('Cyan')}Removed worktree metadata:${ncc()} ${alias}`);
+         quickPrint(`${SGR.cyan}Removed worktree metadata:${SGR.reset} ${alias}`);
          Logger.debug(`Worktree '${alias}' pruned successfully.`, 'parallel');
          return 0;
       }
@@ -656,7 +657,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       }
 
       // LINK: dw2al2m string literal in spec
-      quickPrint(`${ncc('Cyan')}Removed worktree:${ncc()} ${alias}`);
+      quickPrint(`${SGR.cyan}Removed worktree:${SGR.reset} ${alias}`);
       return 0;
    } catch (err) {
       spinnerCtrl.stop();
@@ -695,7 +696,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
          try {
             fs.rmSync(targetPath, { recursive: true, force: true });
             await pruneWorktrees(git$);
-            quickPrint(`${ncc('Cyan')}Force removed worktree directory:${ncc()} ${alias}`);
+            quickPrint(`${SGR.cyan}Force removed worktree directory:${SGR.reset} ${alias}`);
             return 0;
          } catch {
             Logger.error(`Failed to force remove worktree directory '${alias}'.`, 'parallel');
@@ -876,7 +877,7 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
       Logger.error('Failed to create the parallel worktree.', 'parallel');
       if (stashRef) {
          await $`${scopeGit$} stash pop ${stashRef}`;
-         quickPrint(`${ncc('Yellow')}Stashed changes restored to the origin worktree.${ncc()}`);
+         quickPrint(`${SGR.yellow}Stashed changes restored to the origin worktree.${SGR.reset}`);
       }
       return 1;
    }
@@ -918,9 +919,9 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
 
    writeParallelMetadata(targetPath, metadata);
 
-   quickPrint(`${ncc('Cyan')}Parallel worktree created:${ncc()} ${targetPath}`);
+   quickPrint(`${SGR.cyan}Parallel worktree created:${SGR.reset} ${targetPath}`);
    if (changesOpt) {
-      quickPrint(`${ncc('Cyan')}Pending changes ${changesOpt} to fork '${alias}'.${ncc()}`);
+      quickPrint(`${SGR.cyan}Pending changes ${changesOpt} to fork '${alias}'.${SGR.reset}`);
    }
 
    await runWorktreeInit({
@@ -1001,7 +1002,7 @@ async function cmdRemove(git$: string | string[], args: ArgsSet): Promise<number
 
 async function cmdRemoveRecursive(git$: string | string[], ctx: ParallelContext): Promise<number> {
    if (!fs.existsSync(ctx.parallelRoot)) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -1011,7 +1012,7 @@ async function cmdRemoveRecursive(git$: string | string[], ctx: ParallelContext)
       .sort((a, b) => a.name.localeCompare(b.name));
 
    if (worktrees.length === 0) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -1064,7 +1065,7 @@ async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false
 
       if (args.includes('-c') || args.includes('--copy')) {
          await copyToClipboard(destination);
-         quickPrint(`${ncc('Cyan')}Worktree path copied to clipboard!${ncc()}`);
+         quickPrint(`${SGR.cyan}Worktree path copied to clipboard!${SGR.reset}`);
          return 0;
       }
    }
@@ -1087,17 +1088,17 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    const isShortOutput = args.includes('--short') || args.includes('-s');
 
    // LINK: iin2ya string literal in spec
-   quickPrint(`${ncc('Cyan')}Project:${ncc()} ${ctx.projectName}`);
-   quickPrint(`${ncc('Cyan')}Branch:${ncc()} ${ctx.branchName}`);
-   quickPrint(`${ncc('Cyan')}Origin:${ncc()} ${ctx.originPath}`);
+   quickPrint(`${SGR.cyan}Project:${SGR.reset} ${ctx.projectName}`);
+   quickPrint(`${SGR.cyan}Branch:${SGR.reset} ${ctx.branchName}`);
+   quickPrint(`${SGR.cyan}Origin:${SGR.reset} ${ctx.originPath}`);
    const currentLabel = ctx.isParallelWorktree ? ctx.alias : 'origin';
    quickPrint(
-      `${ncc('Cyan')}Current:${ncc()} ${currentLabel} ${currentLabel !== 'origin' ? ncc('Dim') + '(use "origin" alias to refer to main worktree)' + ncc() : ''}\n`
+      `${SGR.cyan}Current:${SGR.reset} ${currentLabel} ${currentLabel !== 'origin' ? SGR.dim + '(use "origin" alias to refer to main worktree)' + SGR.reset : ''}\n`
    );
 
    if (!fs.existsSync(ctx.parallelRoot)) {
       // LINK: dkn2ika string literal in spec
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -1107,7 +1108,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       .sort((a, b) => a.name.localeCompare(b.name));
 
    if (worktrees.length === 0) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -1146,27 +1147,27 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart, originHead),
          mainRangeStart
             ? getCommitRangeLog({
-               gitExec,
-               repoPath: wtPath,
-               range: `${mainRangeStart}..HEAD`,
-               maxCount: maxLogCount,
-               formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
-               excludeRefs: originHeadRef,
-            })
+                 gitExec,
+                 repoPath: wtPath,
+                 range: `${mainRangeStart}..HEAD`,
+                 maxCount: maxLogCount,
+                 formatTemplate: `${SGR.yellow}%h${SGR.reset} %s`,
+                 excludeRefs: originHeadRef,
+              })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-               {
-                  git$,
-                  gitExec,
-                  worktreePath: wtPath,
-                  originPath: ctx.originPath,
-                  baseCommit,
-                  maxCount: maxLogCount,
-                  submoduleCursors: meta.submoduleCursors,
-               },
-               spinnerCtrl
-            )
+                 {
+                    git$,
+                    gitExec,
+                    worktreePath: wtPath,
+                    originPath: ctx.originPath,
+                    baseCommit,
+                    maxCount: maxLogCount,
+                    submoduleCursors: meta.submoduleCursors,
+                 },
+                 spinnerCtrl
+              )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1180,18 +1181,18 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       let commitInfo = '';
       if (hasAhead && comparison.behind > 0) {
-         commitInfo = `${ncc('Yellow')}↑${aheadLabel} ↓${comparison.behind}${ncc()}`;
+         commitInfo = `${SGR.yellow}↑${aheadLabel} ↓${comparison.behind}${SGR.reset}`;
       } else if (hasAhead) {
-         commitInfo = `${ncc('Green')}↑${aheadLabel}${ncc()}`;
+         commitInfo = `${SGR.green}↑${aheadLabel}${SGR.reset}`;
       } else if (comparison.behind > 0) {
-         commitInfo = `${ncc('Red')}↓${comparison.behind}${ncc()}`;
+         commitInfo = `${SGR.red}↓${comparison.behind}${SGR.reset}`;
       } else {
-         commitInfo = `${ncc('Dim')}up-to-date${ncc()}`;
+         commitInfo = `${SGR.dim}up-to-date${SGR.reset}`;
       }
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
-      const statusLabel = isDirty ? `${ncc('Red')}dirty${ncc()}` : `${ncc('Green')}clean${ncc()}`;
-      const branchInfo = meta.forkBranch ? `${ncc('Dim')}(branch:${meta.forkBranch})${ncc()}` : '';
+      const statusLabel = isDirty ? `${SGR.red}dirty${SGR.reset}` : `${SGR.green}clean${SGR.reset}`;
+      const branchInfo = meta.forkBranch ? `${SGR.dim}(branch:${meta.forkBranch})${SGR.reset}` : '';
 
       let displayPath = wtPath;
       if (isShortOutput) {
@@ -1202,14 +1203,14 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
 
       spinnerCtrl.stop();
       quickPrint(
-         `${ncc('Dim')}${marker}${ncc()} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${ncc('Dim')}${baseShort}${ncc()} ${padEnd(commitInfo, 11)} ${displayPath}${branchInfo ? ` ${branchInfo}` : ''}`
+         `${SGR.dim}${marker}${SGR.reset} ${strClamp(aliasLabel, 18, 'end')} ${strJustify(statusLabel, 7, { align: 'center' })} ${SGR.dim}${baseShort}${SGR.reset} ${padEnd(commitInfo, 11)} ${displayPath}${branchInfo ? ` ${branchInfo}` : ''}`
       );
 
       if (baseCommit) {
          if (submoduleLog.groups.length > 0) {
             const groups: CommitGroup[] = [
                {
-                  label: `. ${ncc('Dim')}[main]${ncc()}`,
+                  label: `. ${SGR.dim}[main]${SGR.reset}`,
                   commits: mainLog.commits,
                   totalCount: mainLog.totalCount,
                   moreCount: mainLog.moreCount,
@@ -1224,7 +1225,7 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    }
 
    if (!hasAnyWt) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
    }
 
    quickPrint('');
@@ -1240,11 +1241,11 @@ async function restoreJoinStash(
    try {
       await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
       quickPrint(
-         `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${ncc()}`
+         `${SGR.yellow}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${SGR.reset}`
       );
    } catch (err) {
       quickPrint(
-         `${ncc('Yellow')}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${ncc()}`
+         `${SGR.yellow}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${SGR.reset}`
       );
       Logger.debug(yuString(err, { color: true }), 'parallel');
    }
@@ -1258,24 +1259,24 @@ async function printCherryPickSteps(
    unmergedPaths: string[]
 ): Promise<void> {
    quickPrint(
-      `${ncc('Yellow')}Cherry-pick stopped at commit ${commit}. To resolve conflicts run:${ncc()}`
+      `${SGR.yellow}Cherry-pick stopped at commit ${commit}. To resolve conflicts run:${SGR.reset}`
    );
-   quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" cherry-pick ${commit}`}${ncc()}`);
+   quickPrint(`${SGR.cyan}${`  git -C "${originPath}" cherry-pick ${commit}`}${SGR.reset}`);
    if (unmergedPaths.length > 0) {
       const quotedPaths = unmergedPaths.map((filePath) =>
          filePath.includes(' ') ? `"${filePath}"` : filePath
       );
       const joinedPaths = quotedPaths.join(' ');
-      quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" add -- ${joinedPaths}`}${ncc()}`);
+      quickPrint(`${SGR.cyan}${`  git -C "${originPath}" add -- ${joinedPaths}`}${SGR.reset}`);
    } else {
-      quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" add -A`}${ncc()}`);
+      quickPrint(`${SGR.cyan}${`  git -C "${originPath}" add -A`}${SGR.reset}`);
    }
-   quickPrint(`${ncc('Cyan')}${`  git -C "${originPath}" cherry-pick --continue`}${ncc()}`);
-   quickPrint(`${ncc('Cyan')}${`  ${EXECUTABLE_NAME} parallel join ${forkAlias}`}${ncc()}`);
+   quickPrint(`${SGR.cyan}${`  git -C "${originPath}" cherry-pick --continue`}${SGR.reset}`);
+   quickPrint(`${SGR.cyan}${`  ${EXECUTABLE_NAME} parallel join ${forkAlias}`}${SGR.reset}`);
 
    if (stashRef) {
       quickPrint(
-         `${ncc('Dim')}Stashed changes from fork '${forkAlias}' can be applied after join.${ncc()}`
+         `${SGR.dim}Stashed changes from fork '${forkAlias}' can be applied after join.${SGR.reset}`
       );
    }
 }
@@ -1815,8 +1816,8 @@ function buildCommitPreamble(options: {
 
    const trimmedStat = stat
       .trimEnd()
-      .replace(/(\W)(\++)/g, `$1${ncc('Green')}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
-      .replace(/(-+)/g, `${ncc('Red')}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
+      .replace(/(\W)(\++)/g, `$1${SGR.green}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
+      .replace(/(-+)/g, `${SGR.red}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
    if (trimmedStat.length > 0) {
       lines.push('');
       lines.push(...trimmedStat.split('\n').map((line) => `   ${line}`));
@@ -1825,7 +1826,7 @@ function buildCommitPreamble(options: {
    if (warning) {
       lines.push('');
       lines.push(
-         `Warning: ${ncc('Yellow') + ncc('Bright')}${warning}${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+         `Warning: ${SGR.yellow + SGR.bright}${warning}${SGR.normal + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
       ); // TODO: make a theme service to handle this kind of thing
    }
 
@@ -1838,7 +1839,7 @@ function buildCommitPreamble(options: {
    if (isEmpty) {
       lines.push('');
       lines.push(
-         `  Note: ${ncc('Blue')}No changes against origin. This commit will be skipped unless applied.${ncc('Normal') + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+         `  Note: ${SGR.blue}No changes against origin. This commit will be skipped unless applied.${SGR.normal + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
       );
    }
 
@@ -1849,32 +1850,32 @@ function getInteractiveStatusText(options: { isEmpty: boolean; hasConflicts: boo
    const { isEmpty, hasConflicts } = options;
    if (isEmpty) {
       return (
-         ncc('BgWhite') +
-         ncc('Black') +
-         ncc('Bright') +
+         SGR.bgWhite +
+         SGR.black +
+         SGR.bright +
          ' EMPTY ' +
-         ncc() +
+         SGR.reset +
          fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
          bgRgb(CATPPUCCIN_VPALETTE.base)
       );
    }
    if (hasConflicts) {
       return (
-         ncc('BgRed') +
-         ncc('White') +
-         ncc('Bright') +
+         SGR.bgRed +
+         SGR.white +
+         SGR.bright +
          ' CONFLICT ' +
-         ncc() +
+         SGR.reset +
          fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
          bgRgb(CATPPUCCIN_VPALETTE.base)
       );
    }
    return (
-      ncc('Green') +
-      ncc('White') +
-      ncc('Bright') +
+      SGR.green +
+      SGR.white +
+      SGR.bright +
       ' CLEAN ' +
-      ncc() +
+      SGR.reset +
       fgRgb(CATPPUCCIN_VPALETTE.overlay0) +
       bgRgb(CATPPUCCIN_VPALETTE.base)
    );
@@ -1931,14 +1932,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ]
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ]
       : [
-         { key: 'a', label: 'apply', action: 'apply' },
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
-      ];
+           { key: 'a', label: 'apply', action: 'apply' },
+           { key: 's', label: 'skip', action: 'skip' },
+           { key: 'u', label: 'undo', action: 'undo' },
+        ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -1964,7 +1965,7 @@ async function undoLastCherryPick(git$: string | string[], repoPath: string): Pr
 
    try {
       await $`${gitExec} -C ${repoPath} reset --hard HEAD~1`;
-      quickPrint(`${ncc('Cyan')}Undid last cherry-picked commit in ${repoPath}.${ncc()}`);
+      quickPrint(`${SGR.cyan}Undid last cherry-picked commit in ${repoPath}.${SGR.reset}`);
       return true;
    } catch (err) {
       Logger.error('Failed to undo last cherry-picked commit.', 'parallel');
@@ -2029,9 +2030,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-               .split('\n')
-               .map((line) => line.trim())
-               .filter((line) => line.length > 0)
+                 .split('\n')
+                 .map((line) => line.trim())
+                 .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -2144,9 +2145,9 @@ async function joinWorktree(
       const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
       commitList = output
          ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
+              .split('\n')
+              .map((c) => c.trim())
+              .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2194,7 +2195,7 @@ async function joinWorktree(
             }
             if (interactiveResult.action === 'undo') {
                if (appliedIndices.length === 0) {
-                  quickPrint(`${ncc('Yellow')}No commit to undo yet.${ncc()}`);
+                  quickPrint(`${SGR.yellow}No commit to undo yet.${SGR.reset}`);
                   continue;
                }
                const lastAppliedIndex = appliedIndices.pop();
@@ -2296,12 +2297,12 @@ async function joinWorktree(
          const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
          const originSubHeadInFork = originSubHead
             ? (
-               await getRevParseCached(gitExec, forkSubPath, [
-                  '-q',
-                  '--verify',
-                  `${originSubHead}^{commit}`,
-               ])
-            ).trim()
+                 await getRevParseCached(gitExec, forkSubPath, [
+                    '-q',
+                    '--verify',
+                    `${originSubHead}^{commit}`,
+                 ])
+              ).trim()
             : '';
          const subRevListArgs = [
             '-C',
@@ -2382,7 +2383,7 @@ async function joinWorktree(
                }
                if (interactiveResult.action === 'undo') {
                   if (subAppliedIndices.length === 0) {
-                     quickPrint(`${ncc('Yellow')}No commit to undo yet.${ncc()}`);
+                     quickPrint(`${SGR.yellow}No commit to undo yet.${SGR.reset}`);
                      continue;
                   }
                   const lastAppliedIndex = subAppliedIndices.pop();
@@ -2484,11 +2485,11 @@ async function joinWorktree(
          try {
             await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
             quickPrint(
-               `${ncc('Yellow')}Stashed changes restored to fork '${forkAlias}' for safety.${ncc()}`
+               `${SGR.yellow}Stashed changes restored to fork '${forkAlias}' for safety.${SGR.reset}`
             );
          } catch (err) {
             quickPrint(
-               `${ncc('Yellow')}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${ncc()}`
+               `${SGR.yellow}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${SGR.reset}`
             );
             Logger.debug(yuString(err, { color: true }), 'parallel');
          }
@@ -2498,16 +2499,16 @@ async function joinWorktree(
 
    if (appliedCommits.length > 0 || appliedSubmoduleCommits.length > 0) {
       quickPrint(
-         `${ncc('Cyan')}Cherry-picked ${appliedCommits.length} commit(s) into origin.${ncc()}`
+         `${SGR.cyan}Cherry-picked ${appliedCommits.length} commit(s) into origin.${SGR.reset}`
       );
       if (appliedSubmoduleCommits.length > 0) {
          quickPrint(
-            `${ncc('Cyan')}Cherry-picked ${appliedSubmoduleCommits.length} submodule commit(s) into origin.${ncc()}`
+            `${SGR.cyan}Cherry-picked ${appliedSubmoduleCommits.length} submodule commit(s) into origin.${SGR.reset}`
          );
       }
    } else {
       quickPrint(
-         `${ncc('Cyan')}No new commits to cherry-pick. Origin was already up to date.${ncc()}`
+         `${SGR.cyan}No new commits to cherry-pick. Origin was already up to date.${SGR.reset}`
       );
    }
 
@@ -2524,7 +2525,7 @@ async function joinWorktree(
          );
          return 1;
       }
-      quickPrint(`${ncc('Cyan')}Fork '${forkAlias}' merged and removed successfully.${ncc()}`);
+      quickPrint(`${SGR.cyan}Fork '${forkAlias}' merged and removed successfully.${SGR.reset}`);
    } else {
       if (!hasBlockedPendingCommits) {
          try {
@@ -2540,7 +2541,7 @@ async function joinWorktree(
       }
       writeParallelMetadata(forkPath, meta);
       quickPrint(
-         `${ncc('Cyan')}Fork '${forkAlias}' merged into origin. Worktree kept at:${ncc()} ${forkPath}`
+         `${SGR.cyan}Fork '${forkAlias}' merged into origin. Worktree kept at:${SGR.reset} ${forkPath}`
       );
    }
 
@@ -2553,7 +2554,7 @@ async function cmdJoinRecursive(
    keep: boolean
 ): Promise<number> {
    if (!fs.existsSync(ctx.parallelRoot)) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -2563,7 +2564,7 @@ async function cmdJoinRecursive(
       .sort((a, b) => a.name.localeCompare(b.name));
 
    if (worktrees.length === 0) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
       return 0;
    }
 
@@ -2584,7 +2585,7 @@ async function cmdJoinRecursive(
    }
 
    if (!hasAnyWt) {
-      quickPrint(`${ncc('Yellow')}No forked worktrees found for this branch.${ncc()}`);
+      quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
    }
 
    return 0;
@@ -2832,7 +2833,7 @@ async function cmdSync(git$: string | string[], args: ArgsSet): Promise<number> 
    resetParallelJoinState(meta, syncedHead);
    writeParallelMetadata(forkPath, meta);
 
-   quickPrint(`${ncc('Cyan')}Fork '${forkAlias}' synchronized with origin.${ncc()}`);
+   quickPrint(`${SGR.cyan}Fork '${forkAlias}' synchronized with origin.${SGR.reset}`);
    return 0;
 }
 
@@ -2951,7 +2952,7 @@ async function cmdPick(git$: string | string[], args: ArgsSet): Promise<number> 
    }
 
    quickPrint(
-      `${ncc('Cyan')}Cherry-picked ${resolvedCommits.length} commit(s) from '${sourceAlias}' into ${scope.currentLabel}.${ncc()}`
+      `${SGR.cyan}Cherry-picked ${resolvedCommits.length} commit(s) from '${sourceAlias}' into ${scope.currentLabel}.${SGR.reset}`
    );
    return 0;
 }
@@ -3009,10 +3010,10 @@ async function applyCherryPick(
       }
 
       quickPrint(
-         `${ncc('Yellow')}Cherry-pick paused due to conflicts while applying commit ${commit}.${ncc()}`
+         `${SGR.yellow}Cherry-pick paused due to conflicts while applying commit ${commit}.${SGR.reset}`
       );
       quickPrint(
-         `${ncc('Dim')}Resolve conflicts in ${contextLabel}, then choose to continue or abort.${ncc()}`
+         `${SGR.dim}Resolve conflicts in ${contextLabel}, then choose to continue or abort.${SGR.reset}`
       );
 
       while (true) {
@@ -3060,7 +3061,7 @@ async function applyCherryPick(
                   const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
                   if (stillInProgress) {
                      quickPrint(
-                        `${ncc('Yellow')}Cherry-pick still has conflicts. Resolve them and try again.${ncc()}`
+                        `${SGR.yellow}Cherry-pick still has conflicts. Resolve them and try again.${SGR.reset}`
                      );
                      Logger.debug(yuString(continueErr, { color: true }), 'parallel');
                      continue;
@@ -3250,12 +3251,12 @@ async function getSubmoduleCommitGroups(
          repoPath: submoduleRepoPath,
          range,
          maxCount,
-         formatTemplate: `${ncc('Yellow')}%h${ncc()} %s`,
+         formatTemplate: `${SGR.yellow}%h${SGR.reset} %s`,
          excludeRefs: originSubHead ? [originSubHead] : undefined,
       });
 
       if (logResult.totalCount === 0) continue;
-      const label = `${submodule.path} ${ncc('Dim')}[submodule]${ncc()}`;
+      const label = `${submodule.path} ${SGR.dim}[submodule]${SGR.reset}`;
       groups.push({
          label,
          commits: logResult.commits,
@@ -3277,14 +3278,14 @@ async function getSubmoduleCommitGroups(
 function printCommitBlock(prefix: string, lines: string[], moreCount: number): void {
    const renderedLines = [...lines];
    if (moreCount > 0) {
-      renderedLines.push(`${ncc('Dim')}+${moreCount} more${ncc()}`);
+      renderedLines.push(`${SGR.dim}+${moreCount} more${SGR.reset}`);
    }
    if (renderedLines.length === 0) return;
 
    for (let i = 0; i < renderedLines.length; i++) {
       const isLast = i === renderedLines.length - 1;
       const connector = isLast ? '└─ ' : '├─ ';
-      quickPrint(`${ncc('Dim')}${prefix}${connector}${ncc()}${renderedLines[i]}`);
+      quickPrint(`${SGR.dim}${prefix}${connector}${SGR.reset}${renderedLines[i]}`);
    }
 }
 
@@ -3299,7 +3300,7 @@ function printCommitGroups(groups: CommitGroup[]): void {
       const group = groups[i];
       const isLastGroup = i === groups.length - 1;
       const groupConnector = isLastGroup ? '  └─ ' : '  ├─ ';
-      quickPrint(`${ncc('Dim')}${groupConnector}${ncc()}${group.label}`);
+      quickPrint(`${SGR.dim}${groupConnector}${SGR.reset}${group.label}`);
 
       const nestedPrefix = isLastGroup ? '     ' : '  │  ';
       printCommitBlock(nestedPrefix, group.commits, group.moreCount);
@@ -3399,33 +3400,30 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
 
 export const help = {
    long: () => {
-      const bright = ncc('Bright');
-      const cyan = ncc('Cyan');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${bright + _2PointGradient('PARALLEL', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('PARALLEL', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Manage parallel (forked) worktrees for iterative development.
 
-         ${bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         \`${cyan}${EXECUTABLE_NAME} parallel${reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
+         ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         \`${SGR.cyan}${EXECUTABLE_NAME} parallel${SGR.reset}\` helps you create and manage temporary forked worktrees for the current branch. Forked worktrees live under a temp worktree root and contain a small metadata file (.git-parallel.json) so the tool can later join, list or remove them cleanly.
 
-         Additionally, \`${cyan}${EXECUTABLE_NAME} parallel fork${reset}\` can auto-initialize submodules,
+         Additionally, \`${SGR.cyan}${EXECUTABLE_NAME} parallel fork${SGR.reset}\` can auto-initialize submodules,
          copy ignored env files, and install dependencies using detected package managers (currently supports
-         npm, pnpm, bun, and uv) if configured (see \`${cyan}parallel.init${reset}\` and
-         \`${cyan}parallel.envPaths${reset}\` config for options), getting the fork ready for work in no time.
+         npm, pnpm, bun, and uv) if configured (see \`${SGR.cyan}parallel.init${SGR.reset}\` and
+         \`${SGR.cyan}parallel.envPaths${SGR.reset}\` config for options), getting the fork ready for work in no time.
 
-         ${bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
-         - ${cyan}fork <alias>${reset}: Creates a detached worktree in a safe temporary namespace. Use \`${cyan}-b${reset}\` or \`${cyan}-B${reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${cyan}--move${reset}\` or \`${cyan}--mirror${reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${cyan}--no-init${reset}\`.
-         - ${cyan}join [<alias>] [--keep|--all|-i|--interactive]${reset}: Cherry-picks commits from the fork back into the origin worktree. \`${cyan}--keep${reset}\` retains the fork and updates its base; \`${cyan}--all${reset}\` also includes uncommitted changes. \`${cyan}--interactive${reset}\` previews and lets you choose each commit before applying.
-         - ${cyan}join -r|--recursive [--keep]${reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${cyan}--all${reset}\`.
-         - ${cyan}sync [<alias>] [--hard|-h]${reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${cyan}--hard${reset}\` clears fork-local changes before syncing.
-         - ${cyan}pick <alias|origin> <commit> [commit...]${reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
-         - ${cyan}list${reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${cyan}--short${reset} for compact output.
-         - ${cyan}remove <alias>${reset}: Removes the forked worktree and cleans up the directory.
-         - ${cyan}remove -r|--recursive${reset}: Removes every fork for the current branch.
+         ${SGR.bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         - ${SGR.cyan}fork <alias>${SGR.reset}: Creates a detached worktree in a safe temporary namespace. Use \`${SGR.cyan}-b${SGR.reset}\` or \`${SGR.cyan}-B${SGR.reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${SGR.cyan}--move${SGR.reset}\` or \`${SGR.cyan}--mirror${SGR.reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${SGR.cyan}--no-init${SGR.reset}\`.
+         - ${SGR.cyan}join [<alias>] [--keep|--all|-i|--interactive]${SGR.reset}: Cherry-picks commits from the fork back into the origin worktree. \`${SGR.cyan}--keep${SGR.reset}\` retains the fork and updates its base; \`${SGR.cyan}--all${SGR.reset}\` also includes uncommitted changes. \`${SGR.cyan}--interactive${SGR.reset}\` previews and lets you choose each commit before applying.
+         - ${SGR.cyan}join -r|--recursive [--keep]${SGR.reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${SGR.cyan}--all${SGR.reset}\`.
+         - ${SGR.cyan}sync [<alias>] [--hard|-h]${SGR.reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${SGR.cyan}--hard${SGR.reset}\` clears fork-local changes before syncing.
+         - ${SGR.cyan}pick <alias|origin> <commit> [commit...]${SGR.reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
+         - ${SGR.cyan}list${SGR.reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${SGR.cyan}--short${SGR.reset} for compact output.
+         - ${SGR.cyan}remove <alias>${SGR.reset}: Removes the forked worktree and cleans up the directory.
+         - ${SGR.cyan}remove -r|--recursive${SGR.reset}: Removes every fork for the current branch.
 
-         ${bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + reset}
+         ${SGR.bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -3438,37 +3436,34 @@ export const help = {
    },
    short: 'Manage temporary forked worktrees: create, list, join, open and remove.',
    usage: () => {
-      const cyan = ncc('Cyan');
-      const dim = ncc('Dim');
-      const reset = ncc();
       return strWrap(
          litedent`
-         ${cyan}${EXECUTABLE_NAME} parallel fork ${dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,env,pkg]]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel list${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel open ${dim}<alias|origin> [-c|--copy]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel switch ${dim}<alias|origin> [-c|--copy]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel sync ${dim}[<alias>] [--hard|-h]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel pick ${dim}<alias|origin> <commit> [commit...]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel join ${dim}<alias> [--keep|--all|-i|--interactive]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel join ${dim}-r|--recursive [--keep]${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}<alias>${reset}
-         ${cyan}${EXECUTABLE_NAME} parallel remove ${dim}-r|--recursive${reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel fork ${SGR.dim}<alias> [ref] [-b|-B <branch>] [--move|--mirror] [--no-init[=submodule,env,pkg]]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel list${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel open ${SGR.dim}<alias|origin> [-c|--copy]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel switch ${SGR.dim}<alias|origin> [-c|--copy]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel sync ${SGR.dim}[<alias>] [--hard|-h]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel pick ${SGR.dim}<alias|origin> <commit> [commit...]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel join ${SGR.dim}<alias> [--keep|--all|-i|--interactive]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel join ${SGR.dim}-r|--recursive [--keep]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel remove ${SGR.dim}<alias>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel remove ${SGR.dim}-r|--recursive${SGR.reset}
 
          Examples:
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${reset + dim}# Create fork and optionally move changes${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${reset + dim}# Create fork from a ref${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${reset + dim}# Create fork on a local branch${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${reset + dim}# Recreate the fork branch${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${reset + dim}# Skip all init behaviors${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${reset + dim}# Skip package installs only${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=env ${reset + dim}# Skip env file copy${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel list --short ${reset + dim}# Compact output with recent commits${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${reset + dim}# Reset a fork to the latest origin state${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${reset + dim}# Cherry-pick from origin into current worktree${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${reset + dim}# Merge fork back into origin${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${reset + dim}# Preview and pick commits${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel join -r ${reset + dim}# Merge all forks back into origin${reset}
-            ${cyan}${EXECUTABLE_NAME} parallel remove -r ${reset + dim}# Remove all forks for this branch${reset}`,
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x --move ${SGR.reset + SGR.dim}# Create fork and optionally move changes${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x deadbeef ${SGR.reset + SGR.dim}# Create fork from a ref${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x -b feature-x ${SGR.reset + SGR.dim}# Create fork on a local branch${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x -B feature-x ${SGR.reset + SGR.dim}# Recreate the fork branch${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init ${SGR.reset + SGR.dim}# Skip all init behaviors${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=pkg ${SGR.reset + SGR.dim}# Skip package installs only${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel fork feature-x --no-init=env ${SGR.reset + SGR.dim}# Skip env file copy${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel list --short ${SGR.reset + SGR.dim}# Compact output with recent commits${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${SGR.reset + SGR.dim}# Reset a fork to the latest origin state${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${SGR.reset + SGR.dim}# Cherry-pick from origin into current worktree${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${SGR.reset + SGR.dim}# Merge fork back into origin${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${SGR.reset + SGR.dim}# Preview and pick commits${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join -r ${SGR.reset + SGR.dim}# Merge all forks back into origin${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel remove -r ${SGR.reset + SGR.dim}# Remove all forks for this branch${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',

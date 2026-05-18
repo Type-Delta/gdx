@@ -1,8 +1,15 @@
-import { estimateStrComplexity, ex_length, maxFraction, ncc, strJustify, strWrap } from '@lib/Tools';
+import { estimateStrComplexity, ex_length, maxFraction, strJustify, strWrap } from '@lib/Tools';
 
 import Logger from '@/utils/logger';
-import { bgRgb, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles, stripAnsiColor } from './graphics';
-import { CATPPUCCIN_VPALETTE } from '@/consts';
+import {
+   bgRgb,
+   fgRgb,
+   inferAnsiStyles,
+   RgbVec,
+   serializeAnsiStyles,
+   stripAnsiColor,
+} from './graphics';
+import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 
 /**
  * Options for configuring pager behavior.
@@ -81,9 +88,6 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
    wrapLines: true,
    showStatus: true,
    statusFormat: (current, total, termWidth, context) => {
-      const bright = ncc('Bright');
-      const normal = ncc('Normal');
-      const dim = ncc('Dim');
       const cyan = fgRgb(CATPPUCCIN_VPALETTE.cyan);
       const white = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
@@ -91,26 +95,25 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
       const actionHint = context?.actions
          ? context.actions
-            .map((action) => {
-               const keys = Array.isArray(action.key) ? action.key : [action.key];
-               const keyLabel = action.displayKey ?? keys[0] ?? '';
-               if (!keyLabel) return '';
-               return `${bright + cyan}${keyLabel}${white + normal} ${action.label}`;
-            })
-            .filter(Boolean)
-            .join(`${dim},${normal} `)
+              .map((action) => {
+                 const keys = Array.isArray(action.key) ? action.key : [action.key];
+                 const keyLabel = action.displayKey ?? keys[0] ?? '';
+                 if (!keyLabel) return '';
+                 return `${SGR.bright + cyan}${keyLabel}${white + SGR.normal} ${action.label}`;
+              })
+              .filter(Boolean)
+              .join(`${SGR.dim},${SGR.normal} `)
          : '';
       const navHint = actionHint
-         ? `${bright + cyan}↑ ↓ b n${white + normal} navigate${dim},${normal} ${bright + cyan}q${white + normal} quit${dim},${normal}`
-         : `${bright + cyan}↑ ↓ b n Home End${white + normal} to navigate${dim},${normal} ${bright + cyan}q${white + normal} quit`;
+         ? `${SGR.bright + cyan}↑ ↓ b n${white + SGR.normal} navigate${SGR.dim},${SGR.normal} ${SGR.bright + cyan}q${white + SGR.normal} quit${SGR.dim},${SGR.normal}`
+         : `${SGR.bright + cyan}↑ ↓ b n Home End${white + SGR.normal} to navigate${SGR.dim},${SGR.normal} ${SGR.bright + cyan}q${white + SGR.normal} quit`;
 
-      const leftParts = [statusText, navHint, actionHint]
-         .filter(Boolean)
-         .join(' ');
+      const leftParts = [statusText, navHint, actionHint].filter(Boolean).join(' ');
 
-      const locationInfo = (ex_length(leftParts, 0) > termWidth * 0.6)
-         ? `ln ${bright}${current}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' EOF' + ncc('White') : ''}`
-         : `ln ${bright}${current}-${endLines}${normal} of ${bright}${total}${endLines === total ? ncc('Red') + ' (EOF)' + ncc('White') : ''}`;
+      const locationInfo =
+         ex_length(leftParts, 0) > termWidth * 0.6
+            ? `ln ${SGR.bright}${current}${SGR.normal} of ${SGR.bright}${total}${endLines === total ? SGR.red + ' EOF' + SGR.white : ''}`
+            : `ln ${SGR.bright}${current}-${endLines}${SGR.normal} of ${SGR.bright}${total}${endLines === total ? SGR.red + ' (EOF)' + SGR.white : ''}`;
       return (
          '  ' +
          strJustify(
@@ -181,7 +184,7 @@ export class SimplePagerRenderer implements PagerRenderer {
    constructor(content: string, options: PagerOptions = {}) {
       this.options = {
          ...PAGER_DEFAULT_OPTIONS,
-         ...options
+         ...options,
       } as Required<PagerOptions>;
       this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(content);
       this.lines = content.split('\n');
@@ -212,13 +215,11 @@ export class SimplePagerRenderer implements PagerRenderer {
             for (let i = 0; i < splitted.length; i++) {
                const g = i === 0 ? gutter : ' '.repeat(this.options.lineNumberWidth + 1);
 
-               if (lastStyles)
-                  splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
+               if (lastStyles) splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
 
                this.wrappedLines.push(g + splitted[i]);
 
-               if (i != splitted.length - 1)
-                  lastStyles = inferAnsiStyles(splitted[i]);
+               if (i != splitted.length - 1) lastStyles = inferAnsiStyles(splitted[i]);
             }
          } else {
             if (this.options.showLineNumbers) {
@@ -245,7 +246,6 @@ export class SimplePagerRenderer implements PagerRenderer {
    render(startLine: number, height: number, width: number): string[] {
       const result: string[] = [];
       const bgColor = bgRgb(this.options.backgroundColor);
-      const reset = ncc();
 
       for (let i = 0; i < height - 1; i++) {
          const lineIndex = startLine + i;
@@ -253,9 +253,9 @@ export class SimplePagerRenderer implements PagerRenderer {
             const line = this.wrappedLines[lineIndex];
             const stripped = stripAnsiColor(line);
             const padding = Math.max(0, width - ex_length(stripped, this.redundancyLv));
-            result.push(`${bgColor}${line}${' '.repeat(padding)}${reset}`);
+            result.push(`${bgColor}${line}${' '.repeat(padding)}${SGR.reset}`);
          } else {
-            result.push(`${bgColor}${' '.repeat(width)}${reset}`);
+            result.push(`${bgColor}${' '.repeat(width)}${SGR.reset}`);
          }
       }
 
@@ -352,7 +352,7 @@ export async function pagerWithRenderer(
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
          process.stdout.write(
-            '\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + ncc()
+            '\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + SGR.reset
          );
       }
       if (performanceSamples.length > 30) performanceSamples.shift();
