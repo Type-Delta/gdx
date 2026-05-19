@@ -1,3 +1,5 @@
+import { strLimit } from '@lib/Tools';
+
 import { GdxContext } from '@/common/types';
 import { CATPPUCCIN_VPALETTE, EXTENSION_LANG_MAP, SGR, TUI_THEME } from '@/consts';
 import { isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
@@ -5,7 +7,7 @@ import { pager } from '@/modules/pager';
 import { $, spinner } from '@/modules/shell';
 import { fgRgb } from './graphics';
 import { resolveHeadRelativeCommitRef, revParseCached } from './git';
-import { strLimit } from '@lib/Tools';
+import type { PagerAction } from './pager';
 
 const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 const SHOW_PREVIOUS_COMMIT_ACTION = 'previousCommit';
@@ -46,6 +48,11 @@ export interface ShowCommitNavigationPlan {
 
 export interface ShowBlobNavigationPlan extends ShowCommitNavigationPlan {
    path: string;
+}
+
+export interface ShowCommitAdjacentCommits {
+   previous: string | null;
+   next: string | null;
 }
 
 /**
@@ -307,16 +314,65 @@ async function findAdjacentShowCommit(
    plan: ShowCommitNavigationPlan,
    direction: 'previous' | 'next'
 ): Promise<string | null> {
+   const adjacentCommits = await findAdjacentShowCommits(git$, currentCommit, plan);
+   return adjacentCommits[direction];
+}
+
+/**
+ * Finds both adjacent commits in the current show navigation scope.
+ * @param git$ - Git executable/context from GdxContext.
+ * @param currentCommit - Full hash for the currently displayed commit.
+ * @param plan - Parsed navigation plan.
+ * @returns Older and newer adjacent commit hashes when available.
+ */
+async function findAdjacentShowCommits(
+   git$: GdxContext['git$'],
+   currentCommit: string,
+   plan: ShowCommitNavigationPlan
+): Promise<ShowCommitAdjacentCommits> {
    const result = await $`${git$} log --format=%H ${plan.navigationArgs}`;
    const commits = result.stdout
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
    const currentIndex = commits.indexOf(currentCommit);
-   if (currentIndex === -1) return null;
+   if (currentIndex === -1) return { previous: null, next: null };
 
-   const nextIndex = direction === 'previous' ? currentIndex + 1 : currentIndex - 1;
-   return commits[nextIndex] ?? null;
+   return {
+      previous: commits[currentIndex + 1] ?? null,
+      next: commits[currentIndex - 1] ?? null,
+   };
+}
+
+/**
+ * Builds pager actions for commit navigation, omitting directions that cannot be used.
+ * @param adjacentCommits - Adjacent commits available from the current show target.
+ * @returns Pager actions for available navigation directions.
+ */
+export function buildShowCommitNavigationActions(
+   adjacentCommits: ShowCommitAdjacentCommits
+): PagerAction[] {
+   const actions: PagerAction[] = [];
+
+   if (adjacentCommits.previous) {
+      actions.push({
+         key: LEFT_ARROW_KEY,
+         displayKey: '←',
+         label: 'previous',
+         action: SHOW_PREVIOUS_COMMIT_ACTION,
+      });
+   }
+
+   if (adjacentCommits.next) {
+      actions.push({
+         key: RIGHT_ARROW_KEY,
+         displayKey: '→',
+         label: 'next',
+         action: SHOW_NEXT_COMMIT_ACTION,
+      });
+   }
+
+   return actions;
 }
 
 /**
@@ -366,14 +422,17 @@ async function viewShowBlob(
    try {
       const content =
          preloadedContent ??
-         (await $`${ctx.git$} -c color.ui=never show ${buildShowBlobArgsForCommit(
-            showArgs,
-            plan,
-            commit
-         )}`).stdout;
-      const [relativeRef, highlightedContent] = await Promise.all([
+         (
+            await $`${ctx.git$} -c color.ui=never show ${buildShowBlobArgsForCommit(
+               showArgs,
+               plan,
+               commit
+            )}`
+         ).stdout;
+      const [relativeRef, highlightedContent, adjacentCommits] = await Promise.all([
          resolveHeadRelativeCommitRef(ctx.git$, commit, false),
          highlightShowBlobContent(content, plan.path),
+         findAdjacentShowCommits(ctx.git$, commit, plan),
       ]);
       spinnerCtrl?.stop();
 
@@ -381,20 +440,7 @@ async function viewShowBlob(
          showLineNumbers: true,
          lineNumberWidth: Math.max(4, String(content.split('\n').length).length),
          statusText: `${strLimit(plan.path, 40, 'mid', -1)}@${relativeRef || commit.slice(0, 7)}`,
-         actions: [
-            {
-               key: LEFT_ARROW_KEY,
-               displayKey: '←',
-               label: 'previous',
-               action: SHOW_PREVIOUS_COMMIT_ACTION,
-            },
-            {
-               key: RIGHT_ARROW_KEY,
-               displayKey: '→',
-               label: 'next',
-               action: SHOW_NEXT_COMMIT_ACTION,
-            },
-         ],
+         actions: buildShowCommitNavigationActions(adjacentCommits),
       });
    } catch (e) {
       spinnerCtrl?.stop();
@@ -438,29 +484,17 @@ async function viewShowCommit(
                commit
             )}`
          ).stdout;
-      const [relativeRef, stat] = await Promise.all([
+      const [relativeRef, stat, adjacentCommits] = await Promise.all([
          resolveHeadRelativeCommitRef(ctx.git$, commit, false),
          getShowCommitStat(ctx.git$, showArgs, plan, commit),
+         findAdjacentShowCommits(ctx.git$, commit, plan),
       ]);
       spinnerCtrl?.stop();
 
       if (!diffText || !isGitDiffOutput(diffText)) return undefined;
 
       return await viewDiff(buildEnhancedShowDiffText(diffText, { relativeRef, stat }), {
-         actions: [
-            {
-               key: LEFT_ARROW_KEY,
-               displayKey: '←',
-               label: 'previous',
-               action: SHOW_PREVIOUS_COMMIT_ACTION,
-            },
-            {
-               key: RIGHT_ARROW_KEY,
-               displayKey: '→',
-               label: 'next',
-               action: SHOW_NEXT_COMMIT_ACTION,
-            },
-         ],
+         actions: buildShowCommitNavigationActions(adjacentCommits),
          git$: ctx.git$,
          highlighting: {
             oldRevision: `${commit}^`,
@@ -474,7 +508,7 @@ async function viewShowCommit(
 }
 
 /**
- * Runs the enhanced interactive `gdx show` session with left/right commit seeking.
+ * Runs the enhanced interactive `gdx show` session with previous/next commit seeking.
  * @param ctx - Current GDX context.
  * @param showArgs - Arguments passed after `gdx show`.
  * @param initialDiffText - Already-loaded show output for the initial commit.

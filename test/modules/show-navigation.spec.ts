@@ -7,6 +7,7 @@ import {
    buildShowPreamble,
    buildShowArgsForCommit,
    buildShowCommitNavigationPlan,
+   buildShowCommitNavigationActions,
 } from '@/modules/show-navigation';
 import * as fs from '@/modules/fs';
 import { createTestEnv } from '@/utils/testHelper';
@@ -116,6 +117,36 @@ describe('show navigation helpers', async () => {
          '--',
          'README.md',
       ]);
+   });
+
+   it('should hide unavailable show navigation actions', () => {
+      expect(
+         buildShowCommitNavigationActions({
+            previous: 'older',
+            next: 'newer',
+         }).map((action) => action.label)
+      ).toEqual(['previous', 'next']);
+
+      expect(
+         buildShowCommitNavigationActions({
+            previous: null,
+            next: 'newer',
+         }).map((action) => action.label)
+      ).toEqual(['next']);
+
+      expect(
+         buildShowCommitNavigationActions({
+            previous: 'older',
+            next: null,
+         }).map((action) => action.label)
+      ).toEqual(['previous']);
+
+      expect(
+         buildShowCommitNavigationActions({
+            previous: null,
+            next: null,
+         })
+      ).toEqual([]);
    });
 
    it('should parse revision path blob show args for commit navigation', () => {
