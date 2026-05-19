@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test';
 
 import {
    buildEnhancedShowDiffText,
+   buildShowBlobArgsForCommit,
+   buildShowBlobNavigationPlan,
    buildShowPreamble,
    buildShowArgsForCommit,
    buildShowCommitNavigationPlan,
@@ -114,6 +116,26 @@ describe('show navigation helpers', async () => {
          '--',
          'README.md',
       ]);
+   });
+
+   it('should parse revision path blob show args for commit navigation', () => {
+      const plan = buildShowBlobNavigationPlan(['--date', 'iso', 'aaa:src/index.ts']);
+
+      expect(plan).toEqual({
+         targetRef: 'aaa',
+         targetIndex: 2,
+         navigationArgs: ['--date', 'iso', 'HEAD', '--', 'src/index.ts'],
+         path: 'src/index.ts',
+      });
+      expect(
+         plan && buildShowBlobArgsForCommit(['--date', 'iso', 'aaa:src/index.ts'], plan, 'bbb')
+      ).toEqual(['--date', 'iso', 'bbb:src/index.ts']);
+   });
+
+   it('should ignore show args that are not revision path blob targets', () => {
+      expect(buildShowBlobNavigationPlan(['HEAD', '--', 'README.md'])).toBeNull();
+      expect(buildShowBlobNavigationPlan(['HEAD:'])).toBeNull();
+      expect(buildShowBlobNavigationPlan([':README.md'])).toBeNull();
    });
 
    it('should let git log seek only commits that match the original pathspec', async () => {

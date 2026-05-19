@@ -16,7 +16,11 @@ import {
    parseDiffOutput,
    viewDiff,
 } from '@/modules/diff-viewer';
-import { viewInteractiveShow } from '@/modules/show-navigation';
+import {
+   buildShowBlobNavigationPlan,
+   viewInteractiveShow,
+   viewInteractiveShowBlob,
+} from '@/modules/show-navigation';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -240,6 +244,11 @@ export async function dispatch(
                      }
 
                      await viewInteractiveShow(ctx, showArgs, result.stdout);
+                     return 0;
+                  }
+                  const blobPlan = buildShowBlobNavigationPlan(showArgs);
+                  if (blobPlan && !asJson) {
+                     await viewInteractiveShowBlob(ctx, showArgs, blobPlan, result.stdout);
                      return 0;
                   }
                } catch (e) {

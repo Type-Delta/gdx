@@ -1,9 +1,11 @@
 import { GdxContext } from '@/common/types';
+import { CATPPUCCIN_VPALETTE, EXTENSION_LANG_MAP, SGR, TUI_THEME } from '@/consts';
 import { isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
+import { pager } from '@/modules/pager';
 import { $, spinner } from '@/modules/shell';
 import { fgRgb } from './graphics';
-import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 import { resolveHeadRelativeCommitRef, revParseCached } from './git';
+import { strLimit } from '@lib/Tools';
 
 const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 const SHOW_PREVIOUS_COMMIT_ACTION = 'previousCommit';
@@ -40,6 +42,10 @@ export interface ShowCommitNavigationPlan {
    targetRef: string;
    targetIndex: number | null;
    navigationArgs: string[];
+}
+
+export interface ShowBlobNavigationPlan extends ShowCommitNavigationPlan {
+   path: string;
 }
 
 /**
@@ -104,6 +110,64 @@ export function buildShowCommitNavigationPlan(showArgs: string[]): ShowCommitNav
       targetIndex,
       navigationArgs,
    };
+}
+
+/**
+ * Parses `git show <revision>:<path>` arguments into a navigation plan.
+ * @param showArgs - Arguments passed after `gdx show`.
+ * @returns The parsed blob target and navigation arguments, or null for non-blob show args.
+ */
+export function buildShowBlobNavigationPlan(showArgs: string[]): ShowBlobNavigationPlan | null {
+   const terminatorIndex = showArgs.indexOf('--');
+   const searchEnd = terminatorIndex === -1 ? showArgs.length : terminatorIndex;
+
+   for (let index = 0; index < searchEnd; index++) {
+      const arg = showArgs[index];
+      if (!arg) continue;
+
+      if (isOptionTokenWithSeparateValue(arg) && index + 1 < searchEnd) {
+         index++;
+         continue;
+      }
+
+      if (arg.startsWith('-')) continue;
+
+      const separatorIndex = arg.indexOf(':');
+      if (separatorIndex <= 0 || separatorIndex === arg.length - 1) return null;
+
+      const targetRef = arg.slice(0, separatorIndex);
+      const path = arg.slice(separatorIndex + 1);
+      const navigationArgs = showArgs.filter(
+         (_, argIndex) => argIndex !== index && argIndex < searchEnd
+      );
+      navigationArgs.push('HEAD', '--', path);
+
+      return {
+         targetRef,
+         targetIndex: index,
+         navigationArgs,
+         path,
+      };
+   }
+
+   return null;
+}
+
+/**
+ * Builds the `git show` argument list for a blob at a resolved commit.
+ * @param showArgs - Arguments passed after `gdx show`.
+ * @param plan - Parsed blob navigation plan.
+ * @param commit - The commit hash or ref to display.
+ * @returns A show argument list targeting the blob at the requested commit.
+ */
+export function buildShowBlobArgsForCommit(
+   showArgs: string[],
+   plan: ShowBlobNavigationPlan,
+   commit: string
+): string[] {
+   const nextArgs = showArgs.slice();
+   if (plan.targetIndex !== null) nextArgs[plan.targetIndex] = `${commit}:${plan.path}`;
+   return nextArgs;
 }
 
 /**
@@ -256,6 +320,89 @@ async function findAdjacentShowCommit(
 }
 
 /**
+ * Syntax-highlights file content for display in the plain show pager.
+ * @param content - Raw file content from git-show.
+ * @param path - Repository path used for language detection.
+ * @returns ANSI-highlighted content, or the raw content if highlighting fails.
+ */
+async function highlightShowBlobContent(content: string, path: string): Promise<string> {
+   const ext = path.split('.').pop()?.toLowerCase() || '';
+   const lang = EXTENSION_LANG_MAP[ext] || 'text';
+
+   try {
+      const shiki = await import('@shikijs/cli');
+      return await shiki.codeToANSI(content, lang as never, TUI_THEME as never);
+   } catch {
+      return content;
+   }
+}
+
+/**
+ * Loads and displays a non-diff `git show <revision>:<path>` blob.
+ * @param ctx - Current GDX context.
+ * @param showArgs - Arguments passed after `gdx show`.
+ * @param plan - Parsed blob navigation plan.
+ * @param commit - Commit hash or ref to display.
+ * @param showLoading - Whether to clear the screen and show a loading spinner first.
+ * @param preloadedContent - Already-loaded content to avoid re-running the first request.
+ * @returns The pager action selected by the user.
+ */
+async function viewShowBlob(
+   ctx: GdxContext,
+   showArgs: string[],
+   plan: ShowBlobNavigationPlan,
+   commit: string,
+   showLoading: boolean,
+   preloadedContent?: string
+) {
+   if (showLoading) clearInteractiveScreen();
+   const spinnerCtrl =
+      showLoading || preloadedContent === undefined
+         ? spinner({
+            message: 'Loading file...',
+         })
+         : undefined;
+
+   try {
+      const content =
+         preloadedContent ??
+         (await $`${ctx.git$} -c color.ui=never show ${buildShowBlobArgsForCommit(
+            showArgs,
+            plan,
+            commit
+         )}`).stdout;
+      const [relativeRef, highlightedContent] = await Promise.all([
+         resolveHeadRelativeCommitRef(ctx.git$, commit, false),
+         highlightShowBlobContent(content, plan.path),
+      ]);
+      spinnerCtrl?.stop();
+
+      return await pager(highlightedContent, {
+         showLineNumbers: true,
+         lineNumberWidth: Math.max(4, String(content.split('\n').length).length),
+         statusText: `${strLimit(plan.path, 40, 'mid', -1)}@${relativeRef || commit.slice(0, 7)}`,
+         actions: [
+            {
+               key: LEFT_ARROW_KEY,
+               displayKey: '←',
+               label: 'previous',
+               action: SHOW_PREVIOUS_COMMIT_ACTION,
+            },
+            {
+               key: RIGHT_ARROW_KEY,
+               displayKey: '→',
+               label: 'next',
+               action: SHOW_NEXT_COMMIT_ACTION,
+            },
+         ],
+      });
+   } catch (e) {
+      spinnerCtrl?.stop();
+      throw e;
+   }
+}
+
+/**
  * Loads and displays the enhanced `git show` viewer, returning pager actions for commit seeking.
  * @param ctx - Current GDX context.
  * @param showArgs - Arguments passed after `gdx show`.
@@ -277,8 +424,8 @@ async function viewShowCommit(
    const spinnerCtrl =
       showLoading && preloadedDiffText === undefined
          ? spinner({
-              message: 'Loading commit...',
-           })
+            message: 'Loading commit...',
+         })
          : undefined;
 
    try {
@@ -357,6 +504,39 @@ export async function viewInteractiveShow(
    }
 }
 
+/**
+ * Runs the enhanced interactive blob viewer for `gdx show <revision>:<path>`.
+ * @param ctx - Current GDX context.
+ * @param showArgs - Arguments passed after `gdx show`.
+ * @param plan - Parsed blob navigation plan.
+ * @param initialContent - Already-loaded blob output for the initial commit.
+ */
+export async function viewInteractiveShowBlob(
+   ctx: GdxContext,
+   showArgs: string[],
+   plan: ShowBlobNavigationPlan,
+   initialContent?: string
+): Promise<void> {
+   let currentCommit = await resolveShowCommit(ctx.git$, plan.targetRef);
+   let action = await viewShowBlob(ctx, showArgs, plan, currentCommit, false, initialContent);
+
+   while (
+      action?.action === SHOW_PREVIOUS_COMMIT_ACTION ||
+      action?.action === SHOW_NEXT_COMMIT_ACTION
+   ) {
+      const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
+      const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
+      if (!adjacentCommit) {
+         action = await viewShowBlob(ctx, showArgs, plan, currentCommit, true);
+         continue;
+      }
+
+      currentCommit = adjacentCommit;
+      action = await viewShowBlob(ctx, showArgs, plan, currentCommit, true);
+   }
+}
+
 export default {
    viewInteractiveShow,
+   viewInteractiveShowBlob,
 };
