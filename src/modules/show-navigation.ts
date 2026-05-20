@@ -526,6 +526,8 @@ export async function viewInteractiveShow(
       action?.action === SHOW_PREVIOUS_COMMIT_ACTION ||
       action?.action === SHOW_NEXT_COMMIT_ACTION
    ) {
+      process.stdout.write('\x1b[H');
+      process.stdout.clearScreenDown();
       const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {
@@ -558,6 +560,8 @@ export async function viewInteractiveShowBlob(
       action?.action === SHOW_PREVIOUS_COMMIT_ACTION ||
       action?.action === SHOW_NEXT_COMMIT_ACTION
    ) {
+      process.stdout.write('\x1b[H');
+      process.stdout.clearScreenDown();
       const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {

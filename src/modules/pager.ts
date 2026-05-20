@@ -10,6 +10,7 @@ import {
    stripAnsiColor,
 } from './graphics';
 import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
+import { getConfig } from '@/common/config';
 
 /**
  * Options for configuring pager behavior.
@@ -64,6 +65,12 @@ export interface PagerOptions {
     * How much to scroll when navigating by line. Can be increased for faster scrolling.
     */
    scrollSensitivity?: number;
+   /**
+    * Behavior when exiting the pager. 'nextLine' keeps content in scroll buffer and moves the cursor to the next line below the content, 'clearScreen' clears the screen to remove pager content from scroll buffer, and 'none' leaves the content and cursor position unchanged.
+    *
+    * Default is 'nextLine'.
+    */
+   exitBehavior?: 'nextLine' | 'clearScreen' | 'none';
 }
 
 /**
@@ -95,14 +102,14 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
       const actionHint = context?.actions
          ? context.actions
-              .map((action) => {
-                 const keys = Array.isArray(action.key) ? action.key : [action.key];
-                 const keyLabel = action.displayKey ?? keys[0] ?? '';
-                 if (!keyLabel) return '';
-                 return `${SGR.bright + cyan}${keyLabel}${white + SGR.normal} ${action.label}`;
-              })
-              .filter(Boolean)
-              .join(`${SGR.dim},${SGR.normal} `)
+            .map((action) => {
+               const keys = Array.isArray(action.key) ? action.key : [action.key];
+               const keyLabel = action.displayKey ?? keys[0] ?? '';
+               if (!keyLabel) return '';
+               return `${SGR.bright + cyan}${keyLabel}${white + SGR.normal} ${action.label}`;
+            })
+            .filter(Boolean)
+            .join(`${SGR.dim},${SGR.normal} `)
          : '';
       const navHint = actionHint
          ? `${SGR.bright + cyan}↑ ↓ b n${white + SGR.normal} navigate${SGR.dim},${SGR.normal} ${SGR.bright + cyan}q${white + SGR.normal} quit${SGR.dim},${SGR.normal}`
@@ -134,6 +141,7 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
    scrollSensitivity: 3,
    statusText: '',
    actions: [],
+   exitBehavior: 'none',
 };
 
 /** Cached terminal dimensions */
@@ -280,8 +288,15 @@ export async function pager(
    content: string,
    options: PagerOptions = {}
 ): Promise<PagerActionResult | void> {
-   const renderer = new SimplePagerRenderer(content, options);
-   return pagerWithRenderer(renderer, options);
+   const config = await getConfig();
+   const opts = {
+      ...PAGER_DEFAULT_OPTIONS,
+      ...{ exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior') },
+      ...options
+   };
+
+   const renderer = new SimplePagerRenderer(content, opts);
+   return pagerWithRenderer(renderer, opts);
 }
 
 /**
@@ -293,7 +308,13 @@ export async function pagerWithRenderer(
    renderer: PagerRenderer,
    options: PagerOptions = {}
 ): Promise<PagerActionResult | void> {
-   const opts = { ...PAGER_DEFAULT_OPTIONS, ...options };
+   const config = await getConfig();
+   const opts = {
+      ...PAGER_DEFAULT_OPTIONS,
+      ...{ exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior') },
+      ...options
+   };
+
    const resolvedRedundancy = opts.redundancyLv ?? 0;
 
    // Non-TTY fallback: just print all lines
@@ -370,12 +391,19 @@ export async function pagerWithRenderer(
       // Show cursor
       process.stdout.write('\x1b[?25h');
 
-      // Move to bottom of current viewport and add content to scroll buffer
-      const currentHeight = getTerminalHeight();
-      const linesToAdd = currentHeight - 1;
+      if (opts.exitBehavior === 'clearScreen') {
+         // Clear the screen and move cursor to top-left, remove content from scroll buffer
+         process.stdout.write('\x1b[H');
+         process.stdout.clearScreenDown();
+      }
+      else if (opts.exitBehavior === 'nextLine') {
+         // Move to bottom of current viewport and add content to scroll buffer
+         const currentHeight = getTerminalHeight();
+         const linesToAdd = currentHeight - 1;
 
-      // Move cursor to after the displayed content
-      process.stdout.write(`\x1b[${linesToAdd}B`);
+         // Move cursor to after the displayed content
+         process.stdout.write(`\x1b[${linesToAdd}B`);
+      }
 
       process.stdin.setRawMode(false);
       process.stdin.pause();

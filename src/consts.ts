@@ -5,7 +5,12 @@ import { RgbVec } from './modules/graphics';
 
 import pkg from '../package.json';
 import { inferBool } from './utils/utilities';
-import { ncc } from '@lib/Tools';
+import { CheckCache, ncc } from '@lib/Tools';
+
+if (process.env.NODE_ENV === 'test') {
+   // Disable all ANSI formatting for tests
+   CheckCache.supportsColor = 0;
+}
 
 const exeBasename = path.basename(process.argv[0] || 'gdx', path.extname(process.argv[0] || ''));
 

@@ -59,6 +59,9 @@ export const GdxConfigSchema = t.Object({
                maxHunkSize: t.Optional(t.Integer({ minimum: 1 })),
             })
          ),
+         exitBehavior: t.Optional(
+            t.Union([t.Literal('clearScreen'), t.Literal('nextLine')])
+         ),
       })
    ),
    defaultEditor: t.String(),
@@ -125,6 +128,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
          useAdditionalContext: true,
          maxHunkSize: 200000,
       },
+      exitBehavior: 'nextLine',
    },
    defaultEditor: 'code',
    enhancedOutput: true,
@@ -155,6 +159,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
    'viewer.highlighting.useAdditionalContext': 'GDX_VIEWER_HIGHLIGHTING_USE_ADDITIONAL_CONTEXT',
    'viewer.highlighting.maxHunkSize': 'GDX_VIEWER_HIGHLIGHTING_MAX_HUNK_SIZE',
+   'viewer.exitBehavior': 'GDX_VIEWER_EXIT_BEHAVIOR',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
    useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
@@ -198,6 +203,8 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       'Highlight diffs by loading full old/new file contents from git object history when commit refs are available',
    'viewer.highlighting.maxHunkSize':
       'Maximum full file size in characters to syntax-highlight when additional context is enabled',
+   'viewer.exitBehavior':
+      "Behavior when exiting the pager ('nextLine' keeps content in scroll buffer, 'clearScreen' removes pager content from scroll buffer, and 'none' leaves the content and cursor position unchanged)",
    defaultEditor: 'Default code editor to open files with',
    enhancedOutput:
       "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",
