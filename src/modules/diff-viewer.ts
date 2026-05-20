@@ -731,7 +731,8 @@ async function highlightDiffWithContext(
    diff: ParsedDiff,
    theme: string,
    highlighting: Required<DiffHighlightingOptions>,
-   git$?: GdxContext['git$']
+   git$?: GdxContext['git$'],
+   spinnerCtrl?: SpinnerContoller,
 ): Promise<Map<DiffLine, string>> {
    const result = new Map<DiffLine, string>();
    const codeLines = diff.lines.filter(
@@ -757,7 +758,7 @@ async function highlightDiffWithContext(
                theme,
                shiki,
                result,
-            }),
+            }, spinnerCtrl),
             highlightFullFileSide({
                git$,
                diff,
@@ -769,7 +770,7 @@ async function highlightDiffWithContext(
                theme,
                shiki,
                result,
-            }),
+            }, spinnerCtrl),
          ]);
 
          if (fullFileResults.includes('limited')) {
@@ -829,18 +830,21 @@ async function highlightDiffContextLines(options: {
  * @param options - Full-file lookup and highlighter dependencies.
  * @returns Whether the side was highlighted, unavailable, or over the size limit.
  */
-async function highlightFullFileSide(options: {
-   git$: GdxContext['git$'];
-   diff: ParsedDiff;
-   lines: DiffLine[];
-   lineNumberKey: 'oldLineNum' | 'newLineNum';
-   path: string;
-   revision: string;
-   maxHunkSize: number;
-   theme: string;
-   shiki: ShikijsCliModule;
-   result: Map<DiffLine, string>;
-}): Promise<FullFileHighlightResult> {
+async function highlightFullFileSide(
+   options: {
+      git$: GdxContext['git$'];
+      diff: ParsedDiff;
+      lines: DiffLine[];
+      lineNumberKey: 'oldLineNum' | 'newLineNum';
+      path: string;
+      revision: string;
+      maxHunkSize: number;
+      theme: string;
+      shiki: ShikijsCliModule;
+      result: Map<DiffLine, string>;
+   },
+   spinnerCtrl?: SpinnerContoller
+): Promise<FullFileHighlightResult> {
    const { git$, diff, lines, lineNumberKey, path, revision, maxHunkSize, theme, shiki, result } =
       options;
    if (lines.length === 0) return 'unavailable';
@@ -854,6 +858,7 @@ async function highlightFullFileSide(options: {
       maxHunkSize,
       shiki,
    });
+   spinnerCtrl?.updateProgress(1);
    if (!highlightedFile) return 'unavailable';
 
    if (highlightedFile.contentLength > maxHunkSize) {
@@ -1050,7 +1055,8 @@ export class DiffViewerRenderer implements PagerRenderer {
             diff,
             this.options.theme,
             this.options.highlighting as Required<DiffHighlightingOptions>,
-            this.options.git$
+            this.options.git$,
+            spinnerCtrl
          ).then((highlightedMap) => {
             codeLines.forEach((line) => {
                const highlighted = highlightedMap.get(line);
@@ -1060,7 +1066,14 @@ export class DiffViewerRenderer implements PagerRenderer {
          highlightPromises.push(prom);
       }
 
-      spinnerCtrl?.setMessage('Highlighting diffs...');
+      if (this.options.highlighting.useAdditionalContext && spinnerCtrl) {
+         spinnerCtrl.options.progress = {
+            current: 0,
+            total: highlightPromises.length * 2, // Two sides per diff
+         };
+      }
+
+      spinnerCtrl?.setMessage('Highlighting diffs');
       await Promise.all(highlightPromises);
       Logger.time('Post-processing after highlighting', () => this.updateRenderedLines());
       // fs.writeFileSync('parsed-diffs-debug.json', JSON.stringify(this.parsedDiffs.map(l =>

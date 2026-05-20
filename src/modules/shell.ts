@@ -3,7 +3,7 @@ import type { MinimalVerboseObject } from '@node/execa/types/verbose';
 import path from 'path';
 import { createInterface } from 'readline';
 
-import { CheckCache, Err, ncc, yuString } from '@lib/Tools';
+import { CheckCache, Err, MathKit, ncc, yuString } from '@lib/Tools';
 
 import { isExecutable, noop } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
@@ -17,9 +17,25 @@ import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
 
 export interface SpinnerContoller {
+   /**
+    * Stops the spinner and cleans up (can be resumed with `start()`)
+    */
    stop: () => void;
+   /**
+    * Resumes the spinner if it was stopped. Optionally adds a new line before resuming.
+    */
    start: (newline?: boolean) => void;
+   /**
+    * Updates the spinner message and forces a re-render to display it immediately.
+    */
    setMessage: (msg: string) => void;
+   /**
+    * Updates the progress state of the spinner and forces a re-render to display it immediately.
+    */
+   updateProgress: (delta: number, total?: number) => void;
+   /**
+    * Spinner options reference, can be used to read or modify options on the fly (e.g. change frames or animation settings dynamically)
+    */
    options: Required<SpinnerOptions>;
 }
 
@@ -260,6 +276,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
       gradientColorBg: GDX_VPALETTE.Zinc400,
       gradientSpeed: 0.13,
       gradientInterval: 3,
+      progress: { current: 0, total: -1 },
       ...options,
    } satisfies Required<SpinnerOptions>;
 
@@ -273,6 +290,8 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
          },
          // eslint-disable-next-line @typescript-eslint/no-unused-vars
          setMessage: (msg: string) => { },
+         // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         updateProgress: (delta: number, total?: number) => { },
          options: options as Required<SpinnerOptions>,
       };
    }
@@ -281,44 +300,51 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
    let gradientOffset = 0;
    let isRunning = true;
    let intervalId: NodeJS.Timeout | null = null;
+   let nextDraw: number = 0;
 
    const render = () => {
       if (!isRunning) return;
 
       // Draw spinner frame
       let frame = options.frames![frameIndex % options.frames!.length];
+      const shouldStep = nextDraw <= performance.now();
 
       // Draw message
       if (options.message) {
+         const lineContent = ' ' + options.message + renderProgress();
+
          if (options.animateGradient && CheckCache.supportsColor >= 3) {
             // Create animated gradient effect with easing
             const rawOffset = gradientOffset % options.gradientInterval!;
             if (rawOffset <= 1) {
                const easedOffset = Easing.easeInOut(rawOffset);
                const gradientText = radialGradient(
-                  options.message,
+                  lineContent,
                   options.gradientColor as RgbVec,
                   options.gradientColorBg as RgbVec,
                   easedOffset,
                   0.3
                );
-               frame += ' ' + gradientText;
+               frame += gradientText;
             } else {
                frame +=
-                  ' ' +
                   ncc(rgbVec2decimal(options.gradientColorBg as RgbVec)) +
-                  options.message +
+                  lineContent +
                   SGR.reset;
             }
-            gradientOffset += options.gradientSpeed ?? 0.1;
+            if (shouldStep)
+               gradientOffset += options.gradientSpeed ?? 0.1;
          } else {
-            frame += ' ' + options.message;
+            frame += lineContent;
          }
       }
 
       // Clear the current line and move cursor to start then write frame
       process.stdout.write('\r\x1b[K' + frame);
-      frameIndex++;
+      if (shouldStep) {
+         frameIndex++;
+         nextDraw = performance.now() + options.interval!;
+      }
    };
 
    // Start the animation loop only if not quiet
@@ -359,11 +385,31 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
          options.message = msg;
          render(); // Force re-render to update message immediately
       },
+      updateProgress: (delta: number, total?: number) => {
+         if (options.progress) {
+            if (total != null) {
+               options.progress.total = total;
+            }
+
+            options.progress.current = MathKit.clamp(
+               options.progress.current + delta,
+               0,
+               options.progress.total,
+            );
+
+            render(); // Force re-render to update progress immediately
+         }
+      },
       /**
        * Spinner options reference
        */
       options: options as Required<SpinnerOptions>,
    };
+
+   function renderProgress(): string {
+      if (!options.progress || options.progress.total <= 0 || options.progress.current < 0) return '';
+      return ` (${options.progress.current}/${options.progress.total})`;
+   }
 }
 
 /**

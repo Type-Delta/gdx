@@ -396,6 +396,7 @@ function overrideModules(
                   tracker.spinnerStatus = 'stopped';
                },
                setMessage: () => { },
+               updateProgress: () => { },
                options: {} as Required<SpinnerOptions>,
             } satisfies SpinnerContoller;
          },

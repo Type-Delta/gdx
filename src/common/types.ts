@@ -33,6 +33,10 @@ export interface SpinnerOptions {
     * so higher values will make the gradient swipe less often (must be in Integer >= 1, default: 3)
     */
    gradientInterval?: number;
+   progress?: {
+      current: number;
+      total: number;
+   };
 }
 
 export interface CommandHelpObj {
