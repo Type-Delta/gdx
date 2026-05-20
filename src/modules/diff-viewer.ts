@@ -41,6 +41,8 @@ import { DiffModule, GdxContext, ShikijsCliModule } from '@/common/types';
 import { quickPrint } from '@/utils/utilities';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
+import Threaded from '@/modules/threaded';
+import global from '@/global';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -125,8 +127,11 @@ interface ParsedDiff {
 
 export type BundledLanguage = Parameters<ShikijsCliModule['codeToANSI']>[1];
 
+declare const shikiWorker: ShikijsCliModule;
+
 let shikiPromise: Promise<ShikijsCliModule> | null = null;
 let diffPromise: Promise<DiffModule> | null = null;
+let highlightThreaded: Threaded | null = null;
 
 async function getShiki(): Promise<ShikijsCliModule> {
    shikiPromise ??= import('@shikijs/cli');
@@ -136,6 +141,16 @@ async function getShiki(): Promise<ShikijsCliModule> {
 async function getDiffLib(): Promise<DiffModule> {
    diffPromise ??= import('diff');
    return await diffPromise;
+}
+
+/**
+ * Gets the worker pool used for full-file syntax highlighting.
+ * @returns Shared syntax-highlighting worker pool.
+ */
+function getHighlightThreaded(): Threaded {
+   highlightThreaded ??= new Threaded({ semaphore: global.threadResources })
+      .require('@shikijs/cli', 'shikiWorker');
+   return highlightThreaded;
 }
 
 /**
@@ -896,13 +911,40 @@ async function getHighlightedFullFileLines(options: {
       return entry;
    }
 
-   const highlighted = await shiki.codeToANSI(content, lang, theme as never);
+   const highlighted = await highlightFullFileAnsiInWorker(content, lang, theme, shiki);
+
    const entry = {
       contentLength: content.length,
       highlightedLines: highlighted.split('\n'),
    } satisfies HighlightedFullFileCacheEntry;
    await cache.setOneOff(cacheKey, entry);
    return entry;
+}
+
+/**
+ * Highlights a full file in a worker thread.
+ * @param content - Full source text to highlight.
+ * @param lang - Shiki bundled language identifier.
+ * @param theme - Shiki theme identifier.
+ * @param shiki - Main-thread Shiki module used for tests and fallback.
+ * @returns ANSI-highlighted source text.
+ */
+async function highlightFullFileAnsiInWorker(
+   content: string,
+   lang: BundledLanguage,
+   theme: string,
+   shiki: ShikijsCliModule
+): Promise<string> {
+   if (process.env.NODE_ENV === 'test') {
+      return await shiki.codeToANSI(content, lang, theme as never);
+   }
+
+   return await getHighlightThreaded()
+      .spawn<string, [string, BundledLanguage, string]>(
+         async (source, language, selectedTheme) =>
+            await shikiWorker.codeToANSI(source, language, selectedTheme as never),
+         [content, lang, theme]
+      );
 }
 
 function encodeCacheKeyPart(value: string): string {
@@ -1204,12 +1246,12 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       const displayContent = line.inlineSegments
          ? this.renderInlineSegments(
-              line.inlineSegments,
-              line.type,
-              bgCode,
-              line.highlightedContent || line.content,
-              line.content
-           )
+            line.inlineSegments,
+            line.type,
+            bgCode,
+            line.highlightedContent || line.content,
+            line.content
+         )
          : line.highlightedContent || line.content;
       const lineNum = line.newLineNum ?? line.oldLineNum;
       const lineNumStr =
@@ -1483,7 +1525,7 @@ export async function viewDiff(
 
    const spinnerCtrl = spinner({
       message: diffText.length > 10000 ? 'Preparing diff viewer...' : undefined,
-      interval: 10,
+      interval: 20,
    });
 
    const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);

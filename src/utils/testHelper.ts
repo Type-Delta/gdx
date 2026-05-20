@@ -275,6 +275,9 @@ export async function createTestEnv(
    // Disable all ANSI formatting for tests
    CheckCache.supportsColor = 0;
 
+   // Increase semaphore limit to speed up tests
+   global.threadResources.setMax(100);
+
    const buffer = { stdout: '', stderr: '', logs: '' };
    process.env.NODE_ENV = 'test';
    ensureStdIoHooked();

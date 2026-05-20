@@ -9,6 +9,7 @@ import { getShellScript } from './templates/shell';
 import global from './global';
 import Logger from './utils/logger';
 import { dispatch } from './cli/dispatch';
+import { getConfig } from './common/config';
 
 const _args = process.argv.slice(2);
 
@@ -84,6 +85,9 @@ async function main(): Promise<number> {
       cmd.help();
       return 0;
    }
+
+   const config = await getConfig();
+   global.threadResources.setMax(config.get<number>('maxThreadWorkers') || 1);
 
    // Dispatch to main routing logic
    return dispatch(ctx);

@@ -70,6 +70,7 @@ export const GdxConfigSchema = t.Object({
       t.Union([t.Literal('off'), t.Literal('internal'), t.Literal('all')])
    ),
    useInlineGitConfig: t.Optional(t.Union([t.Literal('off'), t.Literal('internal')])),
+   maxThreadWorkers: t.Optional(t.Integer({ minimum: 1 })),
 });
 
 export type GdxConfig = Static<typeof GdxConfigSchema>;
@@ -134,6 +135,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    enhancedOutput: true,
    useInlineSubmodule: 'internal',
    useInlineGitConfig: 'internal',
+   maxThreadWorkers: 8,
 };
 
 export const ENV_PREFIX = 'GDX_';
@@ -164,6 +166,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
    useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
    useInlineGitConfig: 'GDX_USE_INLINE_GIT_CONFIG',
+   maxThreadWorkers: 'GDX_MAX_THREAD_WORKERS',
 };
 
 // Configuration field descriptions
@@ -212,4 +215,5 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       '[Experimental] Select submodule implementation mode (off: git-only, internal: gdx internal flow, all: reserved for broader internal usage)',
    useInlineGitConfig:
       '[Experimental] Select git config implementation mode (off: use git executable, internal: read/write git config files directly)',
+   maxThreadWorkers: 'Maximum number of worker threads for process spawning and high resource intensive tasks (default: 8)',
 };

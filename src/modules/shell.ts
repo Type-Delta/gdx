@@ -26,6 +26,54 @@ export interface SpinnerContoller {
 const logger = new Logger('shell');
 
 /**
+ * Wraps an execa method so every spawned subprocess occupies one global thread resource permit.
+ * Option-only calls such as `$({ cwd })` return another limited execa method without acquiring.
+ * @param method - The execa method to limit.
+ * @returns An execa-compatible method gated by the global semaphore.
+ */
+function limitExeca<TOptions extends Options>(method: ExecaMethod<TOptions>): ExecaMethod<TOptions> {
+   const limited = (...args: unknown[]) => {
+      if (isExecaOptionsOnlyCall(args)) {
+         return limitExeca((method as (...args: unknown[]) => ExecaMethod<TOptions>)(...args));
+      }
+
+      return runWithThreadResource(() =>
+         (method as (...args: unknown[]) => Promise<unknown>)(...args)
+      );
+   };
+
+   return limited as ExecaMethod<TOptions>;
+}
+
+/**
+ * Runs a subprocess factory while holding one global thread resource permit.
+ * @param spawn - The function that starts the subprocess.
+ * @returns The subprocess result.
+ */
+async function runWithThreadResource<T>(spawn: () => Promise<T>): Promise<T> {
+   await global.threadResources.acquire();
+   try {
+      return await spawn();
+   } finally {
+      global.threadResources.release();
+   }
+}
+
+/**
+ * Detects execa option-chaining calls, for example `$({ cwd })`.
+ * @param args - The arguments passed to the execa method.
+ * @returns True when the call configures execa instead of spawning a process.
+ */
+function isExecaOptionsOnlyCall(args: unknown[]): boolean {
+   if (args.length !== 1) return false;
+
+   const [firstArg] = args;
+   if (!firstArg || typeof firstArg !== 'object') return false;
+
+   return !Array.isArray(firstArg) && !('raw' in firstArg);
+}
+
+/**
  * Indicates if the current process is running in a TTY (interactive terminal).
  */
 export const isTTY = () => process.stdout.isTTY && process.stdin.isTTY;
@@ -35,11 +83,11 @@ export const isTTY = () => process.stdout.isTTY && process.stdin.isTTY;
  *
  * Configured to pipe stdout and stderr.
  */
-export const $ = execa({
+export const $ = limitExeca(execa({
    stdout: 'pipe',
    stderr: 'pipe',
    verbose: execaCustomLogger,
-});
+}));
 
 /**
  * Creates an execa tag template that shares a single AbortController.
@@ -47,11 +95,11 @@ export const $ = execa({
  */
 export function createAbortableExec(options: Options = {}) {
    const controller = new AbortController();
-   const _shell = execa({
+   const _shell = limitExeca(execa({
       cancelSignal: controller.signal,
       ...options,
       verbose: execaCustomLogger,
-   } satisfies Options);
+   } satisfies Options));
 
    return {
       $: _shell as ExecaMethod<{ stdout: 'pipe'; stderr: 'pipe' }>,
@@ -63,11 +111,11 @@ export function createAbortableExec(options: Options = {}) {
 /**
  * An execa instance configured to inherit stdout/stderr from the parent process.
  */
-export const $inherit = execa({
+export const $inherit = limitExeca(execa({
    stdout: 'inherit',
    stderr: 'inherit',
    verbose: execaCustomLogger,
-});
+}));
 
 /**
  * Prompts the user with a question and returns their input.
@@ -224,7 +272,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
             if (newline) process.stdout.write('\n');
          },
          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-         setMessage: (msg: string) => {},
+         setMessage: (msg: string) => { },
          options: options as Required<SpinnerOptions>,
       };
    }
@@ -411,13 +459,14 @@ export async function execGit(
    let exitCode: number | undefined = 0;
    try {
       if (redirectTo) {
-         const { exitCode: eCode } = await execa({
+         const redirect$ = limitExeca(execa({
             stdout: {
                file: redirectTo,
                append: redirectMode === '>>',
             },
             stderr: 'inherit',
-         })`${git$} ${args}`;
+         }));
+         const { exitCode: eCode } = await redirect$`${git$} ${args}`;
          exitCode = eCode;
       } else {
          const { exitCode: eCode } = await $inherit`${git$} ${args}`;
