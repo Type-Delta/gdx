@@ -10,7 +10,7 @@ import type { LLMRequest } from '@/common/adapters/llm';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { resetCache } from '@/common/cache';
-import { $, SpinnerContoller, whichExec } from '@/modules/shell';
+import { $, SpinnerController, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
@@ -398,7 +398,7 @@ function overrideModules(
                setMessage: () => { },
                updateProgress: () => { },
                options: {} as Required<SpinnerOptions>,
-            } satisfies SpinnerContoller;
+            } satisfies SpinnerController;
          },
          isTTY: () => envController.isTTY,
          scheduleChangeDir: async (targetDir?: string) => {

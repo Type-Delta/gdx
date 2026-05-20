@@ -16,7 +16,7 @@ import { unlink } from 'fs/promises';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
 
-export interface SpinnerContoller {
+export interface SpinnerController {
    /**
     * Stops the spinner and cleans up (can be resumed with `start()`)
     */
@@ -265,7 +265,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
  * // ... do work ...
  * spinnerCtrl.stop();
  */
-export function spinner(options: SpinnerOptions = {}): SpinnerContoller {
+export function spinner(options: SpinnerOptions = {}): SpinnerController {
    const isQuietStart = !options.message;
    options = {
       message: '',

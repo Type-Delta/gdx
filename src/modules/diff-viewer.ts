@@ -24,7 +24,7 @@ import {
 } from './pager';
 import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
-import { $, spinner, SpinnerContoller } from './shell';
+import { $, spinner, SpinnerController } from './shell';
 import {
    CATPPUCCIN_VPALETTE,
    EXTENSION_LANG_MAP,
@@ -732,7 +732,7 @@ async function highlightDiffWithContext(
    theme: string,
    highlighting: Required<DiffHighlightingOptions>,
    git$?: GdxContext['git$'],
-   spinnerCtrl?: SpinnerContoller,
+   spinnerCtrl?: SpinnerController,
 ): Promise<Map<DiffLine, string>> {
    const result = new Map<DiffLine, string>();
    const codeLines = diff.lines.filter(
@@ -843,7 +843,7 @@ async function highlightFullFileSide(
       shiki: ShikijsCliModule;
       result: Map<DiffLine, string>;
    },
-   spinnerCtrl?: SpinnerContoller
+   spinnerCtrl?: SpinnerController
 ): Promise<FullFileHighlightResult> {
    const { git$, diff, lines, lineNumberKey, path, revision, maxHunkSize, theme, shiki, result } =
       options;
@@ -1033,7 +1033,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       this.updateRenderedLines();
    }
 
-   async prepareHighlighting(spinnerCtrl?: SpinnerContoller): Promise<void> {
+   async prepareHighlighting(spinnerCtrl?: SpinnerController): Promise<void> {
       await Logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
 
       if (this.options.disableSyntaxHighlighting) {

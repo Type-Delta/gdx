@@ -13,7 +13,7 @@ import {
    openInEditor,
    scheduleChangeDir,
    spinner,
-   SpinnerContoller,
+   SpinnerController,
 } from '@/modules/shell';
 import { asUnixPath } from '@/utils/path';
 import { normalizePath, progressiveMatch, quickPrint } from '@/utils/utilities';
@@ -1147,27 +1147,27 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
          getCommitComparison(git$, wtPath, ctx.originPath, mainRangeStart, originHead),
          mainRangeStart
             ? getCommitRangeLog({
-                 gitExec,
-                 repoPath: wtPath,
-                 range: `${mainRangeStart}..HEAD`,
-                 maxCount: maxLogCount,
-                 formatTemplate: `${SGR.yellow}%h${SGR.reset} %s`,
-                 excludeRefs: originHeadRef,
-              })
+               gitExec,
+               repoPath: wtPath,
+               range: `${mainRangeStart}..HEAD`,
+               maxCount: maxLogCount,
+               formatTemplate: `${SGR.yellow}%h${SGR.reset} %s`,
+               excludeRefs: originHeadRef,
+            })
             : Promise.resolve({ commits: [], totalCount: 0, moreCount: 0 }),
          baseCommit
             ? getSubmoduleCommitGroups(
-                 {
-                    git$,
-                    gitExec,
-                    worktreePath: wtPath,
-                    originPath: ctx.originPath,
-                    baseCommit,
-                    maxCount: maxLogCount,
-                    submoduleCursors: meta.submoduleCursors,
-                 },
-                 spinnerCtrl
-              )
+               {
+                  git$,
+                  gitExec,
+                  worktreePath: wtPath,
+                  originPath: ctx.originPath,
+                  baseCommit,
+                  maxCount: maxLogCount,
+                  submoduleCursors: meta.submoduleCursors,
+               },
+               spinnerCtrl
+            )
             : Promise.resolve({ groups: [], totalCount: 0 }),
       ]);
 
@@ -1318,7 +1318,7 @@ async function getCherryPickPreview(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
-   spinner?: SpinnerContoller;
+   spinner?: SpinnerController;
 }): Promise<{
    diff: string;
    stat: string;
@@ -1932,14 +1932,14 @@ async function interactiveCherryPickDecision(
    });
    const actions = preview.isEmpty
       ? [
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ]
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ]
       : [
-           { key: 'a', label: 'apply', action: 'apply' },
-           { key: 's', label: 'skip', action: 'skip' },
-           { key: 'u', label: 'undo', action: 'undo' },
-        ];
+         { key: 'a', label: 'apply', action: 'apply' },
+         { key: 's', label: 'skip', action: 'skip' },
+         { key: 'u', label: 'undo', action: 'undo' },
+      ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -2030,9 +2030,9 @@ async function joinWorktree(
          const remotesOutput = (await $`${git$} -C ${forkPath} remote`).stdout.trim();
          const remotes = remotesOutput
             ? remotesOutput
-                 .split('\n')
-                 .map((line) => line.trim())
-                 .filter((line) => line.length > 0)
+               .split('\n')
+               .map((line) => line.trim())
+               .filter((line) => line.length > 0)
             : [];
          if (remotes.length > 0) {
             for (const remote of remotes) {
@@ -2145,9 +2145,9 @@ async function joinWorktree(
       const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
       commitList = output
          ? output
-              .split('\n')
-              .map((c) => c.trim())
-              .filter((c) => c)
+            .split('\n')
+            .map((c) => c.trim())
+            .filter((c) => c)
          : [];
    } catch (err) {
       if (stashRef) {
@@ -2297,12 +2297,12 @@ async function joinWorktree(
          const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
          const originSubHeadInFork = originSubHead
             ? (
-                 await getRevParseCached(gitExec, forkSubPath, [
-                    '-q',
-                    '--verify',
-                    `${originSubHead}^{commit}`,
-                 ])
-              ).trim()
+               await getRevParseCached(gitExec, forkSubPath, [
+                  '-q',
+                  '--verify',
+                  `${originSubHead}^{commit}`,
+               ])
+            ).trim()
             : '';
          const subRevListArgs = [
             '-C',
@@ -3208,7 +3208,7 @@ async function getSubmoduleCommitGroups(
       maxCount?: number;
       submoduleCursors?: Record<string, string>;
    },
-   spinner?: SpinnerContoller
+   spinner?: SpinnerController
 ): Promise<{ groups: CommitGroup[]; totalCount: number }> {
    const { git$, gitExec, worktreePath, originPath, baseCommit, maxCount, submoduleCursors } =
       options;

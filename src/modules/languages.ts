@@ -17,7 +17,7 @@ import {
    LANGUAGE_WHITELIST,
 } from '@/consts';
 import Logger from '@/utils/logger';
-import { SpinnerContoller } from './shell';
+import { SpinnerController } from './shell';
 import { assertSchema } from './typebox';
 
 type YamlParser = typeof yaml;
@@ -42,7 +42,7 @@ export interface LanguageCatalog extends StoredLanguageCatalog {
  * @returns Language catalog or null when no catalog is available.
  */
 export async function getLanguageCatalog(options?: {
-   spinner: SpinnerContoller;
+   spinner: SpinnerController;
    forceRefresh?: boolean;
 }): Promise<LanguageCatalog | null> {
    const forceRefresh = !!options?.forceRefresh;

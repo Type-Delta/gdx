@@ -8,7 +8,7 @@ import {
    $,
    $inherit,
    spinner,
-   SpinnerContoller,
+   SpinnerController,
    tokenizeCommand,
    whichExec,
 } from '@/modules/shell';
@@ -231,7 +231,7 @@ async function rewriteOlderCommit(
    let didCreateWorktree = false;
    const oldShaToNewShaMap: Record<string, string> = {};
    const shaFromGitOutputRegex = /\[detached HEAD ([\da-f]+)\]/;
-   let spinnerCtrl: SpinnerContoller | null = null;
+   let spinnerCtrl: SpinnerController | null = null;
 
    try {
       await $`${git$} worktree add --detach ${worktreeDir} ${headSha}`;
@@ -258,8 +258,8 @@ async function rewriteOlderCommit(
       spinnerCtrl =
          replayCommits.length > 50
             ? spinner({
-                 message: `Replaying commits... (0/${replayCommits.length})`,
-              })
+               message: `Replaying commits... (0/${replayCommits.length})`,
+            })
             : null;
 
       let replayCounter = 0;
