@@ -1,3 +1,8 @@
+/**
+ * Threaded task scheduler using Node.js worker threads for concurrent execution of CPU intensive tasks.
+ *  Supports shared imports, functions, and values in workers, as well as optional concurrency limits and task timeouts.
+ *  Designed for running CPU-bound tasks without blocking the main thread, while managing a pool of reusable workers to optimize performance and resource usage.
+ */
 import os from 'os';
 import type { Worker } from 'node:worker_threads';
 
@@ -40,7 +45,7 @@ interface WorkerMessage<TResult> {
 
 export interface ThreadedOptions {
    /**
-    * Maximum number of worker threads. Defaults to the number of CPU cores minus one to avoid saturating the system. Setting this to 1 will run all tasks sequentially in a single worker thread, while higher values will allow for concurrent execution of tasks up to the specified limit.
+    * Maximum number of worker threads. Defaults to the number of CPU cores halved to avoid saturating the system. Setting this to 1 will run all tasks sequentially in a single worker thread, while higher values will allow for concurrent execution of tasks up to the specified limit.
     */
    maxWorker?: number;
    /**
@@ -109,7 +114,7 @@ export class Threaded<TData = unknown> {
     * @param options - Worker concurrency and task timeout settings.
     */
    constructor(options: ThreadedOptions = {}) {
-      this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.cpus().length / 2));
+      this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.availableParallelism() / 2));
       this.taskTimeout = options.taskTimeout;
       this.workerSemaphore = options.semaphore || null;
       this.logger.debug(`Threaded pool initialized with options: ${yuString(options, { color: true })}`);

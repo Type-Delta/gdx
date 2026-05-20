@@ -270,6 +270,7 @@ Tools to help you feel productive without leaving the terminal.
 | `reword`, `rew`   | Rewrite commit messages                                                                      |
 | `parallel`, `par` | Manage parallel worktrees for the current branch                                             |
 | `stats`           | Show contribution statistics and metrics for the current repo                                |
+| `snap`            | Create a local snapshot of current worktree/repository                                       |
 | `graph`           | Render a GitHub-style contribution heatmap in the terminal                                   |
 | `nocap`           | Roast your latest commit message with AI                                                     |
 | `clear`           | Wipe changes in the working directory with a backup patch                                    |

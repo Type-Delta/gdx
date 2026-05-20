@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { execa } from 'execa';
 
 import { arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } from '@lib/Tools';
@@ -68,12 +69,13 @@ export default async function doctor(): Promise<number> {
 
    quickPrint(`Version: ${SGR.cyan + VERSION + SGR.reset}`);
    quickPrint(`Platform: ${SGR.magenta + process.platform} (${process.arch})` + SGR.reset);
+   quickPrint(`Processor: ${SGR.cyan + (os.cpus()[0]?.model || 'N/A') + SGR.reset} ${os.availableParallelism()}/${os.cpus().length} logical cores`);
    quickPrint(
       `Runtime: ${SGR.magenta + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + SGR.reset}`
    );
    quickPrint(
       `Terminal color support index: ${SGR.cyan + CheckCache.supportsColor + SGR.reset + SGR.dim} ${CheckCache.supportsColor === 0 ? '(No color)' : CheckCache.supportsColor === 1 ? '(16 colors)' : CheckCache.supportsColor === 2 ? '(8bit color)' : CheckCache.supportsColor === 3 ? '(24bit True color)' : ''}` +
-         SGR.reset
+      SGR.reset
    );
    quickPrint(`TTY mode: ${SGR.cyan + (process.stdout.isTTY ? 'Yes' : 'No') + SGR.reset}`);
 
@@ -82,7 +84,7 @@ export default async function doctor(): Promise<number> {
       const bunVer = await execa('bun', ['--version']);
       quickPrint(
          `Bun: ${SGR.cyan + bunVer.stdout.trim() + SGR.reset}` +
-            (!isBun ? SGR.dim + ` (inactive)` + SGR.reset : '')
+         (!isBun ? SGR.dim + ` (inactive)` + SGR.reset : '')
       );
    } catch {
       quickPrint(`Bun: Not found`);
@@ -92,7 +94,7 @@ export default async function doctor(): Promise<number> {
       const nodeVer = await execa('node', ['--version']);
       quickPrint(
          `Node: ${SGR.cyan + nodeVer.stdout.trim() + SGR.reset}` +
-            (!isNode ? SGR.dim + ` (inactive)` + SGR.reset : '')
+         (!isNode ? SGR.dim + ` (inactive)` + SGR.reset : '')
       );
    } catch {
       quickPrint(`Node: Not found`);
@@ -101,9 +103,9 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? SGR.green + 'Native' + SGR.reset : SGR.yellow + 'Interpreted' + SGR.reset}` +
-         (process.env.NODE_ENV === 'production'
-            ? ''
-            : SGR.bright + ' (development mode)' + SGR.reset)
+      (process.env.NODE_ENV === 'production'
+         ? ''
+         : SGR.bright + ' (development mode)' + SGR.reset)
    );
 
    quickPrint(
