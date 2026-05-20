@@ -20,7 +20,6 @@ export class ArgsSet extends Array<string> {
    private indexesDirty = true;
 
    constructor(args: string[]) {
-      // @ts-expect-error - allow dynamic super() call with array elements
       if (Array.isArray(args)) super(...args);
       else super(args);
 

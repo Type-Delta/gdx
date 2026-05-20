@@ -1,4 +1,5 @@
 import { execa, ExecaMethod, Options, ExecaError } from 'execa';
+import type { MinimalVerboseObject } from '@node/execa/types/verbose';
 import path from 'path';
 import { createInterface } from 'readline';
 
@@ -14,7 +15,6 @@ import { writeFile } from 'fs/promises';
 import { unlink } from 'fs/promises';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
-import { MinimalVerboseObject } from 'execa/types/verbose';
 
 export interface SpinnerContoller {
    stop: () => void;

@@ -1,20 +1,21 @@
-import { Array as TypeArray } from '../../node_modules/@sinclair/typebox/build/esm/type/array/index.mjs';
-import { Boolean as TypeBoolean } from '../../node_modules/@sinclair/typebox/build/esm/type/boolean/index.mjs';
-import { Integer as TypeInteger } from '../../node_modules/@sinclair/typebox/build/esm/type/integer/index.mjs';
-import { Literal as TypeLiteral } from '../../node_modules/@sinclair/typebox/build/esm/type/literal/index.mjs';
-import { Null as TypeNull } from '../../node_modules/@sinclair/typebox/build/esm/type/null/index.mjs';
-import { Number as TypeNumber } from '../../node_modules/@sinclair/typebox/build/esm/type/number/index.mjs';
-import { Object as TypeObject } from '../../node_modules/@sinclair/typebox/build/esm/type/object/index.mjs';
-import { Optional as TypeOptional } from '../../node_modules/@sinclair/typebox/build/esm/type/optional/index.mjs';
-import { Record as TypeRecord } from '../../node_modules/@sinclair/typebox/build/esm/type/record/index.mjs';
-import { FormatRegistry } from '../../node_modules/@sinclair/typebox/build/esm/type/registry/index.mjs';
-import type { TSchema } from '../../node_modules/@sinclair/typebox/build/esm/type/schema/index.mjs';
-import type { Static } from '../../node_modules/@sinclair/typebox/build/esm/type/static/index.mjs';
-import { String as TypeString } from '../../node_modules/@sinclair/typebox/build/esm/type/string/index.mjs';
-import { Union as TypeUnion } from '../../node_modules/@sinclair/typebox/build/esm/type/union/index.mjs';
-import { Unknown as TypeUnknown } from '../../node_modules/@sinclair/typebox/build/esm/type/unknown/index.mjs';
-import { Check } from '../../node_modules/@sinclair/typebox/build/esm/value/check/index.mjs';
-import { Errors } from '../../node_modules/@sinclair/typebox/build/esm/errors/index.mjs';
+import { Array as TypeArray } from '@node/@sinclair/typebox/build/esm/type/array/index.mjs';
+import { Boolean as TypeBoolean } from '@node/@sinclair/typebox/build/esm/type/boolean/index.mjs';
+import { Integer as TypeInteger } from '@node/@sinclair/typebox/build/esm/type/integer/index.mjs';
+import { Literal as TypeLiteral } from '@node/@sinclair/typebox/build/esm/type/literal/index.mjs';
+import { Null as TypeNull } from '@node/@sinclair/typebox/build/esm/type/null/index.mjs';
+import { Number as TypeNumber } from '@node/@sinclair/typebox/build/esm/type/number/index.mjs';
+import { Object as TypeObject } from '@node/@sinclair/typebox/build/esm/type/object/index.mjs';
+import { Optional as TypeOptional } from '@node/@sinclair/typebox/build/esm/type/optional/index.mjs';
+import { Record as TypeRecord } from '@node/@sinclair/typebox/build/esm/type/record/index.mjs';
+import { FormatRegistry } from '@node/@sinclair/typebox/build/esm/type/registry/index.mjs';
+import type { TSchema } from '@node/@sinclair/typebox/build/esm/type/schema/index.mjs';
+import type { Static } from '@node/@sinclair/typebox/build/esm/type/static/index.mjs';
+import { String as TypeString } from '@node/@sinclair/typebox/build/esm/type/string/index.mjs';
+import { Union as TypeUnion } from '@node/@sinclair/typebox/build/esm/type/union/index.mjs';
+import { Unknown as TypeUnknown } from '@node/@sinclair/typebox/build/esm/type/unknown/index.mjs';
+import { Check } from '@node/@sinclair/typebox/build/esm/value/check/index.mjs';
+import { Errors } from '@node/@sinclair/typebox/build/esm/errors/index.mjs';
+
 import { GdxConfigSchema } from '@/common/config/schema';
 
 export type { Static, TSchema };

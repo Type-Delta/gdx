@@ -4,6 +4,7 @@ import { $ } from '@/modules/shell';
 import { parseDiffOutput } from '@/modules/diff-viewer';
 import { buildPathGlobMatcher } from '@/utils/glob';
 import { COMMIT_DEFAULT_NOISY_FILES } from '@/common/config/schema';
+import { DiffModule } from '@/common/types';
 
 type DiffChange = {
    added?: boolean;
@@ -332,7 +333,7 @@ function parseNameStatusZ(raw: string): NameStatusEntry[] {
    const tokens = raw.split('\0').filter((token) => token.length > 0);
    const entries: NameStatusEntry[] = [];
 
-   for (let i = 0; i < tokens.length; ) {
+   for (let i = 0; i < tokens.length;) {
       const status = tokens[i++];
       if (!status) break;
 
@@ -393,8 +394,8 @@ function parseNumstatZ(raw: string, movePathMap: Map<string, string[]>): Map<str
       const resolvedPath = movedPaths.includes(nextPath)
          ? nextPath
          : movedPaths.length === 1
-           ? movedPaths[0]
-           : nextPath;
+            ? movedPaths[0]
+            : nextPath;
       i += 2;
 
       result.set(resolvedPath, {
@@ -679,8 +680,8 @@ function formatFileStatLine(file: ClassifiedFile): string {
          moveSimilarity.driftPercent == null
             ? '(similarity unknown)'
             : moveSimilarity.driftPercent === 0
-              ? '(identical)'
-              : `(drift ~${moveSimilarity.driftPercent}%)`;
+               ? '(identical)'
+               : `(drift ~${moveSimilarity.driftPercent}%)`;
       return `- ${file.status[0]} [${moveKind}] ${file.oldPath || file.path} -> ${file.path} ${driftLabel}`;
    }
 
@@ -1087,8 +1088,8 @@ function isNoisyPath(filePath: string, noisyMatchers: Array<(value: string) => b
 async function getDiffChars(): Promise<DiffCharsFn | null> {
    diffCharsPromise ??= (async () => {
       try {
-         const diffLib = await import('diff');
-         return diffLib.diffChars || diffLib.default?.diffChars || null;
+         const diffLib = await import('diff') as Awaited<DiffModule>;
+         return diffLib.diffChars;
       } catch (error) {
          throw new Err(
             `Failed to load diff module for whitespace-aware commit summary: ${Err.from(error).message}`,
