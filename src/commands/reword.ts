@@ -6,11 +6,9 @@ import * as fs from '@/modules/fs';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import {
    $,
-   $inherit,
+   openInEditor,
    spinner,
    SpinnerController,
-   tokenizeCommand,
-   whichExec,
 } from '@/modules/shell';
 import { getConfig } from '@/common/config';
 import {
@@ -61,25 +59,6 @@ async function resolveCommitAuthor(git$: string | string[], sha: string): Promis
    const { stdout } = await $`${git$} show -s --format=${format} ${sha}`;
    const [name = '', email = '', date = ''] = stdout.trimEnd().split('\0');
    return { name, email, date };
-}
-
-/**
- * Opens an editor to allow the user to edit a file.
- */
-async function openEditor(filePath: string, editorCommand: string): Promise<void> {
-   const tokens = tokenizeCommand(editorCommand);
-   const editorName = tokens.shift();
-
-   if (!editorName) {
-      throw new Err('Editor is not configured.', 'EDITOR_NOT_CONFIGURED');
-   }
-
-   const editorPath = await whichExec(editorName);
-   if (!editorPath) {
-      throw new Err(`Editor "${editorName}" not found in PATH.`, 'EDITOR_NOT_FOUND');
-   }
-
-   await $inherit`${editorPath} ${tokens} ${filePath}`;
 }
 
 /**
@@ -339,7 +318,9 @@ export default async function reword(ctx: GdxContext): Promise<number> {
       await fs.writeFile(tempFile, originalMessage, 'utf8');
 
       const editor = await resolveRewordEditor();
-      await openEditor(tempFile, editor);
+      quickPrint(`hint: waiting for your editor to close the file...`, '');
+      await openInEditor(tempFile, editor);
+      quickPrint(`\x1b[1G\x1b[K`, ''); // Move cursor to start of line and clear to end to clean up any editor hints
 
       const updatedMessage = await fs.readFile(tempFile, 'utf8');
       if (!updatedMessage.trim()) {

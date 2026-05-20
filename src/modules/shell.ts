@@ -169,13 +169,14 @@ export async function $prompt(question: string): Promise<string> {
  */
 export async function whichExec(cmd: string): Promise<string | null> {
    return await getWhichExecCached(cmd, async () => {
+      const isWindows = process.platform === 'win32';
+
       // If the command contains a path separator, check it directly
-      if (cmd.includes(path.sep)) {
+      if (cmd.includes('/') || (isWindows && cmd.includes('\\'))) {
          const resolved = path.resolve(cmd);
          return (await isExecutable(resolved)) ? resolved : null;
       }
 
-      const isWindows = process.platform === 'win32';
       let extensions: string[] = [''];
 
       if (isWindows) {
@@ -415,21 +416,29 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
 /**
  * Opens the specified file in the user's default editor as defined in the configuration.
  * @param filePath - The path to the file to open.
+ * @param editorCommand - Optional custom editor command to use instead of the default editor from configuration. This can include arguments (e.g. "code --wait") for more flexible editor launching.
  * @throws Will throw an error if the default editor is not found.
  */
-export async function openInEditor(filePath: string): Promise<void> {
+export async function openInEditor(filePath: string, editorCommand?: string): Promise<void> {
    const config = await getConfig();
-   const editor = config.getAll().defaultEditor;
-   const editorPath = await whichExec(editor);
+   const tokens = editorCommand ? tokenizeCommand(editorCommand) : [];
+   const editorName = tokens.length ? tokens.shift() : config.getAll().defaultEditor;
 
+   if (!editorName) {
+      throw new Err('Editor is not configured.', 'EDITOR_NOT_CONFIGURED');
+   }
+
+   const editorPath = await whichExec(editorName);
    if (!editorPath) {
       throw new Err(
-         `Default editor "${editor}" not found in PATH. Set a valid editor in the configuration.`,
+         `Editor "${editorName}" not found in PATH. Set a valid editor in the configuration.`,
          'EDITOR_NOT_FOUND'
       );
    }
 
-   await $inherit`${editorPath} ${filePath}`;
+   if (tokens.length)
+      await $inherit`${editorPath} ${tokens} ${filePath}`;
+   else await $inherit`${editorPath} ${filePath}`;
 }
 
 /**

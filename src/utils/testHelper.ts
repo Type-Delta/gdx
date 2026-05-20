@@ -10,7 +10,7 @@ import type { LLMRequest } from '@/common/adapters/llm';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { resetCache } from '@/common/cache';
-import { $, SpinnerController, whichExec } from '@/modules/shell';
+import { $, openInEditor, SpinnerController, whichExec } from '@/modules/shell';
 import { afterEach, beforeEach, it, mock } from 'bun:test';
 import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
@@ -65,6 +65,13 @@ interface TestEnvOptions {
     * If true, initializes the test environment with a custom test harness that captures stdout, stderr, and logs, and provides a custom 'it' function for defining tests. If false, it does not set up the test harness, allowing tests to run without interception of stdio and using the default 'it' function from the testing framework. Default is true (test harness will be initialized). Set to false if you want to manage stdio capture and test definitions manually or if you want to run a benchmark without the overhead of the test harness.
     */
    initTestHarness?: boolean;
+   /**
+    * Optional flags to enable/disable overwrites of certain functionalities in the test environment.
+    * This allow for more granular control over which features are mocked or overridden during tests. For example, you can choose to disable the overwrite of the openInEditor function if you want to test the actual behavior of opening an editor during a test.
+    */
+   overwrites?: {
+      openInEditor?: boolean;
+   };
 }
 
 interface EnvController {
@@ -201,6 +208,9 @@ export async function createTestEnv(
       liteMode: false,
       suitName: undefined,
       initTestHarness: true,
+      overwrites: {
+         openInEditor: true,
+      }
    }
 ) {
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
@@ -227,7 +237,7 @@ export async function createTestEnv(
       isTTY: true,
    };
 
-   if (!options.initTestHarness) tracker = overrideModules(tracker, tmpDir, envController);
+   if (!options.initTestHarness) tracker = overrideModules(tracker, tmpDir, envController, options.overwrites);
 
    const _$ = $({ cwd: tmpMockProjDir });
    const cleanup = () => {
@@ -343,12 +353,14 @@ async function initGitRepo(
 function overrideModules(
    tracker: TestEnvTracker,
    tempDir: string,
-   envController: EnvController
+   envController: EnvController,
+   overwrites?: TestEnvOptions['overwrites']
 ): TestEnvTracker {
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
       const inherited$ = original.$({ stdin: 'inherit' });
+      const _openInEditor = original.openInEditor;
       const $inherit = (strings: TemplateStringsArray, ...values: unknown[]) => {
          const subprocess = inherited$(strings, ...values);
          if (subprocess?.stdout) {
@@ -382,10 +394,14 @@ function overrideModules(
             tracker.sysClipboard.push(content);
             return true;
          },
-         openInEditor: async (targetPath: string) => {
+         openInEditor: (async (targetPath: string, editorCommand?: string) => {
             tracker.subprocessStack.push('openInEditor');
             tracker.openedPaths.push(targetPath);
-         },
+
+            if (overwrites?.openInEditor === false) {
+               await _openInEditor(targetPath, editorCommand);
+            }
+         }) satisfies typeof openInEditor,
          $prompt: async () => 'y', // Auto-confirm prompts
          spinner: () => {
             return {

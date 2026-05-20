@@ -33,7 +33,12 @@ await writeFile(targetFile, ${JSON.stringify(message)}, 'utf8');
 }
 
 describe('gdx reword', async () => {
-   const { tmpDir, $, tracker, buffer, it, resetRepo } = await createTestEnv({ suitName: 'reword' });
+   const { tmpDir, $, tracker, buffer, it, resetRepo } = await createTestEnv({
+      suitName: 'reword',
+      overwrites: {
+         openInEditor: false, // Use the actual openInEditor behavior to test the editor integration
+      }
+   });
 
    it('rewords the latest commit message exactly', async () => {
       await resetRepo();
@@ -47,7 +52,7 @@ describe('gdx reword', async () => {
       const result = await reword(ctx);
 
       expect(result).toBe(0);
-      expect(tracker.openedPaths.length).toBe(0);
+      expect(tracker.openedPaths.length).toBe(1);
 
       const message = await readCommitMessage(tmpDir, 'HEAD');
       expect(message).toBe(expectedMessage);
