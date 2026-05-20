@@ -149,7 +149,7 @@ describe('gdx parallel join conflict preview', async () => {
 
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       await parallel(removeCtx);
-   });
+   }, { timeout: 15000 });
 
    it('should render CLEAN status without warnings', async () => {
       capturedPreviews = [];

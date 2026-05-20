@@ -3,7 +3,7 @@ import * as fs from '@/modules/fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 
-import { CheckCache, strWrap } from '@lib/Tools';
+import { CheckCache, ncc, strWrap } from '@lib/Tools';
 
 import { GdxContext, SpinnerOptions } from '@/common/types';
 import type { LLMRequest } from '@/common/adapters/llm';
@@ -16,7 +16,6 @@ import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
 import { stripAnsiColor } from '@/modules/graphics';
-import { SGR } from '@/consts';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
@@ -30,11 +29,15 @@ const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === '
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
 
 if (USE_NATIVE_SUBMODULE_IN_TESTS) {
-   console.log(SGR.yellow + 'Using native git submodules in tests' + SGR.reset);
+   console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
 }
 
 if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
-   console.log(SGR.yellow + 'Using native git config in tests' + SGR.reset);
+   console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
+}
+
+if (process.platform === 'win32') {
+   console.log(ncc('Yellow') + 'Warning: Process forking/spawning and I/O operations on Windows are unbelievably slow (>10X slower); Expect tests timeout when host is busy. Close resources intensive apps before running tests.' + ncc());
 }
 
 interface TestSystem {
@@ -419,6 +422,26 @@ function overrideModules(
             return process.env.GDX_RESULT;
          },
          SHOULD_WRITE_LOGS: false,
+         SGR: {
+            reset: '',
+            normal: '',
+            black: '',
+            white: '',
+            red: '',
+            green: '',
+            yellow: '',
+            blue: '',
+            magenta: '',
+            cyan: '',
+            dim: '',
+            italic: '',
+            bright: '',
+            invert: '',
+            underline: '',
+            bgWhite: '',
+            bgRed: '',
+            bgYellow: '',
+         } as const satisfies Record<string, string>
       };
    });
 
@@ -488,17 +511,17 @@ function attachTestLivecycleHook(
    afterEach((done) => {
       if (tracker.testSystem.lastTestStatus === 'failed') {
          console.log(
-            SGR.dim + '\nTest failed. Captured stdout:\n ' + SGR.reset,
+            ncc('Dim') + '\nTest failed. Captured stdout:\n ' + ncc(),
             strWrap(buffer.stdout, 100, { indent: 2 })
          );
          if (buffer.stderr)
             console.log(
-               SGR.dim + 'Captured stderr:\n ' + SGR.reset,
+               ncc('Dim') + 'Captured stderr:\n ' + ncc(),
                strWrap(buffer.stderr, 100, { indent: 2 })
             );
          if (buffer.logs)
             console.log(
-               SGR.dim + 'Captured logs:\n ' + SGR.reset,
+               ncc('Dim') + 'Captured logs:\n ' + ncc(),
                strWrap(buffer.logs, 100, { indent: 2 })
             );
       }

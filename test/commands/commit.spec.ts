@@ -248,7 +248,7 @@ describe('gdx commit auto - inherit mode', async () => {
          key.startsWith('commit.repoGuidelines.')
       );
       expect(guidelineKeys.length).toBe(1);
-   });
+   }, { timeout: 10000 });
 
    it('should share guidelines cache across ssh and https remotes', async () => {
       await resetRepo();
