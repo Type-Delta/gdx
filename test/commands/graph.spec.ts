@@ -47,6 +47,7 @@ describe('gdx graph', async () => {
    });
 
    it('should count commits created after local midnight', async () => {
+      process.env.TZ = 'Asia/Bangkok'; // Set timezone to UTC+7 for this test
       // At 01:00 in UTC+7, UTC is still the previous day. The graph should still
       // match Git's local `--date=short` day instead of using a UTC day key.
       setSystemTime(new Date('2026-05-20T01:00:00+07:00'));
@@ -62,6 +63,7 @@ describe('gdx graph', async () => {
          expect(result).toBe(0);
          expect(buffer.stdout).toContain('■');
       } finally {
+         process.env.TZ = undefined;
          setSystemTime();
       }
    });

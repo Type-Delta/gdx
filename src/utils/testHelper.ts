@@ -238,6 +238,7 @@ export async function createTestEnv(
    };
 
    // Set env vars for isolation
+   process.env.GIT_CEILING_DIRECTORIES = tmpDir; // Prevent git from searching for repos above
    process.env.GDX_CONFIG_PATH = path.join(tmpDir, '.gdx', '.gdxrc.toml');
    process.env.GDX_TEMP_DIR = tmpDir;
    process.env.GIT_CONFIG_NOSYSTEM = '1';
@@ -388,7 +389,7 @@ function overrideModules(
                stop: () => {
                   tracker.spinnerStatus = 'stopped';
                },
-               setMessage: () => {},
+               setMessage: () => { },
                options: {} as Required<SpinnerOptions>,
             } satisfies SpinnerContoller;
          },

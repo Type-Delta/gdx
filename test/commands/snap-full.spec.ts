@@ -52,8 +52,7 @@ describe('gdx snap full', async () => {
       expect(archives.length).toBe(1);
       const snapshotHash = archives[0].replace(new RegExp(`${SNAP_FILE_EXTENSION}$`), '');
 
-      const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
-      const restoreDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-full-restore-'));
+      const restoreDir = await fs.mkdtemp(path.join(tmpRootDir, 'gdx-snap-full-restore-'));
       const restoredProjectDir = path.join(restoreDir, path.basename(tmpDir));
 
       const restoreResult = await snap(
@@ -85,8 +84,7 @@ describe('gdx snap full', async () => {
       expect(archives.length).toBe(1);
       const snapshotHash = archives[0].replace(new RegExp(`${SNAP_FILE_EXTENSION}$`), '');
 
-      const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
-      const restoreDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-full-force-'));
+      const restoreDir = await fs.mkdtemp(path.join(tmpRootDir, 'gdx-snap-full-force-'));
       const restoredProjectDir = path.join(restoreDir, path.basename(tmpDir));
       fs.mkdirSync(restoredProjectDir, { recursive: true });
       await fs.writeFile(path.join(restoredProjectDir, 'existing.txt'), 'existing\n', 'utf-8');

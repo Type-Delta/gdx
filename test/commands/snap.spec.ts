@@ -151,8 +151,9 @@ describe('gdx snap worktree', async () => {
    it('warns instead of running worktree snapshots outside a repository', async () => {
       await resetState();
 
-      const tempBase = process.env.TEMP || process.env.TMP || tmpRootDir;
-      const outsideDir = await fs.mkdtemp(path.join(tempBase, 'gdx-snap-outside-worktree-'));
+      const tempBase = tmpRootDir;
+      const outsideDir = path.join(tempBase, 'outside-worktree');
+      await fs.mkdir(outsideDir, { recursive: true });
 
       expect(await snap(createGdxContext(outsideDir, ['snap']))).toBe(0);
       expect(await snap(createGdxContext(outsideDir, ['snap', 'worktree']))).toBe(0);
