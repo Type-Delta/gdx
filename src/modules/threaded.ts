@@ -1,8 +1,10 @@
 import os from 'os';
 import type { Worker } from 'node:worker_threads';
 
-import { Err } from '@lib/Tools';
+import { Err, yuString } from '@lib/Tools';
+
 import { Semaphore } from '@/utils/operation';
+import Logger from '@/utils/logger';
 
 type AsyncResult<T> = T | Promise<T>;
 type ThreadedTask<TArgs extends unknown[], TResult> = (...args: TArgs) => AsyncResult<TResult>;
@@ -96,6 +98,7 @@ export class Threaded<TData = unknown> {
    private readonly workers = new Set<ThreadedWorker>();
    private readonly idleWorkers: ThreadedWorker[] = [];
    private readonly workerWaiters: Array<(worker: ThreadedWorker) => void> = [];
+   private readonly logger = new Logger('Threaded');
    private dataValue?: TData;
    private nextTaskId = 1;
    private startingWorkers = 0;
@@ -109,6 +112,7 @@ export class Threaded<TData = unknown> {
       this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.cpus().length / 2));
       this.taskTimeout = options.taskTimeout;
       this.workerSemaphore = options.semaphore || null;
+      this.logger.debug(`Threaded pool initialized with options: ${yuString(options, { color: true })}`);
    }
 
    /**
@@ -211,7 +215,10 @@ export class Threaded<TData = unknown> {
       if (this.workers.size + this.startingWorkers < this.maxWorker) {
          this.startingWorkers++;
          try {
-            const worker = await this.createWorker();
+            const worker = await this.logger.time(
+               'Initialized new worker',
+               this.createWorker.bind(this)
+            );
             worker.busy = true;
             worker.worker.ref();
             return worker;
@@ -391,6 +398,7 @@ export class Threaded<TData = unknown> {
       this.workers.delete(slot);
       const idleIndex = this.idleWorkers.indexOf(slot);
       if (idleIndex !== -1) this.idleWorkers.splice(idleIndex, 1);
+      this.logger.debug(`Worker terminated. Active workers: ${this.workers.size}.`);
    }
 }
 

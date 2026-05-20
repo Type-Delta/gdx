@@ -8,6 +8,7 @@ import { $, spinner } from '@/modules/shell';
 import { fgRgb } from './graphics';
 import { resolveHeadRelativeCommitRef, revParseCached } from './git';
 import type { PagerAction } from './pager';
+import Logger from '@/utils/logger';
 
 const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 const SHOW_PREVIOUS_COMMIT_ACTION = 'previousCommit';
@@ -531,6 +532,7 @@ export async function viewInteractiveShow(
       const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {
+         Logger.warn('Attempted to navigate beyond available commits, but no adjacent commit was found. This is unexpected since navigation actions should have been disabled. Reloading current commit as fallback.', 'show-navigation');
          action = await viewShowCommit(ctx, showArgs, plan, currentCommit, true);
          continue;
       }
@@ -565,6 +567,7 @@ export async function viewInteractiveShowBlob(
       const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {
+         Logger.warn('Attempted to navigate beyond available commits, but no adjacent commit was found. This is unexpected since navigation actions should have been disabled. Reloading current commit as fallback.', 'show-navigation');
          action = await viewShowBlob(ctx, showArgs, plan, currentCommit, true);
          continue;
       }

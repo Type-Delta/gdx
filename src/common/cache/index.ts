@@ -236,7 +236,6 @@ export class CacheService {
 
       // Entry not found in metadata (cache miss)
       if (!entry) {
-         this.logger.debug(`Cache ${keyPath} missed.`);
          return defaultValue;
       }
 
@@ -276,7 +275,6 @@ export class CacheService {
 
       const entry = this.memoryEntryMeta[keyPath];
       if (!entry) {
-         this.logger.debug(`Memory cache ${keyPath} missed.`);
          return defaultValue;
       }
 
@@ -352,8 +350,6 @@ export class CacheService {
 
       const keys = keyPath.split('.');
       let target: any = this.memoryData;
-
-      this.logger.debug(`Setting memory cache ${keyPath}`);
 
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
@@ -471,8 +467,6 @@ export class CacheService {
             break;
          }
       }
-
-      this.logger.debug(`Memory cache entry deleted: ${keyPath}`);
 
       return true;
    }
