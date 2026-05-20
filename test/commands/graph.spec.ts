@@ -6,7 +6,7 @@ import { cleanString } from '@lib/Tools';
 describe('gdx graph', async () => {
    const { tmpDir, $, buffer, it } = await createTestEnv({
       autoResetBuffer: true,
-      suitName: 'graph'
+      suitName: 'graph',
    });
    const ctx = createGdxContext(tmpDir);
    const { git$ } = ctx;
@@ -44,6 +44,26 @@ describe('gdx graph', async () => {
       expect(result).toBe(0);
       // We expect some output. The graph uses special chars for days with commits, so we can check for those.
       expect(buffer.stdout).toContain('■');
+   });
+
+   it('should count commits created after local midnight', async () => {
+      // At 01:00 in UTC+7, UTC is still the previous day. The graph should still
+      // match Git's local `--date=short` day instead of using a UTC day key.
+      setSystemTime(new Date('2026-05-20T01:00:00+07:00'));
+
+      try {
+         const author = 'Midnight User <midnight@example.com>';
+         const commitDate = '2026-05-20T01:00:00+07:00';
+         await $`${git$} commit --allow-empty --no-verify -m ${'after midnight commit'} --author=${author} --date=${commitDate}`;
+
+         const midnightCtx = createGdxContext(tmpDir, ['graph', '--email', 'midnight@example.com']);
+         const result = await graph(midnightCtx);
+
+         expect(result).toBe(0);
+         expect(buffer.stdout).toContain('■');
+      } finally {
+         setSystemTime();
+      }
    });
 
    it('should respect --email flag', async () => {

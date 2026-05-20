@@ -19,6 +19,19 @@ const COL_WIDTH = 2; // "■ "
 const RIGHT_MARGIN = 4;
 const MIN_TERM_WIDTH = 12;
 
+/**
+ * Formats a date as a local calendar day key matching Git's `--date=short` output.
+ * @param date - Date to format.
+ * @returns A `YYYY-MM-DD` string in the local timezone.
+ */
+function formatLocalDateKey(date: Date): string {
+   const year = date.getFullYear();
+   const month = String(date.getMonth() + 1).padStart(2, '0');
+   const day = String(date.getDate()).padStart(2, '0');
+
+   return `${year}-${month}-${day}`;
+}
+
 export default async function graph(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
    const isAllScope = !!args.popOption('--all') || !!args.popOption('-a');
@@ -62,6 +75,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
 
    // Calculate start date (totalWeeks ago, aligned to week start)
    const today = new Date();
+   today.setHours(0, 0, 0, 0);
    const startDate = new Date(today);
    const dayOfWeek = startDate.getDay(); // 0 (Sun) to 6 (Sat)
    startDate.setDate(startDate.getDate() - dayOfWeek); // Move to last Sunday
@@ -144,7 +158,7 @@ export default async function graph(ctx: GdxContext): Promise<number> {
             continue; // Future dates
          }
 
-         const dateStr = cellDate.toISOString().slice(0, 10);
+         const dateStr = formatLocalDateKey(cellDate);
          const commitCount = commitCounts[dateStr] || 0;
 
          // Determine color based on commit count
