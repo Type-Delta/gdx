@@ -1,18 +1,21 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.4.4 - 2026-05-20
 
 ### Added
 
 - Medoid-based diverse commit sampling for guideline learning. This greatly improves learning for commit message generation.
 - Adjacent commit navigation in enhanced `gdx show` with ←→ arrow keys to move to previous and next commits in the current view's commit list.
 - Local repository snapshot generation for create/apply lightweight repository backups and quick state restoration with `gdx snap` command.
+- Pager exit behavior configuration with options for clearing the screen or moving to the next line and leaving content in the scroll buffer.
 
 ### Fixed
 
 - `gdx status --recursive` not properly handling git's arguments for submodule status.
 - Optimized internal usage of `git config` to own implementation for better performance, especially on Windows where spawning git processes is expensive.
 - Fix hunk width not align with terminal width, limits hunk line width to the terminal width to prevent overflow and make hunk lines easier to distinguish from the rest.
+- Reduce bundled size
+- Fix graph command not showing commits in some cases due to mismatch timezone handling.
 
 ## Version 0.4.3 - 2026-04-19
 
