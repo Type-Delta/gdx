@@ -4,7 +4,9 @@
  *  Designed for running CPU-bound tasks without blocking the main thread, while managing a pool of reusable workers to optimize performance and resource usage.
  */
 import os from 'os';
+import { createRequire } from 'node:module';
 import type { Worker } from 'node:worker_threads';
+import { pathToFileURL } from 'node:url';
 
 import { Err, yuString } from '@lib/Tools';
 
@@ -56,10 +58,16 @@ export interface ThreadedOptions {
     * Optional timeout in milliseconds for tasks. If a task does not complete within this time, it will be considered failed and the worker will be terminated. This is a safety measure to prevent hanging workers, but should be used with caution as it can lead to unexpected terminations if set too low.
     */
    taskTimeout?: number;
+   /**
+    * Environment variables to set before worker requirements are initialized.
+    */
+   env?: Record<string, string>;
 }
 
 const WORKER_SOURCE = `
 const { parentPort, workerData } = require('node:worker_threads');
+
+Object.assign(process.env, workerData.env);
 
 function serializeError(error) {
    return error instanceof Error
@@ -100,6 +108,7 @@ export class Threaded<TData = unknown> {
    private readonly maxWorker: number;
    private readonly workerSemaphore: Semaphore | null;
    private readonly taskTimeout?: number;
+   private readonly env: Record<string, string>;
    private readonly workers = new Set<ThreadedWorker>();
    private readonly idleWorkers: ThreadedWorker[] = [];
    private readonly workerWaiters: Array<(worker: ThreadedWorker) => void> = [];
@@ -116,6 +125,7 @@ export class Threaded<TData = unknown> {
    constructor(options: ThreadedOptions = {}) {
       this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.availableParallelism() / 2));
       this.taskTimeout = options.taskTimeout;
+      this.env = options.env ?? {};
       this.workerSemaphore = options.semaphore || null;
       this.logger.debug(`Threaded pool initialized with options: ${yuString(options, { color: true })}`);
    }
@@ -133,7 +143,7 @@ export class Threaded<TData = unknown> {
       assertIdentifier(name);
 
       if (typeof shared === 'string') {
-         this.requirements.push({ kind: 'import', name, source: shared });
+         this.requirements.push({ kind: 'import', name, source: resolveWorkerImport(shared) });
          return this;
       }
 
@@ -260,6 +270,7 @@ export class Threaded<TData = unknown> {
       const worker = new Worker(WORKER_SOURCE, {
          eval: true,
          workerData: {
+            env: this.env,
             requirements: this.requirements.map(({ kind, name, source }) => ({
                kind,
                name,
@@ -459,6 +470,24 @@ function stringifyWorkerFunction(value: { toString(): string }): string {
    if (/^async\s+[\w$]+\s*\(/.test(source)) return source.replace(/^async\s+/, 'async function ');
    if (/^[\w$]+\s*\(/.test(source)) return `function ${source}`;
    return source;
+}
+
+const requireFromCurrentModule = createRequire(import.meta.url);
+
+/**
+ * Resolves bare package imports before passing them to eval workers.
+ * @param source - Module specifier to import inside the worker.
+ * @returns A worker-safe import specifier.
+ */
+function resolveWorkerImport(source: string): string {
+   if (source.startsWith('node:')) return source;
+   if (/^[a-zA-Z][a-zA-Z+.-]*:/.test(source)) return source;
+
+   try {
+      return pathToFileURL(requireFromCurrentModule.resolve(source)).href;
+   } catch {
+      return source;
+   }
 }
 
 export default Threaded;

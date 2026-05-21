@@ -58,9 +58,9 @@ export async function dispatch(
 
          quickPrint(
             SGR.dim +
-               SGR.magenta +
-               `※ ${SGR.white + SGR.bright} Executing macro '${macroName}'...` +
-               SGR.reset
+            SGR.magenta +
+            `※ ${SGR.white + SGR.bright} Executing macro '${macroName}'...` +
+            SGR.reset
          );
 
          // Import executeMacro lazily to avoid circular dependency
@@ -202,13 +202,13 @@ export async function dispatch(
                         quickPrint(JSON.stringify(parsed, null, 2));
                         return 0;
                      }
-                     await viewDiff(result.stdout);
+                     await viewDiff(result.stdout); // TODO: use full-file highlighting here
                      return 0;
                   }
                } catch (e) {
                   Logger.info(
                      'Failed to get or parse diff output for enhanced diff-view, ignoring: ' +
-                        Err.from(e)
+                     Err.from(e)
                   );
                }
             }
@@ -276,8 +276,8 @@ export async function dispatch(
                      } else {
                         quickPrint(
                            SGR.yellow +
-                              'Lint failed, but proceeding with push (warning mode).' +
-                              SGR.reset
+                           'Lint failed, but proceeding with push (warning mode).' +
+                           SGR.reset
                         );
                      }
                   }
@@ -431,9 +431,9 @@ export async function dispatch(
       const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
       quickPrint(
          SGR.dim +
-            ncc(rgbVec2decimal(colorVec), 'fg') +
-            `$ ${SGR.white + SGR.bright}git ${escapeCmdArgs(args).join(' ')}` +
-            SGR.reset
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${SGR.white + SGR.bright}git ${escapeCmdArgs(args).join(' ')}` +
+         SGR.reset
       );
    }
 

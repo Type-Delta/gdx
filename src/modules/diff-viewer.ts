@@ -148,9 +148,18 @@ async function getDiffLib(): Promise<DiffModule> {
  * @returns Shared syntax-highlighting worker pool.
  */
 function getHighlightThreaded(): Threaded {
-   highlightThreaded ??= new Threaded({ semaphore: global.threadResources })
-      .require('@shikijs/cli', 'shikiWorker');
+   highlightThreaded ??= new Threaded({
+      env: { FORCE_COLOR: process.env.FORCE_COLOR || '3' },
+      semaphore: global.threadResources,
+   }).require('@shikijs/cli', 'shikiWorker');
    return highlightThreaded;
+}
+
+/**
+ * Returns true when running on Bun, where eval worker module resolution is not reliable after bundling.
+ */
+function isBunRuntime(): boolean {
+   return Boolean(process.versions.bun);
 }
 
 /**
@@ -745,7 +754,7 @@ async function highlightDiffWithContext(
 
    try {
       const shiki = await getShiki();
-      if (highlighting.useAdditionalContext && git$) {
+      if (highlighting.useAdditionalContext && git$ && !isBunRuntime()) {
          const fullFileResults = await Promise.all([
             highlightFullFileSide({
                git$,
@@ -774,6 +783,9 @@ async function highlightDiffWithContext(
          ]);
 
          if (fullFileResults.includes('limited')) {
+            Logger.debug(
+               `Full-file syntax highlighting was skipped for ${diff.newFileName} due to file size. Falling back to context-only highlighting.`, 'diff-viewer'
+            );
             result.clear();
             await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
          }
@@ -781,6 +793,9 @@ async function highlightDiffWithContext(
          return result;
       }
 
+      Logger.debug(
+         `Full-file syntax highlighting is ${highlighting.useAdditionalContext ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`, 'diff-viewer'
+      );
       await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
    } catch (e) {
       Logger.error(
@@ -893,6 +908,7 @@ async function getHighlightedFullFileLines(options: {
    const cacheKey = [
       'diffViewer',
       'highlightedFullFile',
+      'ansiV2',
       Array.isArray(git$) && git$[1] ? encodeCacheKeyPart(git$[1]) : 'd',
       encodeCacheKeyPart(revision),
       encodeCacheKeyPart(path),
@@ -944,12 +960,20 @@ async function highlightFullFileAnsiInWorker(
       return await shiki.codeToANSI(content, lang, theme as never);
    }
 
-   return await getHighlightThreaded()
-      .spawn<string, [string, BundledLanguage, string]>(
-         async (source, language, selectedTheme) =>
-            await shikiWorker.codeToANSI(source, language, selectedTheme as never),
-         [content, lang, theme]
+   try {
+      return await getHighlightThreaded()
+         .spawn<string, [string, BundledLanguage, string]>(
+            async (source, language, selectedTheme) =>
+               await shikiWorker.codeToANSI(source, language, selectedTheme as never),
+            [content, lang, theme]
+         );
+   } catch (error) {
+      Logger.debug(
+         `Worker syntax highlighting failed; falling back to main thread: ${Err.from(error)}`,
+         'diff-viewer'
       );
+      return await shiki.codeToANSI(content, lang, theme as never);
+   }
 }
 
 function encodeCacheKeyPart(value: string): string {
@@ -1066,7 +1090,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          highlightPromises.push(prom);
       }
 
-      if (this.options.highlighting.useAdditionalContext && spinnerCtrl) {
+      if (this.options.highlighting.useAdditionalContext && !isBunRuntime() && spinnerCtrl) {
          spinnerCtrl.options.progress = {
             current: 0,
             total: highlightPromises.length * 2, // Two sides per diff

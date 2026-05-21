@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'bun:test';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import Threaded from '@/modules/threaded';
 
@@ -11,6 +14,7 @@ declare const statefulCounter: {
    next(): number;
 };
 declare const pathModule: typeof import('node:path');
+declare const dedentModule: typeof import('dedent');
 
 describe('Threaded', () => {
    it('should run async spawn tasks with required functions', async () => {
@@ -48,6 +52,41 @@ describe('Threaded', () => {
       ]);
 
       expect(result).toBe('threaded.ts');
+   });
+
+   it('should set worker environment before initializing tasks', async () => {
+      const pool = new Threaded({
+         env: { GDX_THREADED_TEST_VALUE: 'enabled' },
+         maxWorker: 1,
+         taskTimeout: 5000,
+      });
+
+      const result = await pool.spawn(() => process.env.GDX_THREADED_TEST_VALUE);
+
+      expect(result).toBe('enabled');
+   });
+
+   it('should resolve package imports before passing them to workers', async () => {
+      const originalCwd = process.cwd();
+      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gdx-threaded-'));
+      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000 }).require(
+         'dedent',
+         'dedentModule'
+      );
+
+      process.chdir(tempDir);
+      try {
+         const result = await pool.spawn(() => dedentModule.default`
+            alpha
+               beta
+         `);
+
+         expect(result).toBe('alpha\n   beta');
+      } finally {
+         process.chdir(originalCwd);
+         await pool.destroy();
+         await fs.rm(tempDir, { recursive: true, force: true });
+      }
    });
 
    it('should reuse workers with already initialized requirements', async () => {
