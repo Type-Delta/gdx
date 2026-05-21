@@ -27,6 +27,7 @@ let originalStdoutWrite: typeof process.stdout.write | null = null;
 let originalStderrWrite: typeof process.stderr.write | null = null;
 const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === 'off';
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
+const __openInEditor = openInEditor;
 
 if (USE_NATIVE_SUBMODULE_IN_TESTS) {
    console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
@@ -356,11 +357,11 @@ function overrideModules(
    envController: EnvController,
    overwrites?: TestEnvOptions['overwrites']
 ): TestEnvTracker {
+   mock.clearAllMocks();
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
       const inherited$ = original.$({ stdin: 'inherit' });
-      const _openInEditor = original.openInEditor;
       const $inherit = (strings: TemplateStringsArray, ...values: unknown[]) => {
          const subprocess = inherited$(strings, ...values);
          if (subprocess?.stdout) {
@@ -399,7 +400,7 @@ function overrideModules(
             tracker.openedPaths.push(targetPath);
 
             if (overwrites?.openInEditor === false) {
-               await _openInEditor(targetPath, editorCommand);
+               await __openInEditor(targetPath, editorCommand);
             }
          }) satisfies typeof openInEditor,
          $prompt: async () => 'y', // Auto-confirm prompts
