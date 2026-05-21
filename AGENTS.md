@@ -10,21 +10,9 @@ Guide for agentic coding agents working in the `gdx` repository.
 
 ## Commit Message Conventions
 
-This repo commonly uses an emoji + Conventional Commits-style subject line, plus a short explanatory body.
+Read this section when writting commit messages.
 
-**Subject format:**
-
-```text
-<emoji> <type>(<scope>): <short imperative summary>
-```
-
-**Common emojis/types used in this repo:**
-
-- `💫 feat(<scope>): ...`
-- `🔧 refactor(<scope>): ...`
-- `🛠️ fix(<scope>): ...`
-- `🧹 chore(<scope>): ...`
-- `⚙️ ci(<scope>): ...` (or other)
+See [COMMIT_MESSAGE_CONVENTIONS.md](./docs/agent/COMMIT_MESSAGE_CONVENTIONS.md).
 
 ---
 
@@ -32,7 +20,7 @@ This repo commonly uses an emoji + Conventional Commits-style subject line, plus
 
 ```bash
 bun run check   # Runs lint, typecheck, and build checks
-bun test        # Runs tests with Bun's test runner (set timeout >= 5mins)
+bun test        # Runs tests with Bun's test runner (set timeout >= 8mins)
 ```
 
 ### Development Setup
@@ -170,6 +158,30 @@ export function progressiveMatch(
 
 ---
 
+## Performance Guidelines
+
+Performance is main concern for this project, ranking from highest to lowest priority:
+
+- ⭐⭐⭐⭐⭐ Responsiveness: the CLI should react to user input as fast as possible, if output is expected to take time, provide immediate feedback (e.g. spinner)
+- ⭐⭐⭐⭐ Startup Latency: when user runs a command, it should respond as quickly as possible, especially for completion or wrapper commands like `gdx status` or `gdx add` that are expected to be fast.
+- ⭐⭐ Throughput: for commands that process multiple items (e.g. `gdx parallel`)
+
+To achieve this, consider the following:
+
+- Module Importing: If module is large and/or less commonly used or not on a critical path for startup, consider lazy-loading and externalize it, else import it directly, if that module is large consider deep-importing specific functions to reduce bundle size and improve initial load time.
+- Non-blocking Async: For operations that are I/O bound (e.g. git calls, file system operations), use async functions and await them in parallel when possible. Avoid `await` in a loop or sequentially when the operations can be done in parallel, don't worry about hitting system limits, there are application wide semaphores to prevent that.
+- Caching: For expensive operations that are likely to be repeated (e.g. git calls), implement caching with appropriate invalidation. we already have numbers of git calls wrapper that provide caching in `src/modules/git.ts` use them or adding more as needed.
+- Direct Git Plumbing: Most git commands are slow, consider using direct plumbing commands when it makes sense, or skip git and create our own substitute, there are already some helpers that did this and they are called "inline" commands and you can find them in `src/modules/git.ts`.
+
+Cheat sheet for quick perf gains:
+
+- Instead of `git rev-parse ...` use `revParseCached()`
+- Instead of `git submodule ...` use `addSubmodule()`, `updateSubmodules()`, `deinitSubmodule()` etc.
+- Instead of `git config ...` use `getGitConfigValue()`, `setGitConfigValue()`, `unsetGitConfigValue()`
+- Instead of `git ...` use the cached wrappers.
+
+---
+
 ## Testing Guidelines
 
 **Test isolation:**
@@ -188,35 +200,9 @@ export function progressiveMatch(
 
 ## Implementation Checklist
 
-### Implemanting a new command
+Read this section when implementing a new command. (new `gdx <foo>`)
 
-1. consider implementation location: if the command is simple implement it directly in `dispatch.ts`, otherwise create a new file under `src/commands/` with the command name and export the command function as default export.
-2. add and export command structure for completion in the same file (for simple commands add this in `__completion.structure.ts`)
-3. [complex command] add and export help messages
-4. [complex command] add the command to `src/commands/index.ts` for export
-5. add tests for the command in `test/` (if it's a simple command, you can add the test in `dispatch.spec.ts`, otherwise create a new test file with the same name as the command under `test/commands/`)
-6. [simple command] update global help message in `help.ts` to include the new command
-
-## Common Patterns
-
-### Shell Execution Patterns
-
-```typescript
-import { $, $inherit } from '@/modules/shell';
-
-// Capture output
-const result = await $`${git$} status --porcelain`;
-const output = result.stdout;
-
-// Inherit stdio
-await $inherit`${git$} commit`;
-
-// Abortable execution
-const exec = createAbortableExec();
-const $ = exec.$;
-const result = await $`${git$} long-running-command`;
-exec.abort(); // to abort if needed
-```
+See [IMPLEMENT_NEW_COMMAND.md](./docs/agent/IMPLEMENT_NEW_COMMAND.md).
 
 ### Command Arguments
 
