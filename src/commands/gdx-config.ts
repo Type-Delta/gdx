@@ -21,8 +21,8 @@ async function listConfig(): Promise<number> {
 
    quickPrint(
       SGR.dim +
-         `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
-         SGR.reset
+      `# GDX Configuration\n# read from ${config.getConfigPath()}\n# (api keys stored separately)\n` +
+      SGR.reset
    );
 
    for (const { key } of flatDefaults) {
@@ -183,18 +183,18 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
 export const help = {
    long: () => {
       return strWrap(
-         `
-${SGR.bright + _2PointGradient('GDX-CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-View and modify gdx configuration.
+         litedent`
+         ${SGR.bright + _2PointGradient('GDX-CONFIG', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         View and modify gdx configuration.
 
-${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
+         ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
 
-${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-- list: Prints flattened configuration with defaults and modified markers.
-- path: Prints the path to the active config file used by gdx.
-- <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
-`,
+         ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
+         - list: Prints flattened configuration with defaults and modified markers.
+         - path: Prints the path to the active config file used by gdx.
+         - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
@@ -206,14 +206,15 @@ ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zi
    short: 'View or modify gdx configuration settings.',
    usage: () => {
       return strWrap(
-         `
-${SGR.cyan}${EXECUTABLE_NAME} gdx-config list${SGR.reset}
-${SGR.cyan}${EXECUTABLE_NAME} gdx-config path${SGR.reset}
-${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.dim}<key> [value]${SGR.reset}
+         litedent`
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config path${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.dim}<key> [value]${SGR.reset}
 
-Examples:
-   ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
-   ${SGR.cyan}${EXECUTABLE_NAME} gdx-config editor.code true ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}`,
+         Examples:
+            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config editor.code true ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}
+         `,
          Math.min(100, global.terminalWidth - 4),
          {
             firstIndent: '  ',
