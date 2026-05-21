@@ -66,6 +66,21 @@ describe('Threaded', () => {
       expect(result).toBe('enabled');
    });
 
+   it('should run tasks through a file URL worker source', async () => {
+      const pool = new Threaded({
+         maxWorker: 1,
+         taskTimeout: 5000,
+         workerSource: new URL('../../src/workers/generic.worker.ts', import.meta.url),
+      }).require('node:path', 'pathModule');
+
+      const result = await pool.spawn((filePath) => pathModule.extname(filePath), [
+         'src/modules/threaded.ts',
+      ]);
+
+      expect(result).toBe('.ts');
+      await pool.destroy();
+   });
+
    it('should resolve package imports before passing them to workers', async () => {
       const originalCwd = process.cwd();
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gdx-threaded-'));

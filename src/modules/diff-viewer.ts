@@ -43,6 +43,7 @@ import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
 import Threaded from '@/modules/threaded';
 import global from '@/global';
+import { getGenericWorkerUrl } from '@/cli/worker';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -132,6 +133,7 @@ declare const shikiWorker: ShikijsCliModule;
 let shikiPromise: Promise<ShikijsCliModule> | null = null;
 let diffPromise: Promise<DiffModule> | null = null;
 let highlightThreaded: Threaded | null = null;
+const logger = new Logger('diff-viewer');
 
 async function getShiki(): Promise<ShikijsCliModule> {
    shikiPromise ??= import('@shikijs/cli');
@@ -148,18 +150,22 @@ async function getDiffLib(): Promise<DiffModule> {
  * @returns Shared syntax-highlighting worker pool.
  */
 function getHighlightThreaded(): Threaded {
+   const workerSource = getGenericWorkerUrl();
+   if (!workerSource) throw new Error('Generic worker file is not available.');
+
    highlightThreaded ??= new Threaded({
       env: { FORCE_COLOR: process.env.FORCE_COLOR || '3' },
       semaphore: global.threadResources,
+      workerSource,
    }).require('@shikijs/cli', 'shikiWorker');
    return highlightThreaded;
 }
 
 /**
- * Returns true when running on Bun, where eval worker module resolution is not reliable after bundling.
+ * Returns true when the generic worker file is available.
  */
-function isBunRuntime(): boolean {
-   return Boolean(process.versions.bun);
+function canUseShikiHighlightWorker(): boolean {
+   return getGenericWorkerUrl() !== null;
 }
 
 /**
@@ -754,7 +760,7 @@ async function highlightDiffWithContext(
 
    try {
       const shiki = await getShiki();
-      if (highlighting.useAdditionalContext && git$ && !isBunRuntime()) {
+      if (highlighting.useAdditionalContext && git$) {
          const fullFileResults = await Promise.all([
             highlightFullFileSide({
                git$,
@@ -783,8 +789,8 @@ async function highlightDiffWithContext(
          ]);
 
          if (fullFileResults.includes('limited')) {
-            Logger.debug(
-               `Full-file syntax highlighting was skipped for ${diff.newFileName} due to file size. Falling back to context-only highlighting.`, 'diff-viewer'
+            logger.debug(
+               `Full-file syntax highlighting was skipped for ${diff.newFileName} due to file size. Falling back to context-only highlighting.`
             );
             result.clear();
             await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
@@ -793,14 +799,13 @@ async function highlightDiffWithContext(
          return result;
       }
 
-      Logger.debug(
-         `Full-file syntax highlighting is ${highlighting.useAdditionalContext ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`, 'diff-viewer'
+      logger.debug(
+         `Full-file syntax highlighting is ${highlighting.useAdditionalContext ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`
       );
       await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
    } catch (e) {
-      Logger.error(
+      logger.error(
          `Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`,
-         'diff-viewer'
       );
       codeLines.forEach((line) => result.set(line, line.content));
    }
@@ -877,9 +882,8 @@ async function highlightFullFileSide(
    if (!highlightedFile) return 'unavailable';
 
    if (highlightedFile.contentLength > maxHunkSize) {
-      Logger.debug(
+      logger.debug(
          `Skipping syntax highlighting for ${revision}:${path}; file size exceeds ${maxHunkSize} chars limit.`,
-         'diff-viewer'
       );
       return 'limited';
    }
@@ -932,7 +936,9 @@ async function getHighlightedFullFileLines(options: {
       return entry;
    }
 
-   const highlighted = await highlightFullFileAnsiInWorker(content, lang, theme, shiki);
+   const highlighted = canUseShikiHighlightWorker()
+      ? await highlightFullFileAnsiInWorker(content, lang, theme, shiki)
+      : await shiki.codeToANSI(content, lang, theme as never);
 
    const entry = {
       contentLength: content.length,
@@ -968,9 +974,8 @@ async function highlightFullFileAnsiInWorker(
             [content, lang, theme]
          );
    } catch (error) {
-      Logger.debug(
+      logger.debug(
          `Worker syntax highlighting failed; falling back to main thread: ${Err.from(error)}`,
-         'diff-viewer'
       );
       return await shiki.codeToANSI(content, lang, theme as never);
    }
@@ -1058,11 +1063,17 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    async prepareHighlighting(spinnerCtrl?: SpinnerController): Promise<void> {
-      await Logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
+      await logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
 
       if (this.options.disableSyntaxHighlighting) {
-         Logger.time('Post-processing', () => this.updateRenderedLines());
+         logger.time('Post-processing', () => this.updateRenderedLines());
          return;
+      }
+
+      if (this.options.highlighting.useAdditionalContext && !canUseShikiHighlightWorker()) {
+         logger.debug(
+            'Worker threads are not available in this environment. All syntax highlighting will run on the main thread, which may cause UI freezes for large diffs.',
+         );
       }
 
       const highlightPromises: Promise<void>[] = [];
@@ -1090,7 +1101,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          highlightPromises.push(prom);
       }
 
-      if (this.options.highlighting.useAdditionalContext && !isBunRuntime() && spinnerCtrl) {
+      if (this.options.highlighting.useAdditionalContext && spinnerCtrl) {
          spinnerCtrl.options.progress = {
             current: 0,
             total: highlightPromises.length * 2, // Two sides per diff
@@ -1099,7 +1110,10 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       spinnerCtrl?.setMessage('Highlighting diffs');
       await Promise.all(highlightPromises);
-      Logger.time('Post-processing after highlighting', () => this.updateRenderedLines());
+      logger.time(
+         'Post-processing after highlighting',
+         () => this.updateRenderedLines(),
+      );
       // fs.writeFileSync('parsed-diffs-debug.json', JSON.stringify(this.parsedDiffs.map(l =>
       //    l.lines
       //       .filter(l => l.highlightedContent !== undefined)
@@ -1307,18 +1321,16 @@ export class DiffViewerRenderer implements PagerRenderer {
          let splitted = wrapped.split('\n');
 
          if (splitted.length < 2) {
-            Logger.warn(
+            logger.warn(
                `Expected wrapped content to have multiple lines but got a line or less. Original content length: ${displayContent.length}, Wrapped content length: ${splitted[0]?.length}, ex_length length: ${ex_length(splitted[0], this.widthRedundancyLv)}, avaliable space: ${contentWidth}`,
-               'diff-renderer'
             );
          }
 
          // Heuristic check: if the first line still exceeds the content width after wrapping, it likely means wrapping failed to split the line properly (e.g. due to long unbreakable sequences). In this case, we force a split at the content width as a fallback to prevent rendering issues.
          // Redundancy level is locked to 0, bc calculating length with higher redundancy can be too expensive for this check
          if (ex_length(splitted[0], Math.min(this.widthRedundancyLv, 0)) > contentWidth) {
-            Logger.warn(
+            logger.warn(
                `First line of wrapped content still exceeds available width, countermeasures will be taken. Original content length: ${displayContent.length}, First line length: ${splitted[0]?.length}, ex_length length: ${ex_length(splitted[0], this.widthRedundancyLv)}, avaliable space: ${contentWidth}`,
-               'diff-renderer'
             );
 
             // Fallback: force split without relying on wrapping (handles edge cases where wrapping fails to split)
@@ -1553,9 +1565,8 @@ export async function viewDiff(
    options: DiffViewerOptions = {}
 ): Promise<PagerActionResult | void> {
    if (!canUseDiffViewer()) {
-      Logger.warn(
+      logger.warn(
          'Diff viewer is not supported in this environment. Falling back to plain output.',
-         'diff-viewer'
       );
       return pager(diffText, { ...options, showLineNumbers: false });
    }
@@ -1573,7 +1584,7 @@ export async function viewDiff(
       ...options.highlighting,
    };
 
-   Logger.time('Preparing diff highlighting');
+   logger.time('Preparing diff highlighting');
    const renderer = new DiffViewerRenderer(diffBody, {
       ...options,
       preambleLines,
@@ -1583,7 +1594,7 @@ export async function viewDiff(
    clearTerminalCache();
    renderer.onResize(getTerminalWidth(), getTerminalHeight());
    spinnerCtrl.stop();
-   Logger.timeEnd('Preparing diff highlighting', 'diff-viewer');
+   logger.timeEnd('Preparing diff highlighting');
 
    return pagerWithRenderer(renderer, options);
 }

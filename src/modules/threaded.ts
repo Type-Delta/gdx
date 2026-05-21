@@ -6,7 +6,7 @@
 import os from 'os';
 import { createRequire } from 'node:module';
 import type { Worker } from 'node:worker_threads';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { Err, yuString } from '@lib/Tools';
 
@@ -21,6 +21,7 @@ type ThreadedMapTask<TItem, TResult> = (
    items: TItem[]
 ) => AsyncResult<TResult>;
 type RequirementValue = string | ((...args: never[]) => unknown) | object;
+type ThreadedWorkerSource = string | URL | { source: string | URL; eval?: boolean };
 
 interface ThreadedRequirement {
    kind: 'import' | 'function' | 'value';
@@ -62,6 +63,10 @@ export interface ThreadedOptions {
     * Environment variables to set before worker requirements are initialized.
     */
    env?: Record<string, string>;
+   /**
+    * Optional worker source. Strings run as eval workers by default; URL sources run as files.
+    */
+   workerSource?: ThreadedWorkerSource;
 }
 
 const WORKER_SOURCE = `
@@ -109,6 +114,7 @@ export class Threaded<TData = unknown> {
    private readonly workerSemaphore: Semaphore | null;
    private readonly taskTimeout?: number;
    private readonly env: Record<string, string>;
+   private readonly workerSource: ThreadedWorkerSource;
    private readonly workers = new Set<ThreadedWorker>();
    private readonly idleWorkers: ThreadedWorker[] = [];
    private readonly workerWaiters: Array<(worker: ThreadedWorker) => void> = [];
@@ -126,6 +132,7 @@ export class Threaded<TData = unknown> {
       this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.availableParallelism() / 2));
       this.taskTimeout = options.taskTimeout;
       this.env = options.env ?? {};
+      this.workerSource = options.workerSource ?? WORKER_SOURCE;
       this.workerSemaphore = options.semaphore || null;
       this.logger.debug(`Threaded pool initialized with options: ${yuString(options, { color: true })}`);
    }
@@ -267,8 +274,9 @@ export class Threaded<TData = unknown> {
 
    private async createWorker(): Promise<ThreadedWorker> {
       const { Worker } = await import('node:worker_threads');
-      const worker = new Worker(WORKER_SOURCE, {
-         eval: true,
+      const workerSource = normalizeWorkerSource(this.workerSource);
+      const worker = new Worker(workerSource.source, {
+         eval: workerSource.eval,
          workerData: {
             env: this.env,
             requirements: this.requirements.map(({ kind, name, source }) => ({
@@ -426,6 +434,36 @@ function assertIdentifier(name: string): void {
    if (!/^[A-Za-z_$][\w$]*$/.test(name)) {
       throw new Error(`Invalid worker requirement name '${name}'.`);
    }
+}
+
+/**
+ * Normalizes worker source options for the Worker constructor.
+ * @param workerSource - Eval string, file URL, or explicit source options.
+ * @returns Worker constructor source and eval mode.
+ */
+function normalizeWorkerSource(workerSource: ThreadedWorkerSource): {
+   source: string | URL;
+   eval: boolean;
+} {
+   if (workerSource instanceof URL) return { source: normalizeWorkerUrl(workerSource), eval: false };
+   if (typeof workerSource === 'string') return { source: workerSource, eval: true };
+
+   return {
+      source:
+         workerSource.source instanceof URL
+            ? normalizeWorkerUrl(workerSource.source)
+            : workerSource.source,
+      eval: workerSource.eval ?? typeof workerSource.source === 'string',
+   };
+}
+
+/**
+ * Converts file URLs to paths before Worker construction to avoid Bun URL cleanup issues.
+ * @param url - Worker module URL.
+ * @returns File path for file URLs, otherwise the original URL.
+ */
+function normalizeWorkerUrl(url: URL): string | URL {
+   return url.protocol === 'file:' ? fileURLToPath(url) : url;
 }
 
 /**
