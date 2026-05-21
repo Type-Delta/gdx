@@ -9,12 +9,19 @@ import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
-import { getGitVersionCached, getGitConfigCached, expandRelativeRef } from '@/modules/git';
+import {
+   getGitVersionCached,
+   getGitConfigCached,
+   expandRelativeRef,
+   expandShowRevisionPathRefs
+} from '@/modules/git';
 import {
    canUseDiffViewer,
    isGitDiffOutput,
    parseDiffOutput,
    viewDiff,
+   INDEX_REVISION,
+   WORKING_TREE_REVISION,
 } from '@/modules/diff-viewer';
 import {
    buildShowBlobNavigationPlan,
@@ -203,7 +210,22 @@ export async function dispatch(
                         quickPrint(JSON.stringify(parsed, null, 2));
                         return 0;
                      }
-                     await viewDiff(result.stdout); // TODO: use full-file highlighting here
+                     const usesCachedDiff =
+                        diffArgs.hasOption('--cached') || diffArgs.hasOption('--staged');
+                     const canUseFullFileHighlight = !diffArgs.hasOption('--no-index');
+
+                     await viewDiff(
+                        result.stdout,
+                        canUseFullFileHighlight
+                           ? {
+                              git$: ctx.git$,
+                              highlighting: {
+                                 oldRevision: 'HEAD',
+                                 newRevision: usesCachedDiff ? INDEX_REVISION : WORKING_TREE_REVISION,
+                              },
+                           }
+                           : undefined
+                     );
                      return 0;
                   }
                } catch (e) {
@@ -218,6 +240,8 @@ export async function dispatch(
          case 'show': {
             const { error } = await expandRelativeRef(args, ctx.git$);
             if (error) return 1;
+            const { error: showPathRefError } = await expandShowRevisionPathRefs(args, ctx.git$);
+            if (showPathRefError) return 1;
 
             const config = await getConfig();
             if (

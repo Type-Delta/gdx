@@ -40,6 +40,7 @@ const SHOW_NAVIGATION_VALUE_OPTIONS = new Set([
    '--pretty',
    '--format',
    '-n',
+   '-L',
 ]);
 
 export interface ShowCommitNavigationPlan {
@@ -50,6 +51,7 @@ export interface ShowCommitNavigationPlan {
 
 export interface ShowBlobNavigationPlan extends ShowCommitNavigationPlan {
    path: string;
+   isIndexStage: boolean;
 }
 
 export interface ShowCommitAdjacentCommits {
@@ -141,6 +143,19 @@ export function buildShowBlobNavigationPlan(showArgs: string[]): ShowBlobNavigat
 
       if (arg.startsWith('-')) continue;
 
+      if (arg.startsWith(':')) {
+         const indexPathMatch = arg.match(/^:(?:[0-3]:)?(.+)$/);
+         if (!indexPathMatch) return null;
+
+         return {
+            targetRef: '',
+            targetIndex: index,
+            navigationArgs: [],
+            path: indexPathMatch[1],
+            isIndexStage: true,
+         };
+      }
+
       const separatorIndex = arg.indexOf(':');
       if (separatorIndex <= 0 || separatorIndex === arg.length - 1) return null;
 
@@ -156,6 +171,7 @@ export function buildShowBlobNavigationPlan(showArgs: string[]): ShowBlobNavigat
          targetIndex: index,
          navigationArgs,
          path,
+         isIndexStage: false,
       };
    }
 
@@ -175,8 +191,17 @@ export function buildShowBlobArgsForCommit(
    commit: string
 ): string[] {
    const nextArgs = showArgs.slice();
+   if (plan.isIndexStage) return nextArgs;
    if (plan.targetIndex !== null) nextArgs[plan.targetIndex] = `${commit}:${plan.path}`;
    return nextArgs;
+}
+
+/**
+ * Returns true when show args use git's line-log mode.
+ * @param showArgs - Arguments passed after `gdx show`.
+ */
+function hasLineLogOption(showArgs: string[]): boolean {
+   return showArgs.some((arg) => arg === '-L' || arg.startsWith('-L:') || arg.startsWith('-L/'));
 }
 
 /**
@@ -223,6 +248,8 @@ async function getShowCommitStat(
    plan: ShowCommitNavigationPlan,
    commit: string
 ): Promise<string> {
+   if (hasLineLogOption(showArgs)) return '';
+
    return (
       await $`${git$} -c color.ui=never show --stat --format= ${buildShowArgsForCommit(
          showArgs,
@@ -339,7 +366,7 @@ async function findAdjacentShowCommit(
  * @param plan - Parsed navigation plan.
  * @returns Older and newer adjacent commit hashes when available.
  */
-async function findAdjacentShowCommits(
+export async function findAdjacentShowCommits(
    git$: GdxContext['git$'],
    currentCommit: string,
    plan: ShowCommitNavigationPlan
@@ -350,12 +377,47 @@ async function findAdjacentShowCommits(
       .map((line) => line.trim())
       .filter(Boolean);
    const currentIndex = commits.indexOf(currentCommit);
-   if (currentIndex === -1) return { previous: null, next: null };
+   if (currentIndex !== -1) {
+      return {
+         previous: commits[currentIndex + 1] ?? null,
+         next: commits[currentIndex - 1] ?? null,
+      };
+   }
 
-   return {
-      previous: commits[currentIndex + 1] ?? null,
-      next: commits[currentIndex - 1] ?? null,
-   };
+   const pathspecIndex = plan.navigationArgs.indexOf('--');
+   if (pathspecIndex === -1) return { previous: null, next: null };
+
+   const historyArgs = plan.navigationArgs.slice(0, pathspecIndex);
+   const historyResult = await $`${git$} log --format=%H ${historyArgs}`;
+   const historyCommits = historyResult.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+   const historyIndex = historyCommits.indexOf(currentCommit);
+   if (historyIndex === -1) return { previous: null, next: null };
+
+   const commitIndex = new Map(historyCommits.map((commit, index) => [commit, index]));
+   let previous: string | null = null;
+   let next: string | null = null;
+   let previousDistance = Number.POSITIVE_INFINITY;
+   let nextDistance = Number.POSITIVE_INFINITY;
+
+   for (const commit of commits) {
+      const index = commitIndex.get(commit);
+      if (index === undefined) continue;
+
+      if (index > historyIndex && index - historyIndex < previousDistance) {
+         previous = commit;
+         previousDistance = index - historyIndex;
+      }
+
+      if (index < historyIndex && historyIndex - index < nextDistance) {
+         next = commit;
+         nextDistance = historyIndex - index;
+      }
+   }
+
+   return { previous, next };
 }
 
 /**
@@ -443,11 +505,17 @@ async function viewShowBlob(
                commit
             )}`
          ).stdout;
-      const [relativeRef, highlightedContent, adjacentCommits] = await Promise.all([
-         resolveHeadRelativeCommitRef(ctx.git$, commit, false),
-         highlightShowBlobContent(content, plan.path),
-         findAdjacentShowCommits(ctx.git$, commit, plan),
-      ]);
+      const [relativeRef, highlightedContent, adjacentCommits] = plan.isIndexStage
+         ? [
+            'index',
+            await highlightShowBlobContent(content, plan.path),
+            { previous: null, next: null },
+         ]
+         : await Promise.all([
+            resolveHeadRelativeCommitRef(ctx.git$, commit, false),
+            highlightShowBlobContent(content, plan.path),
+            findAdjacentShowCommits(ctx.git$, commit, plan),
+         ]);
       spinnerCtrl?.stop();
 
       return await pager(highlightedContent, {
@@ -570,6 +638,11 @@ export async function viewInteractiveShowBlob(
    plan: ShowBlobNavigationPlan,
    initialContent?: string
 ): Promise<void> {
+   if (plan.isIndexStage) {
+      await viewShowBlob(ctx, showArgs, plan, '', false, initialContent);
+      return;
+   }
+
    let currentCommit = await resolveShowCommit(ctx.git$, plan.targetRef);
    let action = await viewShowBlob(ctx, showArgs, plan, currentCommit, false, initialContent);
 

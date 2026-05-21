@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import * as fs from '@/modules/fs';
 import {
    buildEnhancedShowDiffText,
    buildShowBlobArgsForCommit,
@@ -8,11 +9,13 @@ import {
    buildShowArgsForCommit,
    buildShowCommitNavigationPlan,
    buildShowCommitNavigationActions,
+   findAdjacentShowCommits,
    isGitShowCommitOutput,
    separateShowPreamble,
 } from '@/modules/show-navigation';
-import * as fs from '@/modules/fs';
-import { createTestEnv } from '@/utils/testHelper';
+import { ArgsSet } from '@/modules/arguments';
+import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { expandShowRevisionPathRefs } from '@/modules/git';
 
 describe('show navigation helpers', async () => {
    it('should append relative ref to the commit line and file stats under the message', () => {
@@ -186,6 +189,7 @@ describe('show navigation helpers', async () => {
          targetIndex: 2,
          navigationArgs: ['--date', 'iso', 'HEAD', '--', 'src/index.ts'],
          path: 'src/index.ts',
+         isIndexStage: false,
       });
       expect(
          plan && buildShowBlobArgsForCommit(['--date', 'iso', 'aaa:src/index.ts'], plan, 'bbb')
@@ -195,7 +199,44 @@ describe('show navigation helpers', async () => {
    it('should ignore show args that are not revision path blob targets', () => {
       expect(buildShowBlobNavigationPlan(['HEAD', '--', 'README.md'])).toBeNull();
       expect(buildShowBlobNavigationPlan(['HEAD:'])).toBeNull();
-      expect(buildShowBlobNavigationPlan([':README.md'])).toBeNull();
+   });
+
+   it('should parse index-stage blob show args', () => {
+      expect(buildShowBlobNavigationPlan([':README.md'])).toEqual({
+         targetRef: '',
+         targetIndex: 0,
+         navigationArgs: [],
+         path: 'README.md',
+         isIndexStage: true,
+      });
+      expect(buildShowBlobNavigationPlan([':2:src/index.ts'])).toEqual({
+         targetRef: '',
+         targetIndex: 0,
+         navigationArgs: [],
+         path: 'src/index.ts',
+         isIndexStage: true,
+      });
+   });
+
+   it('should skip line-log ranges while finding the target commit', () => {
+      const separateValuePlan = buildShowCommitNavigationPlan(['-L', ':handler:src/index.ts', 'abc']);
+      const inlineValuePlan = buildShowCommitNavigationPlan(['-L:handler:src/index.ts', 'abc']);
+
+      expect(separateValuePlan.targetRef).toBe('abc');
+      expect(separateValuePlan.targetIndex).toBe(2);
+      expect(separateValuePlan.navigationArgs).toEqual(['-L', ':handler:src/index.ts', 'HEAD']);
+      expect(inlineValuePlan.targetRef).toBe('abc');
+      expect(inlineValuePlan.targetIndex).toBe(1);
+      expect(inlineValuePlan.navigationArgs).toEqual(['-L:handler:src/index.ts', 'HEAD']);
+   });
+
+   it('should expand shorthand refs inside revision path show args', async () => {
+      const args = new ArgsSet(['show', '~2:src/index.ts', 'HEAD~1:README.md']);
+
+      const result = await expandShowRevisionPathRefs(args, 'git');
+
+      expect(result.error).toBeUndefined();
+      expect([...args]).toEqual(['show', 'HEAD~2:src/index.ts', 'HEAD~1:README.md']);
    });
 
    it('should let git log seek only commits that match the original pathspec', async () => {
@@ -234,5 +275,33 @@ describe('show navigation helpers', async () => {
       expect(commits).not.toContain(otherChange);
       expect(commits[readmeTwoIndex - 1]).toBe(readmeThree);
       expect(commits[readmeTwoIndex + 1]).toBe(readmeOne);
+
+      const blobPlan = buildShowBlobNavigationPlan([`${readmeTwo}:README.md`]);
+      const blobCommits = (await $`git log --format=%H ${blobPlan?.navigationArgs || []}`).stdout
+         .split('\n')
+         .filter(Boolean);
+      const blobReadmeTwoIndex = blobCommits.indexOf(readmeTwo);
+
+      expect(
+         buildShowCommitNavigationActions({
+            previous: blobCommits[blobReadmeTwoIndex + 1] ?? null,
+            next: blobCommits[blobReadmeTwoIndex - 1] ?? null,
+         }).map((action) => action.label)
+      ).toEqual(['previous', 'next']);
+
+      expect(blobPlan).not.toBeNull();
+      if (!blobPlan) throw new Error('Expected blob navigation plan');
+
+      const adjacentBlobCommits = await findAdjacentShowCommits(
+         createGdxContext(tmpDir).git$,
+         otherChange,
+         blobPlan
+      );
+      expect(adjacentBlobCommits).toEqual({
+         previous: readmeOne,
+         next: readmeTwo,
+      });
+      expect(buildShowCommitNavigationActions(adjacentBlobCommits).map((action) => action.label))
+         .toEqual(['previous', 'next']);
    });
 });

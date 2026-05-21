@@ -676,8 +676,8 @@ async function getGitConfigLookupFiles(
       const systemPath = process.env.GIT_CONFIG_SYSTEM?.trim()
          ? process.env.GIT_CONFIG_SYSTEM
          : process.platform === 'win32'
-           ? 'C:/ProgramData/Git/config'
-           : '/etc/gitconfig';
+            ? 'C:/ProgramData/Git/config'
+            : '/etc/gitconfig';
       files.push(systemPath);
    }
 
@@ -854,11 +854,11 @@ function getGitConfigValueFromParsed(
    const subsection = parts.length > 2 ? parts.slice(1, -1).join('.') : null;
    const sectionCandidates = subsection
       ? [
-           `${section} "${subsection}"`,
-           `${section} "${subsection.replace(/\./g, '\\.')}"`,
-           `${section} '${subsection}'`,
-           `${section}.${subsection}`,
-        ]
+         `${section} "${subsection}"`,
+         `${section} "${subsection.replace(/\./g, '\\.')}"`,
+         `${section} '${subsection}'`,
+         `${section}.${subsection}`,
+      ]
       : [section];
 
    let sectionValue: unknown;
@@ -2259,9 +2259,9 @@ export async function addSubmodule(
    const gitMarker = path.join(submoduleRepoPath, '.git');
    const markerIsDirectory = fs.existsSync(gitMarker)
       ? await fs
-           .stat(gitMarker)
-           .then((stat) => stat.isDirectory())
-           .catch(() => false)
+         .stat(gitMarker)
+         .then((stat) => stat.isDirectory())
+         .catch(() => false)
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
       await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
@@ -2677,9 +2677,9 @@ export async function updateSubmodules(
       const gitMarker = path.join(submoduleRepoPath, '.git');
       const markerIsDirectory = fs.existsSync(gitMarker)
          ? await fs
-              .stat(gitMarker)
-              .then((stat) => stat.isDirectory())
-              .catch(() => false)
+            .stat(gitMarker)
+            .then((stat) => stat.isDirectory())
+            .catch(() => false)
          : false;
 
       if (!fs.existsSync(gitMarker) || markerIsDirectory) {
@@ -3036,4 +3036,28 @@ function normalizeRemoteHostPath(host: string, repoPath: string): string {
    normalizedPath = normalizedPath.replace(/\/+$/, '');
    if (host) return `${host}/${normalizedPath}`;
    return normalizedPath;
+}
+
+/**
+ * Expands shorthand refs in `git show <rev>:<path>` style tokens before git sees them.
+ * @param args - Full gdx/git argument list including the `show` command.
+ * @param git$ - Git executable context used for upstream-aware expansion.
+ */
+export async function expandShowRevisionPathRefs(
+   args: GdxContext['args'],
+   git$: GdxContext['git$']
+): Promise<{ error?: Err }> {
+   for (let index = 1; index < args.length; index++) {
+      const match = /^((?:head|origin)?~\d*):(.+)$/i.exec(args[index]);
+      if (!match) continue;
+
+      const refArg = args.slice(index, index + 1);
+      refArg[0] = match[1];
+      const { error } = await expandRelativeRef(refArg, git$);
+      if (error) return { error: Err.from(error) };
+
+      args[index] = `${refArg[0]}:${match[2]}`;
+   }
+
+   return {};
 }

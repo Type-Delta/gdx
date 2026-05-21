@@ -1,3 +1,7 @@
+import path from 'path';
+import * as fs from './fs';
+import type { ChangeObject } from 'diff';
+
 import {
    Err,
    estimateStrComplexity,
@@ -8,8 +12,6 @@ import {
    yuString,
    CheckCache,
 } from '@lib/Tools';
-
-import type { ChangeObject } from 'diff';
 
 import {
    pagerWithRenderer,
@@ -44,6 +46,7 @@ import { getCache } from '@/common/cache';
 import Threaded from '@/modules/threaded';
 import global from '@/global';
 import { getGenericWorkerUrl } from '@/cli/worker';
+import { revParseCached } from './git';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -117,6 +120,9 @@ interface HighlightedFullFileCacheEntry {
 }
 
 type FullFileHighlightResult = 'highlighted' | 'unavailable' | 'limited';
+
+export const WORKING_TREE_REVISION = '__GDX_WORKING_TREE__';
+export const INDEX_REVISION = '__GDX_INDEX__';
 
 interface ParsedDiff {
    fileName: string;
@@ -908,6 +914,8 @@ async function getHighlightedFullFileLines(options: {
    shiki: ShikijsCliModule;
 }): Promise<HighlightedFullFileCacheEntry | null> {
    const { git$, path, revision, lang, theme, maxHunkSize, shiki } = options;
+   const readsWorkingTree = revision === WORKING_TREE_REVISION;
+   const readsIndex = revision === INDEX_REVISION;
    const cache = await getCache();
    const cacheKey = [
       'diffViewer',
@@ -918,12 +926,20 @@ async function getHighlightedFullFileLines(options: {
       encodeCacheKeyPart(path),
       encodeCacheKeyPart(theme),
    ].join('.');
-   const cached = await cache.getOneOff<HighlightedFullFileCacheEntry>(cacheKey);
+   const cached = readsWorkingTree || readsIndex
+      ? null
+      : await cache.getOneOff<HighlightedFullFileCacheEntry>(cacheKey);
    if (cached) return cached;
 
    let content: string;
    try {
-      content = (await $`${git$} show ${`${revision}:${path}`}`).stdout;
+      if (readsWorkingTree) {
+         content = await getWorkingTreeFileContent(git$, path);
+      } else if (readsIndex) {
+         content = (await $`${git$} show ${`:${path}`}`).stdout;
+      } else {
+         content = (await $`${git$} show ${`${revision}:${path}`}`).stdout;
+      }
    } catch {
       return null;
    }
@@ -932,7 +948,7 @@ async function getHighlightedFullFileLines(options: {
       const entry = {
          contentLength: content.length,
       } satisfies HighlightedFullFileCacheEntry;
-      await cache.setOneOff(cacheKey, entry);
+      if (!readsWorkingTree && !readsIndex) await cache.setOneOff(cacheKey, entry);
       return entry;
    }
 
@@ -944,8 +960,26 @@ async function getHighlightedFullFileLines(options: {
       contentLength: content.length,
       highlightedLines: highlighted.split('\n'),
    } satisfies HighlightedFullFileCacheEntry;
-   await cache.setOneOff(cacheKey, entry);
+   if (!readsWorkingTree && !readsIndex) await cache.setOneOff(cacheKey, entry);
    return entry;
+}
+
+/**
+ * Reads a diff path from the current working tree for full-file highlighting.
+ * @param git$ - Git executable context used to locate the repository root.
+ * @param filePath - Repository-relative path from the diff header.
+ * @returns The UTF-8 file content from the working tree.
+ */
+async function getWorkingTreeFileContent(git$: GdxContext['git$'], filePath: string): Promise<string> {
+   const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim();
+   const absolutePath = path.resolve(repoRoot, filePath);
+   const relativePath = path.relative(repoRoot, absolutePath);
+
+   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      throw new Error(`Diff path escapes repository root: ${filePath}`);
+   }
+
+   return await fs.readFile(absolutePath, 'utf-8');
 }
 
 /**

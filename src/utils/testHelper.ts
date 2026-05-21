@@ -495,6 +495,11 @@ async function findGitExecutable(): Promise<string> {
 
 function defineBunIt(tracker: TestEnvTracker) {
    return function (name: string, fn: () => Promise<void> | void, options?: { timeout?: number }) {
+      options = {
+         timeout: 10000, // Default timeout of 10 seconds for each test
+         ...options,
+      };
+
       return it(
          name,
          async (done) => {

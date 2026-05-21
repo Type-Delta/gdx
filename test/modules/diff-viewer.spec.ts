@@ -9,6 +9,8 @@ import {
    canUseDiffViewer,
    BundledLanguage,
    renderCommitMessageDiffLines,
+   INDEX_REVISION,
+   WORKING_TREE_REVISION,
 } from '@/modules/diff-viewer';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
@@ -323,6 +325,96 @@ const beta = 3165 + 346;
 
          expect(addLine?.highlightedContent).toBe('FULL:3:const beta = 3165 + 346;');
          expect(shikiCodeToANSICount).toBeGreaterThan(countBeforeHighlight);
+      });
+
+      it('should highlight unstaged diffs with working tree file contents', async () => {
+         await fs.writeFile(
+            path.join(tmpDir, 'working-tree-probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const removedOnly = 10;
+const keep = 1;
+`,
+            'utf-8'
+         );
+         await $`git add working-tree-probe.ts`;
+         await $`git commit --no-verify -m ${'Add working tree probe file'}`;
+
+         await fs.writeFile(
+            path.join(tmpDir, 'working-tree-probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const keep = 1;
+const addedOnly = 20;
+`,
+            'utf-8'
+         );
+         const diffText = (await $`git diff --no-ext-diff --no-color -- working-tree-probe.ts`).stdout;
+         const ctx = createGdxContext(tmpDir);
+
+         const renderer = new DiffViewerRenderer(diffText, {
+            git$: ctx.git$,
+            highlighting: {
+               useAdditionalContext: true,
+               oldRevision: 'HEAD',
+               newRevision: WORKING_TREE_REVISION,
+            },
+         });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const deleteLine = parsed[0]?.lines.find((line) => line.type === 'delete');
+         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
+
+         expect(deleteLine?.highlightedContent).toBe('FULL:3:const removedOnly = 10;');
+         expect(addLine?.highlightedContent).toBe('FULL:4:const addedOnly = 20;');
+      });
+
+      it('should highlight staged diffs with index file contents', async () => {
+         await fs.writeFile(
+            path.join(tmpDir, 'index-probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const removedOnly = 10;
+const keep = 1;
+`,
+            'utf-8'
+         );
+         await $`git add index-probe.ts`;
+         await $`git commit --no-verify -m ${'Add index probe file'}`;
+
+         await fs.writeFile(
+            path.join(tmpDir, 'index-probe.ts'),
+            `// highlight-whole-file-probe
+const alpha = 1;
+const keep = 1;
+const addedOnly = 20;
+`,
+            'utf-8'
+         );
+         await $`git add index-probe.ts`;
+         const diffText = (await $`git diff --cached --no-ext-diff --no-color -- index-probe.ts`)
+            .stdout;
+         const ctx = createGdxContext(tmpDir);
+
+         const renderer = new DiffViewerRenderer(diffText, {
+            git$: ctx.git$,
+            highlighting: {
+               useAdditionalContext: true,
+               oldRevision: 'HEAD',
+               newRevision: INDEX_REVISION,
+            },
+         });
+         await renderer.prepareHighlighting();
+
+         const parsed = (renderer as unknown as { parsedDiffs: ReturnType<typeof parseDiffOutput> })
+            .parsedDiffs;
+         const deleteLine = parsed[0]?.lines.find((line) => line.type === 'delete');
+         const addLine = parsed[0]?.lines.find((line) => line.type === 'add');
+
+         expect(deleteLine?.highlightedContent).toBe('FULL:3:const removedOnly = 10;');
+         expect(addLine?.highlightedContent).toBe('FULL:4:const addedOnly = 20;');
       });
    });
 
