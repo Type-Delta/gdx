@@ -8,6 +8,8 @@ import {
    buildShowArgsForCommit,
    buildShowCommitNavigationPlan,
    buildShowCommitNavigationActions,
+   isGitShowCommitOutput,
+   separateShowPreamble,
 } from '@/modules/show-navigation';
 import * as fs from '@/modules/fs';
 import { createTestEnv } from '@/utils/testHelper';
@@ -69,6 +71,33 @@ describe('show navigation helpers', async () => {
             '',
             'diff --git a/README.md b/README.md',
             'index 1111111..2222222 100644',
+         ].join('\n')
+      );
+   });
+
+   it('should rebuild enhanced show text for commits without a diff body', () => {
+      const diffText = [
+         'commit abc123456789',
+         'Author: Test User <test@example.com>',
+         'Date:   Sat May 16 12:00:00 2026 +0700',
+         '',
+         '    empty commit',
+      ].join('\n');
+
+      expect(isGitShowCommitOutput(diffText)).toBeTrue();
+      expect(separateShowPreamble(diffText)).toEqual({
+         body: '',
+         preamble: diffText.split('\n'),
+      });
+      expect(buildEnhancedShowDiffText(diffText, { relativeRef: 'HEAD~1' })).toBe(
+         [
+            'Commit: abc123456789 (HEAD~1)',
+            'Author: Test User <test@example.com>',
+            'Date:   Sat May 16 12:00:00 2026 +0700',
+            '',
+            '    empty commit',
+            '',
+            '',
          ].join('\n')
       );
    });

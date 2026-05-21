@@ -18,6 +18,7 @@ import {
 } from '@/modules/diff-viewer';
 import {
    buildShowBlobNavigationPlan,
+   isGitShowCommitOutput,
    viewInteractiveShow,
    viewInteractiveShowBlob,
 } from '@/modules/show-navigation';
@@ -236,7 +237,10 @@ export async function dispatch(
 
                try {
                   const result = await $`${ctx.git$} -c color.ui=never show ${showArgs}`;
-                  if (result.stdout && isGitDiffOutput(result.stdout)) {
+                  if (
+                     result.stdout &&
+                     (isGitDiffOutput(result.stdout) || isGitShowCommitOutput(result.stdout))
+                  ) {
                      if (asJson) {
                         const parsed = parseDiffOutput(result.stdout);
                         quickPrint(JSON.stringify(parsed, null, 2));

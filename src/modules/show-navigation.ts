@@ -11,6 +11,7 @@ import type { PagerAction } from './pager';
 import Logger from '@/utils/logger';
 
 const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
+const SHOW_COMMIT_HEADER_LINE_REGEX = /^commit [0-9a-f]{7,40}\b/i;
 const SHOW_PREVIOUS_COMMIT_ACTION = 'previousCommit';
 const SHOW_NEXT_COMMIT_ACTION = 'nextCommit';
 const LEFT_ARROW_KEY = '\x1b[D';
@@ -231,7 +232,7 @@ async function getShowCommitStat(
    ).stdout
       .trimEnd()
       .replace(/(\W)(\++)/g, `$1${SGR.green}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`)
-      .replace(/(-+)/g, `${SGR.red}$1${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
+      .replace(/(\W|\d{1,3}m)(-+)/g, `$1${SGR.red}$2${fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`);
 }
 
 /**
@@ -242,11 +243,23 @@ async function getShowCommitStat(
 export function separateShowPreamble(diffText: string): { body: string; preamble: string[] } {
    const lines = diffText.split('\n');
    const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
-   if (firstDiffIndex === -1) return { body: diffText, preamble: [] };
+   if (firstDiffIndex === -1) {
+      if (isGitShowCommitOutput(diffText)) return { body: '', preamble: lines };
+      return { body: diffText, preamble: [] };
+   }
    return {
       body: lines.slice(firstDiffIndex).join('\n'),
       preamble: lines.slice(0, firstDiffIndex),
    };
+}
+
+/**
+ * Returns true when text looks like commit-oriented `git show` output.
+ * This includes commits without file changes, which have no diff header.
+ * @param text - Raw git-show output.
+ */
+export function isGitShowCommitOutput(text: string): boolean {
+   return text.split('\n').some((line) => SHOW_COMMIT_HEADER_LINE_REGEX.test(line));
 }
 
 /**
@@ -492,7 +505,9 @@ async function viewShowCommit(
       ]);
       spinnerCtrl?.stop();
 
-      if (!diffText || !isGitDiffOutput(diffText)) return undefined;
+      if (!diffText || (!isGitDiffOutput(diffText) && !isGitShowCommitOutput(diffText))) {
+         return undefined;
+      }
 
       return await viewDiff(buildEnhancedShowDiffText(diffText, { relativeRef, stat }), {
          actions: buildShowCommitNavigationActions(adjacentCommits),

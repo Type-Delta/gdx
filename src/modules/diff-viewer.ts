@@ -1633,7 +1633,13 @@ function parseDiffHeader(
 function separatePreamble(diffText: string): { body: string; preamble: string[] } {
    const lines = diffText.split('\n');
    const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
-   if (firstDiffIndex === -1) return { body: diffText, preamble: [] };
+   if (firstDiffIndex === -1) {
+      const hasCommitHeader = lines.some((line) =>
+         /^(?:commit |Commit:\s+)[0-9a-f]{7,40}\b/i.test(line)
+      );
+      if (hasCommitHeader) return { body: '', preamble: lines };
+      return { body: diffText, preamble: [] };
+   }
    return {
       body: lines.slice(firstDiffIndex).join('\n'),
       preamble: lines.slice(0, firstDiffIndex),
