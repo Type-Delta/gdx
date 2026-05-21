@@ -3,6 +3,7 @@ import { estimateStrComplexity, ex_length, maxFraction, strJustify, strWrap } fr
 import Logger from '@/utils/logger';
 import {
    bgRgb,
+   colorMix,
    fgRgb,
    inferAnsiStyles,
    RgbVec,
@@ -91,7 +92,7 @@ export interface PagerRenderer {
 /** Default pager configuration */
 export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'> = {
    showLineNumbers: false,
-   lineNumberWidth: 4,
+   lineNumberWidth: 5,
    wrapLines: true,
    showStatus: true,
    statusFormat: (current, total, termWidth, context) => {
@@ -183,7 +184,7 @@ export function clearTerminalCache(): void {
  */
 export class SimplePagerRenderer implements PagerRenderer {
    private lines: string[] = [];
-   private wrappedLines: string[] = [];
+   private renderedLines: string[] = [];
    private options: Required<PagerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
@@ -198,16 +199,19 @@ export class SimplePagerRenderer implements PagerRenderer {
       this.lines = content.split('\n');
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
-      this.updateWrappedLines();
+      this.updateRenderedLines();
    }
 
-   private updateWrappedLines(): void {
+   private updateRenderedLines(): void {
       const width = this.lastWidth;
+      const gutterRPad = this.options.lineNumberWidth <= 5 ? 1 : 2;
+      const gutterBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
+      const contentBg = bgRgb(this.options.backgroundColor);
       const contentWidth = this.options.showLineNumbers
-         ? width - this.options.lineNumberWidth - 1
+         ? width - this.options.lineNumberWidth
          : width;
 
-      this.wrappedLines = [];
+      this.renderedLines = [];
 
       for (let i = 0; i < this.lines.length; i++) {
          const line = this.lines[i];
@@ -218,37 +222,41 @@ export class SimplePagerRenderer implements PagerRenderer {
                redundancyLv: Math.max(0, this.redundancyLv),
             });
             const splitted = wrapped.split('\n');
-            const gutter = this.options.showLineNumbers ? this.formatLineNumber(i + 1) : '';
+            const gutter = this.options.showLineNumbers ? this.formatLineNumber(i + 1, gutterRPad, gutterBg) : '';
             let lastStyles;
             for (let i = 0; i < splitted.length; i++) {
-               const g = i === 0 ? gutter : ' '.repeat(this.options.lineNumberWidth + 1);
+               const g = i === 0 ? gutter : this.formatLineNumber(-1, gutterRPad, gutterBg);
 
                if (lastStyles) splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
 
-               this.wrappedLines.push(g + splitted[i]);
+               this.renderedLines.push(g + contentBg + splitted[i]);
 
                if (i != splitted.length - 1) lastStyles = inferAnsiStyles(splitted[i]);
             }
          } else {
             if (this.options.showLineNumbers) {
-               this.wrappedLines.push(this.formatLineNumber(i + 1) + line);
+               this.renderedLines.push(this.formatLineNumber(i + 1, gutterRPad, gutterBg) + contentBg + line);
             } else {
-               this.wrappedLines.push(line);
+               this.renderedLines.push(contentBg + line);
             }
          }
       }
    }
 
-   private formatLineNumber(num: number): string {
-      return String(num).padStart(this.options.lineNumberWidth) + ' ';
+   private formatLineNumber(num: number, rPad: number, bg: RgbVec): string {
+      if (num === -1) return bgRgb(bg) + ' '.repeat(this.options.lineNumberWidth);
+      return fgRgb(CATPPUCCIN_VPALETTE.overlay1)
+         + bgRgb(bg)
+         + strJustify(String(num), this.options.lineNumberWidth - rPad, { align: 'right' })
+         + ' '.repeat(rPad);
    }
 
    getLineCount(): number {
-      return this.wrappedLines.length;
+      return this.renderedLines.length;
    }
 
    getLine(index: number): string {
-      return this.wrappedLines[index] || '';
+      return this.renderedLines[index] || '';
    }
 
    render(startLine: number, height: number, width: number): string[] {
@@ -257,8 +265,8 @@ export class SimplePagerRenderer implements PagerRenderer {
 
       for (let i = 0; i < height - 1; i++) {
          const lineIndex = startLine + i;
-         if (lineIndex < this.wrappedLines.length) {
-            const line = this.wrappedLines[lineIndex];
+         if (lineIndex < this.renderedLines.length) {
+            const line = this.renderedLines[lineIndex];
             const stripped = stripAnsiColor(line);
             const padding = Math.max(0, width - ex_length(stripped, this.redundancyLv));
             result.push(`${bgColor}${line}${' '.repeat(padding)}${SGR.reset}`);
@@ -274,7 +282,7 @@ export class SimplePagerRenderer implements PagerRenderer {
       if (width !== this.lastWidth || height !== this.lastHeight) {
          this.lastWidth = width;
          this.lastHeight = height;
-         this.updateWrappedLines();
+         this.updateRenderedLines();
       }
    }
 }

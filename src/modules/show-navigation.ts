@@ -520,7 +520,7 @@ async function viewShowBlob(
 
       return await pager(highlightedContent, {
          showLineNumbers: true,
-         lineNumberWidth: Math.max(4, String(content.split('\n').length).length),
+         lineNumberWidth: Math.max(4, String(content.split('\n').length).length) + 2,
          statusText: `${strLimit(plan.path, 40, 'mid', -1)}@${relativeRef || commit.slice(0, 7)}`,
          actions: buildShowCommitNavigationActions(adjacentCommits),
       });
