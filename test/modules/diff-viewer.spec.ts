@@ -273,7 +273,7 @@ const beta = 3165 + 346;
          const renderer = new DiffViewerRenderer(diffText, {
             git$: ctx.git$,
             highlighting: {
-               useAdditionalContext: true,
+               fullfileHighlight: true,
                oldRevision: oldHash,
                newRevision: newHash,
             },
@@ -292,7 +292,7 @@ const beta = 3165 + 346;
          const cachedRenderer = new DiffViewerRenderer(diffText, {
             git$: ctx.git$,
             highlighting: {
-               useAdditionalContext: true,
+               fullfileHighlight: true,
                oldRevision: oldHash,
                newRevision: newHash,
             },
@@ -311,7 +311,7 @@ const beta = 3165 + 346;
          const renderer = new DiffViewerRenderer(diffText, {
             git$: ctx.git$,
             highlighting: {
-               useAdditionalContext: true,
+               fullfileHighlight: true,
                oldRevision: `${newHash}^`,
                newRevision: newHash,
                maxHunkSize: 10,
@@ -355,7 +355,7 @@ const addedOnly = 20;
          const renderer = new DiffViewerRenderer(diffText, {
             git$: ctx.git$,
             highlighting: {
-               useAdditionalContext: true,
+               fullfileHighlight: true,
                oldRevision: 'HEAD',
                newRevision: WORKING_TREE_REVISION,
             },
@@ -401,7 +401,7 @@ const addedOnly = 20;
          const renderer = new DiffViewerRenderer(diffText, {
             git$: ctx.git$,
             highlighting: {
-               useAdditionalContext: true,
+               fullfileHighlight: true,
                oldRevision: 'HEAD',
                newRevision: INDEX_REVISION,
             },

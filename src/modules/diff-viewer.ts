@@ -70,7 +70,7 @@ export interface DiffViewerOptions extends PagerOptions {
 }
 
 interface DiffHighlightingOptions {
-   useAdditionalContext?: boolean;
+   fullfileHighlight?: boolean;
    maxHunkSize?: number;
    oldRevision?: string;
    newRevision?: string;
@@ -770,7 +770,7 @@ async function highlightDiffWithContext(
 
    try {
       const shiki = await getShiki();
-      if (highlighting.useAdditionalContext && git$) {
+      if (highlighting.fullfileHighlight && git$) {
          const fullFileResults = await Promise.all([
             highlightFullFileSide({
                git$,
@@ -810,7 +810,7 @@ async function highlightDiffWithContext(
       }
 
       logger.debug(
-         `Full-file syntax highlighting is ${highlighting.useAdditionalContext ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`
+         `Full-file syntax highlighting is ${highlighting.fullfileHighlight ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`
       );
       await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
    } catch (e) {
@@ -1070,7 +1070,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          disableSyntaxHighlighting: false,
          git$: undefined,
          highlighting: {
-            useAdditionalContext: true,
+            fullfileHighlight: true,
             maxHunkSize: 200000,
             oldRevision: 'HEAD^',
             newRevision: 'HEAD',
@@ -1079,7 +1079,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          ...options,
       } as Required<DiffViewerOptions>;
       this.options.highlighting = {
-         useAdditionalContext: true,
+         fullfileHighlight: true,
          maxHunkSize: 200000,
          oldRevision: 'HEAD^',
          newRevision: 'HEAD',
@@ -1109,7 +1109,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          return;
       }
 
-      if (this.options.highlighting.useAdditionalContext && !canUseShikiHighlightWorker()) {
+      if (this.options.highlighting.fullfileHighlight && !canUseShikiHighlightWorker()) {
          logger.debug(
             'Worker threads are not available in this environment. All syntax highlighting will run on the main thread, which may cause UI freezes for large diffs.',
          );
@@ -1140,7 +1140,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          highlightPromises.push(prom);
       }
 
-      if (this.options.highlighting.useAdditionalContext && spinnerCtrl) {
+      if (this.options.highlighting.fullfileHighlight && spinnerCtrl) {
          spinnerCtrl.options.progress = {
             current: 0,
             total: highlightPromises.length * 2, // Two sides per diff
@@ -1620,7 +1620,7 @@ export async function viewDiff(
    const { body: diffBody, preamble: preambleLines } = separatePreamble(diffText);
    const config = await getConfig();
    const highlightingConfig = {
-      useAdditionalContext: config.get<boolean>('viewer.highlighting.useAdditionalContext', true),
+      fullfileHighlight: config.get<boolean>('viewer.highlighting.fullfileHighlight', true),
       maxHunkSize: config.get<number>('viewer.highlighting.maxHunkSize', 200000),
       ...options.highlighting,
    };

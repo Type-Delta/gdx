@@ -55,7 +55,7 @@ export const GdxConfigSchema = t.Object({
       t.Object({
          highlighting: t.Optional(
             t.Object({
-               useAdditionalContext: t.Optional(t.Boolean()),
+               fullfileHighlight: t.Optional(t.Boolean()),
                maxHunkSize: t.Optional(t.Integer({ minimum: 1 })),
             })
          ),
@@ -126,7 +126,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    },
    viewer: {
       highlighting: {
-         useAdditionalContext: true,
+         fullfileHighlight: true,
          maxHunkSize: 200000,
       },
       exitBehavior: 'nextLine',
@@ -159,7 +159,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
    'parallel.init': 'GDX_PARALLEL_INIT',
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
-   'viewer.highlighting.useAdditionalContext': 'GDX_VIEWER_HIGHLIGHTING_USE_ADDITIONAL_CONTEXT',
+   'viewer.highlighting.fullfileHighlight': 'GDX_VIEWER_HIGHLIGHTING_FULLFILE_HIGHLIGHT',
    'viewer.highlighting.maxHunkSize': 'GDX_VIEWER_HIGHLIGHTING_MAX_HUNK_SIZE',
    'viewer.exitBehavior': 'GDX_VIEWER_EXIT_BEHAVIOR',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
@@ -202,10 +202,10 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       'Colon-separated list of .gitignore patterns for env files to copy into new forks',
    viewer: 'Configuration for enhanced terminal viewers',
    'viewer.highlighting': 'Configuration for syntax highlighting in enhanced viewers',
-   'viewer.highlighting.useAdditionalContext':
-      'Highlight diffs by loading full old/new file contents from git object history when commit refs are available',
+   'viewer.highlighting.fullfileHighlight':
+      'Highlight diffs by loading full old/new file contents from git or FS when possible (disable for files exceeding viewer.highlighting.maxHunkSize)',
    'viewer.highlighting.maxHunkSize':
-      'Maximum full file size in characters to syntax-highlight when additional context is enabled',
+      'Maximum full file size in characters that are allowed for fullfileHighlight to be applied',
    'viewer.exitBehavior':
       "Behavior when exiting the pager ('nextLine' keeps content in scroll buffer, 'clearScreen' removes pager content from scroll buffer, and 'none' leaves the content and cursor position unchanged)",
    defaultEditor: 'Default code editor to open files with',
