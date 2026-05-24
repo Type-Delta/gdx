@@ -1,5 +1,28 @@
 # Changelog
 
+## Version 0.4.5 - 2026-05-24
+
+### Added
+
+- Better spinner feedback for text highlighting
+- Configurable pager exit behavior with options for clearing the screen or leaving content in the scroll buffer.
+- Added CPU info to doctor command
+- `gdx diff` now supports full-file highlighting using content from FS or Git index
+
+### Changed
+
+- Bumped dependencies to latest versions.
+
+### Fixed
+
+- Fix pager abruptly exits when navigating to an empty commit, from `gdx show` command.
+- Fix pager leaving extra newline character on cleanup
+- Fix diff viewer not properly handling CRLF line endings causing miscalculation of line wrapping and display issues.
+- Fix misaligned help text
+- Syntax highlighting on Worker thread issues:
+   - Module import failures in eval workers on compiled binary with Bun runtime fixed by avoiding worker path and run highlighting on main thread as fallback.
+   - Syntax highlighting is silently disabled in Node.js runtime due to ansis library shikijs relies on stop outputting color codes when it detects it's not running in a TTY context, which is the case for workers.
+
 ## Version 0.4.4 - 2026-05-20
 
 ### Added
