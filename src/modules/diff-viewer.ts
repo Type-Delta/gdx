@@ -55,6 +55,10 @@ const STYLES = {
    dim: (str: string) => `\x1b[2m${str}\x1b[22m`,
 };
 
+function normalizeDiffLineEndings(diffText: string): string {
+   return diffText.replace(/\r/g, '');
+}
+
 /** Options for the diff viewer */
 export interface DiffViewerOptions extends PagerOptions {
    theme?: string;
@@ -638,7 +642,7 @@ export async function printCommitMessageDiff(oldText: string, newText: string): 
  */
 export function parseDiffOutput(diffText: string): ParsedDiff[] {
    const results: ParsedDiff[] = [];
-   const lines = diffText.split('\n');
+   const lines = normalizeDiffLineEndings(diffText).split('\n');
    let currentDiff: ParsedDiff | null = null;
    let oldLineNum = 0;
    let newLineNum = 0;
@@ -1054,6 +1058,7 @@ export class DiffViewerRenderer implements PagerRenderer {
    );
 
    constructor(diffText: string, options: DiffViewerOptions = {}) {
+      diffText = normalizeDiffLineEndings(diffText);
       this.options = {
          ...PAGER_DEFAULT_OPTIONS,
          showLineNumbers: true,
@@ -1598,6 +1603,8 @@ export async function viewDiff(
    diffText: string,
    options: DiffViewerOptions = {}
 ): Promise<PagerActionResult | void> {
+   diffText = normalizeDiffLineEndings(diffText);
+
    if (!canUseDiffViewer()) {
       logger.warn(
          'Diff viewer is not supported in this environment. Falling back to plain output.',
@@ -1665,7 +1672,7 @@ function parseDiffHeader(
 }
 
 function separatePreamble(diffText: string): { body: string; preamble: string[] } {
-   const lines = diffText.split('\n');
+   const lines = normalizeDiffLineEndings(diffText).split('\n');
    const firstDiffIndex = lines.findIndex((line) => DIFF_HEADER_LINE_REGEX.test(line));
    if (firstDiffIndex === -1) {
       const hasCommitHeader = lines.some((line) =>

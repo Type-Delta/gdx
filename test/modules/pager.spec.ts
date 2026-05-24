@@ -14,21 +14,21 @@ describe('pager module', async () => {
       const renderer = new SimplePagerRenderer(content);
 
       expect(renderer.getLineCount()).toBe(3);
-      expect(renderer.getLine(0)).toBe('line1');
-      expect(renderer.getLine(1)).toBe('line2');
-      expect(renderer.getLine(2)).toBe('line3');
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('line1');
+      expect(stripAnsiColor(renderer.getLine(1))).toBe('line2');
+      expect(stripAnsiColor(renderer.getLine(2))).toBe('line3');
    });
 
    it('should handle empty content', () => {
       const renderer = new SimplePagerRenderer('');
       expect(renderer.getLineCount()).toBe(1);
-      expect(renderer.getLine(0)).toBe('');
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('');
    });
 
    it('should handle single line content', () => {
       const renderer = new SimplePagerRenderer('single line');
       expect(renderer.getLineCount()).toBe(1);
-      expect(renderer.getLine(0)).toBe('single line');
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('single line');
    });
 
    it('should show line numbers when enabled', () => {

@@ -512,6 +512,27 @@ const addedOnly = 20;
          expect(stripAnsiColor(addLine || '').length).toBe(40);
       });
 
+      it('should strip CRLF carriage returns before rendering diff lines', () => {
+         const diffText = [
+            'diff --git a/test.md b/test.md',
+            '--- a/test.md',
+            '+++ b/test.md',
+            '@@ -1,1 +1,1 @@',
+            '-old value',
+            '+new value',
+         ].join('\r\n');
+
+         const renderer = new DiffViewerRenderer(diffText, { wrapLines: true });
+         renderer.onResize(40, 20);
+
+         const rendered = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         ).join('\n');
+
+         expect(rendered).not.toContain('\r');
+         expect(stripAnsiColor(rendered)).toContain('+ new value');
+      });
+
       it('should keep deleted line content when line numbers overlap', async () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts

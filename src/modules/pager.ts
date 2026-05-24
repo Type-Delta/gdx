@@ -414,7 +414,6 @@ export async function pagerWithRenderer(
       }
 
       process.stdin.setRawMode(false);
-      process.stdin.pause();
       Logger.logLevel = originalLogLevel;
       Logger.debug(
          `Pager performance: ${performanceSamples.length > 0 ? maxFraction(performanceSamples.reduce((a, b) => a + b, 0) / performanceSamples.length, 4) : 'N/A'}ms average over ${performanceSamples.length} renders`,
