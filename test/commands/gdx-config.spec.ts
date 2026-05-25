@@ -65,7 +65,7 @@ describe('gdx gdx-config', async () => {
          'invalid-value',
       ]);
       expect(await gdxConfig(invalidCtx)).toBe(1);
-      expect(buffer.stderr).toContain('Expected one of off, internal, all');
+      expect(buffer.stderr).toContain("Expected one of 'off', 'internal', 'all'");
    });
 
    it('should set experimental useInlineGitConfig value', async () => {
@@ -84,7 +84,7 @@ describe('gdx gdx-config', async () => {
          'invalid-value',
       ]);
       expect(await gdxConfig(invalidCtx)).toBe(1);
-      expect(buffer.stderr).toContain('Expected one of off, internal');
+      expect(buffer.stderr).toContain("Expected one of 'off', 'internal'");
    });
 
    it('should set and get commit.noisyFiles as string array', async () => {

@@ -477,6 +477,33 @@ const addedOnly = 20;
          expect(lines.length).toBe(5);
       });
 
+      it('should update line numbers while active', () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1 +1 @@
+-old
++new`;
+
+         const renderer = new DiffViewerRenderer(diffText);
+         const numberedLine = stripAnsiColor(
+            Array.from({ length: renderer.getLineCount() }, (_, i) => renderer.getLine(i)).find(
+               (line) => line.includes('old')
+            ) || ''
+         );
+
+         expect(numberedLine).toMatch(/^\s+1 - old/);
+
+         renderer.updateOptions({ showLineNumbers: false });
+         const copyModeLine = stripAnsiColor(
+            Array.from({ length: renderer.getLineCount() }, (_, i) => renderer.getLine(i)).find(
+               (line) => line.includes('old')
+            ) || ''
+         );
+
+         expect(copyModeLine).toStartWith('old');
+      });
+
       it('should not add trailing ghost content for fullwidth', () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts

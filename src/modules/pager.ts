@@ -30,6 +30,7 @@ export interface PagerAction {
 export interface PagerStatusContext {
    statusText?: string | (() => string);
    actions?: PagerAction[];
+   copyModeAvailable?: boolean;
    redundancyLv?: number;
 }
 
@@ -87,6 +88,8 @@ export interface PagerRenderer {
    render: (startLine: number, height: number, width: number) => string[];
    /** Called when terminal is resized */
    onResize?: (width: number, height: number) => void;
+   /** Updates renderer options that can change while the pager is active */
+   updateOptions?: (options: Partial<PagerOptions>) => void;
 }
 
 /** Default pager configuration */
@@ -112,9 +115,18 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
             .filter(Boolean)
             .join(`${SGR.dim},${SGR.normal} `)
          : '';
-      const navHint = actionHint
-         ? `${SGR.bright + cyan}↑ ↓ b n${white + SGR.normal} navigate${SGR.dim},${SGR.normal} ${SGR.bright + cyan}q${white + SGR.normal} quit${SGR.dim},${SGR.normal}`
-         : `${SGR.bright + cyan}↑ ↓ b n Home End${white + SGR.normal} to navigate${SGR.dim},${SGR.normal} ${SGR.bright + cyan}q${white + SGR.normal} quit`;
+      const navHintParts = [
+         actionHint
+            ? `${SGR.bright + cyan}↑ ↓ b n${white + SGR.normal} navigate`
+            : `${SGR.bright + cyan}↑ ↓ b n Home End${white + SGR.normal} to navigate`,
+      ];
+      if (context?.copyModeAvailable) {
+         navHintParts.push(`${SGR.bright + cyan}c${white + SGR.normal} copy mode`);
+      }
+      navHintParts.push(`${SGR.bright + cyan}q${white + SGR.normal} quit`);
+      const navHint =
+         navHintParts.join(`${SGR.dim},${SGR.normal} `) +
+         (actionHint ? `${SGR.dim},${SGR.normal}` : '');
 
       const leftParts = [statusText, navHint, actionHint].filter(Boolean).join(' ');
 
@@ -285,6 +297,14 @@ export class SimplePagerRenderer implements PagerRenderer {
          this.updateRenderedLines();
       }
    }
+
+   updateOptions(options: Partial<PagerOptions>): void {
+      this.options = {
+         ...this.options,
+         ...options,
+      };
+      this.updateRenderedLines();
+   }
 }
 
 /**
@@ -339,9 +359,10 @@ export async function pagerWithRenderer(
    process.stdin.setEncoding('utf-8');
 
    let currentLine = 0;
-   const totalLines = renderer.getLineCount();
+   let totalLines = renderer.getLineCount();
    let isRunning = true;
    let actionResult: PagerActionResult | null = null;
+   const canUseCopyMode = opts.showLineNumbers;
    const performanceSamples: number[] = [];
 
    // Hide cursor and clear screen
@@ -372,6 +393,7 @@ export async function pagerWithRenderer(
          const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
             statusText: opts.statusText,
             actions: opts.actions,
+            copyModeAvailable: canUseCopyMode,
             redundancyLv: resolvedRedundancy,
          });
          const padding = Math.max(
@@ -431,6 +453,7 @@ export async function pagerWithRenderer(
 
       if (renderer.onResize) {
          renderer.onResize(newWidth, newHeight);
+         totalLines = renderer.getLineCount();
       }
 
       render();
@@ -444,6 +467,18 @@ export async function pagerWithRenderer(
       const currentHeight = getTerminalHeight();
       const visibleCount = currentHeight - 1;
       const maxLine = Math.max(0, renderer.getLineCount() - visibleCount);
+
+      if (key === 'c' && renderer.updateOptions) {
+         if (canUseCopyMode) {
+            opts.showLineNumbers = !opts.showLineNumbers;
+            renderer.updateOptions({ showLineNumbers: opts.showLineNumbers });
+            totalLines = renderer.getLineCount();
+            const updatedMaxLine = Math.max(0, totalLines - visibleCount);
+            currentLine = Math.min(currentLine, updatedMaxLine);
+            render();
+         }
+         return;
+      }
 
       const actionBindings = opts.actions || [];
       if (actionBindings.length > 0) {

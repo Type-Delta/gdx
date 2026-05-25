@@ -43,6 +43,19 @@ describe('pager module', async () => {
       expect(renderer.getLine(2)).toContain('3');
    });
 
+   it('should update line numbers while active', () => {
+      const renderer = new SimplePagerRenderer('line1\nline2', {
+         showLineNumbers: true,
+         lineNumberWidth: 4,
+      });
+
+      expect(stripAnsiColor(renderer.getLine(0))).toStartWith('  1');
+
+      renderer.updateOptions({ showLineNumbers: false });
+
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('line1');
+   });
+
    it('should render correct number of lines', () => {
       const content = 'line1\nline2\nline3\nline4\nline5';
       const renderer = new SimplePagerRenderer(content);

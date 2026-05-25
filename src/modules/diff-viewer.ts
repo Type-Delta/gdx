@@ -1295,7 +1295,8 @@ export class DiffViewerRenderer implements PagerRenderer {
    private renderLine(line: DiffLine, width: number, blockBg: RgbVec): string[] {
       const rendered: string[] = [];
       const lineNumWidth = this.options.lineNumberWidth;
-      const contentWidth = width - lineNumWidth - 4;
+      const gutterWidth = this.options.showLineNumbers ? lineNumWidth + 3 : 0;
+      const contentWidth = width - gutterWidth;
 
       let sign = ' ';
       let bgCode: RgbVec = blockBg;
@@ -1346,8 +1347,10 @@ export class DiffViewerRenderer implements PagerRenderer {
       const lineNum = line.newLineNum ?? line.oldLineNum;
       const lineNumStr =
          lineNum !== undefined ? String(lineNum).padStart(lineNumWidth) : ' '.repeat(lineNumWidth);
-      const gutter = `${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `;
-      const blankGutter = ' '.repeat(lineNumWidth + 3);
+      const gutter = this.options.showLineNumbers
+         ? `${fgRgb(CATPPUCCIN_VPALETTE.overlay1)}${lineNumStr} ${fgRgb(signColor)}${sign} `
+         : fgRgb(signColor);
+      const blankGutter = ' '.repeat(gutterWidth);
 
       if (
          this.options.wrapLines &&
@@ -1597,6 +1600,14 @@ export class DiffViewerRenderer implements PagerRenderer {
          this.updateRenderedLines();
       }
    }
+
+   updateOptions(options: Partial<PagerOptions>): void {
+      this.options = {
+         ...this.options,
+         ...options,
+      };
+      this.updateRenderedLines();
+   }
 }
 
 export async function viewDiff(
@@ -1637,7 +1648,10 @@ export async function viewDiff(
    spinnerCtrl.stop();
    logger.timeEnd('Preparing diff highlighting');
 
-   return pagerWithRenderer(renderer, options);
+   return pagerWithRenderer(renderer, {
+      ...options,
+      showLineNumbers: true,
+   });
 }
 
 /**
