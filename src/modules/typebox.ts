@@ -112,7 +112,7 @@ export function validateConfigValue(keyPath: string, value: unknown): ConfigVali
    if (allowed.length > 0) {
       return {
          valid: false,
-         message: `Expected one of ${allowed.join(', ')} for '${keyPath}', got '${String(value)}'.`,
+         message: `Expected one of ${allowed.map((v) => `'${v}'`).join(', ')} for '${keyPath}', got '${String(value)}'.`,
       };
    }
 

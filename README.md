@@ -17,7 +17,7 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 
 **Why gdx?**
 
-- **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`?, `git reset HEAD~3`? why not `gdx res ~3`?
+- **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`, `git reset HEAD~3`? why not `gdx res ~3`
 - **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
 - **✨ Enhanced Output:** Git's output is... functional. `gdx` makes it beautiful and easier for _humans_ to digest.
 - **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes, working with worktrees, or submodules.
