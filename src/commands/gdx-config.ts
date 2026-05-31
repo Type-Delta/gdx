@@ -17,6 +17,7 @@ async function listConfig(): Promise<number> {
 
    const flatDefaults = flattenConfig(DEFAULT_CONFIG);
    const currentSection: string[] = [];
+   const noSection: string[] = [];
    let listStr = '';
 
    quickPrint(
@@ -91,11 +92,11 @@ async function listConfig(): Promise<number> {
          ? `${SGR.dim}# ${SGR.cyan + fieldName + SGR.white} = ${displayValue}${comment}${SGR.reset}\n`
          : `${SGR.cyan + fieldName + SGR.reset} = ${displayValue}${comment}\n`;
 
-      if (currentSection[currentSection.length - 1] === '') listStr = pairStr + '\n' + listStr;
+      if (currentSection[currentSection.length - 1] === '') noSection.push(pairStr);
       else listStr += pairStr;
    }
 
-   quickPrint(listStr, '');
+   quickPrint((noSection.length ? noSection.join('') + '\n' : '') + listStr, '');
    return 0;
 }
 
@@ -150,11 +151,43 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
    return 0;
 }
 
+async function unsetConfigValue(ctx: GdxContext): Promise<number> {
+   const config = await getConfig();
+   const args = ctx.args.slice(1);
+   args.popOption('--unset');
+   args.popOption('-u');
+   const key = args[0];
+
+   if (!key || args.length !== 1) {
+      Logger.error('Usage: gdx gdx-config --unset <key>', 'gdx-config');
+      return 1;
+   }
+
+   const didReset = await config.reset(key);
+   if (!didReset) {
+      Logger.error(`Unknown configuration key '${key}'.`, 'gdx-config');
+      return 1;
+   }
+
+   await config.save();
+
+   const defaultValue = config.get(key);
+   const displayValue = key.toLowerCase().includes('key')
+      ? strClamp(String(defaultValue), 20, 'mid', -1)
+      : defaultValue;
+
+   quickPrint(`${SGR.green}Configuration reset to default: ${key} = ${displayValue}${SGR.reset}`);
+   return 0;
+}
+
 export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
    const { match: subcommand } = progressiveMatch(inputCommand, ['list', 'path']);
+   const hasUnset = ctx.args.hasOption('--unset', 1) || ctx.args.hasOption('-u', 1);
 
-   if (subcommand === 'list' || !inputCommand) {
+   if (hasUnset) {
+      return await unsetConfigValue(ctx);
+   } else if (subcommand === 'list' || !inputCommand) {
       return await listConfig();
    } else if (subcommand === 'path') {
       const config = await getConfig();
@@ -173,7 +206,8 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
             gdx gdx-config list           - List all configuration
             gdx gdx-config path           - Show config file path
             gdx gdx-config <key>          - Get configuration value
-            gdx gdx-config <key> <value>  - Set configuration value`
+            gdx gdx-config <key> <value>  - Set configuration value
+            gdx gdx-config --unset <key>  - Reset configuration value to default`
          )
       );
       return 0;
@@ -188,12 +222,13 @@ export const help = {
          View and modify gdx configuration.
 
          ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting/setting individual keys. API keys and sensitive values are masked when displayed.
+         Manage gdx settings stored in the configuration file. The command supports listing all config values, getting the path to the currently loaded config file, and getting, setting, or resetting individual keys. API keys and sensitive values are masked when displayed.
 
          ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Prints flattened configuration with defaults and modified markers.
          - path: Prints the path to the active config file used by gdx.
          - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
+         - --unset, -u <key>: Reset a config key to its default value.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -210,10 +245,13 @@ export const help = {
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config path${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.dim}<key> [value]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config --unset ${SGR.dim}<key>${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config -u ${SGR.dim}<key>${SGR.reset}
 
          Examples:
             ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
-            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config editor.code true ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config defaultEditor code ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config --unset defaultEditor ${SGR.reset + SGR.dim}# Reset a key to default${SGR.reset}
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -226,7 +264,7 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['list', 'path'],
+   $root: ['list', 'path', '--unset', '-u'],
 } as const satisfies CommandStructure;
 
 /**

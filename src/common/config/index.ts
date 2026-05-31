@@ -193,6 +193,45 @@ export class ConfigService {
    }
 
    /**
+    * Resets a configuration value by path to its default value.
+    * @param keyPath - Dot-notation config key.
+    * @returns True when the key is known and was reset.
+    */
+   async reset(keyPath: string): Promise<boolean> {
+      if (!getConfigValueSchema(keyPath)) {
+         return false;
+      }
+
+      const keys = keyPath.split('.');
+      let defaultValue: any = DEFAULT_CONFIG;
+      let target: any = this.config;
+
+      for (let i = 0; i < keys.length; i++) {
+         const key = keys[i];
+
+         if (defaultValue && typeof defaultValue === 'object' && key in defaultValue) {
+            defaultValue = defaultValue[key];
+         } else {
+            defaultValue = undefined;
+         }
+
+         if (i < keys.length - 1) {
+            if (!(key in target) || typeof target[key] !== 'object') {
+               target[key] = {};
+            }
+            target = target[key];
+         }
+      }
+
+      if (SECURE_CONF_KEYS.includes(keyPath)) {
+         await this.deleteSecureKey(keyPath);
+      }
+
+      target[keys[keys.length - 1]] = structuredClone(defaultValue);
+      return true;
+   }
+
+   /**
     * Gets the entire configuration object.
     */
    getAll(): Readonly<GdxConfig> {
