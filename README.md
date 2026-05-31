@@ -230,7 +230,7 @@ gdx cmi auto --no-commit --copy
 # You can also configure which LLM to use with `gdx-config`
 ```
 
-Unlike most AI commit message generators, by default `gdx` creates messages generation guidelines and instructions based on your repo's history and conventions.
+Unlike most AI commit message generators, by default `gdx` creates messages generation guidelines based on your repo's history and conventions.
 This ensures the generated messages fit your project's style and tone.
 Said guidelines are updated every month to reflect your evolving commit style.
 
@@ -253,7 +253,7 @@ Tools to help you feel productive without leaving the terminal.
 | Command           | Expansion / Function                                                                         |
 | :---------------- | :------------------------------------------------------------------------------------------- |
 | `s`, `stat`       | `git status` (use `-r` recursively run "status" on all submodules)                           |
-| `lg`, `lo`        | `git log --oneline --graph --all --decorate`                                                 |
+| `lg`              | `git log --oneline --graph --all --decorate`                                                 |
 | `sw`, `swit`      | `git switch`                                                                                 |
 | `br`, `bra`       | `git branch`                                                                                 |
 | `ps`              | `git push` with option expansion `-fl`=`--force-with-lease`                                  |
@@ -284,7 +284,7 @@ _Run `gdx ghelp` to see the full list of expansions/commands._
 | Command                           | Expansion / Function                                                                                 |
 | :-------------------------------- | :--------------------------------------------------------------------------------------------------- |
 | `tag mv`, `tag move`              | Move a tag to a new commit (supports ref expansion)                                                  |
-| `lg export`                       | Export git log to a markdown file with enhanced formatting                                           |
+| `log export`                      | Export git log to a markdown file with enhanced formatting                                           |
 | `commit auto`                     | Generate commit messages with AI based on staged changes (supports `--no-commit` and `--copy` flags) |
 | `stash drop`                      | Drop stashes with advanced options (e.g., `drop 2..6`)                                               |
 | `stash drop pardon`               | Restore the last dropped stash                                                                       |

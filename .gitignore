@@ -5,6 +5,7 @@ test/env/
 dist/
 bin/
 
+.config/
 .DS_Store
 package-lock.json
 bun.lockb
