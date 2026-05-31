@@ -49,7 +49,7 @@ export async function switchSubmodule(ctx: GdxContext): Promise<number> {
       .replace(/\/+$/, '');
 
    if (normalizedTarget === 'main') {
-      await scheduleChangeDir(mainRoot);
+      scheduleChangeDir(mainRoot);
       return 0;
    }
 
@@ -110,7 +110,7 @@ export async function switchSubmodule(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   await scheduleChangeDir(destination);
+   scheduleChangeDir(destination);
    return 0;
 }
 

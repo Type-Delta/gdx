@@ -1,11 +1,12 @@
 import { beforeAll, describe, expect } from 'bun:test';
-import * as fs from '@/modules/fs';
 import path from 'path';
 
+import * as fs from '@/modules/fs';
 import status from '@/commands/status';
 import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
 import { addSubmodule } from '@/modules/git';
+import { whichExec } from '@/modules/shell';
 
 describe('gdx status', async () => {
    const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({
@@ -17,8 +18,7 @@ describe('gdx status', async () => {
 
    beforeAll(async () => {
       // Allow file:// protocol for local submodule testing
-      const gitPath = (await import('@/modules/shell')).whichExec;
-      const git = await gitPath('git');
+      const git = await whichExec('git');
       if (!git) throw new Error('Git not found');
 
       try {
@@ -47,8 +47,7 @@ describe('gdx status', async () => {
          fs.mkdirSync(submoduleDir, { recursive: true });
 
          // Initialize submodule as a git repo
-         const gitPath = (await import('@/modules/shell')).whichExec;
-         const git = await gitPath('git');
+         const git = await whichExec('git');
          if (!git) throw new Error('Git not found');
 
          await $({ cwd: submoduleDir })`${git} init`;
@@ -153,8 +152,7 @@ describe('gdx status', async () => {
       const freshDir = path.join(tmpRootDir, 'fresh');
       fs.mkdirSync(freshDir, { recursive: true });
 
-      const gitPath = (await import('@/modules/shell')).whichExec;
-      const git = await gitPath('git');
+      const git = await whichExec('git');
       if (!git) throw new Error('Git not found');
 
       await $({ cwd: freshDir })`${git} init`;

@@ -4,22 +4,10 @@ import { OPENROUTER_API_BASE } from '@/consts';
 import { getConfig } from '../../config';
 import { OpenAIAdapter } from './openai';
 import { LLMProvider } from './types';
-import { MockLLMAdapter } from './mock';
 
 export async function getLLMProvider(): Promise<LLMProvider> {
    const config = await getConfig();
    let providerType = config.get<string>('llm.provider') || 'openai';
-
-   if (process.env.NODE_ENV === 'test' || providerType === 'mock') {
-      return new MockLLMAdapter(
-         providerType === 'mock'
-            ? {
-               responseDelayMs: 2300,
-               streamDelayMs: 10,
-            }
-            : {}
-      );
-   }
 
    const apiKey = await config.getSecure<string>('llm.apiKey');
    const model = config.get<string>('llm.model');

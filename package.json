@@ -60,6 +60,7 @@
     "@sinclair/typebox": "^0.34.49",
     "@types/chai": "^5.2.3",
     "@types/ini": "^4.1.1",
+    "@types/which": "^3.0.4",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "bun-types": "latest",
@@ -75,7 +76,8 @@
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
-    "unicode-animations": "^1.0.3"
+    "unicode-animations": "^1.0.3",
+    "which": "2.0.2"
   },
   "dependencies": {
     "@shikijs/cli": "^4.1.0",

@@ -1,20 +1,18 @@
+import { createInterface } from 'readline';
+import _whichLib from 'which';
 import { execa, ExecaMethod, Options, ExecaError } from 'execa';
 import type { MinimalVerboseObject } from '@node/execa/types/verbose';
-import path from 'path';
-import { createInterface } from 'readline';
 
 import { CheckCache, Err, MathKit, ncc, yuString } from '@lib/Tools';
 
-import { isExecutable, noop } from '../utils/utilities';
 import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
 import global from '@/global';
-import { writeFile } from 'fs/promises';
-import { unlink } from 'fs/promises';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
+import { unlinkSync, writeFileSync } from './fs';
 
 export interface SpinnerController {
    /**
@@ -153,72 +151,15 @@ export async function $prompt(question: string): Promise<string> {
 }
 
 /**
- * Finds the full path of a given executable command, similar to `Bun.which()`.
+ * Finds the full path of a given executable command, using a cached lookup to optimize repeated calls. If the command is not found, returns `null`.
  *
- * Searches in the following order:
- * 1. Direct path (if `cmd` contains separators).
- * 2. Current working directory.
- * 3. Directory of the executing script.
- * 4. Directory of the Node.js executable.
- * 5. System PATH.
- *
- * On Windows, it also checks extensions defined in `PATHEXT`.
+ * This is a wrapper around the `which` library that adds caching functionality.
  *
  * @param cmd - The command or executable name to find.
  * @returns A promise that resolves to the full path of the executable, or `null` if not found.
  */
 export async function whichExec(cmd: string): Promise<string | null> {
-   return await getWhichExecCached(cmd, async () => {
-      const isWindows = process.platform === 'win32';
-
-      // If the command contains a path separator, check it directly
-      if (cmd.includes('/') || (isWindows && cmd.includes('\\'))) {
-         const resolved = path.resolve(cmd);
-         return (await isExecutable(resolved)) ? resolved : null;
-      }
-
-      let extensions: string[] = [''];
-
-      if (isWindows) {
-         // On Windows, try extensions from PATHEXT
-         const pathExt = process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH';
-         const systemExts = pathExt.split(';').filter(Boolean);
-
-         // If cmd has an extension, try it first (empty string), then others if needed
-         // But usually if it has an extension we might just want to check that.
-         // However, to be safe and mimic robust behavior, we can try appending extensions too
-         // unless it matches one of the executable extensions.
-         extensions = ['', ...systemExts];
-      }
-
-      const searchPaths: string[] = [];
-      searchPaths.push(process.cwd());
-
-      if (process.argv[1]) {
-         searchPaths.push(path.dirname(process.argv[1]));
-      }
-
-      searchPaths.push(path.dirname(process.execPath));
-
-      if (process.env.PATH) {
-         searchPaths.push(...process.env.PATH.split(path.delimiter));
-      }
-
-      // Filter unique paths to avoid redundant checks
-      const uniquePaths = [...new Set(searchPaths)];
-
-      for (const dir of uniquePaths) {
-         if (!dir) continue;
-         for (const ext of extensions) {
-            const fullPath = path.join(dir, cmd + ext);
-            if (await isExecutable(fullPath)) {
-               return fullPath;
-            }
-         }
-      }
-
-      return null;
-   });
+   return await getWhichExecCached(cmd, async () => _whichLib(cmd, { nothrow: true }));
 }
 
 /**
@@ -448,14 +389,14 @@ export async function openInEditor(filePath: string, editorCommand?: string): Pr
  *
  * @param targetDir - The target directory to change to. If undefined, no change is scheduled and will reset the already scheduled change.
  */
-export async function scheduleChangeDir(targetDir?: string): Promise<void> {
+export function scheduleChangeDir(targetDir?: string): void {
    if (!targetDir) {
-      if (GDX_RESULT_FILE) await unlink(GDX_RESULT_FILE).catch(noop);
+      if (GDX_RESULT_FILE) unlinkSync(GDX_RESULT_FILE);
       global.exitCodeOverride = -1;
       return;
    }
 
-   if (GDX_RESULT_FILE) await writeFile(GDX_RESULT_FILE, targetDir, 'utf-8');
+   if (GDX_RESULT_FILE) writeFileSync(GDX_RESULT_FILE, targetDir, 'utf-8');
    global.exitCodeOverride = GDX_SIGNAL_CODE;
 }
 

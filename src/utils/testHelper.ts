@@ -16,6 +16,7 @@ import global from '../global';
 import { noop, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
 import { stripAnsiColor } from '@/modules/graphics';
+import { MockLLMAdapter } from '@/common/adapters/llm/mock';
 
 let testEnvCleared = false;
 let gitExePath: string | null = null;
@@ -358,6 +359,17 @@ function overrideModules(
    overwrites?: TestEnvOptions['overwrites']
 ): TestEnvTracker {
    mock.clearAllMocks();
+   mock.module('@/common/adapters/llm/index', () => ({
+      getLLMProvider: () => {
+         return new MockLLMAdapter(
+            {
+               responseDelayMs: 2300,
+               streamDelayMs: 10,
+            }
+         )
+      }
+   }));
+
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
@@ -418,7 +430,7 @@ function overrideModules(
             } satisfies SpinnerController;
          },
          isTTY: () => envController.isTTY,
-         scheduleChangeDir: async (targetDir?: string) => {
+         scheduleChangeDir: (targetDir?: string) => {
             if (targetDir) tracker.scheduledDirs.push(targetDir);
          },
       };

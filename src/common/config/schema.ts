@@ -5,7 +5,7 @@ import { DEFAULT_CACHE_MAX_AGE } from '@/consts';
 export const GdxConfigSchema = t.Object({
    llm: t.Optional(
       t.Object({
-         provider: t.Optional(t.String()),
+         provider: t.Optional(t.Union([t.Literal('openai'), t.Literal('openrouter')])),
          apiKey: t.Optional(t.String()),
          baseUrl: t.Optional(t.String()),
          model: t.Optional(t.String()),
@@ -172,7 +172,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
 // Configuration field descriptions
 export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    llm: 'Configuration for the Language Model (LLM) integration',
-   'llm.provider': 'LLM provider to use (e.g., openai)',
+   'llm.provider': 'LLM provider to use (openai, openrouter)',
    'llm.apiKey': 'API key for the LLM provider',
    'llm.baseUrl': 'Base URL for the LLM API (optional)',
    'llm.model': 'Model to use for LLM requests',

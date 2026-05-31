@@ -1070,7 +1070,7 @@ async function cmdOpen(git$: string | string[], args: ArgsSet, changeDir = false
       }
    }
 
-   if (changeDir) await scheduleChangeDir(destination);
+   if (changeDir) scheduleChangeDir(destination);
    else await openInEditor(destination);
    return 0;
 }
