@@ -424,6 +424,9 @@ export async function dispatch(
             return cmd.graph(ctx);
          case 'stats':
             return cmd.stats(ctx);
+         case 'switch':
+            expandRelativeRef(args, ctx.git$, 1);
+            break;
          case 'clear':
             return cmd.clear(ctx);
          case 'cache':
