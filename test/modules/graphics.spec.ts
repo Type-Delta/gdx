@@ -53,6 +53,18 @@ describe('graphics module', async () => {
          expect(result).toEqual(expected);
       });
 
+      it('should infer ANSI styles from a string (8-bit)', () => {
+         const input = `\x1b[38;5;196mSome red \x1b[48;5;22mwith green background`;
+
+         const expected: ReturnType<typeof inferAnsiStyles> = {
+            fg: 196,
+            bg: 22,
+         };
+
+         const result = inferAnsiStyles(input);
+         expect(result).toEqual(expected);
+      });
+
       it('should infer ANSI styles from a string (24-bit complex)', () => {
          const input = `\u001b[48;2;29;29;43m\u001b[38;2;127;132;156m ${ncc('Italic')}4547 \u001b[38;2;147;153;178m  \u001b[48;2;30;30;46m${ncc('Italic')}\u001b[38;2;147;153;178m complex test`;
 
@@ -120,6 +132,25 @@ describe('graphics module', async () => {
          ).toEqual(expected);
       });
 
+      it('should recreate correct ANSI styles (8-bit)', () => {
+         const input = `\x1b[38;5;196mSome red \x1b[48;5;22mwith green background`;
+
+         const expected: ReturnType<typeof inferAnsiStyles> = {
+            fg: 196,
+            bg: 22,
+         };
+
+         const inferred = inferAnsiStyles(input);
+         expect(inferred, 'inferAnsiStyles() should correctly infer ANSI styles').toEqual(expected);
+
+         const serialized = serializeAnsiStyles(inferred);
+         const reInferred = inferAnsiStyles(serialized + 'Test'); // Append text to ensure styles are applied
+         expect(
+            reInferred,
+            'serializeAnsiStyles() should produce ANSI codes that infer the same styles'
+         ).toEqual(expected);
+      });
+
       it('should serialize style order and ignore unknown style entries', () => {
          const serialized = serializeAnsiStyles({
             sp: ['bright', 'unknown-style', 'underline'],
@@ -139,6 +170,15 @@ describe('graphics module', async () => {
          });
 
          expect(serialized).toBe(`\x1b[38;2;1;2;3m\x1b[48;2;4;5;6m`);
+      });
+
+      it('should serialize 8-bit foreground and background styles', () => {
+         const serialized = serializeAnsiStyles({
+            fg: 196,
+            bg: 22,
+         });
+
+         expect(serialized).toBe(`\x1b[38;5;196m\x1b[48;5;22m`);
       });
    });
 

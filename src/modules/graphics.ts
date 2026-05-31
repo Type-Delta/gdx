@@ -29,6 +29,20 @@ const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'
  */
 export type RgbVec = [number, number, number, number?];
 
+/**
+ * An ANSI 8-bit color palette index in the range 0..255.
+ */
+export type Ansi8BitColorIndex = number;
+
+/**
+ * A terminal color inferred from ANSI SGR codes.
+ *
+ * - `string` is used for named 4-bit colors from `CONSTS.AnsiColorCodes`.
+ * - `Ansi8BitColorIndex` is used for 8-bit palette colors.
+ * - `RgbVec` is used for 24-bit RGB colors.
+ */
+export type InferredAnsiColor = string | Ansi8BitColorIndex | RgbVec;
+
 export interface FormatTableOptions {
    /**
     * Padding to apply to each cell's content. Can be a single number for uniform padding or an array for directional padding (top, right, bottom, left similar to CSS padding) Defaults to 1 (one space on each side).
@@ -58,11 +72,11 @@ export interface FormatTableOptions {
 }
 
 /**
- * Represents the inferred ANSI styles from a string, including foreground color (`fg`), background color (`bg`), and text styles (`sp` for styles present). The `fg` and `bg` can be either an ANSI SGR string or an RgbVec depending on the context of use. The `sp` array contains style names like 'bright', 'dim', 'italic', etc., that are active in the string.
+ * Represents the inferred ANSI styles from a string, including foreground color (`fg`), background color (`bg`), and text styles (`sp` for styles present). The `fg` and `bg` can be a 4-bit color name, 8-bit color index, or an RGB tuple depending on the context of use. The `sp` array contains style names like 'bright', 'dim', 'italic', etc., that are active in the string.
  */
 export interface InferredAnsiStyle {
-   fg?: string | RgbVec;
-   bg?: RgbVec | string;
+   fg?: InferredAnsiColor;
+   bg?: InferredAnsiColor;
    sp?: string[];
 }
 
@@ -413,16 +427,14 @@ export function get4bitColorName(code: string): string | null {
 /**
  * Infers the effective foreground and background colors from ANSI SGR codes in a string.
  * It processes ANSI codes in reverse order to determine the final styles, stopping at the first reset code.
- * Supports 4-bit color names and 24-bit RGB codes. Hyperlink and other non-color SGR codes are ignored.
- *
- * NOTE: This implementation still missing 8bit 256-color support
+ * Supports 4-bit color names, 8-bit palette color indexes, and 24-bit RGB codes. Hyperlink and other non-color SGR codes are ignored.
  *
  * @param str - The input string containing ANSI escape codes.
  * @returns An object with optional `fg` and `bg` properties representing the inferred foreground and background colors, `sp` for styles.
- * Colors can be returned as 4-bit color names (e.g., 'red', 'bgBlue') or as RGB tuples ([r, g, b]).
+ * Colors can be returned as 4-bit color names (e.g., 'red', 'bgBlue'), 8-bit color indexes, or as RGB tuples ([r, g, b]).
  */
 export function inferAnsiStyles(str: string): InferredAnsiStyle {
-   const style: { fg?: RgbVec | string; bg?: RgbVec | string; sp?: string[] } = {};
+   const style: InferredAnsiStyle = {};
    const matches = [...str.matchAll(REGEXP.ANSICode)].reverse();
 
    for (const match of matches) {
@@ -453,6 +465,10 @@ export function inferAnsiStyles(str: string): InferredAnsiStyle {
             .split(';')
             .map((n) => parseInt(n, 10));
          style.bg = [r, g, b];
+      } else if (!style.fg && code.startsWith('[38;5;')) {
+         style.fg = parseInt(code.slice(6), 10);
+      } else if (!style.bg && code.startsWith('[48;5;')) {
+         style.bg = parseInt(code.slice(6), 10);
       }
       // NOTE: hyperlinks and other non-color SGR codes are ignored for style inference
    }
@@ -462,7 +478,7 @@ export function inferAnsiStyles(str: string): InferredAnsiStyle {
 
 /**
  * Serializes a style object containing foreground/background colors and text styles into a string of ANSI escape codes.
- * - `fg` and `bg` can be either 4-bit color names (e.g., 'red', 'bgBlue') or RGB tuples ([r, g, b]).
+ * - `fg` and `bg` can be 4-bit color names (e.g., 'red', 'bgBlue'), 8-bit color indexes, or RGB tuples ([r, g, b]).
  * - `sp` is a string of text styles (e.g., 'bright', 'underline') that will be applied in order.
  *
  * @param styles - An object with optional `fg`, `bg`, and `sp` properties representing the desired styles.
@@ -480,6 +496,8 @@ export function serializeAnsiStyles(styles: InferredAnsiStyle): string {
       if (typeof styles.fg === 'string') {
          const code = CONSTS.AnsiColorCodes[styles.fg as keyof typeof CONSTS.AnsiColorCodes];
          if (code) result += code;
+      } else if (typeof styles.fg === 'number') {
+         result += `\x1b[38;5;${styles.fg}m`;
       } else {
          result += fgRgb(styles.fg);
       }
@@ -488,6 +506,8 @@ export function serializeAnsiStyles(styles: InferredAnsiStyle): string {
       if (typeof styles.bg === 'string') {
          const code = CONSTS.AnsiColorCodes[styles.bg as keyof typeof CONSTS.AnsiColorCodes];
          if (code) result += code;
+      } else if (typeof styles.bg === 'number') {
+         result += `\x1b[48;5;${styles.bg}m`;
       } else {
          result += bgRgb(styles.bg);
       }
@@ -728,8 +748,8 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
          kind === 'top'
             ? border.topRight
             : kind === 'bottom'
-              ? border.bottomRight
-              : border.rightJoin;
+               ? border.bottomRight
+               : border.rightJoin;
 
       let line = colorizeBorder(left);
       for (let col = 0; col < cellWidths.length; col++) {
