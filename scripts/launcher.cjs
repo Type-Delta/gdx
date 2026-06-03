@@ -12,6 +12,10 @@ const isWin = process.platform === 'win32';
 const binaryName = isWin ? 'gdx.exe' : 'gdx';
 const binaryPath = path.join(NATIVE_DIR, binaryName);
 
+if (process.env.GDX_NODE_SHIM === '1' && process.argv[2] === '--') {
+   process.argv.splice(2, 1);
+}
+
 // Check if native binary exists
 if (fs.existsSync(binaryPath)) {
    const child = spawn(binaryPath, process.argv.slice(2), {

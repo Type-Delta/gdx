@@ -6,6 +6,7 @@ const { spawnSync, execFileSync } = require('child_process');
 
 // Configuration
 const PACKAGE_JSON_PATH = path.join(__dirname, '../package.json');
+const PACKAGE_DIR = path.join(__dirname, '..');
 const BIN_DIR = path.join(__dirname, '../bin');
 const NATIVE_DIR = path.join(BIN_DIR, 'native');
 const PKG_SRC_PATH = path.join(__dirname, '../dist/index.js');
@@ -33,6 +34,7 @@ function error(message) {
 }
 
 function writeInstallInfo(info) {
+   ensureBinDir();
    fs.writeFileSync(INSTALL_INFO_PATH, JSON.stringify(info, null, 2));
 }
 
@@ -92,6 +94,50 @@ function setExecutable(filePath) {
 function writeFileExecutable(filePath, content) {
    fs.writeFileSync(filePath, content, { encoding: 'utf8' });
    setExecutable(filePath);
+}
+
+function buildNodeShimContents(nodeAbsPath, launcherAbsPath) {
+   return {
+      cmd: [
+         '@echo off',
+         'set "GDX_NODE_SHIM=1"',
+         `"${nodeAbsPath}" "${launcherAbsPath}" -- %*`,
+         'exit /b %ERRORLEVEL%',
+         ''
+      ].join('\r\n'),
+      ps1: [
+         '$env:GDX_NODE_SHIM = "1"',
+         `& "${nodeAbsPath}" "${launcherAbsPath}" -- @args`,
+         'exit $LASTEXITCODE',
+         ''
+      ].join('\r\n'),
+      sh: [
+         '#!/usr/bin/env sh',
+         'export GDX_NODE_SHIM=1',
+         `exec "${nodeAbsPath}" "${launcherAbsPath}" -- "$@"`,
+         ''
+      ].join('\n'),
+   };
+}
+
+function getLocalNodeModulesBinDir() {
+   return path.resolve(PACKAGE_DIR, '..', '.bin');
+}
+
+function overwriteNodeShim(binDir, launcherAbsPath) {
+   if (!binDir || !fs.existsSync(binDir)) return false;
+
+   const nodeAbsPath = process.execPath;
+   const shims = buildNodeShimContents(nodeAbsPath, launcherAbsPath);
+
+   if (process.platform === 'win32') {
+      writeFileExecutable(path.join(binDir, 'gdx.cmd'), shims.cmd);
+      writeFileExecutable(path.join(binDir, 'gdx.ps1'), shims.ps1);
+      return true;
+   }
+
+   writeFileExecutable(path.join(binDir, 'gdx'), shims.sh);
+   return true;
 }
 
 function getNpmGlobalBinDir() {
@@ -154,6 +200,17 @@ function overwriteGlobalShim(nativeAbsPath) {
       writeFileExecutable(shPath, sh);
    }
    return true;
+}
+
+function installNodeFallbackShims() {
+   const launcherAbsPath = path.join(__dirname, 'launcher.cjs');
+   const localBin = getLocalNodeModulesBinDir();
+   const globalBin = getNpmGlobalBinDir();
+
+   return {
+      local: overwriteNodeShim(localBin, launcherAbsPath),
+      global: overwriteNodeShim(globalBin, launcherAbsPath),
+   };
 }
 
 async function tryDownloadPrebuilt() {
@@ -261,7 +318,18 @@ async function main() {
          tryBuildNative();
       } else {
          log('No native install requested (default). Using Node.js fallback.');
-         // Do nothing
+         const shimInstall = installNodeFallbackShims();
+         writeInstallInfo({
+            mode: 'node',
+            platform: process.platform,
+            arch: process.arch,
+            version: getPackageVersion(),
+            userAgent: process.env.npm_config_user_agent || null,
+            useGlobalShim: shimInstall.global,
+            useLocalShim: shimInstall.local,
+            ts: (new Date).toLocaleString(),
+            launcherPath: path.join(__dirname, 'launcher.cjs')
+         });
       }
    } catch (err) {
       error(err.message);
@@ -269,4 +337,13 @@ async function main() {
    }
 }
 
-main();
+if (require.main === module) {
+   main();
+}
+
+module.exports = {
+   buildNodeShimContents,
+   getLocalNodeModulesBinDir,
+   installNodeFallbackShims,
+   overwriteNodeShim,
+};
