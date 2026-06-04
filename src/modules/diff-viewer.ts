@@ -29,7 +29,6 @@ import Logger from '@/utils/logger';
 import { $, spinner, SpinnerController } from './shell';
 import {
    CATPPUCCIN_VPALETTE,
-   EXTENSION_LANG_MAP,
    INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH,
    INLINE_DIFF_MERGE_DISTANCE,
    INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH,
@@ -47,6 +46,7 @@ import Threaded from '@/modules/threaded';
 import global from '@/global';
 import { getGenericWorkerUrl } from '@/cli/worker';
 import { revParseCached } from './git';
+import { getLanguageCatalog, resolveShikiLanguageIdForPath } from './languages';
 
 const STYLES = {
    bold: (str: string) => `\x1b[1m${str}\x1b[22m`,
@@ -132,7 +132,7 @@ interface ParsedDiff {
    fileName: string;
    oldFileName: string;
    newFileName: string;
-   lang: BundledLanguage;
+   lang: string;
    lines: DiffLine[];
 }
 
@@ -537,11 +537,6 @@ export function canUseDiffViewer(): boolean {
    );
 }
 
-function detectLanguage(fileName: string): BundledLanguage {
-   const ext = fileName.split('.').pop()?.toLowerCase() || '';
-   return (EXTENSION_LANG_MAP[ext] as BundledLanguage) || 'text';
-}
-
 function formatUnifiedRange(start: number, count: number): string {
    if (count === 1) return String(start);
    return `${start},${count}`;
@@ -658,7 +653,7 @@ export function parseDiffOutput(diffText: string): ParsedDiff[] {
                fileName: diffHeader.fileName,
                oldFileName: diffHeader.oldFileName,
                newFileName: diffHeader.newFileName,
-               lang: detectLanguage(diffHeader.fileName),
+               lang: 'plaintext',
                lines: [],
             };
             isCombinedDiff = diffHeader.isCombined;
@@ -838,7 +833,7 @@ async function highlightDiffContextLines(options: {
 
    if (newLines.length > 0) {
       const code = newLines.map((line) => line.content).join('\n');
-      const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+      const highlighted = await shiki.codeToANSI(code, diff.lang as never, theme as never);
       const highlightedLines = highlighted.split('\n');
       for (let i = 0; i < newLines.length; i++) {
          if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
@@ -847,7 +842,7 @@ async function highlightDiffContextLines(options: {
 
    if (oldLines.length > 0) {
       const code = oldLines.map((line) => line.content).join('\n');
-      const highlighted = await shiki.codeToANSI(code, diff.lang, theme as never);
+      const highlighted = await shiki.codeToANSI(code, diff.lang as never, theme as never);
       const highlightedLines = highlighted.split('\n');
       for (let i = 0; i < oldLines.length; i++) {
          if (highlightedLines[i]) result.set(oldLines[i], highlightedLines[i]);
@@ -912,7 +907,7 @@ async function getHighlightedFullFileLines(options: {
    git$: GdxContext['git$'];
    path: string;
    revision: string;
-   lang: BundledLanguage;
+   lang: string;
    theme: string;
    maxHunkSize: number;
    shiki: ShikijsCliModule;
@@ -958,7 +953,7 @@ async function getHighlightedFullFileLines(options: {
 
    const highlighted = canUseShikiHighlightWorker()
       ? await highlightFullFileAnsiInWorker(content, lang, theme, shiki)
-      : await shiki.codeToANSI(content, lang, theme as never);
+      : await shiki.codeToANSI(content, lang as never, theme as never);
 
    const entry = {
       contentLength: content.length,
@@ -996,26 +991,26 @@ async function getWorkingTreeFileContent(git$: GdxContext['git$'], filePath: str
  */
 async function highlightFullFileAnsiInWorker(
    content: string,
-   lang: BundledLanguage,
+   lang: string,
    theme: string,
    shiki: ShikijsCliModule
 ): Promise<string> {
    if (process.env.NODE_ENV === 'test') {
-      return await shiki.codeToANSI(content, lang, theme as never);
+      return await shiki.codeToANSI(content, lang as never, theme as never);
    }
 
    try {
       return await getHighlightThreaded()
-         .spawn<string, [string, BundledLanguage, string]>(
+         .spawn<string, [string, string, string]>(
             async (source, language, selectedTheme) =>
-               await shikiWorker.codeToANSI(source, language, selectedTheme as never),
+               await shikiWorker.codeToANSI(source, language as never, selectedTheme as never),
             [content, lang, theme]
          );
    } catch (error) {
       logger.debug(
          `Worker syntax highlighting failed; falling back to main thread: ${Err.from(error)}`,
       );
-      return await shiki.codeToANSI(content, lang, theme as never);
+      return await shiki.codeToANSI(content, lang as never, theme as never);
    }
 }
 
@@ -1114,6 +1109,15 @@ export class DiffViewerRenderer implements PagerRenderer {
             'Worker threads are not available in this environment. All syntax highlighting will run on the main thread, which may cause UI freezes for large diffs.',
          );
       }
+
+      const languageCatalog = await getLanguageCatalog(
+         spinnerCtrl ? { spinner: spinnerCtrl } : undefined
+      );
+      await Promise.all(
+         this.parsedDiffs.map(async (diff) => {
+            diff.lang = await resolveShikiLanguageIdForPath(diff.fileName, languageCatalog);
+         })
+      );
 
       const highlightPromises: Promise<void>[] = [];
       for (const diff of this.parsedDiffs) {

@@ -141,46 +141,28 @@ export const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 export const DIFF_HEADER_TEXT_REGEX = /^diff --(git|cc|combined)\b/m;
 export const ANSI_SGR_REGEX = /^\x1b\[[0-9;]*m/;
 
+/**
+ * Maps GitHub Linguist language names to Shiki bundled language ids for names
+ * that do not resolve cleanly through Shiki's own bundled language catalog.
+ */
 export const EXTENSION_LANG_MAP: Record<string, string> = {
-   ts: 'typescript',
-   tsx: 'tsx',
-   js: 'javascript',
-   mjs: 'javascript',
-   cjs: 'javascript',
-   jsx: 'jsx',
-   json: 'json',
-   md: 'markdown',
-   css: 'css',
-   scss: 'scss',
-   html: 'html',
-   vue: 'vue',
-   svelte: 'svelte',
-   py: 'python',
-   rb: 'ruby',
-   go: 'go',
-   rs: 'rust',
-   java: 'java',
-   kt: 'kotlin',
-   swift: 'swift',
-   c: 'c',
-   cpp: 'cpp',
-   h: 'c',
-   hpp: 'cpp',
-   sh: 'bash',
-   bash: 'bash',
-   zsh: 'bash',
-   yml: 'yaml',
-   yaml: 'yaml',
-   toml: 'toml',
-   xml: 'xml',
-   sql: 'sql',
-   dockerfile: 'dockerfile',
-   docker: 'dockerfile',
-   makefile: 'makefile',
-   cmake: 'cmake',
-   lua: 'lua',
-   perl: 'perl',
-   php: 'php',
+   'Batchfile': 'bat',
+   'CodeQL': 'ql',
+   'Dockerfile': 'docker',
+   'FreeMarker': 'ftl',
+   'Jupyter Notebook': 'json',
+   'Makefile': 'make',
+   'Motorola 68K Assembly': 'asm',
+   'Nunjucks': 'njk',
+   'Open Policy Agent': 'rego',
+   'Papyrus': 'papyrus',
+   'Protocol Buffer': 'protobuf',
+   'Roff': 'roff',
+   'ShellCheck Config': 'properties',
+   'TI Program': 'ti-basic',
+   'Vim Help File': 'vim',
+   'Visual Basic .NET': 'vb',
+   'WebAssembly': 'wasm',
 };
 
 // Source of Truth
@@ -289,8 +271,9 @@ export const KNOWN_GIT_FAULT_FILE_HEURISTICS = [
 export const LANGUAGE_SOURCE_URL =
    'https://github.com/github-linguist/linguist/raw/refs/heads/main/lib/linguist/languages.yml';
 export const LANGUAGE_CACHE_KEY = 'languages.catalog';
-export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS * 7; // Refresh every 7 days
-export const LANGUAGE_FETCH_TIMEOUT_MS = 4000;
+export const LANGUAGE_CATALOG_VERSION = 2;
+export const LANGUAGE_REFRESH_INTERVAL_MS = ONE_DAY_MS * 15; // Refresh every 15 days
+export const LANGUAGE_FETCH_TIMEOUT_MS = 5000;
 export const LANGUAGE_WHITELIST = [163, 222, 407, 337, 51, 174, 365, 88, 80];
 
 // Diff viewer constants

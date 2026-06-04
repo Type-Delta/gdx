@@ -1,4 +1,4 @@
-import { GDX_CACHE_SCHEMA_VERSION } from '@/consts';
+import { GDX_CACHE_SCHEMA_VERSION, LANGUAGE_CATALOG_VERSION } from '@/consts';
 import { Type as t, type Static } from '@/modules/typebox';
 
 const ZCacheMetadata = t.Object({
@@ -26,6 +26,7 @@ export const ZLanguageRecord = t.Object({
 export type LanguageRecord = Static<typeof ZLanguageRecord>;
 
 export const ZStoredLanguageCatalog = t.Object({
+   catalogVersion: t.Literal(LANGUAGE_CATALOG_VERSION),
    lastUpdatedAt: t.String(),
    languages: t.Array(ZLanguageRecord),
 });

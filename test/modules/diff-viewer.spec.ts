@@ -7,7 +7,6 @@ import {
    DiffViewerRenderer,
    parseDiffOutput,
    canUseDiffViewer,
-   BundledLanguage,
    renderCommitMessageDiffLines,
    INDEX_REVISION,
    WORKING_TREE_REVISION,
@@ -53,7 +52,7 @@ index 1234567..abcdefg 100644
          expect(result.length).toBe(1);
          expect(result[0].fileName).toBe('test.ts');
          expect(result[0].oldFileName).toBe('test.ts');
-         expect(result[0].lang).toBe('typescript');
+         expect(result[0].lang).toBe('plaintext');
       });
 
       it('should parse multiple files in diff', () => {
@@ -130,19 +129,19 @@ diff --git a/file2.js b/file2.js
          expect(contextLines[0].content).toBe('const a = 1;');
       });
 
-      it('should detect correct language from file extension', () => {
+      it('should default parsed language to plaintext before highlighting', () => {
          const testCases = [
-            { file: 'test.ts', expectedLang: 'typescript' },
-            { file: 'test.js', expectedLang: 'javascript' },
-            { file: 'test.py', expectedLang: 'python' },
-            { file: 'test.rs', expectedLang: 'rust' },
-            { file: 'test.go', expectedLang: 'go' },
-            { file: 'test.md', expectedLang: 'markdown' },
-            { file: 'test.json', expectedLang: 'json' },
-            { file: 'README', expectedLang: 'text' },
+            'test.ts',
+            'test.js',
+            'test.py',
+            'test.rs',
+            'test.go',
+            'test.md',
+            'test.json',
+            'README',
          ];
 
-         for (const { file, expectedLang } of testCases) {
+         for (const file of testCases) {
             const diffText = `diff --git a/${file} b/${file}
 --- a/${file}
 +++ b/${file}
@@ -150,7 +149,7 @@ diff --git a/file2.js b/file2.js
 +content`;
 
             const result = parseDiffOutput(diffText);
-            expect(result[0].lang).toBe(expectedLang as BundledLanguage);
+            expect(result[0].lang).toBe('plaintext');
          }
       });
 

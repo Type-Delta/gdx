@@ -30,6 +30,7 @@ describe('gdx stats', async () => {
       await cache.set(
          languageConsts.LANGUAGE_CACHE_KEY,
          {
+            catalogVersion: languageConsts.LANGUAGE_CATALOG_VERSION,
             lastUpdatedAt: new Date().toISOString(),
             languages: [
                {

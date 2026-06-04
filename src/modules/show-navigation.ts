@@ -1,8 +1,9 @@
 import { strLimit } from '@lib/Tools';
 
 import { GdxContext } from '@/common/types';
-import { CATPPUCCIN_VPALETTE, EXTENSION_LANG_MAP, SGR, TUI_THEME } from '@/consts';
+import { CATPPUCCIN_VPALETTE, SGR, TUI_THEME } from '@/consts';
 import { isGitDiffOutput, viewDiff } from '@/modules/diff-viewer';
+import { getLanguageCatalog, resolveShikiLanguageIdForPath } from '@/modules/languages';
 import { pager } from '@/modules/pager';
 import { $, spinner } from '@/modules/shell';
 import { fgRgb } from './graphics';
@@ -458,11 +459,9 @@ export function buildShowCommitNavigationActions(
  * @returns ANSI-highlighted content, or the raw content if highlighting fails.
  */
 async function highlightShowBlobContent(content: string, path: string): Promise<string> {
-   const ext = path.split('.').pop()?.toLowerCase() || '';
-   const lang = EXTENSION_LANG_MAP[ext] || 'text';
-
    try {
-      const shiki = await import('@shikijs/cli');
+      const [shiki, catalog] = await Promise.all([import('@shikijs/cli'), getLanguageCatalog()]);
+      const lang = await resolveShikiLanguageIdForPath(path, catalog);
       return await shiki.codeToANSI(content, lang as never, TUI_THEME as never);
    } catch {
       return content;

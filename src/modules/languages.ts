@@ -10,6 +10,8 @@ import {
    ZStoredLanguageCatalog,
 } from '@/common/schema';
 import {
+   EXTENSION_LANG_MAP,
+   LANGUAGE_CATALOG_VERSION,
    LANGUAGE_CACHE_KEY,
    LANGUAGE_FETCH_TIMEOUT_MS,
    LANGUAGE_REFRESH_INTERVAL_MS,
@@ -27,6 +29,7 @@ export const DEFAULT_LANGUAGE_COLOR = 0xffffff;
 
 let lastFetchFailureAt = 0;
 let parserInstance: YamlParser | null = null;
+let shikiLanguageIndexPromise: Promise<Map<string, string>> | null = null;
 
 export interface LanguageCatalog extends StoredLanguageCatalog {
    byExtension: Map<string, LanguageRecord>;
@@ -56,7 +59,12 @@ export async function getLanguageCatalog(options?: {
       return buildLanguageCatalog(cached);
    }
 
-   if (!cached && !forceRefresh && Date.now() - lastFetchFailureAt < FAILED_FETCH_BACKOFF_MS) {
+   if (
+      !cached &&
+      cachedRaw === undefined &&
+      !forceRefresh &&
+      Date.now() - lastFetchFailureAt < FAILED_FETCH_BACKOFF_MS
+   ) {
       return null;
    }
 
@@ -100,6 +108,46 @@ export function inferLanguageFromPath(
 }
 
 /**
+ * Resolves a file path to a Shiki bundled language identifier.
+ *
+ * Catalog matches use GitHub Linguist metadata for filenames and extensions,
+ * then map the Linguist language name to Shiki's bundled language ids.
+ *
+ * @param filePath - File path to inspect.
+ * @param catalog - Optional loaded Linguist catalog.
+ * @returns Shiki bundled language id, or `plaintext` when no match is available.
+ */
+export async function resolveShikiLanguageIdForPath(
+   filePath: string,
+   catalog?: LanguageCatalog | null
+): Promise<string> {
+   if (catalog) {
+      const language = inferLanguageFromPath(catalog, filePath);
+      if (language) {
+         const shikiLanguage = await resolveShikiLanguageIdFromLanguageName(language.name);
+         if (shikiLanguage) return shikiLanguage;
+      }
+   }
+
+   return (await resolveShikiLanguageIdFromPathToken(filePath)) || 'plaintext';
+}
+
+/**
+ * Resolves a GitHub Linguist language name to a Shiki bundled language id.
+ * @param languageName - Linguist language name.
+ * @returns Shiki bundled language id, or null when unsupported by Shiki.
+ */
+export async function resolveShikiLanguageIdFromLanguageName(
+   languageName: string
+): Promise<string | null> {
+   const mapped = EXTENSION_LANG_MAP[languageName];
+   if (mapped) return mapped;
+
+   const index = await getShikiLanguageIndex();
+   return index.get(normalizeLanguageKey(languageName)) || null;
+}
+
+/**
  * Parses the Linguist language YAML into a reduced cache structure.
  *
  * @param rawYaml - Raw YAML content.
@@ -117,21 +165,19 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
          color?: unknown;
          type?: string;
          language_id: number;
-         filenames?: string;
+         filenames?: unknown;
       };
       const extensions = normalizeExtensions(value.extensions);
-      if (!value.color) continue;
+      const filenames = normalizeFilenames(value.filenames);
       if (value.type === 'data' && !LANGUAGE_WHITELIST.includes(value.language_id)) continue; // Skip pure data formats without syntax
-      if (extensions.length === 0) continue;
+      if (extensions.length === 0 && filenames.length === 0) continue;
 
       const color = parseColorToDecimal(value.color) ?? DEFAULT_LANGUAGE_COLOR;
       languages.push({
          name,
          extensions,
          color,
-         filenames: Array.isArray(value.filenames)
-            ? value.filenames.filter((f): f is string => typeof f === 'string')
-            : [],
+         filenames,
          id: value.language_id,
       });
    }
@@ -140,6 +186,7 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
    languages.sort((a, b) => a.name.localeCompare(b.name));
 
    return {
+      catalogVersion: LANGUAGE_CATALOG_VERSION,
       lastUpdatedAt: new Date().toISOString(),
       languages,
    };
@@ -188,6 +235,7 @@ function buildLanguageCatalog(stored: StoredLanguageCatalog): LanguageCatalog {
    }
 
    return {
+      catalogVersion: stored.catalogVersion,
       lastUpdatedAt: stored.lastUpdatedAt,
       languages,
       byExtension,
@@ -222,7 +270,7 @@ function removeConflictingExtensions(languages: LanguageRecord[]): LanguageRecor
       const extensions = language.extensions.filter(
          (extension) => (extCount.get(extension) || 0) === 1
       );
-      if (extensions.length === 0) continue;
+      if (extensions.length === 0 && (language.filenames?.length || 0) === 0) continue;
       sanitized.push({
          ...language,
          extensions,
@@ -263,6 +311,92 @@ function normalizeExtensions(extensionsInput: unknown): string[] {
    }
 
    return Array.from(set);
+}
+
+/**
+ * Normalizes filename arrays to unique values.
+ * @param filenamesInput - Raw `filenames` field from YAML.
+ * @returns Normalized filename list.
+ */
+function normalizeFilenames(filenamesInput: unknown): string[] {
+   if (!Array.isArray(filenamesInput)) return [];
+
+   const set = new Set<string>();
+   for (const filename of filenamesInput) {
+      if (typeof filename !== 'string') continue;
+      const normalized = filename.trim();
+      if (!normalized) continue;
+      set.add(normalized);
+   }
+
+   return Array.from(set);
+}
+
+/**
+ * Resolves a path by matching its basename and extension against Shiki ids and aliases.
+ * Used as a no-catalog fallback.
+ * @param filePath - File path to inspect.
+ * @returns Shiki bundled language id, or null when no Shiki token matches.
+ */
+async function resolveShikiLanguageIdFromPathToken(filePath: string): Promise<string | null> {
+   const index = await getShikiLanguageIndex();
+   const basename = path.basename(filePath);
+   const extension = path.extname(filePath).slice(1);
+
+   return (
+      index.get(normalizeLanguageKey(basename)) ||
+      (extension ? index.get(normalizeLanguageKey(extension)) : undefined) ||
+      null
+   );
+}
+
+/**
+ * Builds an index of Shiki bundled language names, ids, and aliases.
+ * @returns Normalized Shiki language lookup.
+ */
+async function getShikiLanguageIndex(): Promise<Map<string, string>> {
+   shikiLanguageIndexPromise ??= buildShikiLanguageIndex();
+   return await shikiLanguageIndexPromise;
+}
+
+/**
+ * Loads Shiki metadata and builds the lookup used for language resolution.
+ * @returns Normalized Shiki language lookup.
+ */
+async function buildShikiLanguageIndex(): Promise<Map<string, string>> {
+   const { bundledLanguagesInfo } = await import('shiki');
+   const index = new Map<string, string>();
+
+   for (const language of bundledLanguagesInfo) {
+      addShikiLanguageIndexEntry(index, language.id, language.id);
+      addShikiLanguageIndexEntry(index, language.name, language.id);
+
+      for (const alias of language.aliases || []) {
+         addShikiLanguageIndexEntry(index, alias, language.id);
+      }
+   }
+
+   return index;
+}
+
+/**
+ * Adds a language lookup key while preserving the first bundled match.
+ * @param index - Lookup index being built.
+ * @param key - Human language name, id, or alias.
+ * @param languageId - Shiki bundled language id.
+ */
+function addShikiLanguageIndexEntry(index: Map<string, string>, key: string, languageId: string) {
+   const normalized = normalizeLanguageKey(key);
+   if (normalized && !index.has(normalized)) index.set(normalized, languageId);
+}
+
+/**
+ * Normalizes language names for Shiki/Linguist matching.
+ * @param value - Language name, alias, id, filename, or extension token.
+ * @returns Normalized lookup key.
+ */
+function normalizeLanguageKey(value: string): string {
+   return value.trim().toLowerCase().replace(/[_\s]+/g, '-');
 }
 
 /**
@@ -322,6 +456,7 @@ async function getYamlPurser() {
 }
 
 export const languageConsts = {
+   LANGUAGE_CATALOG_VERSION,
    LANGUAGE_CACHE_KEY,
    INFINITE_TTL_EXPIRES_AT,
 } as const;
