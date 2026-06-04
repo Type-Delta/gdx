@@ -123,9 +123,10 @@ export function createAbortableExec(options: Options = {}) {
 }
 
 /**
- * An execa instance configured to inherit stdout/stderr from the parent process.
+ * An execa instance configured to inherit stdin/stdout/stderr from the parent process.
  */
 export const $inherit = limitExeca(execa({
+   stdin: 'inherit',
    stdout: 'inherit',
    stderr: 'inherit',
    verbose: execaCustomLogger,
@@ -456,6 +457,7 @@ export async function execGit(
    try {
       if (redirectTo) {
          const redirect$ = limitExeca(execa({
+            stdin: 'inherit',
             stdout: {
                file: redirectTo,
                append: redirectMode === '>>',
