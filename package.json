@@ -42,7 +42,7 @@
     "test": "bun test",
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=yaml --external=openai --external=fflate --format=esm --production --keep-names && bun build ./src/workers/generic.worker.ts --outfile=./dist/workers/generic.worker.min.js --target=node --external=@shikijs/cli --format=esm --production --minify --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=shiki --external=yaml --external=openai --external=fflate --format=esm --production --keep-names && bun build ./src/workers/generic.worker.ts --outfile=./dist/workers/generic.worker.min.js --target=node --external=@shikijs/cli --format=esm --production --minify --keep-names",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
     "prettier": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"./*.md\"",
