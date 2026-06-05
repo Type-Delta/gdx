@@ -29,7 +29,7 @@ import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
-import { getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
+import { assertInGitWorktree, getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
 import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
 import litedent from '@/utils/litedent';
 
@@ -343,6 +343,13 @@ async function getCommitGuidelines(
 
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
+
+   if (!(await assertInGitWorktree(git$))) {
+      quickPrint(
+         `${SGR.red}Error: Not inside a Git repository. Please navigate to a repository and try again.${SGR.reset}`
+      );
+      return 1;
+   }
 
    const passThruArgs = args.slice(2);
    const shouldNoCommit =

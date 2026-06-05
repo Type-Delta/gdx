@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import fs from 'fs/promises';
 import { mkdirSync } from 'fs';
+import os from 'os';
 import path from 'path';
 
 import commit, { learnCommitGuidelines } from '@/commands/commit';
@@ -44,6 +45,20 @@ describe('gdx commit auto', async () => {
       const result = await commit.auto(ctx);
       expect(result).toBe(1);
       expect(buffer.stdout).toContain('No staged changes found');
+   });
+
+   it('should fail outside a git repository', async () => {
+      const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gdx-not-repo-'));
+
+      try {
+         const outsideCtx = createGdxContext(outsideDir, ['commit', 'auto']);
+         const result = await commit.auto(outsideCtx);
+
+         expect(result).toBe(1);
+         expect(buffer.stderr).toContain('This command must be run inside a git repository.');
+      } finally {
+         await fs.rm(outsideDir, { recursive: true, force: true });
+      }
    });
 
    it('should generate commit message and commit', async () => {
