@@ -138,6 +138,10 @@ export const DEFAULT_CONFIG: GdxConfig = {
    maxThreadWorkers: 8,
 };
 
+export const LOCAL_CONFIG_ALLOWED_PREFIXES = ['llm.', 'lint.', 'parallel.'] as const;
+export const LOCAL_CONFIG_ALLOWED_KEYS = ['commit.commitPattern', 'commit.noisyFiles'] as const;
+export const LOCAL_CONFIG_BLOCKED_KEYS = ['llm.showThinking'] as const;
+
 export const ENV_PREFIX = 'GDX_';
 
 // Mapping of config keys to environment variable names

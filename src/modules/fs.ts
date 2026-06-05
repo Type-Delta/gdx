@@ -13,6 +13,7 @@ export {
    accessSync,
    readdirSync,
    appendFileSync,
+   statSync,
    unlinkSync,
    cpSync,
    constants,

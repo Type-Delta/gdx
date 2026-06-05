@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { strClamp, strWrap, yuString } from '@lib/Tools';
+import { Err, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
-import { getConfig } from '../common/config';
+import { getConfig, resolveLocalConfigPathFromGit } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
@@ -11,6 +11,7 @@ import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE, SGR } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { coerceConfigStringValue } from '@/modules/typebox';
+import { ArgsSet } from '@/modules/arguments';
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -47,11 +48,12 @@ async function listConfig(): Promise<number> {
       }
 
       let currentValue = config.get(key);
-      if (currentValue === undefined && SECURE_CONF_KEYS.includes(key)) {
+      if (SECURE_CONF_KEYS.includes(key)) {
          currentValue = await config.getSecure(key);
       }
 
       const isDefault = config.isDefault(key);
+      const isLocalOverride = config.isLocalOverride(key);
       const description = CONFIG_DESCRIPTIONS[key] || '';
 
       // Format the value for display
@@ -84,9 +86,13 @@ async function listConfig(): Promise<number> {
             displayValue = String(currentValue);
       }
 
-      const marker = isDefault
+      const localMarker = isLocalOverride
+         ? ` ${SGR.reset + SGR.magenta + SGR.italic}[LO]${SGR.reset + SGR.dim}`
+         : '';
+      const modifiedMarker = isDefault
          ? ''
          : ` ${SGR.reset + SGR.yellow + SGR.italic}[Modified]${SGR.reset + SGR.dim}`;
+      const marker = localMarker + modifiedMarker;
       const comment = description ? ` ${SGR.dim}#${marker} ${description}${SGR.reset}` : '';
       const pairStr = isUnset
          ? `${SGR.dim}# ${SGR.cyan + fieldName + SGR.white} = ${displayValue}${comment}${SGR.reset}\n`
@@ -102,15 +108,17 @@ async function listConfig(): Promise<number> {
 
 async function getConfigValue(ctx: GdxContext): Promise<number> {
    const config = await getConfig();
-   const key = ctx.args[1];
+   const args = ctx.args.slice(1);
+   popLocalOption(args);
+   const key = args[0];
 
-   if (!key) {
+   if (!key || args.length !== 1) {
       Logger.error('Missing configuration key', 'gdx-config');
       return 1;
    }
 
    let value = config.get(key);
-   if (value === undefined && SECURE_CONF_KEYS.includes(key)) {
+   if (SECURE_CONF_KEYS.includes(key)) {
       value = await config.getSecure(key);
    }
 
@@ -125,11 +133,13 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
 
 async function setConfigValue(ctx: GdxContext): Promise<number> {
    const config = await getConfig();
-   const key = ctx.args[1];
-   const value = ctx.args[2];
+   const args = ctx.args.slice(1);
+   const isLocal = popLocalOption(args);
+   const key = args[0];
+   const value = args[1];
 
-   if (!key || value === undefined) {
-      Logger.error('Usage: gdx gdx-config <key> <value>', 'gdx-config');
+   if (!key || value === undefined || args.length !== 2) {
+      Logger.error('Usage: gdx gdx-config [--local] <key> <value>', 'gdx-config');
       return 1;
    }
 
@@ -139,49 +149,86 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   await config.set(key, parsed.value);
-   await config.save();
+   if (isLocal) {
+      if (!config.canSetLocal(key)) {
+         Logger.error(`Configuration key '${key}' cannot be set locally.`, 'gdx-config');
+         return 1;
+      }
+
+      try {
+         await config.setLocal(key, parsed.value);
+      } catch (err) {
+         Logger.error(Err.from(err).message, 'gdx-config');
+         return 1;
+      }
+      await config.saveLocal();
+   } else {
+      await config.set(key, parsed.value);
+      await config.save();
+   }
 
    // Mask API key in output
    const displayValue = key.toLowerCase().includes('key')
       ? strClamp(String(parsed.value), 20, 'mid', -1)
       : parsed.value;
 
-   quickPrint(`${SGR.green}Configuration updated: ${key} = ${displayValue}${SGR.reset}`);
+   quickPrint(
+      `${SGR.green}${isLocal ? 'Local c' : 'C'}onfiguration updated: ${key} = ${displayValue}${SGR.reset}`
+   );
    return 0;
 }
 
 async function unsetConfigValue(ctx: GdxContext): Promise<number> {
    const config = await getConfig();
    const args = ctx.args.slice(1);
+   const isLocal = popLocalOption(args);
    args.popOption('--unset');
    args.popOption('-u');
    const key = args[0];
 
    if (!key || args.length !== 1) {
-      Logger.error('Usage: gdx gdx-config --unset <key>', 'gdx-config');
+      Logger.error('Usage: gdx gdx-config [--local] --unset <key>', 'gdx-config');
       return 1;
    }
 
-   const didReset = await config.reset(key);
+   if (isLocal && !config.canSetLocal(key)) {
+      Logger.error(`Configuration key '${key}' cannot be set locally.`, 'gdx-config');
+      return 1;
+   }
+
+   let didReset = false;
+   try {
+      didReset = isLocal ? await config.resetLocal(key) : await config.reset(key);
+   } catch (err) {
+      Logger.error(Err.from(err).message, 'gdx-config');
+      return 1;
+   }
    if (!didReset) {
       Logger.error(`Unknown configuration key '${key}'.`, 'gdx-config');
       return 1;
    }
 
-   await config.save();
+   if (isLocal) await config.saveLocal();
+   else await config.save();
 
    const defaultValue = config.get(key);
    const displayValue = key.toLowerCase().includes('key')
       ? strClamp(String(defaultValue), 20, 'mid', -1)
       : defaultValue;
 
-   quickPrint(`${SGR.green}Configuration reset to default: ${key} = ${displayValue}${SGR.reset}`);
+   quickPrint(
+      `${SGR.green}${isLocal ? 'Local configuration unset' : 'Configuration reset to default'}: ${key} = ${displayValue}${SGR.reset}`
+   );
    return 0;
 }
 
 export default async function gdxConfig(ctx: GdxContext): Promise<number> {
-   const inputCommand = ctx.args[1]?.toLowerCase();
+   const config = await getConfig();
+   config.setLocalConfigPath(await resolveLocalConfigPathFromGit(ctx.git$));
+
+   const normalizedArgs = ctx.args.slice(0);
+   popLocalOption(normalizedArgs);
+   const inputCommand = normalizedArgs[1]?.toLowerCase();
    const { match: subcommand } = progressiveMatch(inputCommand, ['list', 'path']);
    const hasUnset = ctx.args.hasOption('--unset', 1) || ctx.args.hasOption('-u', 1);
 
@@ -190,23 +237,28 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    } else if (subcommand === 'list' || !inputCommand) {
       return await listConfig();
    } else if (subcommand === 'path') {
-      const config = await getConfig();
-      quickPrint(config.getConfigPath());
+      const isLocal = ctx.args.hasOption('--local', 1) || ctx.args.hasOption('-l', 1);
+      try {
+         quickPrint(isLocal ? config.getLocalConfigPath() : config.getConfigPath());
+      } catch (err) {
+         Logger.error(Err.from(err).message, 'gdx-config');
+         return 1;
+      }
       return 0;
-   } else if (ctx.args.length === 2) {
+   } else if (normalizedArgs.length === 2) {
       // Get value: gdx gdx-config <key>
       return await getConfigValue(ctx);
-   } else if (ctx.args.length === 3) {
+   } else if (normalizedArgs.length === 3) {
       // Set value: gdx gdx-config <key> <value>
       return await setConfigValue(ctx);
    } else {
       quickPrint(
          litedent(
             `${SGR.cyan}Usage:${SGR.reset}
-            gdx gdx-config list           - List all configuration
+            gdx gdx-config [list]         - List all configuration
             gdx gdx-config path           - Show config file path
             gdx gdx-config <key>          - Get configuration value
-            gdx gdx-config <key> <value>  - Set configuration value
+            gdx gdx-config [--local] <key> <value>  - Set configuration value
             gdx gdx-config --unset <key>  - Reset configuration value to default`
          )
       );
@@ -226,8 +278,8 @@ export const help = {
 
          ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Prints flattened configuration with defaults and modified markers.
-         - path: Prints the path to the active config file used by gdx.
-         - <key> [value]: Get or set a config key. When setting, types are coerced based on the existing default value where possible.
+         - path: Prints the path to the active config file used by gdx. Pass --local to print the repository-local config path.
+         - <key> [value]: Get or set a config key. Pass --local when setting to write a repository-local override.
          - --unset, -u <key>: Reset a config key to its default value.
          `,
          Math.min(100, global.terminalWidth - 4),
@@ -242,14 +294,15 @@ export const help = {
    usage: () => {
       return strWrap(
          litedent`
-         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config path${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config [list]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config path ${SGR.dim}[--local]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.dim}<key> [value]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} gdx-config --local ${SGR.dim}<key> <value>${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config --unset ${SGR.dim}<key>${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} gdx-config -u ${SGR.dim}<key>${SGR.reset}
 
          Examples:
-            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config list ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} gdx-config ${SGR.reset + SGR.dim}# List all config keys and values${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} gdx-config defaultEditor code ${SGR.reset + SGR.dim}# Set value for a key${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} gdx-config --unset defaultEditor ${SGR.reset + SGR.dim}# Reset a key to default${SGR.reset}
          `,
@@ -264,8 +317,12 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['list', 'path', '--unset', '-u'],
+   $root: ['list', 'path', '--unset', '-u', '--local', '-l'],
 } as const satisfies CommandStructure;
+
+function popLocalOption(args: ArgsSet): boolean {
+   return args.popOption('--local') !== null || args.popOption('-l') !== null;
+}
 
 /**
  * Flatten the config object to get all keys

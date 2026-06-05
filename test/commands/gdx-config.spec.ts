@@ -1,5 +1,6 @@
 import { describe, expect } from 'bun:test';
 import path from 'path';
+import fs from 'fs';
 
 import gdxConfig from '@/commands/gdx-config';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
@@ -7,7 +8,7 @@ import { getConfig } from '@/common/config';
 import { DEFAULT_CONFIG } from '@/common/config/schema';
 
 describe('gdx gdx-config', async () => {
-   const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({
       liteMode: true,
       suitName: 'gdx-config'
    });
@@ -154,6 +155,83 @@ describe('gdx gdx-config', async () => {
       const invalidCtx = createGdxContext(tmpDir, ['gdx-config', 'parallel.init', 'submodule,nope']);
       expect(await gdxConfig(invalidCtx)).toBe(1);
       expect(buffer.stderr).toContain("Invalid value for 'parallel.init'");
+   });
+
+   it('should write sparse local config and override global config', async () => {
+      fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+
+      const globalCtx = createGdxContext(tmpDir, ['gdx-config', 'llm.model', 'global-model']);
+      expect(await gdxConfig(globalCtx)).toBe(0);
+
+      const localCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         '--local',
+         'llm.model',
+         'local-model',
+      ]);
+      expect(await gdxConfig(localCtx)).toBe(0);
+
+      const config = await getConfig();
+      expect(config.get<string>('llm.model')).toBe('local-model');
+
+      const localConfigPath = path.join(tmpDir, '.git', '.gdxrc.toml');
+      const localConfig = fs.readFileSync(localConfigPath, 'utf-8');
+      expect(localConfig).toContain('model = "local-model"');
+      expect(localConfig).not.toContain('provider');
+      expect(localConfig).not.toContain('defaultEditor');
+   });
+
+   it('should resolve local config path from a repository subdirectory', async () => {
+      await $`git init`;
+      const subdir = path.join(tmpDir, 'nested', 'dir');
+      fs.mkdirSync(subdir, { recursive: true });
+
+      const localCtx = createGdxContext(subdir, ['gdx-config', '--local', 'llm.model', 'sub-model']);
+      expect(await gdxConfig(localCtx)).toBe(0);
+
+      const localConfigPath = path.join(tmpDir, '.git', '.gdxrc.toml');
+      const localConfig = fs.readFileSync(localConfigPath, 'utf-8');
+      expect(localConfig).toContain('model = "sub-model"');
+   });
+
+   it('should resolve local config path from a worktree subdirectory', async () => {
+      await $`git init`;
+      await $`git config user.name ${'Test User'}`;
+      await $`git config user.email ${'test@example.com'}`;
+      await $`git commit --allow-empty --no-verify -m ${'Initial commit'}`;
+
+      const worktreeDir = path.join(tmpRootDir, 'linked-worktree');
+      await $`git worktree add -b ${'linked-test'} ${worktreeDir}`;
+      const subdir = path.join(worktreeDir, 'nested');
+      fs.mkdirSync(subdir, { recursive: true });
+
+      const localCtx = createGdxContext(subdir, ['gdx-config', '--local', 'llm.model', 'worktree-model']);
+      expect(await gdxConfig(localCtx)).toBe(0);
+
+      const config = await getConfig();
+      const localConfig = fs.readFileSync(config.getLocalConfigPath(), 'utf-8');
+      expect(localConfig).toContain('model = "worktree-model"');
+      expect(config.getLocalConfigPath()).toContain(path.join('.git', 'worktrees'));
+   });
+
+   it('should mark local overrides when listing config', async () => {
+      fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+
+      const localCtx = createGdxContext(tmpDir, ['gdx-config', '-l', 'lint.maxFileSizeKb', '2048']);
+      expect(await gdxConfig(localCtx)).toBe(0);
+
+      const listCtx = createGdxContext(tmpDir, ['gdx-config', 'list']);
+      expect(await gdxConfig(listCtx)).toBe(0);
+      expect(buffer.stdout).toContain('[LO] [Modified]');
+      expect(buffer.stdout).toContain('maxFileSizeKb');
+   });
+
+   it('should reject unsupported local config keys', async () => {
+      fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+
+      const localCtx = createGdxContext(tmpDir, ['gdx-config', '--local', 'defaultEditor', 'vim']);
+      expect(await gdxConfig(localCtx)).toBe(1);
+      expect(buffer.stderr).toContain("Configuration key 'defaultEditor' cannot be set locally");
    });
 
    it('should handle invalid keys gracefully', async () => {
