@@ -74,6 +74,7 @@
     "smol-toml": "^1.6.1",
     "tinybench": "^6.0.2",
     "tsx": "^4.22.3",
+    "tty-strings": "^1.5.2",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.4",
     "unicode-animations": "^1.0.3",
@@ -87,5 +88,8 @@
     "keytar": "^7.9.0",
     "openai": "^6.38.0",
     "yaml": "^2.9.0"
+  },
+  "patchedDependencies": {
+    "tty-strings@1.5.2": "patches/tty-strings@1.5.2.patch"
   }
 }

@@ -1,4 +1,4 @@
-import { estimateStrComplexity, ex_length, maxFraction, strJustify, strWrap } from '@lib/Tools';
+import { ex_length, maxFraction, strJustify } from '@lib/Tools';
 
 import Logger from '@/utils/logger';
 import {
@@ -12,6 +12,7 @@ import {
 } from './graphics';
 import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
+import ttys from '@/modules/tty-strings';
 
 /**
  * Options for configuring pager behavior.
@@ -136,7 +137,7 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
             : `ln ${SGR.bright}${current}-${endLines}${SGR.normal} of ${SGR.bright}${total}${endLines === total ? SGR.red + ' (EOF)' + SGR.white : ''}`;
       return (
          '  ' +
-         strJustify(
+         ttys.stringJustify(
             [leftParts, locationInfo],
             termWidth - 4, // Subtract 4 to account for the leading spaces and trailing spaces
             {
@@ -144,7 +145,6 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
                filler: ' ',
                overflow: 'collapse',
                collapseLocation: 'mid',
-               redundancyLv: context?.redundancyLv ?? 0,
             }
          ) +
          '  '
@@ -200,14 +200,12 @@ export class SimplePagerRenderer implements PagerRenderer {
    private options: Required<PagerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
-   private redundancyLv: number = 0;
 
    constructor(content: string, options: PagerOptions = {}) {
       this.options = {
          ...PAGER_DEFAULT_OPTIONS,
          ...options,
       } as Required<PagerOptions>;
-      this.redundancyLv = options.redundancyLv ?? estimateStrComplexity(content);
       this.lines = content.split('\n');
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
@@ -228,10 +226,9 @@ export class SimplePagerRenderer implements PagerRenderer {
       for (let i = 0; i < this.lines.length; i++) {
          const line = this.lines[i];
 
-         if (this.options.wrapLines && ex_length(line, this.redundancyLv) > contentWidth) {
-            const wrapped = strWrap(line, contentWidth, {
+         if (this.options.wrapLines && ttys.stringWidth(line) > contentWidth) {
+            const wrapped = ttys.stringWrap(line, contentWidth, {
                mode: 'strict',
-               redundancyLv: Math.max(0, this.redundancyLv),
             });
             const splitted = wrapped.split('\n');
             const gutter = this.options.showLineNumbers ? this.formatLineNumber(i + 1, gutterRPad, gutterBg) : '';
@@ -280,7 +277,7 @@ export class SimplePagerRenderer implements PagerRenderer {
          if (lineIndex < this.renderedLines.length) {
             const line = this.renderedLines[lineIndex];
             const stripped = stripAnsiColor(line);
-            const padding = Math.max(0, width - ex_length(stripped, this.redundancyLv));
+            const padding = Math.max(0, width - ttys.stringWidth(stripped));
             result.push(`${bgColor}${line}${' '.repeat(padding)}${SGR.reset}`);
          } else {
             result.push(`${bgColor}${' '.repeat(width)}${SGR.reset}`);
@@ -398,7 +395,7 @@ export async function pagerWithRenderer(
          });
          const padding = Math.max(
             0,
-            currentWidth - ex_length(stripAnsiColor(statusLine), resolvedRedundancy)
+            currentWidth - ttys.stringWidth(statusLine)
          );
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);

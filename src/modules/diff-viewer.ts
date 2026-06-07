@@ -4,14 +4,10 @@ import type { ChangeObject } from 'diff';
 
 import {
    Err,
-   estimateStrComplexity,
-   ex_length,
-   strLimit,
-   strSlice,
-   strWrap,
    yuString,
    CheckCache,
 } from '@lib/Tools';
+import ttys from '@/modules/tty-strings';
 
 import {
    pagerWithRenderer,
@@ -1024,8 +1020,6 @@ export class DiffViewerRenderer implements PagerRenderer {
    private options: Required<DiffViewerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
-   private redundancyLv: number = 0;
-   private widthRedundancyLv: number = 0;
    private logger = new Logger('diff-renderer');
 
    /** Blended background colors for diff lines (translucent effect) */
@@ -1084,13 +1078,9 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
-      this.redundancyLv =
-         options.redundancyLv ??
-         estimateStrComplexity(this.options.preambleLines.join('') + diffText);
-      this.widthRedundancyLv = Math.max(0, this.redundancyLv);
 
       this.logger.debug(
-         `Terminal size: ${this.lastWidth}x${this.lastHeight}, redundancy level: ${this.redundancyLv}, width redundancy level: ${this.widthRedundancyLv}`
+         `Terminal size: ${this.lastWidth}x${this.lastHeight}`
       );
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
       this.updateRenderedLines();
@@ -1358,42 +1348,13 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       if (
          this.options.wrapLines &&
-         ex_length(displayContent, this.widthRedundancyLv) > contentWidth
+         ttys.stringWidth(displayContent) > contentWidth
       ) {
-         const wrapped = strWrap(displayContent, contentWidth, {
-            mode: 'strict',
-            redundancyLv: this.widthRedundancyLv,
+         const wrapped = ttys.stringWrap(displayContent, contentWidth, {
+            mode: 'strict'
          });
-         let splitted = wrapped.split('\n');
 
-         if (splitted.length < 2) {
-            logger.warn(
-               `Expected wrapped content to have multiple lines but got a line or less. Original content length: ${displayContent.length}, Wrapped content length: ${splitted[0]?.length}, ex_length length: ${ex_length(splitted[0], this.widthRedundancyLv)}, avaliable space: ${contentWidth}`,
-            );
-         }
-
-         // Heuristic check: if the first line still exceeds the content width after wrapping, it likely means wrapping failed to split the line properly (e.g. due to long unbreakable sequences). In this case, we force a split at the content width as a fallback to prevent rendering issues.
-         // Redundancy level is locked to 0, bc calculating length with higher redundancy can be too expensive for this check
-         if (ex_length(splitted[0], Math.min(this.widthRedundancyLv, 0)) > contentWidth) {
-            logger.warn(
-               `First line of wrapped content still exceeds available width, countermeasures will be taken. Original content length: ${displayContent.length}, First line length: ${splitted[0]?.length}, ex_length length: ${ex_length(splitted[0], this.widthRedundancyLv)}, avaliable space: ${contentWidth}`,
-            );
-
-            // Fallback: force split without relying on wrapping (handles edge cases where wrapping fails to split)
-            splitted = [];
-            let splitCursor = 0;
-            while (splitCursor < ex_length(displayContent, this.widthRedundancyLv)) {
-               const chunk = strSlice(
-                  displayContent,
-                  splitCursor,
-                  splitCursor + contentWidth,
-                  this.widthRedundancyLv
-               );
-               splitted.push(chunk);
-               splitCursor += ex_length(chunk, this.widthRedundancyLv);
-            }
-         }
-
+         const splitted = wrapped.split('\n');
          let lastStyles;
          for (let i = 0; i < splitted.length; i++) {
             const g = i === 0 ? gutter : blankGutter;
@@ -1476,13 +1437,13 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    private padLineWithBg(str: string, width: number, bgColor: RgbVec): string {
-      const padding = Math.max(0, width - ex_length(str, this.widthRedundancyLv));
+      const padding = Math.max(0, width - ttys.stringWidth(str));
       return `${bgRgb(bgColor)}${str}${' '.repeat(padding)}${SGR.reset}`;
    }
 
    private renderHunkHeader(content: string, width: number, contentWidth: number): string {
       const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
-      content = strLimit(content, contentWidth, 'end', this.redundancyLv);
+      content = ttys.stringLimit(content, contentWidth, 'end');
 
       return this.padLineWithBg(
          `${SGR.dim + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,
@@ -1527,11 +1488,10 @@ export class DiffViewerRenderer implements PagerRenderer {
       const contentWidth = width;
       const color = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
 
-      if (this.options.wrapLines && ex_length(line, this.widthRedundancyLv) > contentWidth) {
-         const wrapped = strWrap(line, contentWidth, {
+      if (this.options.wrapLines && ttys.stringWidth(line) > contentWidth) {
+         const wrapped = ttys.stringWrap(line, contentWidth, {
             mode: 'strict',
             indent: leftPadding,
-            redundancyLv: this.widthRedundancyLv,
          });
          return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
       }

@@ -6,9 +6,9 @@ import {
    ex_length,
    ncc,
    strJustify,
-   strWrap,
 } from '@lib/Tools';
 import { SGR } from '@/consts';
+import ttys from '@/modules/tty-strings';
 
 const _4bitColorMap = Object.entries(CONSTS.AnsiColorCodes);
 const _4bitStyles = ['bright', 'dim', 'italic', 'underline', 'inverse', 'hidden'] as const;
@@ -561,7 +561,7 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
                continue;
             }
 
-            const wrappedLines = strWrap(line, width, {
+            const wrappedLines = ttys.stringWrap(line, width, {
                mode: 'strict',
                redundancyLv,
             }).split('\n');
@@ -609,11 +609,15 @@ export function formatTable(rows: string[][], options: FormatTableOptions = {}):
                   ? rowCells[col][contentLineIndex]
                   : '';
 
-            const aligned = strJustify(rawLine, normalizedWidths[col], {
+            const aligned = redundancyLv <= 0 ? strJustify(rawLine, normalizedWidths[col], {
                align: normalizedAlign[col],
                filler: ' ',
                overflow: 'visible',
                redundancyLv,
+            }) : ttys.stringJustify(rawLine, normalizedWidths[col], {
+               align: normalizedAlign[col],
+               filler: ' ',
+               overflow: 'visible',
             });
             segments.push(' '.repeat(padLeft) + aligned + ' '.repeat(padRight));
          }

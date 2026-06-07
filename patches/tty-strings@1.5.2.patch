@@ -1,0 +1,30 @@
+diff --git a/src/wordWrap.ts b/src/wordWrap.ts
+index d87ebb29cace926b1bd2902e5fefcda93ac1eccf..adc63ff48e1b0053b39d2f2aa083fd58bfc3a75d 100644
+--- a/src/wordWrap.ts
++++ b/src/wordWrap.ts
+@@ -6,14 +6,14 @@ function filterStack(ansiStack: AnsiEscape<readonly [number, number]>[], ax: num
+     return ansiStack.filter(([,,, [x, y]]) => (x < ax || (x === ax && y <= ay)));
+ }
+ 
+-function wrapLine(
++export function wrapLine(
+     ansiStack: AnsiEscape<readonly [number, number]>[],
+     string: string,
+     columns: number,
+     hard: boolean,
+     ltrim: boolean,
+ ) {
+-    if (string.trim() === '') return '';
++    if (string.trim() === '') return [];
+     // array to store each wrapped row as it is processed
+     const rows = [];
+     // the current row
+@@ -208,7 +208,7 @@ function wrapLine(
+     // update the indexes of any escape sequences that remain in the stack
+     for (const esc of ansiStack) esc[3] = [-1, 0];
+     // return wrapped rows
+-    return ax >= 0 ? rows.join('\n') : '';
++    return ax >= 0 ? rows : [];
+ }
+ 
+ export interface WordWrapOptions {
