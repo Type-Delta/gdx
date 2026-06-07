@@ -54,12 +54,11 @@ bun start -- commit auto # equal to `gdx commit auto`
 
 ### TypeScript Configuration
 
-- **Target:** ES2021
-- **Module:** ES2022 (ESM only)
 - **Strict mode:** Enabled
 - **Path aliases:**
    - `@/*` → `./src/*`
    - `@lib/*` → `./lib/esm/*`
+   - `@node/*` → `./node_modules/*`
 
 ### Formatting (Prettier)
 
@@ -233,6 +232,7 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
+- **Patch Packages:** This project uses Bun's patching system, you can find information about the currently patched packages in [docs/patches.md](./docs/patches.md).
 
 ### Caveats
 
@@ -242,3 +242,18 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 > that surprises you, please alert the developer working with you
 > and indicate that this is the case in this section to help
 > prevent future agents from having the same issue.
+
+- **`lib/Tools.js` is authored as one `const Tools = { ... }` object, but the
+  build emits tree-shakeable ESM.** `scripts/transform-tools.mjs` hoists every
+  member of that object into its own top-level `export function` / `export const`
+  and rewrites internal `Tools.x` references to bare `x`, so bundlers can drop
+  unused members. Consequences when editing `lib/Tools.js`:
+   - Call sibling members via `Tools.foo(...)` (never `this.foo`); `this` is not
+     bound after hoisting.
+   - Only regular methods and `key: value` properties are supported as direct
+     members. Adding a getter/setter, spread, or computed key at the top level of
+     the `Tools` object makes the transform throw on purpose — extend the
+     transform if you need one.
+   - Import members by name (`import { ncc } from '@lib/Tools'`). A default
+     (`import Tools from`) or namespace import pulls in the whole object and
+     defeats tree-shaking.

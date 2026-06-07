@@ -147,7 +147,7 @@ async function getShiki(): Promise<ShikijsCliModule> {
 }
 
 async function getDiffLib(): Promise<DiffModule> {
-   diffPromise ??= import('diff');
+   diffPromise ??= import('./diff-lite');
    return await diffPromise;
 }
 

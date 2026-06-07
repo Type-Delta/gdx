@@ -4,7 +4,7 @@ import type { AnsiEscape } from '@node/tty-strings/src/utils';
 // NOTE: v If this import fails, make sure bun patch is properly applied and that the `wrapLine` function is exported in `node_modules/tty-strings/src/wordWrap.ts`
 import { wrapLine } from '@node/tty-strings/src/wordWrap';
 
-import Tools from '@lib/Tools';
+import { strWrap } from '@lib/Tools';
 
 interface stringJustifyOptions {
    /**
@@ -146,7 +146,7 @@ function stringWrap(str: string, maxWidth: number, options: StringWrapOptions = 
    str = String(str);
 
    if (redundancyLv < 1)
-      return Tools.strWrap(str, maxWidth, options);
+      return strWrap(str, maxWidth, options);
 
    if (typeof firstIndent == 'number') firstIndent = ''.padEnd(firstIndent, ' ');
    if (typeof indent == 'number') indent = ''.padEnd(indent, ' ');

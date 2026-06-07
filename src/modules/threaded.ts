@@ -69,41 +69,7 @@ export interface ThreadedOptions {
    workerSource?: ThreadedWorkerSource;
 }
 
-const WORKER_SOURCE = `
-const { parentPort, workerData } = require('node:worker_threads');
-
-Object.assign(process.env, workerData.env);
-
-function serializeError(error) {
-   return error instanceof Error
-      ? { message: error.message, stack: error.stack }
-      : { message: String(error) };
-}
-
-(async () => {
-   for (const requirement of workerData.requirements) {
-      if (requirement.kind === 'import') {
-         globalThis[requirement.name] = await import(requirement.source);
-         continue;
-      }
-      globalThis[requirement.name] = eval('(' + requirement.source + ')');
-   }
-
-   parentPort.on('message', async (message) => {
-      try {
-         const task = eval('(' + message.taskSource + ')');
-         const result = await task(...message.args);
-         parentPort.postMessage({ id: message.id, result });
-      } catch (error) {
-         parentPort.postMessage({ id: message.id, error: serializeError(error) });
-      }
-   });
-
-   parentPort.postMessage({ type: 'ready' });
-})().catch((error) => {
-   parentPort.postMessage({ type: 'ready', error: serializeError(error) });
-});
-`;
+// NOTE: Hardcoded worker code removed for this project to reduce bundle size, its source lives in `src/workers/generic.worker.ts`.
 
 /**
  * Runs async functions in reusable worker threads with shared scheduling limits.
@@ -132,7 +98,11 @@ export class Threaded<TData = unknown> {
       this.maxWorker = Math.max(1, options.maxWorker ?? Math.floor(os.availableParallelism() / 2));
       this.taskTimeout = options.taskTimeout;
       this.env = options.env ?? {};
-      this.workerSource = options.workerSource ?? WORKER_SOURCE;
+      if (!options.workerSource) {
+         // NOTE: Since we can't use eval workers in this project due to Bun's current limitations, we default to a file-based worker source that points to the generic worker file, thus defeating the need for hardcoded worker code.
+         throw new Err('Threaded requires a worker source. Please provide a path to the worker file or the worker code as a string.', 'ThreadedInitializationError');
+      }
+      this.workerSource = options.workerSource;
       this.workerSemaphore = options.semaphore || null;
       this.logger.debug(`Threaded pool initialized with options: ${yuString(options, { color: true })}`);
    }

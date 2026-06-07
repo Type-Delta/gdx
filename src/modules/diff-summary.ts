@@ -1088,7 +1088,7 @@ function isNoisyPath(filePath: string, noisyMatchers: Array<(value: string) => b
 async function getDiffChars(): Promise<DiffCharsFn | null> {
    diffCharsPromise ??= (async () => {
       try {
-         const diffLib = await import('diff') as Awaited<DiffModule>;
+         const diffLib = await import('./diff-lite') as Awaited<DiffModule>;
          return diffLib.diffChars;
       } catch (error) {
          throw new Err(

@@ -2,7 +2,7 @@ import { ArgsSet } from '@/modules/arguments';
 import { RgbVec } from '@/modules/graphics';
 import { ncc } from '@lib/Tools';
 
-export type DiffModule = Awaited<typeof import('diff')>;
+export type DiffModule = Awaited<typeof import('@/modules/diff-lite')>;
 export type ShikijsCliModule = Awaited<typeof import('@shikijs/cli')>;
 
 export type NCCStyle = Parameters<typeof ncc>[0];

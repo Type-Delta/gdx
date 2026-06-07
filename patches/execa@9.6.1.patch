@@ -1,0 +1,25 @@
+diff --git a/lib/methods/create.js b/lib/methods/create.js
+index d59fe0da2218cae9432c19130466905a7d10ca11..6fd0722c13ec842d4c2a276854b1449f1e3e78bc 100644
+--- a/lib/methods/create.js
++++ b/lib/methods/create.js
+@@ -1,7 +1,6 @@
+ import isPlainObject from 'is-plain-obj';
+ import {normalizeParameters} from './parameters.js';
+ import {isTemplateString, parseTemplates} from './template.js';
+-import {execaCoreSync} from './main-sync.js';
+ import {execaCoreAsync} from './main-async.js';
+ import {mergeOptions} from './bind.js';
+ 
+@@ -39,9 +38,9 @@ const callBoundExeca = ({mapArguments, deepOptions = {}, boundOptions = {}, setB
+ 		deepOptions,
+ 		boundOptions,
+ 	});
+-	return isSync
+-		? execaCoreSync(file, commandArguments, options)
+-		: execaCoreAsync(file, commandArguments, options, createNested);
++	// gdx patch: only async methods are used; the sync path is stripped so
++	// `main-sync.js` and its subtree are tree-shaken out of the bundle.
++	return execaCoreAsync(file, commandArguments, options, createNested);
+ };
+ 
+ const parseArguments = ({mapArguments, firstArgument, nextArguments, deepOptions, boundOptions}) => {
