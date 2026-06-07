@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import Threaded from '@/modules/threaded';
+import { getGenericWorkerUrl } from '@/cli/worker'
 
 declare const asyncDouble: (value: number) => Promise<number>;
 declare const sharedMath: {
@@ -17,8 +18,11 @@ declare const pathModule: typeof import('node:path');
 declare const dedentModule: typeof import('dedent');
 
 describe('Threaded', () => {
+   const workerSource = getGenericWorkerUrl()!;
+   expect(workerSource, 'Worker source to be defined').toBeDefined();
+
    it('should run async spawn tasks with required functions', async () => {
-      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000 }).require(
+      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000, workerSource }).require(
          async (value: number) => value * 2,
          'asyncDouble'
       );
@@ -29,7 +33,7 @@ describe('Threaded', () => {
    });
 
    it('should run map tasks from data() and preserve result order', async () => {
-      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000 }).require(
+      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000, workerSource }).require(
          { add: (a: number, b: number) => a + b },
          'sharedMath'
       );
@@ -42,7 +46,7 @@ describe('Threaded', () => {
    });
 
    it('should expose required import paths to worker tasks', async () => {
-      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000 }).require(
+      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000, workerSource }).require(
          'node:path',
          'pathModule'
       );
@@ -59,6 +63,7 @@ describe('Threaded', () => {
          env: { GDX_THREADED_TEST_VALUE: 'enabled' },
          maxWorker: 1,
          taskTimeout: 5000,
+         workerSource,
       });
 
       const result = await pool.spawn(() => process.env.GDX_THREADED_TEST_VALUE);
@@ -84,7 +89,7 @@ describe('Threaded', () => {
    it('should resolve package imports before passing them to workers', async () => {
       const originalCwd = process.cwd();
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gdx-threaded-'));
-      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000 }).require(
+      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000, workerSource }).require(
          'dedent',
          'dedentModule'
       );
@@ -112,7 +117,7 @@ describe('Threaded', () => {
             return this.count;
          },
       };
-      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000 }).require(
+      const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000, workerSource }).require(
          counter,
          'statefulCounter'
       );
@@ -125,7 +130,7 @@ describe('Threaded', () => {
    });
 
    it('should run map tasks with data passed directly', async () => {
-      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000 });
+      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000, workerSource });
 
       const result = await pool.map(async (value: number) => value * value, [2, 3, 4]);
 
@@ -133,7 +138,7 @@ describe('Threaded', () => {
    });
 
    it('should limit workers across concurrent spawn calls', async () => {
-      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000 });
+      const pool = new Threaded({ maxWorker: 2, taskTimeout: 5000, workerSource });
       const startedAt = Date.now();
 
       await Promise.all([
@@ -155,7 +160,7 @@ describe('Threaded', () => {
    });
 
    it('should reject tasks that exceed taskTimeout', async () => {
-      const pool = new Threaded({ maxWorker: 1, taskTimeout: 50 });
+      const pool = new Threaded({ maxWorker: 1, taskTimeout: 50, workerSource });
 
       await expect(
          pool.spawn(async () => {
