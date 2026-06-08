@@ -2,6 +2,9 @@
 
 Guide for agentic coding agents working in the `gdx` repository.
 
+> [!NOTE]
+> If you notice any drift from what is described in this document, please update the document to reflect the current state of the project.
+
 ## Project Overview
 
 `gdx` is a Git CLI wrapper built with TypeScript and Bun. It provides intelligent shorthands, safety features, and AI-powered capabilities for Git workflows. The project uses ES modules, strict TypeScript, and Bun's runtime for testing and execution.
@@ -60,21 +63,12 @@ bun start -- commit auto # equal to `gdx commit auto`
    - `@lib/*` → `./lib/esm/*`
    - `@node/*` → `./node_modules/*`
 
-### Formatting (Prettier)
-
-- **Semi-colons:** Required
-- **Quotes:** Single quotes (`'`)
-- **Print width:** 100 characters
-- **Tab width:** 3 spaces
-- **Trailing commas:** ES5 style
-- **Line endings:** LF (not CRLF, despite Windows repo)
-
 ### ESLint Rules
 
 - `no-console: warn` (Console logging is discouraged; use `Logger` or `quickPrint` instead)
 - `no-fallthrough: off` (Switch fallthrough is allowed)
 - `no-control-regex: off` (Control characters in regex allowed)
-- `@typescript-eslint/no-explicit-any: warn` (Any types discouraged but not blocked)
+- `@typescript-eslint/no-explicit-any: warn` (Any types discouraged)
 
 ### Import Conventions
 
@@ -98,7 +92,7 @@ import cmd from './commands';
 
 **Import Guidelines:**
 
-- Use path aliases (`@/*`, `@lib/*`) instead of relative paths for cross-directory imports
+- Use path aliases instead of relative paths for cross-directory imports
 - Group imports: external → library → internal → relative
 - Use named imports from modules
 - Default exports for command modules (e.g., `export default { help, stash, graph }`)
@@ -148,7 +142,7 @@ this includes helpers even if they are not exported.
  * @param priorityMatch - If true, prioritizes the first matching candidate.
  * @returns An object containing the matched string, candidates, and exact match flag.
  */
-export function progressiveMatch(
+function progressiveMatch(
    input: string,
    candidates: string[],
    priorityMatch = false
@@ -232,7 +226,8 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **LLM integration:** Commands using LLM should handle mock adapter in tests
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
-- **Patch Packages:** This project uses Bun's patching system, you can find information about the currently patched packages in [docs/patches.md](./docs/patches.md).
+- **Patch Packages:** This project uses Bun's patching system, you can find information about the currently patched packages in [patches.md](./docs/patches.md).
+- Test in this project can be very slow, ALWAYS set execution timeout >= 8 minutes.
 
 ### Caveats
 
