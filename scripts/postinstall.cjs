@@ -92,6 +92,12 @@ function setExecutable(filePath) {
 }
 
 function writeFileExecutable(filePath, content) {
+   // Remove any existing entry first. npm links bin entries as symlinks
+   // (e.g. <bindir>/gdx -> ../gdx/scripts/launcher.cjs); writing without
+   // unlinking would follow that symlink and overwrite its target
+   // (launcher.cjs) with shim content instead of replacing the bin entry.
+   // fs.rmSync unlinks the symlink itself; force ignores a missing path.
+   fs.rmSync(filePath, { force: true });
    fs.writeFileSync(filePath, content, { encoding: 'utf8' });
    setExecutable(filePath);
 }
