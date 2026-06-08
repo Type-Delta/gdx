@@ -44,16 +44,20 @@ describe('gdx gdx-config', async () => {
    });
 
    it('should reset a config value to default with --unset', async () => {
-      const setCtx = createGdxContext(tmpDir, ['gdx-config', 'useInlineGitConfig', 'off']);
+      // Use a key that CI does not override via env vars. Keys like
+      // useInlineGitConfig/useInlineSubmodule are forced via GDX_USE_INLINE_*
+      // in CI (see .github/workflows/test.yml), and that env override masks the
+      // reset default in the effective config, making this assertion fail in CI.
+      const setCtx = createGdxContext(tmpDir, ['gdx-config', 'maxThreadWorkers', '4']);
       expect(await gdxConfig(setCtx)).toBe(0);
 
-      const unsetCtx = createGdxContext(tmpDir, ['gdx-config', '--unset', 'useInlineGitConfig']);
+      const unsetCtx = createGdxContext(tmpDir, ['gdx-config', '--unset', 'maxThreadWorkers']);
       expect(await gdxConfig(unsetCtx)).toBe(0);
       expect(buffer.stdout).toContain('Configuration reset to default');
 
       const config = await getConfig();
-      expect(config.get<typeof DEFAULT_CONFIG.useInlineGitConfig>('useInlineGitConfig')).toBe(
-         DEFAULT_CONFIG.useInlineGitConfig
+      expect(config.get<typeof DEFAULT_CONFIG.maxThreadWorkers>('maxThreadWorkers')).toBe(
+         DEFAULT_CONFIG.maxThreadWorkers
       );
    });
 
