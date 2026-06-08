@@ -1,5 +1,28 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Repository-local configuration overrides stored at `.git/.gdxrc.toml`. Use the `--local` flag with `gdx config` to set/unset per-repository overrides, with allowlist-based key filtering, project-scoped keychain accounts for secure keys, and `[LO]` markers to distinguish local overrides from global config.
+- `gdx config --unset` (`-u`) to reset a configuration value back to its default.
+- Relative ref support for `gdx switch`.
+- Copy mode in the diff viewer and pager with togglable line numbers via the `c` key.
+- 8-bit ANSI color palette support (indexes 0–255) in `inferAnsiStyles()`, complementing existing 4-bit and 24-bit RGB handling.
+
+### Changed
+
+- Language detection now uses the GitHub Linguist catalog with Shiki integration, improving extension- and filename-based detection.
+- Integrated `tty-strings` for string wrapping and positioning in the pager and diff viewer, improving handling of ANSI codes and wide characters.
+- Reduced bundle and package size via tree-shaking-enabled exports and dependency optimizations.
+- `llm.provider` config is now typed as `'openai' | 'openrouter'` instead of a free-form string.
+
+### Fixed
+
+- `gdx commit auto` now validates it is running inside a git worktree and fails gracefully when run outside a repository.
+- stdin is now inherited from the parent process in shell execa configurations, alongside stdout and stderr.
+- Launcher node shims now correctly forward the `--` argument separator.
+
 ## Version 0.4.5 - 2026-05-24
 
 ### Added
