@@ -325,6 +325,9 @@ export async function dispatch(
          case 'rb': // alias for 'rebase'
             args[0] = 'rebase';
             break;
+         case 'rst': // alias for 'restore'
+            args[0] = 'restore';
+            break;
          case 'reset': {
             args[0] = 'reset';
             // Handle special reset flags
