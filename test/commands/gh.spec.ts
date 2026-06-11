@@ -55,10 +55,9 @@ describe('gh repo create wrapper', async () => {
       expect(seenQuestions.map((q) => q.key)).toEqual(['visibility']);
    });
 
-   it('asks for from-scratch values and adds README when present', async () => {
+   it('asks for from-scratch values', async () => {
       const outsideDir = path.join(tmpRootDir, 'outside-gh-create');
       fs.mkdirSync(outsideDir, { recursive: true });
-      fs.writeFileSync(path.join(outsideDir, 'README.md'), 'hello');
 
       const originalCwd = process.cwd();
       process.chdir(outsideDir);
@@ -78,7 +77,7 @@ describe('gh repo create wrapper', async () => {
          expect(plan!.args).toContain('Scratch description');
          expect(plan!.args).toContain('--license');
          expect(plan!.args).toContain('mit');
-         expect(plan!.args).toContain('--add-readme');
+         expect(plan!.args).not.toContain('--add-readme');
          expect(plan!.args).toContain('--clone');
          expect(plan!.args).toContain('--private');
          expect(plan!.args).not.toContain('--gitignore');

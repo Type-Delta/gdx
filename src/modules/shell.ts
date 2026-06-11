@@ -13,6 +13,7 @@ import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
 import { unlinkSync, writeFileSync } from './fs';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
+import { readLine } from './line-editor';
 
 export interface SpinnerController {
    /**
@@ -141,9 +142,9 @@ export function printCommandExecution(executable: string, args: string[]): void 
    const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
    quickPrint(
       SGR.dim +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${SGR.white + SGR.bright}${executable} ${escapeCmdArgs(args).join(' ')}` +
-         SGR.reset
+      ncc(rgbVec2decimal(colorVec), 'fg') +
+      `$ ${SGR.white + SGR.bright}${executable} ${escapeCmdArgs(args).join(' ')}` +
+      SGR.reset
    );
 }
 
@@ -153,7 +154,6 @@ export function printCommandExecution(executable: string, args: string[]): void 
  * @returns A promise that resolves to the user's input.
  */
 export async function $prompt(question: string): Promise<string> {
-   const { readLine } = await import('./line-editor');
    return (await readLine(question)).trim();
 }
 

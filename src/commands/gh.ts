@@ -8,7 +8,7 @@ import { EXECUTABLE_NAME, SGR } from '@/consts';
 import { ArgsSet } from '@/modules/arguments';
 import { execCommand, isTTY, $prompt, spinner, $, $inherit, printCommandExecution } from '@/modules/shell';
 import { getRepoRootCached } from '@/modules/git';
-import { existsSync, readdir, readFile } from '@/modules/fs';
+import { existsSync, readFile } from '@/modules/fs';
 import { quickPrint } from '@/utils/utilities';
 import litedent from '@/utils/litedent';
 import global from '@/global';
@@ -296,12 +296,11 @@ export async function buildRepoCreatePlan(
       ? null
       : metadata.description || answers['description'] || null;
    if (!name) return null;
-   if (!hasValueOption(repoCreateArgs, '--description') && !description) return null;
 
    if (mode === 'push') {
       fillPushExistingArgs(repoCreateArgs, repoRoot || process.cwd(), name, description);
    } else {
-      await fillNewRepoArgs(repoCreateArgs, mode, isInsideRepo, name, description, answers);
+      fillNewRepoArgs(repoCreateArgs, mode, isInsideRepo, name, description, answers);
    }
 
    applyVisibility(repoCreateArgs, answers['visibility'] ?? null);
@@ -329,14 +328,14 @@ function determineRepoCreateMode(args: ArgsSet, isInsideRepo: boolean): RepoCrea
 /**
  * Adds the non-interactive answers for creating a repo from scratch or a template.
  */
-async function fillNewRepoArgs(
+function fillNewRepoArgs(
    args: ArgsSet,
    mode: Exclude<RepoCreateMode, 'push'>,
    isInsideRepo: boolean,
    name: string,
    description: string | null,
    answers: Record<string, string | null>
-): Promise<void> {
+): void {
    if (!getRepoNameArg(args)) args.unshift(name);
 
    if (!hasValueOption(args, '--description') && description) {
@@ -345,12 +344,6 @@ async function fillNewRepoArgs(
 
    if (mode === 'scratch' && !hasValueOption(args, '--license') && answers['license']) {
       args.push('--license', answers['license']);
-   }
-
-   if (mode === 'scratch' && !hasAnyOption(args, ['--add-readme'])) {
-      if (await hasReadme(process.cwd())) {
-         args.push('--add-readme');
-      }
    }
 
    if (!isInsideRepo && !hasAnyOption(args, ['--clone', '--no-clone'])) {
@@ -434,18 +427,6 @@ async function getProjectMetadata(projectDir: string): Promise<{ name: string | 
    }
 
    return { name: null, description: null };
-}
-
-/**
- * Checks for an existing README in the target directory.
- */
-async function hasReadme(dir: string): Promise<boolean> {
-   try {
-      const entries = await readdir(dir);
-      return entries.some((entry) => /^readme(?:\.|$)/i.test(entry));
-   } catch {
-      return false;
-   }
 }
 
 /**
