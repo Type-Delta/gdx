@@ -12,6 +12,7 @@ import { existsSync, readdir, readFile } from '@/modules/fs';
 import { quickPrint } from '@/utils/utilities';
 import litedent from '@/utils/litedent';
 import global from '@/global';
+import { Form } from '@/modules/form';
 
 type RepoCreateMode = 'scratch' | 'template' | 'push';
 
@@ -21,9 +22,45 @@ interface RepoCreatePlan {
    summary: string[];
 }
 
-interface RepoCreatePrompt {
-   (question: string): Promise<string>;
+/**
+ * A question the repo-create wrapper needs answered before it can run
+ * `gh repo create` non-interactively.
+ */
+export interface RepoCreateQuestion {
+   key: 'name' | 'description' | 'license' | 'visibility';
+   type: 'textbox' | 'dropdown' | 'choice';
+   title: string;
+   description?: string;
+   optional?: boolean;
+   options?: string[];
+   initial?: string;
 }
+
+/**
+ * Collects answers for repo-create questions.
+ * Implementations: Form TUI (rich terminals) and `$prompt` (fallback).
+ * @returns Answers keyed by question key (null = skipped), or null when the user aborted.
+ */
+export type RepoCreateAsk = (
+   questions: RepoCreateQuestion[]
+) => Promise<Record<string, string | null> | null>;
+
+/** License keys accepted by `gh repo create --license`. */
+const REPO_CREATE_LICENSES = [
+   'mit',
+   'apache-2.0',
+   'gpl-3.0',
+   'agpl-3.0',
+   'lgpl-2.1',
+   'mpl-2.0',
+   'bsd-2-clause',
+   'bsd-3-clause',
+   'bsl-1.0',
+   'cc0-1.0',
+   'epl-2.0',
+   'gpl-2.0',
+   'unlicense',
+];
 
 /**
  * Routes `gdx gh ...` commands through GitHub CLI wrappers before falling back to `gh`.
@@ -44,6 +81,7 @@ async function gh(ctx: GdxContext, gh$: string): Promise<number> {
 
 /**
  * Wraps `gh repo create` by collecting obvious answers up front and running non-interactively.
+ * Uses the full-screen Form TUI when the terminal supports it, plain prompts otherwise.
  * @param ctx - Current gdx context.
  * @param gh$ - Resolved GitHub CLI executable.
  * @param args - Arguments relative to `gh`.
@@ -55,10 +93,36 @@ async function repoCreate(ctx: GdxContext, gh$: string, args: ArgsSet): Promise<
    spinnerCtrl.stop();
    if (authStatus !== 0) return 1;
 
-   const plan = await buildRepoCreatePlan(ctx, args, $prompt);
-   printRepoCreateSummary(plan);
-   const proceed = await $prompt('Proceed with these settings? (yes): ');
-   if (!['', 'yes', 'y'].includes(proceed.trim().toLowerCase())) {
+   const { canUseDiffViewer } = await import('@/modules/diff-viewer');
+   const useForm = canUseDiffViewer();
+
+   const plan = await buildRepoCreatePlan(ctx, args, useForm ? askWithForm : askWithPrompt);
+   if (!plan) {
+      quickPrint(SGR.red + 'Abort repository creation.' + SGR.reset);
+      return 1;
+   }
+
+   let proceed: boolean;
+   if (useForm) {
+      const result = await new Form({ title: 'GitHub · Create repository' })
+         .confirm('proceed', 'Create repository with these settings?', {
+            body: plan.summary,
+            actions: [
+               { label: 'Create repository', value: true },
+               { label: 'Abort', value: false },
+            ],
+         })
+         .run();
+      proceed = result.completed && result.answers.proceed === true;
+      // Keep a record of the settings in the scrollback after the form clears the screen
+      printRepoCreateSummary(plan);
+   } else {
+      printRepoCreateSummary(plan);
+      const answer = await $prompt('Proceed with these settings? (yes): ');
+      proceed = ['', 'yes', 'y'].includes(answer.trim().toLowerCase());
+   }
+
+   if (!proceed) {
       quickPrint(SGR.red + 'Abort repository creation.' + SGR.reset);
       return 1;
    }
@@ -69,17 +133,106 @@ async function repoCreate(ctx: GdxContext, gh$: string, args: ArgsSet): Promise<
 }
 
 /**
+ * Answers repo-create questions through the full-screen Form TUI.
+ * @param questions - Questions to present.
+ * @returns Collected answers, or null when the user exited the form early.
+ */
+async function askWithForm(
+   questions: RepoCreateQuestion[]
+): Promise<Record<string, string | null> | null> {
+   const form = new Form({ title: 'GitHub · Create repository' });
+
+   for (const question of questions) {
+      switch (question.type) {
+         case 'textbox':
+            form.textbox(question.key, question.title, {
+               description: question.description,
+               optional: question.optional,
+               initial: question.initial,
+            });
+            break;
+         case 'dropdown':
+            form.dropdown(question.key, question.title, question.options ?? [], {
+               description: question.description,
+               optional: question.optional,
+               placeholder: 'Type to filter...',
+            });
+            break;
+         case 'choice':
+            form.choice(question.key, question.title, question.options ?? [], {
+               description: question.description,
+               optional: question.optional,
+               initial: question.initial,
+            });
+            break;
+      }
+   }
+
+   const result = await form.run();
+   if (!result.completed) return null;
+   return result.answers as Record<string, string | null>;
+}
+
+/**
+ * Answers repo-create questions with sequential `$prompt` calls.
+ * @param questions - Questions to present.
+ * @returns Collected answers (never aborts; Ctrl+C exits the process).
+ */
+async function askWithPrompt(
+   questions: RepoCreateQuestion[]
+): Promise<Record<string, string | null> | null> {
+   const answers: Record<string, string | null> = {};
+
+   for (const question of questions) {
+      const hint = question.options?.length && question.type === 'choice'
+         ? ` (${question.options.join('/')})`
+         : '';
+      const fallback = question.initial
+         ? ` [${question.initial}]`
+         : question.optional
+            ? ' (blank for none)'
+            : '';
+
+      while (true) {
+         const value = (await $prompt(`${question.title}${hint}${fallback}: `)).trim();
+         if (!value) {
+            if (question.initial) {
+               answers[question.key] = question.initial;
+               break;
+            }
+            if (question.optional) {
+               answers[question.key] = null;
+               break;
+            }
+            continue;
+         }
+         if (question.type === 'choice' && question.options && !question.options.includes(value.toLowerCase())) {
+            quickPrint(
+               SGR.red + `Invalid value. Choose one of: ${question.options.join(', ')}` + SGR.reset
+            );
+            continue;
+         }
+         answers[question.key] = question.type === 'choice' ? value.toLowerCase() : value;
+         break;
+      }
+   }
+
+   return answers;
+}
+
+/**
  * Builds non-interactive `gh repo create` arguments from the current project state.
+ * Missing values are collected through the provided asker in a single pass.
  * @param ctx - Current gdx context.
  * @param inputArgs - Original arguments relative to `gh`.
- * @param prompt - Prompt implementation, injectable for tests.
- * @returns The final command plan.
+ * @param ask - Question asker implementation, injectable for tests.
+ * @returns The final command plan, or null when the user aborted.
  */
 export async function buildRepoCreatePlan(
    ctx: GdxContext,
    inputArgs: ArgsSet,
-   prompt: RepoCreatePrompt = $prompt
-): Promise<RepoCreatePlan> {
+   ask: RepoCreateAsk = askWithPrompt
+): Promise<RepoCreatePlan | null> {
    const args = new ArgsSet(inputArgs.slice(0));
    const repoCreateArgs = new ArgsSet(args.slice(2));
    let repoRoot: string | null;
@@ -91,14 +244,67 @@ export async function buildRepoCreatePlan(
    const isInsideRepo = repoRoot !== null;
 
    const mode = determineRepoCreateMode(repoCreateArgs, isInsideRepo);
+   const metadata =
+      mode === 'push'
+         ? await getProjectMetadata(repoRoot || process.cwd())
+         : { name: null, description: null };
 
-   if (mode === 'push') {
-      await fillPushExistingArgs(repoCreateArgs, repoRoot || process.cwd(), prompt);
-   } else {
-      await fillNewRepoArgs(repoCreateArgs, mode, isInsideRepo, prompt);
+   const questions: RepoCreateQuestion[] = [];
+   if (!getRepoNameArg(repoCreateArgs) && !metadata.name) {
+      questions.push({
+         key: 'name',
+         type: 'textbox',
+         title: 'Repository name',
+         description: 'Name of the new GitHub repository.',
+      });
+   }
+   if (!hasValueOption(repoCreateArgs, '--description') && !metadata.description) {
+      questions.push({
+         key: 'description',
+         type: 'textbox',
+         title: 'Repository description',
+         optional: true,
+         description: 'Short description shown on the repository page.',
+      });
+   }
+   if (mode === 'scratch' && !hasValueOption(repoCreateArgs, '--license')) {
+      questions.push({
+         key: 'license',
+         type: 'dropdown',
+         title: 'License template',
+         description: 'Open source license to initialize the repository with.',
+         optional: true,
+         options: REPO_CREATE_LICENSES,
+      });
+   }
+   if (!hasAnyOption(repoCreateArgs, ['--public', '--private', '--internal'])) {
+      questions.push({
+         key: 'visibility',
+         type: 'choice',
+         title: 'Repository visibility',
+         description: 'Controls who can see the new repository.',
+         options: ['private', 'public', 'internal'],
+         initial: 'private',
+      });
    }
 
-   ensureVisibility(repoCreateArgs);
+   const answers = questions.length > 0 ? await ask(questions) : {};
+   if (answers === null) return null;
+
+   const name = getRepoNameArg(repoCreateArgs) || metadata.name || answers['name'] || null;
+   const description = hasValueOption(repoCreateArgs, '--description')
+      ? null
+      : metadata.description || answers['description'] || null;
+   if (!name) return null;
+   if (!hasValueOption(repoCreateArgs, '--description') && !description) return null;
+
+   if (mode === 'push') {
+      fillPushExistingArgs(repoCreateArgs, repoRoot || process.cwd(), name, description);
+   } else {
+      await fillNewRepoArgs(repoCreateArgs, mode, isInsideRepo, name, description, answers);
+   }
+
+   applyVisibility(repoCreateArgs, answers['visibility'] ?? null);
 
    return {
       mode,
@@ -127,17 +333,18 @@ async function fillNewRepoArgs(
    args: ArgsSet,
    mode: Exclude<RepoCreateMode, 'push'>,
    isInsideRepo: boolean,
-   prompt: RepoCreatePrompt
+   name: string,
+   description: string | null,
+   answers: Record<string, string | null>
 ): Promise<void> {
-   await ensureRepoName(args, process.cwd(), prompt, null);
+   if (!getRepoNameArg(args)) args.unshift(name);
 
-   if (!hasValueOption(args, '--description')) {
-      args.push('--description', await promptRequired(prompt, 'Repository description: '));
+   if (!hasValueOption(args, '--description') && description) {
+      args.push('--description', description);
    }
 
-   if (mode === 'scratch' && !hasValueOption(args, '--license')) {
-      const license = await promptOptional(prompt, 'License template (blank for none): ');
-      if (license) args.push('--license', license);
+   if (mode === 'scratch' && !hasValueOption(args, '--license') && answers['license']) {
+      args.push('--license', answers['license']);
    }
 
    if (mode === 'scratch' && !hasAnyOption(args, ['--add-readme'])) {
@@ -154,22 +361,21 @@ async function fillNewRepoArgs(
 /**
  * Adds the non-interactive answers for pushing an existing local repository.
  */
-async function fillPushExistingArgs(
+function fillPushExistingArgs(
    args: ArgsSet,
    repoRoot: string,
-   prompt: RepoCreatePrompt
-): Promise<void> {
+   name: string,
+   description: string | null
+): void {
    if (!hasValueOption(args, '--source')) {
       args.push('--source', repoRoot);
    }
 
-   const metadata = await getProjectMetadata(repoRoot);
    if (!getRepoNameArg(args)) {
-      args.unshift(metadata.name || await promptRequired(prompt, 'Repository name: '));
+      args.unshift(name);
    }
 
-   if (!hasValueOption(args, '--description')) {
-      const description = metadata.description || await promptRequired(prompt, 'Repository description: ');
+   if (!hasValueOption(args, '--description') && description) {
       args.push('--description', description);
    }
 
@@ -183,26 +389,11 @@ async function fillPushExistingArgs(
 }
 
 /**
- * Ensures the command has a repository name positional argument.
+ * Applies the selected visibility, defaulting to private when none was chosen.
  */
-async function ensureRepoName(
-   args: ArgsSet,
-   fallbackDir: string,
-   prompt: RepoCreatePrompt,
-   preferredName?: string | null
-): Promise<void> {
-   if (getRepoNameArg(args)) return;
-
-   const name = preferredName || await promptRequired(prompt, 'Repository name: ');
-   args.unshift(name);
-}
-
-/**
- * Adds private visibility unless the user already selected visibility.
- */
-function ensureVisibility(args: ArgsSet): void {
+function applyVisibility(args: ArgsSet, visibility: string | null): void {
    if (!hasAnyOption(args, ['--public', '--private', '--internal'])) {
-      args.push('--private');
+      args.push(`--${visibility || 'private'}`);
    }
 }
 
@@ -315,24 +506,6 @@ function getOptionValue(args: string[], option: string): string | null {
 }
 
 /**
- * Prompts until a non-empty answer is provided.
- */
-async function promptRequired(prompt: RepoCreatePrompt, question: string): Promise<string> {
-   while (true) {
-      const value = (await prompt(question)).trim();
-      if (value) return value;
-   }
-}
-
-/**
- * Prompts once for an optional answer.
- */
-async function promptOptional(prompt: RepoCreatePrompt, question: string): Promise<string | null> {
-   const value = (await prompt(question)).trim();
-   return value || null;
-}
-
-/**
  * Builds summary lines for the final confirmation display.
  */
 function buildRepoCreateSummary(mode: RepoCreateMode, args: string[]): string[] {
@@ -362,6 +535,9 @@ export const help = {
          Most commands are forwarded directly to ${SGR.cyan}gh${SGR.reset}. In an interactive TTY,
          ${SGR.cyan}${EXECUTABLE_NAME} gh repo create${SGR.reset} first checks ${SGR.cyan}gh auth status${SGR.reset},
          then fills obvious answers and runs ${SGR.cyan}gh repo create${SGR.reset} non-interactively.
+         Missing values (name, description, license, visibility) are collected through a
+         full-screen form on rich terminals, or plain prompts otherwise. In the form,
+         ${SGR.cyan}Shift+Right${SGR.reset} skips/advances and ${SGR.cyan}Shift+Left${SGR.reset} goes back (${SGR.cyan}Tab${SGR.reset}/${SGR.cyan}Shift+Tab${SGR.reset} also work).
 
          Existing git repositories are pushed as the current local repo. Outside a git repo,
          the wrapper creates a repository from scratch. Template creation is used only when

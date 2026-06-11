@@ -1,4 +1,3 @@
-import { createInterface } from 'readline';
 import _whichLib from 'which';
 import { execa, ExecaMethod, Options, ExecaError } from 'execa';
 import type { MinimalVerboseObject } from '@node/execa/types/verbose';
@@ -154,17 +153,8 @@ export function printCommandExecution(executable: string, args: string[]): void 
  * @returns A promise that resolves to the user's input.
  */
 export async function $prompt(question: string): Promise<string> {
-   const rl = createInterface({
-      input: process.stdin,
-      output: process.stdout,
-   });
-
-   return new Promise((resolve) => {
-      rl.question(question, (answer) => {
-         rl.close();
-         resolve(answer.trim());
-      });
-   });
+   const { readLine } = await import('./line-editor');
+   return (await readLine(question)).trim();
 }
 
 /**

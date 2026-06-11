@@ -1,10 +1,25 @@
 import { describe, expect } from 'bun:test';
 import path from 'path';
 
-import gh, { buildRepoCreatePlan } from '@/commands/gh';
+import gh, { buildRepoCreatePlan, RepoCreateQuestion } from '@/commands/gh';
 import { ArgsSet } from '@/modules/arguments';
 import * as fs from '@/modules/fs';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+
+/**
+ * Creates a test asker that answers questions from a fixed override map,
+ * falling back to the question's initial value (or null for optional ones).
+ */
+function makeAsk(overrides: Record<string, string | null> = {}) {
+   const seenQuestions: RepoCreateQuestion[] = [];
+   const ask = async (questions: RepoCreateQuestion[]) => {
+      seenQuestions.push(...questions);
+      return Object.fromEntries(
+         questions.map((q) => [q.key, overrides[q.key] !== undefined ? overrides[q.key] : q.initial ?? null])
+      );
+   };
+   return { ask, seenQuestions };
+}
 
 describe('gh repo create wrapper', async () => {
    const { tmpDir, tmpRootDir, $, it } = await createTestEnv({ suitName: 'gh-repo-create' });
@@ -15,25 +30,29 @@ describe('gh repo create wrapper', async () => {
          JSON.stringify({ name: 'pkg-name', description: 'Package description' })
       );
 
+      const { ask, seenQuestions } = makeAsk();
       const plan = await buildRepoCreatePlan(
          createGdxContext(tmpDir, ['gh', 'repo', 'create']),
          new ArgsSet(['repo', 'create']),
-         async () => ''
+         ask
       );
 
-      expect(plan.mode).toBe('push');
-      expect(plan.args).toContain('--source');
-      expect(plan.args.map((arg) => path.normalize(arg))).toContain(path.normalize(tmpDir));
-      expect(plan.args).toContain('pkg-name');
-      expect(plan.args).toContain('--description');
-      expect(plan.args).toContain('Package description');
-      expect(plan.args).toContain('--remote');
-      expect(plan.args).toContain('origin');
-      expect(plan.args).toContain('--push');
-      expect(plan.args).toContain('--private');
-      expect(plan.summary).toContain('Name: pkg-name');
-      expect(plan.summary).toContain('Description: Package description');
-      expect(plan.summary).toContain('License: (none)');
+      expect(plan).not.toBeNull();
+      expect(plan!.mode).toBe('push');
+      expect(plan!.args).toContain('--source');
+      expect(plan!.args.map((arg) => path.normalize(arg))).toContain(path.normalize(tmpDir));
+      expect(plan!.args).toContain('pkg-name');
+      expect(plan!.args).toContain('--description');
+      expect(plan!.args).toContain('Package description');
+      expect(plan!.args).toContain('--remote');
+      expect(plan!.args).toContain('origin');
+      expect(plan!.args).toContain('--push');
+      expect(plan!.args).toContain('--private');
+      expect(plan!.summary).toContain('Name: pkg-name');
+      expect(plan!.summary).toContain('Description: Package description');
+      expect(plan!.summary).toContain('License: (none)');
+      // Metadata fills name/description, so only visibility should be asked
+      expect(seenQuestions.map((q) => q.key)).toEqual(['visibility']);
    });
 
    it('asks for from-scratch values and adds README when present', async () => {
@@ -45,23 +64,30 @@ describe('gh repo create wrapper', async () => {
       process.chdir(outsideDir);
       try {
          const ctx = createGdxContext(outsideDir, ['gh', 'repo', 'create']);
-         const answers = ['scratch-name', 'Scratch description', 'mit'];
-         const plan = await buildRepoCreatePlan(
-            ctx,
-            new ArgsSet(['repo', 'create']),
-            async () => answers.shift() || ''
-         );
+         const { ask, seenQuestions } = makeAsk({
+            name: 'scratch-name',
+            description: 'Scratch description',
+            license: 'mit',
+         });
+         const plan = await buildRepoCreatePlan(ctx, new ArgsSet(['repo', 'create']), ask);
 
-         expect(plan.mode).toBe('scratch');
-         expect(plan.args).toContain('scratch-name');
-         expect(plan.args).toContain('--description');
-         expect(plan.args).toContain('Scratch description');
-         expect(plan.args).toContain('--license');
-         expect(plan.args).toContain('mit');
-         expect(plan.args).toContain('--add-readme');
-         expect(plan.args).toContain('--clone');
-         expect(plan.args).toContain('--private');
-         expect(plan.args).not.toContain('--gitignore');
+         expect(plan).not.toBeNull();
+         expect(plan!.mode).toBe('scratch');
+         expect(plan!.args).toContain('scratch-name');
+         expect(plan!.args).toContain('--description');
+         expect(plan!.args).toContain('Scratch description');
+         expect(plan!.args).toContain('--license');
+         expect(plan!.args).toContain('mit');
+         expect(plan!.args).toContain('--add-readme');
+         expect(plan!.args).toContain('--clone');
+         expect(plan!.args).toContain('--private');
+         expect(plan!.args).not.toContain('--gitignore');
+         expect(seenQuestions.map((q) => q.key)).toEqual([
+            'name',
+            'description',
+            'license',
+            'visibility',
+         ]);
       } finally {
          process.chdir(originalCwd);
       }
@@ -69,37 +95,43 @@ describe('gh repo create wrapper', async () => {
 
    it('asks for push-existing name and description when metadata is missing', async () => {
       fs.rmSync(path.join(tmpDir, 'package.json'), { force: true });
-      const answers = ['asked-name', 'asked description'];
+      const { ask } = makeAsk({ name: 'asked-name', description: 'asked description' });
       const plan = await buildRepoCreatePlan(
          createGdxContext(tmpDir, ['gh', 'repo', 'create']),
          new ArgsSet(['repo', 'create']),
-         async () => answers.shift() || ''
+         ask
       );
 
-      expect(plan.mode).toBe('push');
-      expect(plan.args).toContain('asked-name');
-      expect(plan.args).toContain('--description');
-      expect(plan.args).toContain('asked description');
+      expect(plan).not.toBeNull();
+      expect(plan!.mode).toBe('push');
+      expect(plan!.args).toContain('asked-name');
+      expect(plan!.args).toContain('--description');
+      expect(plan!.args).toContain('asked description');
    });
 
-   it('does not add a license when from-scratch license answer is blank', async () => {
+   it('does not add a license when from-scratch license answer is skipped', async () => {
       const outsideDir = path.join(tmpRootDir, 'outside-gh-create-no-license');
       fs.mkdirSync(outsideDir, { recursive: true });
 
       const originalCwd = process.cwd();
       process.chdir(outsideDir);
       try {
-         const answers = ['scratch-no-license', 'No license description', ''];
+         const { ask } = makeAsk({
+            name: 'scratch-no-license',
+            description: 'No license description',
+            license: null,
+         });
          const plan = await buildRepoCreatePlan(
             createGdxContext(outsideDir, ['gh', 'repo', 'create']),
             new ArgsSet(['repo', 'create']),
-            async () => answers.shift() || ''
+            ask
          );
 
-         expect(plan.args).toContain('scratch-no-license');
-         expect(plan.args).toContain('No license description');
-         expect(plan.args).not.toContain('--license');
-         expect(plan.summary).toContain('License: (none)');
+         expect(plan).not.toBeNull();
+         expect(plan!.args).toContain('scratch-no-license');
+         expect(plan!.args).toContain('No license description');
+         expect(plan!.args).not.toContain('--license');
+         expect(plan!.summary).toContain('License: (none)');
       } finally {
          process.chdir(originalCwd);
       }
@@ -112,16 +144,18 @@ describe('gh repo create wrapper', async () => {
          '[project]\nname = "py-name"\ndescription = "Python description"\n'
       );
 
+      const { ask } = makeAsk();
       const plan = await buildRepoCreatePlan(
          createGdxContext(tmpDir, ['gh', 'repo', 'create']),
          new ArgsSet(['repo', 'create']),
-         async () => ''
+         ask
       );
 
-      expect(plan.args).toContain('py-name');
-      expect(plan.args).toContain('--description');
-      expect(plan.args).toContain('Python description');
-      expect(plan.summary.some((line) => line.startsWith('Command:'))).toBe(false);
+      expect(plan).not.toBeNull();
+      expect(plan!.args).toContain('py-name');
+      expect(plan!.args).toContain('--description');
+      expect(plan!.args).toContain('Python description');
+      expect(plan!.summary.some((line) => line.startsWith('Command:'))).toBe(false);
    });
 
    it('shows explicit license in repo-create summary', async () => {
@@ -130,15 +164,69 @@ describe('gh repo create wrapper', async () => {
          JSON.stringify({ name: 'licensed-pkg', description: 'Licensed package' })
       );
 
+      const { ask } = makeAsk();
       const plan = await buildRepoCreatePlan(
          createGdxContext(tmpDir, ['gh', 'repo', 'create', '--license', 'mit']),
          new ArgsSet(['repo', 'create', '--license', 'mit']),
-         async () => ''
+         ask
       );
 
-      expect(plan.summary).toContain('Name: licensed-pkg');
-      expect(plan.summary).toContain('Description: Licensed package');
-      expect(plan.summary).toContain('License: mit');
+      expect(plan).not.toBeNull();
+      expect(plan!.summary).toContain('Name: licensed-pkg');
+      expect(plan!.summary).toContain('Description: Licensed package');
+      expect(plan!.summary).toContain('License: mit');
+   });
+
+   it('applies the selected visibility answer', async () => {
+      fs.writeFileSync(
+         path.join(tmpDir, 'package.json'),
+         JSON.stringify({ name: 'vis-pkg', description: 'Visibility package' })
+      );
+
+      const { ask, seenQuestions } = makeAsk({ visibility: 'public' });
+      const plan = await buildRepoCreatePlan(
+         createGdxContext(tmpDir, ['gh', 'repo', 'create']),
+         new ArgsSet(['repo', 'create']),
+         ask
+      );
+
+      expect(plan).not.toBeNull();
+      expect(plan!.args).toContain('--public');
+      expect(plan!.args).not.toContain('--private');
+      expect(plan!.summary).toContain('Visibility: public');
+      const visibilityQuestion = seenQuestions.find((q) => q.key === 'visibility');
+      expect(visibilityQuestion?.type).toBe('choice');
+      expect(visibilityQuestion?.options).toEqual(['private', 'public', 'internal']);
+      expect(visibilityQuestion?.initial).toBe('private');
+   });
+
+   it('skips the visibility question when a visibility flag is given', async () => {
+      fs.writeFileSync(
+         path.join(tmpDir, 'package.json'),
+         JSON.stringify({ name: 'vis-flag-pkg', description: 'Visibility flag package' })
+      );
+
+      const { ask, seenQuestions } = makeAsk();
+      const plan = await buildRepoCreatePlan(
+         createGdxContext(tmpDir, ['gh', 'repo', 'create', '--internal']),
+         new ArgsSet(['repo', 'create', '--internal']),
+         ask
+      );
+
+      expect(plan).not.toBeNull();
+      expect(plan!.args).toContain('--internal');
+      expect(plan!.args).not.toContain('--private');
+      expect(seenQuestions.map((q) => q.key)).not.toContain('visibility');
+   });
+
+   it('returns null when the asker reports an aborted form', async () => {
+      const plan = await buildRepoCreatePlan(
+         createGdxContext(tmpDir, ['gh', 'repo', 'create']),
+         new ArgsSet(['repo', 'create']),
+         async () => null
+      );
+
+      expect(plan).toBeNull();
    });
 
    it('checks gh auth before asking repo-create questions', async () => {
