@@ -211,6 +211,7 @@ export const GDX_COMMANDS = [
    'cache',
    'doctor',
    'snap',
+   'gh',
 ];
 
 export const GDX_SHORTHANDS = [

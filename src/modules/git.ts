@@ -1575,7 +1575,7 @@ export async function getGitVersionCached(git$: GdxContext['git$']): Promise<str
  * Gets git repository root, cached for the session.
  * Cache key: 'git.repoRoot'
  */
-export async function getRepoRootCached(git$: GdxContext['git$']): Promise<string> {
+export async function getRepoRootCached(git$: GdxContext['git$'], quiet: boolean = false): Promise<string> {
    const cache = await getCache();
    const cwd = process.cwd();
    const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
@@ -1600,7 +1600,9 @@ export async function getRepoRootCached(git$: GdxContext['git$']): Promise<strin
 
       return repoRoot;
    } catch (err) {
-      Logger.warn(`Failed to get repo root: ${err}`, 'cache-ctrl');
+      if (!quiet) {
+         Logger.warn(`Failed to get repo root: ${err}`, 'cache-ctrl');
+      }
       throw err;
    }
 }

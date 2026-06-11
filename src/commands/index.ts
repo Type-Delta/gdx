@@ -17,6 +17,7 @@ import reword from './reword';
 import tag from './tag';
 import __completion from './__completion';
 import snap from './snap';
+import gh from './gh';
 
 export default {
    __completion,
@@ -38,4 +39,5 @@ export default {
    reword,
    tag,
    snap,
+   gh,
 };

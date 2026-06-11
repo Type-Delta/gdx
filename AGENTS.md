@@ -7,7 +7,7 @@ Guide for agentic coding agents working in the `gdx` repository.
 
 ## Project Overview
 
-`gdx` is a Git CLI wrapper built with TypeScript and Bun. It provides intelligent shorthands, safety features, and AI-powered capabilities for Git workflows. The project uses ES modules, strict TypeScript, and Bun's runtime for testing and execution.
+`gdx` is a Git/GitHub CLI wrapper built with TypeScript and Bun. It provides intelligent shorthands, safety features, and AI-powered capabilities for Git workflows. The project uses ES modules, strict TypeScript, and Bun's runtime for testing and execution.
 
 ---
 

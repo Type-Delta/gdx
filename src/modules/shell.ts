@@ -5,7 +5,7 @@ import type { MinimalVerboseObject } from '@node/execa/types/verbose';
 
 import { CheckCache, Err, MathKit, ncc, yuString } from '@lib/Tools';
 
-import { Easing, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
+import { Easing, hslToRgbVec, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
 import { GDX_VPALETTE, GDX_RESULT_FILE, GDX_SIGNAL_CODE, DEFAULT_SPINNER, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
@@ -13,6 +13,7 @@ import global from '@/global';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
 import { unlinkSync, writeFileSync } from './fs';
+import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
 
 export interface SpinnerController {
    /**
@@ -131,6 +132,21 @@ export const $inherit = limitExeca(execa({
    stderr: 'inherit',
    verbose: execaCustomLogger,
 }));
+
+/**
+ * Prints a styled command preview before executing an expanded wrapper command.
+ * @param executable - Executable name to display.
+ * @param args - Arguments that will be passed to the executable.
+ */
+export function printCommandExecution(executable: string, args: string[]): void {
+   const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
+   quickPrint(
+      SGR.dim +
+         ncc(rgbVec2decimal(colorVec), 'fg') +
+         `$ ${SGR.white + SGR.bright}${executable} ${escapeCmdArgs(args).join(' ')}` +
+         SGR.reset
+   );
+}
 
 /**
  * Prompts the user with a question and returns their input.
@@ -438,18 +454,20 @@ export function tokenizeCommand(cmd: string): string[] {
 }
 
 /**
- * Executes a git command with given arguments.
+ * Executes a command with given arguments.
  *
- * Handles optional output redirection and error.
- * @param git$ Git executable path or command (can be array for test contexts with -C flag)
- * @param args Arguments to pass to git
+ * Handles optional output redirection and common process errors.
+ * @param executable Executable path or command (can be array for scoped commands with flags)
+ * @param args Arguments to pass to the executable
+ * @param displayName Human-readable executable name for diagnostics
  * @param redirectTo Optional file path to redirect stdout
  * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
- * @returns Exit code of the git command
+ * @returns Exit code of the command
  */
-export async function execGit(
-   git$: string | string[],
+export async function execCommand(
+   executable: string | string[],
    args: string[],
+   displayName: string,
    redirectTo: string | null = null,
    redirectMode: string = '>'
 ): Promise<number> {
@@ -464,10 +482,10 @@ export async function execGit(
             },
             stderr: 'inherit',
          }));
-         const { exitCode: eCode } = await redirect$`${git$} ${args}`;
+         const { exitCode: eCode } = await redirect$`${executable} ${args}`;
          exitCode = eCode;
       } else {
-         const { exitCode: eCode } = await $inherit`${git$} ${args}`;
+         const { exitCode: eCode } = await $inherit`${executable} ${args}`;
          exitCode = eCode;
       }
    } catch (_err) {
@@ -483,7 +501,7 @@ export async function execGit(
          err.code === 'SIGKILL'
       ) {
          Logger.debug(
-            `Git command was killed by signal: ${err.code}. Treating as failure with exit code 1.`
+            `${displayName} command was killed by signal: ${err.code}. Treating as failure with exit code 1.`
          );
          Logger.verbose('Full error details: ' + yuString(err, { color: true }));
          return 1; // process was killed, return 1 to indicate failure
@@ -491,14 +509,14 @@ export async function execGit(
 
       if (err.code === 'ENOENT') {
          Logger.error(
-            `Git executable not found: "${git$}". Ensure git is installed and in your PATH.`
+            `${displayName} executable not found: "${executable}". Ensure ${displayName} is installed and in your PATH.`
          );
          return 1; // git not found, return 1 to indicate failure
       }
 
       if (err.code === 'EACCES') {
          Logger.error(
-            `Permission denied when trying to execute git: "${git$}". Check your permissions for this executable.`
+            `Permission denied when trying to execute ${displayName}: "${executable}". Check your permissions for this executable.`
          );
          return 1; // permission issue, return 1 to indicate failure
       }
@@ -518,6 +536,25 @@ export async function execGit(
    }
 
    return exitCode ?? 0;
+}
+
+/**
+ * Executes a git command with given arguments.
+ *
+ * Handles optional output redirection and error.
+ * @param git$ Git executable path or command (can be array for test contexts with -C flag)
+ * @param args Arguments to pass to git
+ * @param redirectTo Optional file path to redirect stdout
+ * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
+ * @returns Exit code of the git command
+ */
+export async function execGit(
+   git$: string | string[],
+   args: string[],
+   redirectTo: string | null = null,
+   redirectMode: string = '>'
+): Promise<number> {
+   return execCommand(git$, args, 'Git', redirectTo, redirectMode);
 }
 
 /**

@@ -57,6 +57,14 @@ async function main(): Promise<number> {
 
    ctx.git$ = gitGlobalParse.gitArgs.length ? [git$, ...gitGlobalParse.gitArgs] : git$;
 
+   if (args[0] === 'gh') {
+      const gh$ = await whichExec('gh');
+      if (!gh$) {
+         throw new Err('GitHub CLI is not installed or not found in PATH.', 'GH_NOT_FOUND');
+      }
+      return cmd.gh(ctx, gh$);
+   }
+
    if (args[0] === '--bypass') {
       // Bypass gdx and execute git directly
       return execGit(git$, args.slice(1));

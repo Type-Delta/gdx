@@ -1,14 +1,13 @@
-import { Err, ncc } from '@lib/Tools';
+import { Err } from '@lib/Tools';
 
 import cmd from '@/commands';
 import { GDX_COMMANDS, SGR } from '@/consts';
-import { $, execGit } from '@/modules/shell';
-import { compareVersions, escapeCmdArgs, progressiveMatch, quickPrint } from '@/utils/utilities';
+import { $, execGit, printCommandExecution } from '@/modules/shell';
+import { compareVersions, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
-import { hslToRgbVec, rgbVec2decimal } from '@/modules/graphics';
 import {
    getGitVersionCached,
    getGitConfigCached,
@@ -462,13 +461,7 @@ export async function dispatch(
    }
 
    if (state.inMacro || originalArgs.some((a, i) => args[i] !== a)) {
-      const colorVec = hslToRgbVec(((args.length % 6) + 1) / 8.6, 0.64, 0.5);
-      quickPrint(
-         SGR.dim +
-         ncc(rgbVec2decimal(colorVec), 'fg') +
-         `$ ${SGR.white + SGR.bright}git ${escapeCmdArgs(args).join(' ')}` +
-         SGR.reset
-      );
+      printCommandExecution('git', args);
    }
 
    return execGit(ctx.git$, args, redirectTo, redirectMode);

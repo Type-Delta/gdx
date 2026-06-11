@@ -22,6 +22,7 @@ import { help as rewordHelp } from './reword';
 import { help as macroHelp } from './macro';
 import { help as tagHelp } from './tag';
 import { help as snapHelp } from './snap';
+import { help as ghHelp } from './gh';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 const EXTENSION_HELP_MAP: Record<string, CommandHelpObj> = {
@@ -44,6 +45,7 @@ const COMMAND_HELP_MAP: Record<string, CommandHelpObj> = {
    reword: rewordHelp,
    macro: macroHelp,
    snap: snapHelp,
+   gh: ghHelp,
 };
 const FIRST_COL_WIDTH = 23;
 
