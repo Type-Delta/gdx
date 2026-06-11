@@ -28,6 +28,7 @@ import {
    viewInteractiveShow,
    viewInteractiveShowBlob,
 } from '@/modules/show-navigation';
+import { hasCommandHelp } from '@/commands/help';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -94,6 +95,9 @@ export async function dispatch(
       const { match, candidates } = progressiveMatch(args[0], GDX_COMMANDS);
 
       if (match) args[0] = match;
+      if (hasCommandHelp(args[0]) && (args[1] === '-h' || args[1] === '--help')) {
+         return cmd.help(args[0]);
+      }
 
       switch (args[0]) {
          case 's': // alias for 'status'

@@ -49,6 +49,15 @@ const COMMAND_HELP_MAP: Record<string, CommandHelpObj> = {
 };
 const FIRST_COL_WIDTH = 23;
 
+/**
+ * Returns true when gdx provides built-in help for the given command name.
+ * @param name - Command name to check.
+ */
+export function hasCommandHelp(name?: string): boolean {
+   if (!name) return false;
+   return name in COMMAND_HELP_MAP || name in EXTENSION_HELP_MAP || name === 'help';
+}
+
 export default function help(name?: string): number {
    if (!name) {
       // LINK: dn2jka text literal in spec
