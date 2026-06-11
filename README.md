@@ -92,7 +92,7 @@ To enable features like `gdx parallel switch` (auto-cd into worktrees) and **tab
 
 Shell integration provides:
 
-- **Auto-cd support**: Allows `gdx parallel switch` to change directories
+- **Auto-cd support**: Allows switching between parallel **worktrees** and **submodules** without needing to `cd` into them manually.
 - **Tab completion**: Intelligent completion for gdx commands, shorthands, and git subcommands
 - **Completion fallback**: Falls back to native git completion when gdx has no suggestions (git fallback requires you to install git's completion scripts separately)
 
@@ -130,13 +130,14 @@ Invoke-Expression (& { (gdx --init pwsh | Out-String) })
 `gdx` isn't just a list of static aliases. It understands partial commands and expands them smartly.
 
 ```bash
-gdx s             # -> git status
-gdx sta           # -> git stash
-gdx statu         # -> git status
-gdx lg            # -> git log --oneline --graph --all --decorate
-gdx pl -au        # -> git pull --allow-unrelated-histories
-gdx ps -fl        # -> git push --force-with-lease
-gdx reset ~2      # -> git reset HEAD~2
+gdx s                 # -> git status
+gdx sta               # -> git stash
+gdx statu             # -> git status
+gdx lg                # -> git log --oneline --graph --all --decorate
+gdx pu -au            # -> git pull --allow-unrelated-histories
+gdx ps -fl            # -> git push --force-with-lease
+gdx cmi -m "Fix bug"  # -> git commit -m "Fix bug"
+gdx reset ~2          # -> git reset HEAD~2
 ```
 
 > [!NOTE]
@@ -162,6 +163,8 @@ We've all accidentally reset files we meant to keep. `gdx clear` is the solution
 - **`gdx clear`**: Creates a timestamped patch backup in a temp folder, then effectively runs `reset --hard` & `clean -fd`.
 - **`gdx clear pardon`**: "Wait, I didn't mean to do that." Applies the backup patch and restores your changes.
 
+You can also create a repository/worktree+index backup with `gdx snap`.
+
 ### 4. Parallel Worktrees (Experimental)
 
 A wrapper for `git worktree` that reduces the friction of managing multiple worktrees, it handles the setup, switching, syncing changes, and cleanup of parallel worktrees so you can focus on coding instead of git logistics.
@@ -185,7 +188,7 @@ using detected package managers (see `parallel.init` config for options), and **
 ignored env files** if configured (see `parallel.envPaths` config for options),
 getting the fork ready for work in no time.
 
-### 5. Git Output for Human (Experimental)
+### 5. Git Output for Human
 
 Admit it, Git's default output isn't exactly designed for readability.
 `gdx` enhances the output of some commands with better formatting to make it less "git" to read.
@@ -217,7 +220,114 @@ gdx sta drop 2..6   # Drops stashes 2 through 6.
 gdx stash d pardon  # Restores the last dropped stash.
 ```
 
-### 7. Commits Message Generation
+### 7. GitHub CLI Wrapper (Experimental)
+
+Similar to how `gdx` wraps git, `gdx gh` wraps the GitHub CLI (`gh`) to provides better UX and some QoL features like:
+
+#### Example: `gdx gh repo create`
+
+Instead of asking you millions of obvious questions, gdx looks around to figure out what you want and only asks you questions that matter.
+
+<details>
+<summary><strong>See how it works</strong></summary>
+
+```mermaid
+flowchart TD
+   classDef ask fill:#f59e0b,stroke:#b45309,color:#1f2937,font-weight:bold
+   classDef auto fill:#34d399,stroke:#059669,color:#064e3b,font-weight:bold
+   classDef skip fill:#94a3b8,stroke:#475569,color:#1e293b
+   classDef decision fill:#e0e7ff,stroke:#6366f1,color:#312e81
+   classDef mode fill:#6366f1,stroke:#4338ca,color:#ffffff,font-weight:bold
+   classDef final fill:#0ea5e9,stroke:#0369a1,color:#ffffff,font-weight:bold
+
+   START(["gdx gh repo create"]) --> MODE{"Which mode?"}
+   class MODE decision
+
+   MODE -- "--template / -p given" --> T["🧩 From template"]:::mode
+   MODE -- "--source given,<br/>or inside a git repo" --> P["📤 Push local"]:::mode
+   MODE -- "otherwise" --> S["✨ From scratch"]:::mode
+
+   %% ───────────── From scratch ─────────────
+   subgraph SG_S [" From scratch "]
+      S --> S_NAME{"Name in args?"}:::decision
+      S_NAME -- yes --> S_NAME_A["Skip — use positional arg"]:::skip
+      S_NAME -- no --> S_NAME_Q["Ask: repository name"]:::ask
+
+      S_NAME_A & S_NAME_Q --> S_DESC{"--description given?"}:::decision
+      S_DESC -- yes --> S_DESC_A["Skip"]:::skip
+      S_DESC -- no --> S_DESC_Q["Ask: description<br/><i>(optional)</i>"]:::ask
+
+      S_DESC_A & S_DESC_Q --> S_LIC{"--license given?"}:::decision
+      S_LIC -- yes --> S_LIC_A["Skip"]:::skip
+      S_LIC -- no --> S_LIC_Q["Ask: license<br/><i>(optional dropdown)</i>"]:::ask
+
+      S_LIC_A & S_LIC_Q --> S_VIS{"--public/--private/<br/>--internal given?"}:::decision
+      S_VIS -- yes --> S_VIS_A["Skip"]:::skip
+      S_VIS -- no --> S_VIS_Q["Ask: visibility<br/><i>(default: private)</i>"]:::ask
+
+      S_VIS_A & S_VIS_Q --> S_CLONE["Auto: --clone<br/><i>(unless --clone/--no-clone given)</i>"]:::auto
+   end
+
+   %% ───────────── From template ─────────────
+   subgraph SG_T [" From template "]
+      T --> T_NAME{"Name in args?"}:::decision
+      T_NAME -- yes --> T_NAME_A["Skip — use positional arg"]:::skip
+      T_NAME -- no --> T_NAME_Q["Ask: repository name"]:::ask
+
+      T_NAME_A & T_NAME_Q --> T_DESC{"--description given?"}:::decision
+      T_DESC -- yes --> T_DESC_A["Skip"]:::skip
+      T_DESC -- no --> T_DESC_Q["Ask: description<br/><i>(optional)</i>"]:::ask
+
+      T_DESC_A & T_DESC_Q --> T_LIC["License question skipped<br/><i>(template provides files)</i>"]:::skip
+
+      T_LIC --> T_VIS{"--public/--private/<br/>--internal given?"}:::decision
+      T_VIS -- yes --> T_VIS_A["Skip"]:::skip
+      T_VIS -- no --> T_VIS_Q["Ask: visibility<br/><i>(default: private)</i>"]:::ask
+
+      T_VIS_A & T_VIS_Q --> T_CLONE["Auto: --clone if outside a repo<br/><i>(unless --clone/--no-clone given)</i>"]:::auto
+   end
+
+   %% ───────────── Push local ─────────────
+   subgraph SG_P [" Push local "]
+      P --> P_META["Read package.json /<br/>pyproject.toml metadata"]:::auto
+
+      P_META --> P_NAME{"Name in args<br/>or in metadata?"}:::decision
+      P_NAME -- "in args" --> P_NAME_A["Skip"]:::skip
+      P_NAME -- "in metadata" --> P_NAME_M["Auto-fill from manifest"]:::auto
+      P_NAME -- neither --> P_NAME_Q["Ask: repository name"]:::ask
+
+      P_NAME_A & P_NAME_M & P_NAME_Q --> P_DESC{"--description given<br/>or in metadata?"}:::decision
+      P_DESC -- "in args" --> P_DESC_A["Skip"]:::skip
+      P_DESC -- "in metadata" --> P_DESC_M["Auto-fill from manifest"]:::auto
+      P_DESC -- neither --> P_DESC_Q["Ask: description<br/><i>(optional)</i>"]:::ask
+
+      P_DESC_A & P_DESC_M & P_DESC_Q --> P_VIS{"--public/--private/<br/>--internal given?"}:::decision
+      P_VIS -- yes --> P_VIS_A["Skip"]:::skip
+      P_VIS -- no --> P_VIS_Q["Ask: visibility<br/><i>(default: private)</i>"]:::ask
+
+      P_VIS_A & P_VIS_Q --> P_FILL["Auto: --source ‹repo root›<br/>--remote origin · --push"]:::auto
+   end
+
+   S_CLONE & T_CLONE & P_FILL --> CONFIRM["📋 Show summary &<br/>confirm"]:::final
+   CONFIRM --> RUN(["▶ gh repo create ‹args›"]):::final
+
+   %% Legend
+   subgraph LEGEND ["Legend"]
+      L1["Asked interactively"]:::ask
+      L2["Auto-filled"]:::auto
+      L3["Skipped — already provided"]:::skip
+   end
+```
+
+</details>
+
+With this you will only be asked a maximum of 4 questions, only the one you care about.
+
+Oh! did I mention that the "Form" now looks like this?
+
+![gh repo create tui](https://github.com/Type-Delta/gdx/raw/main/resources/images/gdx-gh-repo-create-form.png)
+
+### 8. Commits Message Generation
 
 Struggling to come up with a commit message? Let `gdx` do it for you.
 
@@ -234,7 +344,7 @@ Unlike most AI commit message generators, by default `gdx` creates messages gene
 This ensures the generated messages fit your project's style and tone.
 Said guidelines are updated every month to reflect your evolving commit style.
 
-### 8. Fun & Analytics
+### 9. Fun & Analytics
 
 Tools to help you feel productive without leaving the terminal.
 
@@ -265,6 +375,7 @@ Tools to help you feel productive without leaving the terminal.
 | `dif`             | `git diff` (supports `dif ~3`, `dif origin ~2` expansion)                                    |
 | `sho`             | `git show` (supports `sho ~3`, `sho origin ~2` expansion)                                    |
 | `sta`, `st`       | `git stash`                                                                                  |
+| `rst`             | `git restore`                                                                                |
 | `lint`            | Run pre-push checks (spelling, secrets, etc.)                                                |
 | `gdx-config`      | Manage gdx configuration                                                                     |
 | `reword`, `rew`   | Rewrite commit messages                                                                      |
@@ -276,6 +387,7 @@ Tools to help you feel productive without leaving the terminal.
 | `clear`           | Wipe changes in the working directory with a backup patch                                    |
 | `cache`           | Manage gdx cache                                                                             |
 | `macro`           | Create custom gdx command macros to run multiple commands with a single macro                |
+| `gh`              | GitHub CLI wrapper, provides better UX and QoL features                                      |
 
 _Run `gdx ghelp` to see the full list of expansions/commands._
 

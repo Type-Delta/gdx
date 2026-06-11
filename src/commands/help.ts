@@ -73,9 +73,9 @@ Git, but with better DX. The raw power of Git,
 aligned with human workflows.
 
 ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for git (executable) with common shortcuts,
-stash-range support, and convenience expansions.
-It forwards unrecognized commands/args to git (executable) unchanged.
+${EXECUTABLE_NAME} (wrapper) — shorthand-friendly wrapper for Git with common shortcuts,
+convenience expansions, custom commands, macros and GitHub CLI wrapper.
+It forwards unrecognized commands/args to Git unchanged.
 
 ${SGR.bright + _2PointGradient('SYNOPSIS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 ${EXECUTABLE_NAME} <command> [<args>]
@@ -98,18 +98,34 @@ ${SGR.bright + _2PointGradient('KEY FEATURES', GDX_VPALETTE.Zinc400, GDX_VPALETT
    - reset: ${SGR.cyan}${EXECUTABLE_NAME} res -h ${SGR.reset + SGR.dim}-> ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} reset --hard${SGR.reset + SGR.dim}; ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} res ~3 ${SGR.reset + SGR.dim}-> ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} reset HEAD~3${SGR.reset}
      ${SGR.dim}(also supports ${SGR.cyan}origin~N${SGR.reset + SGR.dim} for upstream-relative resets)${SGR.reset}
 - Clear convenience:
-      - ${SGR.cyan}${EXECUTABLE_NAME} clear ${SGR.reset + SGR.dim}->${SGR.reset} creates a timestamped patch backup
-        in the system temp folder, then resets the working directory
-        (${SGR.cyan}${EXECUTABLE_NAME} reset --hard ${SGR.reset + SGR.dim}+ ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} clean -fd${SGR.reset}).
-      - Use \`${SGR.cyan}${EXECUTABLE_NAME} clear pardon${SGR.reset}\` to apply the latest backup patch
-        and restore changes. Add \`${SGR.cyan}-f${SGR.reset}\`/\`${SGR.cyan}--force${SGR.reset}\` to bypass dirty-working-directory prompts.
+   - ${SGR.cyan}${EXECUTABLE_NAME} clear ${SGR.reset + SGR.dim}->${SGR.reset} creates a timestamped patch backup
+      in the system temp folder, then resets the working directory
+      (${SGR.cyan}${EXECUTABLE_NAME} reset --hard ${SGR.reset + SGR.dim}+ ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} clean -fd${SGR.reset}).
+   - Use \`${SGR.cyan}${EXECUTABLE_NAME} clear pardon${SGR.reset}\` to apply the latest backup patch
+      and restore changes. Add \`${SGR.cyan}-f${SGR.reset}\`/\`${SGR.cyan}--force${SGR.reset}\` to bypass dirty-working-directory prompts.
+- Quick repo backup:
+   - ${SGR.cyan}${EXECUTABLE_NAME} snap${SGR.reset} — creates a backup file of .git directory, trimmed only files needed to restore full repo state. Or create a lightweight snapshot that only stores current state of the working directory and index for quick restores.
 - Stash convenience:
-      - Short forms: ${SGR.cyan}${EXECUTABLE_NAME} sta / ${EXECUTABLE_NAME} st${SGR.reset} for stash; ${SGR.cyan}${EXECUTABLE_NAME} sta l${SGR.reset} -> stash list.
-      - ${SGR.cyan}${EXECUTABLE_NAME} stash d 2..6${SGR.reset} — drops stash@{6}..stash@{2} (drops high→low to
-        avoid index shift).
-      - Supports apply, pop, drop, list, show, clear via short forms.
+   - Short forms: ${SGR.cyan}${EXECUTABLE_NAME} sta / ${EXECUTABLE_NAME} st${SGR.reset} for stash; ${SGR.cyan}${EXECUTABLE_NAME} sta l${SGR.reset} -> stash list.
+   - ${SGR.cyan}${EXECUTABLE_NAME} stash d 2..6${SGR.reset} — drops stash@{6}..stash@{2} (drops high→low to
+      avoid index shift).
+   - Supports apply, pop, drop, list, show, clear via short forms.
 - Quick worktrees:
    - ${SGR.cyan}${EXECUTABLE_NAME} parallel fork/remove/join/switch/open/list${SGR.reset} for temp-backed worktree workflows.
+- GitHub CLI wrapper:
+   - ${SGR.cyan}${EXECUTABLE_NAME} gh repo create${SGR.reset} — interactively builds a \`gh repo create\` command based on your current project and inputs.
+   - Supports common \`gh\` commands with better UX, like \`gh pr create\` with an interactive form that collects all necessary info and generates a well-formatted PR description.
+- Commit message generation:
+   - ${SGR.cyan}${EXECUTABLE_NAME} cmi auto${SGR.reset} — generates a commit message based on your staged changes using an LLM, with optional interactive refinement.
+- Fun & analytic commands:
+   - ${SGR.cyan}${EXECUTABLE_NAME} graph${SGR.reset} — visualizes commit history as a graph with enhanced formatting and insights.
+   - ${SGR.cyan}${EXECUTABLE_NAME} stats${SGR.reset} — generates statistics about the repository, like most active contributors, languages used, etc.
+   - ${SGR.cyan}${EXECUTABLE_NAME} doctor${SGR.reset} — diagnoses common Git issues in the repository and suggests fixes.
+   - ${SGR.cyan}${EXECUTABLE_NAME} nocap${SGR.reset} — uses AI to roast your latest commit message.
+- Smart linting:
+   - ${SGR.cyan}${EXECUTABLE_NAME} lint${SGR.reset} — runs pre-push checks like spelling, secrets detection, and more, with smart defaults and optional overrides.
+   - You can configure gdx to automatically run this on every push, or invoke it manually when needed.
+
 
 ${SGR.bright + _2PointGradient('SHORTHAND LIST (common)', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 ${SGR.cyan}ad                  ${SGR.reset + SGR.dim}-> ${SGR.reset}add
@@ -130,6 +146,7 @@ ${SGR.cyan}in, ini             ${SGR.reset + SGR.dim}-> ${SGR.reset}init
 ${SGR.cyan}sta, st             ${SGR.reset + SGR.dim}-> ${SGR.reset}stash
 ${SGR.cyan}s, stat             ${SGR.reset + SGR.dim}-> ${SGR.reset}status
 ${SGR.cyan}swit, sw            ${SGR.reset + SGR.dim}-> ${SGR.reset}switch
+${SGR.cyan}rst, rest           ${SGR.reset + SGR.dim}-> ${SGR.reset}restore
 
 ${SGR.bright + _2PointGradient('CUSTOM COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 ${formatShortCmdList(COMMAND_HELP_MAP, { cyan: SGR.cyan, reset: SGR.reset })}
@@ -223,18 +240,18 @@ function formatShortCmdList(
    for (const [cmd, h] of Object.entries(helpObj)) {
       res.push(
          colors.cyan +
-            strJustify(cmd, FIRST_COL_WIDTH, {
-               overflow: 'visible',
-               align: 'left',
-               redundancyLv: 0,
-            }) +
-            colors.reset +
-            strWrap(h.short, 60, {
-               indent: FIRST_COL_WIDTH,
-               firstIndent: 0,
-               redundancyLv: 0,
-               mode: 'softboundary',
-            })
+         strJustify(cmd, FIRST_COL_WIDTH, {
+            overflow: 'visible',
+            align: 'left',
+            redundancyLv: 0,
+         }) +
+         colors.reset +
+         strWrap(h.short, 60, {
+            indent: FIRST_COL_WIDTH,
+            firstIndent: 0,
+            redundancyLv: 0,
+            mode: 'softboundary',
+         })
       );
    }
    return res.join('\n');
