@@ -36,14 +36,20 @@ describe('gdx graph', async () => {
    });
 
    it('should generate graph with commits', async () => {
-      // Create some commits
-      await $`${git$} commit --allow-empty --no-verify -m ${'commit 1'}`;
-      await $`${git$} commit --allow-empty --no-verify -m ${'commit 2'}`;
-      const result = await graph(ctx);
+      const commitDate = '2026-05-20T12:00:00+07:00';
+      setSystemTime(new Date(commitDate));
 
-      expect(result).toBe(0);
-      // We expect some output. The graph uses special chars for days with commits, so we can check for those.
-      expect(buffer.stdout).toContain('■');
+      try {
+         await $`${git$} commit --allow-empty --no-verify -m ${'commit 1'} --date=${commitDate}`;
+         await $`${git$} commit --allow-empty --no-verify -m ${'commit 2'} --date=${commitDate}`;
+         const result = await graph(ctx);
+
+         expect(result).toBe(0);
+         // We expect some output. The graph uses special chars for days with commits, so we can check for those.
+         expect(buffer.stdout).toContain('■');
+      } finally {
+         setSystemTime();
+      }
    });
 
    it('should count commits created after local midnight', async () => {

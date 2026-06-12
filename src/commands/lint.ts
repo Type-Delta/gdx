@@ -30,7 +30,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    spinnerCtrl.options.message = 'Scanning commits...';
    const upstream = (await getTrackedUpstreamRef(git$)) || '';
 
-   let range = '';
+   let range: string;
    if (upstream) {
       range = `${upstream}..HEAD`;
    } else {
@@ -89,12 +89,10 @@ export default async function lint(ctx: GdxContext): Promise<number> {
 
    // 2. Sensitive Content & Conflict Markers
    if (diffOutput) {
-      let currentFile = '';
-
       const files = diffOutput.split(/^diff --git a\/.+$/m);
       for (const fileDiff of files) {
          const lines = fileDiff.split('\n').filter((l) => l.trim());
-         currentFile =
+         const currentFile =
             lines
                .slice(2, 4)
                .find((l) => l.startsWith('+++ b/'))

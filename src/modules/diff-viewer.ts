@@ -498,7 +498,6 @@ function splitInlineSegmentsByLines(
  */
 function tokenizeAnsiByChar(text: string): { tokens: AnsiCharToken[]; trailingAnsi: string } {
    const tokens: AnsiCharToken[] = [];
-   let trailingAnsi = '';
    let i = 0;
    let pendingAnsi = '';
 
@@ -520,8 +519,7 @@ function tokenizeAnsiByChar(text: string): { tokens: AnsiCharToken[]; trailingAn
       i += char.length;
    }
 
-   trailingAnsi = pendingAnsi;
-   return { tokens, trailingAnsi };
+   return { tokens, trailingAnsi: pendingAnsi };
 }
 
 /**
@@ -1293,7 +1291,7 @@ export class DiffViewerRenderer implements PagerRenderer {
       const contentWidth = width - gutterWidth;
 
       let sign = ' ';
-      let bgCode: RgbVec = blockBg;
+      let bgCode: RgbVec;
       let gutterBgCode: RgbVec = blockBg;
       let signColor = CATPPUCCIN_VPALETTE.overlay0 as RgbVec;
 

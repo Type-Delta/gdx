@@ -5,6 +5,7 @@ import { parseDiffOutput } from '@/modules/diff-viewer';
 import { buildPathGlobMatcher } from '@/utils/glob';
 import { COMMIT_DEFAULT_NOISY_FILES } from '@/common/config/schema';
 import { DiffModule } from '@/common/types';
+import Logger from '@/utils/logger';
 
 type DiffChange = {
    added?: boolean;
@@ -1091,10 +1092,11 @@ async function getDiffChars(): Promise<DiffCharsFn | null> {
          const diffLib = await import('./diff-lite') as Awaited<DiffModule>;
          return diffLib.diffChars;
       } catch (error) {
-         throw new Err(
+         Logger.debug(
             `Failed to load diff module for whitespace-aware commit summary: ${Err.from(error).message}`,
-            'DIFF_MODULE_LOAD_FAILED'
+            'diff-summary'
          );
+         return null;
       }
    })();
    return await diffCharsPromise;

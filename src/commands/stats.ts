@@ -111,7 +111,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
 
    let email = '';
    let username = 'Your';
-   let scopeLabel = '';
+   let scopeLabel: string;
 
    if (!isAllScope) {
       try {

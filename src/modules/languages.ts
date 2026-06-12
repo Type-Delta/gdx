@@ -451,7 +451,7 @@ async function getYamlPurser() {
          `Failed to load YAML parser for language catalog: ${Err.from(err).message}`,
          'languages'
       );
-      throw new Error('YAML parser unavailable');
+      throw new Error('YAML parser unavailable', { cause: err });
    }
 }
 

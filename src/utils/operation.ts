@@ -7,7 +7,11 @@ export class Semaphore {
    private usage: number = 0;
    private max: number;
    private timeout?: number;
-   private queue: (() => void)[];
+   private queue: Array<{
+      resolve: () => void;
+      timeout?: ReturnType<typeof setTimeout>;
+      settled: boolean;
+   }>;
 
    /**
     * Optional callback that is called when a timeout occurs while waiting to acquire the semaphore. This can be used to log warnings or perform cleanup actions when tasks are waiting too long for the semaphore.
@@ -42,22 +46,40 @@ export class Semaphore {
       }
 
       return new Promise((resolve) => {
-         const resolver = () => {
-            resolve();
-         }
-         this.queue.push(resolver);
+         const waiter = {
+            resolve: () => {
+               if (waiter.settled) return;
+               waiter.settled = true;
+               if (waiter.timeout) clearTimeout(waiter.timeout);
+               this.usage++;
+               resolve();
+            },
+            timeout: undefined as ReturnType<typeof setTimeout> | undefined,
+            settled: false,
+         };
+         this.queue.push(waiter);
 
          if (this.timeout) {
-            setTimeout(() => {
+            waiter.timeout = setTimeout(() => {
+               if (waiter.settled) return;
                this._onTimeout?.();
-               const index = this.queue.indexOf(resolver);
-               if (index !== -1) {
-                  this.queue.splice(index, 1);
-                  resolve();
-               }
+               const index = this.queue.indexOf(waiter);
+               if (index !== -1) this.queue.splice(index, 1);
+               waiter.resolve();
             }, this.timeout);
          }
       });
+   }
+
+   /**
+    * Rejects all waiting consumers without changing currently held permits.
+    */
+   drain(): void {
+      const waiters = this.queue.splice(0);
+      for (const waiter of waiters) {
+         if (waiter.timeout) clearTimeout(waiter.timeout);
+         waiter.resolve();
+      }
    }
 
    /**
@@ -65,11 +87,15 @@ export class Semaphore {
     * Otherwise, it increments the count.
     */
    release(): void {
-      if (this.queue.length > 0) {
-         const firstConsumer = this.queue.shift();
-         firstConsumer!();
-      } else if (this.usage > 0) {
+      if (this.usage > 0) {
          this.usage--;
+      }
+
+      while (this.queue.length > 0 && this.usage < this.max) {
+         const firstConsumer = this.queue.shift();
+         if (!firstConsumer || firstConsumer.settled) continue;
+         firstConsumer.resolve();
+         break;
       }
    }
 
@@ -77,7 +103,7 @@ export class Semaphore {
     * Returns the number of available permits in the semaphore (i.e., how many more times it can be acquired before reaching the maximum).
     */
    available(): number {
-      return this.max - this.usage;
+      return Math.max(0, this.max - this.usage);
    }
 
    /**

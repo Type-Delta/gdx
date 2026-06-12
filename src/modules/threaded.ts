@@ -83,7 +83,10 @@ export class Threaded<TData = unknown> {
    private readonly workerSource: ThreadedWorkerSource;
    private readonly workers = new Set<ThreadedWorker>();
    private readonly idleWorkers: ThreadedWorker[] = [];
-   private readonly workerWaiters: Array<(worker: ThreadedWorker) => void> = [];
+   private readonly workerWaiters: Array<{
+      resolve: (worker: ThreadedWorker) => void;
+      reject: (error: Error) => void;
+   }> = [];
    private readonly logger = new Logger('Threaded');
    private dataValue?: TData;
    private nextTaskId = 1;
@@ -189,10 +192,13 @@ export class Threaded<TData = unknown> {
     */
    async destroy(): Promise<void> {
       this.closed = true;
+      const waiters = this.workerWaiters.splice(0);
+      for (const waiter of waiters) {
+         waiter.reject(new Error('Threaded pool has been destroyed.'));
+      }
       const workers = [...this.workers];
       this.workers.clear();
       this.idleWorkers.length = 0;
-      this.workerWaiters.length = 0;
       await Promise.all(workers.map((slot) => slot.worker.terminate()));
    }
 
@@ -219,11 +225,18 @@ export class Threaded<TData = unknown> {
          }
       }
 
-      return await new Promise<ThreadedWorker>((resolve) => {
-         this.workerWaiters.push((worker) => {
-            worker.busy = true;
-            worker.worker.ref();
-            resolve(worker);
+      return await new Promise<ThreadedWorker>((resolve, reject) => {
+         if (this.closed) {
+            reject(new Error('Threaded pool has been destroyed.'));
+            return;
+         }
+         this.workerWaiters.push({
+            resolve: (worker) => {
+               worker.busy = true;
+               worker.worker.ref();
+               resolve(worker);
+            },
+            reject,
          });
       });
    }
@@ -234,7 +247,7 @@ export class Threaded<TData = unknown> {
 
       const nextWaiter = this.workerWaiters.shift();
       if (nextWaiter) {
-         nextWaiter(worker);
+         nextWaiter.resolve(worker);
          return;
       }
 
@@ -288,9 +301,8 @@ export class Threaded<TData = unknown> {
             reject(error);
          };
          const onExit = (code: number): void => {
-            if (code === 0) return;
             cleanup();
-            reject(new Error(`Threaded worker exited with code ${code}.`));
+            reject(new Error(`Threaded worker exited before it was ready with code ${code}.`));
          };
          const cleanup = (): void => {
             slot.worker.off('message', onReady);
@@ -315,7 +327,7 @@ export class Threaded<TData = unknown> {
    ): Promise<Awaited<TResult>> {
       await slot.ready;
       await this.workerSemaphore?.acquire();
-      const isReleased = false;
+      let isReleased = false;
 
       return await new Promise<Awaited<TResult>>((resolve, reject) => {
          const taskId = this.nextTaskId++;
@@ -325,8 +337,10 @@ export class Threaded<TData = unknown> {
          const settle = (callback: () => void): void => {
             if (settled) return;
             settled = true;
-            if (!isReleased && this.workerSemaphore)
+            if (!isReleased && this.workerSemaphore) {
                this.workerSemaphore.release();
+               isReleased = true;
+            }
             if (timeout) clearTimeout(timeout);
             cleanup();
             callback();
@@ -350,7 +364,6 @@ export class Threaded<TData = unknown> {
             });
          };
          const onExit = (code: number): void => {
-            if (code === 0) return;
             settle(() => {
                this.removeWorker(slot);
                reject(new Error(`Threaded worker exited with code ${code}.`));
@@ -381,8 +394,6 @@ export class Threaded<TData = unknown> {
             taskSource: task.toString(),
          });
       }).catch((error) => {
-         if (!isReleased && this.workerSemaphore)
-            this.workerSemaphore.release();
          throw new Error(`Threaded task failed: ${Err.from(error)}`);
       });
    }

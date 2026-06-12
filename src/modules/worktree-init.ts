@@ -377,7 +377,7 @@ async function copyEnvPathsFromPatterns(options: {
    let copied = 0;
 
    const walk = async (currentPath: string, relativePrefix: string): Promise<void> => {
-      let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }> = [];
+      let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
       try {
          entries = await fs.readdir(currentPath, { withFileTypes: true });
       } catch (err) {

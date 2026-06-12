@@ -480,6 +480,7 @@ export async function execCommand(
       }
    } catch (_err) {
       const err = Err.from(_err);
+      const commandExitCode = (_err as ExecaError).exitCode;
       const signal = (_err as ExecaError).signal;
       if (signal) {
          (err as { code?: string | number }).code = signal;
@@ -519,7 +520,7 @@ export async function execCommand(
       }
 
       if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
-         return exitCode || 1; // git command failed, return exit code
+         return commandExitCode ?? exitCode ?? 1; // git command failed, return exit code
 
       Logger.error('Command failed.\n' + yuString(err, { color: true }));
       return 1;

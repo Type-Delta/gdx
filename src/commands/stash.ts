@@ -67,7 +67,7 @@ async function dropRange(
    }
 
    // Capture logic
-   let entries: StashEntry[] = [];
+   let entries: StashEntry[];
    try {
       const root = await getRepoRootCached(git$);
 
@@ -118,7 +118,7 @@ async function drop(git$: string | string[], args: string[]): Promise<number> {
    const limit = config.get<number>('stash.undoLimit') ?? 10;
 
    // Check for range
-   if (args[2] && /\d+\.\.\d+$/.test(args[2])) {
+   if (args[2] && /^\d+\.\.\d+$/.test(args[2])) {
       return await dropRange(git$, args, limit);
    }
 

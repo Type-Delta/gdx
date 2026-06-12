@@ -131,6 +131,7 @@ export function _2PointGradient(
    const startIdx = Math.floor(len * aPos);
    const endIdx = Math.floor(len * bPos);
    const range = endIdx - startIdx;
+   if (range <= 0) return text;
 
    // calculate color step deltas
    const deltaR = (colorB[0] - colorA[0]) / range;

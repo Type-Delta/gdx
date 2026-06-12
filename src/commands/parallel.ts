@@ -385,8 +385,8 @@ async function getCherryPickIdentityArgs(
    commit: string
 ): Promise<string[]> {
    const [targetName, targetEmail] = await Promise.all([
-      getGitConfigValue(gitExec, targetRepoPath, 'user.name'),
-      getGitConfigValue(gitExec, targetRepoPath, 'user.email'),
+      getGitConfigValue(gitExec, 'user.name', targetRepoPath),
+      getGitConfigValue(gitExec, 'user.email', targetRepoPath),
    ]);
 
    if (targetName && targetEmail) {
@@ -1179,16 +1179,14 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
       const hasAhead = mainCount > 0 || submoduleCount > 0;
       const aheadLabel = submoduleCount > 0 ? `${mainCount}+${submoduleCount}` : `${mainCount}`;
 
-      let commitInfo = '';
-      if (hasAhead && comparison.behind > 0) {
-         commitInfo = `${SGR.yellow}↑${aheadLabel} ↓${comparison.behind}${SGR.reset}`;
-      } else if (hasAhead) {
-         commitInfo = `${SGR.green}↑${aheadLabel}${SGR.reset}`;
-      } else if (comparison.behind > 0) {
-         commitInfo = `${SGR.red}↓${comparison.behind}${SGR.reset}`;
-      } else {
-         commitInfo = `${SGR.dim}up-to-date${SGR.reset}`;
-      }
+      const commitInfo =
+         hasAhead && comparison.behind > 0
+            ? `${SGR.yellow}↑${aheadLabel} ↓${comparison.behind}${SGR.reset}`
+            : hasAhead
+               ? `${SGR.green}↑${aheadLabel}${SGR.reset}`
+               : comparison.behind > 0
+                  ? `${SGR.red}↓${comparison.behind}${SGR.reset}`
+                  : `${SGR.dim}up-to-date${SGR.reset}`;
 
       const marker = ctx.isParallelWorktree && aliasLabel === ctx.alias ? '●' : '○';
       const statusLabel = isDirty ? `${SGR.red}dirty${SGR.reset}` : `${SGR.green}clean${SGR.reset}`;
@@ -1558,7 +1556,7 @@ async function getIndexConflictInfo(
    repoPath: string,
    env: NodeJS.ProcessEnv
 ): Promise<ConflictInfo | undefined> {
-   let output = '';
+   let output: string;
    try {
       output = (
          await $({ env })`${gitExec} -C ${repoPath} diff --cached --name-only --diff-filter=U`
@@ -2291,7 +2289,7 @@ async function joinWorktree(
       const useSubCursor = await isUsableJoinCursor(gitExec, forkSubPath, baseSha, subCursor);
       const subRangeStart = useSubCursor ? subCursor! : baseSha;
 
-      let subCommitList: string[] = [];
+      let subCommitList: string[];
       try {
          const subHead = (await getRevParseCached(gitExec, forkSubPath, 'HEAD')).trim();
          const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();

@@ -132,6 +132,9 @@ function trimWhitespaceAroundBoundary(input: string, skipRanges?: number[]): ToI
    if (lastLeadingLf !== -1) {
       start = lastLeadingLf + 1;
    }
+   if (input.charCodeAt(start) === 0x0d) {
+      start++;
+   }
 
    i = input.length - 1;
    let trailingLf = -1;
@@ -144,6 +147,9 @@ function trimWhitespaceAroundBoundary(input: string, skipRanges?: number[]): ToI
    }
    if (trailingLf !== -1) {
       end = trailingLf;
+      if (end > start && input.charCodeAt(end - 1) === 0x0d) {
+         end--;
+      }
    }
 
    if (start >= end) {

@@ -78,11 +78,16 @@ function stringJustify(str: string | string[], length: number, options: stringJu
    switch (align) {
       case 'spacebetween':
          if (isArr) {
-            const space = filler.repeat((length - strLen) / (str.length - 1));
+            if (str.length < 2) return joinedStr + filler.repeat(length - strLen);
+            const gapCount = str.length - 1;
+            const totalPadding = length - strLen;
+            const basePadding = Math.floor(totalPadding / gapCount);
+            let extraPadding = totalPadding % gapCount;
 
             return str.reduce((acc, cur, i) => {
                if (i == 0) return acc;
-               return acc + space + cur;
+               const padding = basePadding + (extraPadding-- > 0 ? 1 : 0);
+               return acc + filler.repeat(padding) + cur;
             }, str[0]);
          } // if not Array, fall through to default
       default:
@@ -92,10 +97,10 @@ function stringJustify(str: string | string[], length: number, options: stringJu
       }
       case 'right':
          if (strLen >= length) return joinedStr;
-         return joinedStr + filler.repeat(length - strLen);
+         return filler.repeat(length - strLen) + joinedStr;
       case 'left':
          if (strLen >= length) return joinedStr;
-         return filler.repeat(length - strLen) + joinedStr;
+         return joinedStr + filler.repeat(length - strLen);
    }
 }
 
@@ -111,14 +116,18 @@ function stringLimit(str: string, limit: number, dropLocation: 'mid' | 'start' |
    if (strLen <= limit) return str;
 
    // the length of str that won't be removed
-   const leftoverAmu = strLen - (strLen - limit) - 3;
+   if (limit <= 3) return sliceChars('...', 0, limit);
+
+   const leftoverAmu = limit - 3;
    switch (dropLocation) {
       default:
          throw new Error(`'${dropLocation}' is not a valid location type.`);
       case 'mid': {
          const haft_loa = leftoverAmu >> 1;
          return (
-            sliceChars(str, 0, haft_loa) + '...' + sliceChars(str, strLen - haft_loa + 1)
+            sliceChars(str, 0, haft_loa) +
+            '...' +
+            sliceChars(str, strLen - (leftoverAmu - haft_loa))
          );
       }
       case 'end':

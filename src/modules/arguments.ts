@@ -36,8 +36,7 @@ export class ArgsSet extends Array<string> {
     */
    optionIndexOf(arg: string, from: number = 0): number {
       const fromIndex = normalizeFromIndex(from, this.length);
-      let terminatorIndex = -1;
-
+      let terminatorIndex: number;
       if (global.indexArgs) {
          this.ensureIndexes();
          terminatorIndex = this.argIndexes.get('--')?.[0] ?? -1;
@@ -115,22 +114,23 @@ export class ArgsSet extends Array<string> {
    popValue(arg: string, from: number = 0, valSameIdxOnly: boolean = false): string | null {
       const index = this.optionIndexOf(arg, from);
       if (index !== -1) {
-         let value: string | null = null;
          const option = this[index];
 
          if (option.includes(OPTION_VALUE_SEPARATOR)) {
             // Argument is in the form --arg=value
-            value = getValueFromOption(option);
+            const value = getValueFromOption(option);
             this.splice(index, 1);
+            return value;
          } else if (!valSameIdxOnly && index + 1 < this.length && isValueToken(this[index + 1])) {
             // Argument is in the form --arg value
-            value = this[index + 1];
+            const value = this[index + 1];
             this.splice(index, 2);
+            return value;
          } else {
             // Argument found but no value present
             this.splice(index, 1);
          }
-         return value;
+         return null;
       }
       return null;
    }
@@ -149,17 +149,18 @@ export class ArgsSet extends Array<string> {
    popAssertValue(arg: string, from: number = 0, valSameIdxOnly: boolean = false): string | null {
       const index = this.optionIndexOf(arg, from);
       if (index !== -1) {
-         let value: string | null = null;
          const option = this[index];
 
          if (option.includes(OPTION_VALUE_SEPARATOR)) {
             // Argument is in the form --arg=value
-            value = getValueFromOption(option);
+            const value = getValueFromOption(option);
             this.splice(index, 1);
+            return value;
          } else if (!valSameIdxOnly && index + 1 < this.length && isValueToken(this[index + 1])) {
             // Argument is in the form --arg value
-            value = this[index + 1];
+            const value = this[index + 1];
             this.splice(index, 2);
+            return value;
          } else {
             // Argument found but no value present
             throw new Err(
@@ -167,7 +168,6 @@ export class ArgsSet extends Array<string> {
                'MISSING_OPTION_VALUE'
             );
          }
-         return value;
       }
       return null;
    }

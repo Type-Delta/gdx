@@ -335,7 +335,7 @@ export async function dispatch(
             args[0] = 'reset';
             // Handle special reset flags
             for (let i = 1; i < args.length; i++) {
-               if (args[i] === '-h') {
+               if (args[i] === '-h' && args.length > i + 1) {
                   args[i] = '--hard';
                   break;
                }
@@ -431,7 +431,10 @@ export async function dispatch(
          case 'stats':
             return cmd.stats(ctx);
          case 'switch':
-            expandRelativeRef(args, ctx.git$, 1);
+            {
+               const { error } = await expandRelativeRef(args, ctx.git$, 1);
+               if (error) return 1;
+            }
             break;
          case 'clear':
             return cmd.clear(ctx);
