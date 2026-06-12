@@ -1,5 +1,36 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `gdx rst` now routes to `gdx restore`.
+- Added GitHub CLI wrapper with better UX for `gh repo create`.
+- Added checksum-aware Windows native release artifacts for prebuilt installs.
+
+### Changed
+
+- `bun.lock` is now committed and CI installs dependencies with the frozen lockfile for reproducible builds.
+- `gdx clear` now stores backup patches under gdx's private data directory instead of the shared temp directory. This intentionally means `clear pardon` will not discover old temp-directory backups from earlier versions.
+- Reading secure config values now masks them by default; pass `--reveal` to print the raw value.
+
+### Fixed
+
+- Fixed no `--help` flag handling for custom commands.
+- Fixed `gdx commit auto` and `gdx nocap` so they now redact sensitive-looking values before sending text to the configured LLM provider.
+- Fixed native launcher and postinstall behavior so native binaries are installed and discovered under `bin/native`.
+- Fixed prebuilt native installs to download into temporary files and verify published SHA-256 checksums before installing.
+- Fixed `gdx reset -h` so a lone `-h` no longer expands to `git reset --hard`.
+- Fixed relative ref expansion for `gdx switch ~N`.
+- Fixed cherry-pick identity handling in `gdx parallel`.
+- Fixed `gdx commit auto` reporting success when the underlying `git commit` fails.
+- Fixed `gdx snap apply` path validation and prevented branch moves unless `--force` is used.
+- Fixed git config caching so values are scoped per repository and inline config reads fall back to Git when config includes `include` or `includeIf`.
+- Fixed sensitive data redaction in logs, including argv-like values, URL credentials, API keys, and auth headers.
+- Fixed cache writes and log writes to use safer private-file behavior.
+- Fixed worker/semaphore cleanup issues that could leak concurrency permits or strand queued work.
+- Fixed text formatting edge cases in terminal alignment, `strLimit`, ANSI detection, CRLF dedenting, stash range parsing, and zero-range gradients.
+
 ## Version 0.4.6 - 2026-06-08
 
 ### Added

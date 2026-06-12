@@ -161,7 +161,7 @@ Performance is main concern for this project, ranking from highest to lowest pri
 
 To achieve this, consider the following:
 
-- Module Importing: If module is large and/or less commonly used or not on a critical path for startup, consider lazy-loading and externalize it, else import it directly, if that module is large consider deep-importing specific functions to reduce bundle size and improve initial load time.
+- Module Importing: If module is large and/or less commonly used or not on a critical path for startup, consider whether it can be externalized or moved behind a real bundle/runtime boundary, else import it directly. If that module is large consider deep-importing specific functions to reduce bundle size and improve initial load time. Do not assume dynamic imports improve startup when the build still emits one bundled runtime file; see Caveats.
 - Non-blocking Async: For operations that are I/O bound (e.g. git calls, file system operations), use async functions and await them in parallel when possible. Avoid `await` in a loop or sequentially when the operations can be done in parallel, don't worry about hitting system limits, there are application wide semaphores to prevent that.
 - Caching: For expensive operations that are likely to be repeated (e.g. git calls), implement caching with appropriate invalidation. we already have numbers of git calls wrapper that provide caching in `src/modules/git.ts` use them or adding more as needed.
 - Direct Git Plumbing: Most git commands are slow, consider using direct plumbing commands when it makes sense, or skip git and create our own substitute, there are already some helpers that did this and they are called "inline" commands and you can find them in `src/modules/git.ts`.
@@ -252,3 +252,6 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
    - Import members by name (`import { ncc } from '@lib/Tools'`). A default
      (`import Tools from`) or namespace import pulls in the whole object and
      defeats tree-shaking.
+- **Dynamic imports of first-party modules often hurt performance** (more info in [DYNAMIC_IMPORTS.CAVEAT.md](./docs/agent/DYNAMIC_IMPORTS.CAVEAT.md))
+- **Not having npm publish GitHub Actions workflow is actually a choice** (more info in [NPM_PUBLISH.CAVEAT.md](./docs/agent/NPM_PUBLISH.CAVEAT.md))
+- **Pinned `which@2.0.2` to avoid multiple versions of `which` in the bundle**
