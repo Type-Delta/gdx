@@ -18,17 +18,32 @@ jobs:
          - name: Setup Bun
            uses: oven-sh/setup-bun@v2
            with:
-              bun-version: latest
+              bun-version: ${{ vars.BUN_VERSION }}
 
          - name: Install dependencies
-           run: bun install
+           run: bun install --frozen-lockfile
+
+         - name: Assert tag matches package version
+           shell: pwsh
+           run: |
+              $pkg = Get-Content package.json | ConvertFrom-Json
+              if ("v$($pkg.version)" -ne "${{ github.ref_name }}") {
+                throw "Tag ${{ github.ref_name }} does not match package.json version v$($pkg.version)"
+              }
+
+         - name: Run checks
+           run: bun run check
+
+         - name: Run tests
+           run: bun test
 
          - name: Build native binary
-           run: bun run build -- --outfile ./out/gdx-win32-x64.exe
+           run: bun run build:release:win32-x64
 
          - name: Generate SHA256 checksum
            run: |
-              Get-FileHash ./out/gdx-win32-x64.exe -Algorithm SHA256 | Select-Object -ExpandProperty Hash > ./out/gdx-win32-x64.exe.sha256
+              $hash = (Get-FileHash ./out/gdx-win32-x64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  gdx-win32-x64.exe" > ./out/gdx-win32-x64.exe.sha256
 
          - name: Extract Release Notes
            run: ./scripts/extract-release-notes.ps1 -tag "${{ github.ref_name }}"

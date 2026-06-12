@@ -1,17 +1,43 @@
 import { describe, expect, it } from 'bun:test';
 import { createRequire } from 'module';
+import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
 const require = createRequire(import.meta.url);
-const { buildNodeShimContents, overwriteNodeShim } = require('../../scripts/postinstall.cjs') as {
+const {
+   buildNodeShimContents,
+   createInstallInfo,
+   downloadFile,
+   getNativeBinaryName,
+   getNativeBuildArgs,
+   overwriteNodeShim,
+   verifySha256,
+} = require('../../scripts/postinstall.cjs') as {
    buildNodeShimContents: (nodeAbsPath: string, launcherAbsPath: string) => {
       cmd: string;
       ps1: string;
       sh: string;
    };
+   createInstallInfo: (mode: string, finalPath: string, useNativeShim: boolean) => {
+      mode: string;
+      binaryPath: string;
+      useNativeShim: boolean;
+      platform: string;
+      arch: string;
+      version: string;
+      userAgent: string | null;
+      ts: string;
+   };
+   downloadFile: (url: string, tmpPath: string, destPath: string) => Promise<void>;
+   getNativeBinaryName: (platform?: NodeJS.Platform) => string;
+   getNativeBuildArgs: (finalPath: string) => string[];
    overwriteNodeShim: (binDir: string, launcherAbsPath: string) => boolean;
+   verifySha256: (filePath: string, checksumText: string, assetName: string) => void;
+};
+const { getNativeBinaryPath } = require('../../scripts/launcher.cjs') as {
+   getNativeBinaryPath: () => string;
 };
 
 // npm bin entries are symlinks on Unix; the symlink-clobber bug is Unix-only.
@@ -54,5 +80,88 @@ describe('postinstall node fallback shims', () => {
       } finally {
          fs.rmSync(tmpRoot, { recursive: true, force: true });
       }
+   });
+});
+
+describe('postinstall prebuilt helpers', () => {
+   it('downloads to a temporary path before renaming to the final destination', async () => {
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gdx-postinstall-download-'));
+      const originalFetch = globalThis.fetch;
+      try {
+         const tmpPath = path.join(tmpRoot, 'asset.tmp');
+         const destPath = path.join(tmpRoot, 'asset.exe');
+
+         globalThis.fetch = (async () => {
+            return new Response('binary-data', { status: 200 });
+         }) as unknown as typeof fetch;
+
+         await downloadFile('https://example.test/asset.exe', tmpPath, destPath);
+
+         expect(fs.existsSync(tmpPath)).toBe(false);
+         expect(fs.readFileSync(destPath, 'utf8')).toBe('binary-data');
+      } finally {
+         globalThis.fetch = originalFetch;
+         fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+   });
+
+   it('verifies SHA256 checksums before install', () => {
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gdx-postinstall-sha-'));
+      try {
+         const filePath = path.join(tmpRoot, 'asset.exe');
+         fs.writeFileSync(filePath, 'binary-data');
+         const hash = crypto.createHash('sha256').update('binary-data').digest('hex');
+
+         expect(() => verifySha256(filePath, `${hash}  asset.exe`, 'asset.exe')).not.toThrow();
+         expect(() => verifySha256(filePath, `${'0'.repeat(64)}  asset.exe`, 'asset.exe')).toThrow(
+            'Checksum mismatch'
+         );
+      } finally {
+         fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+   });
+});
+
+describe('postinstall native build helpers', () => {
+   it('should derive platform-specific native binary names', () => {
+      expect(getNativeBinaryName('win32')).toBe('gdx.exe');
+      expect(getNativeBinaryName('linux')).toBe('gdx');
+      expect(getNativeBinaryName('darwin')).toBe('gdx');
+   });
+
+   it('should build native Bun compile args for the selected output path', () => {
+      const args = getNativeBuildArgs('/tmp/gdx-native');
+
+      expect(args).toContain('build');
+      expect(args.some((arg) => path.normalize(arg).endsWith(path.normalize('dist/index.js')))).toBe(true);
+      expect(args).toContain('--outfile=/tmp/gdx-native');
+      expect(args).toContain('--compile');
+      expect(args).toContain('--bytecode');
+      expect(args).toContain('--production');
+      expect(args).toContain('--keep-names');
+   });
+
+   it('should create install-info records for native installs', () => {
+      const info = createInstallInfo('built', '/tmp/gdx-native', true);
+
+      expect(info.mode).toBe('built');
+      expect(info.binaryPath).toBe('/tmp/gdx-native');
+      expect(info.useNativeShim).toBe(true);
+      expect(info.platform).toBe(process.platform);
+      expect(info.arch).toBe(process.arch);
+      expect(info.version).toMatch(/^\d+\.\d+\.\d+/);
+   });
+});
+
+describe('launcher', () => {
+   it('looks for the native binary under bin/native', () => {
+      const expected = path.normalize(
+         path.join(
+            import.meta.dir,
+            '../../bin/native',
+            process.platform === 'win32' ? 'gdx.exe' : 'gdx'
+         )
+      );
+      expect(path.normalize(getNativeBinaryPath())).toBe(expected);
    });
 });

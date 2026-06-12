@@ -4,14 +4,33 @@ on:
    push:
       branches:
          - main
+   pull_request:
+      branches:
+         - main
+
+permissions:
+   contents: read
+
+concurrency:
+   group: test-${{ github.ref }}
+   cancel-in-progress: true
 
 jobs:
    test:
-      runs-on: ubuntu-latest
+      runs-on: ${{ matrix.os }}
+      strategy:
+         fail-fast: false
+         matrix:
+            os: [ubuntu-latest]
+            mode: [default, native-git]
+            include:
+               - os: windows-latest
+                 mode: default
 
       steps:
          - name: Install libsecret
-           uses: awalsh128/cache-apt-pkgs-action@latest
+           if: runner.os == 'Linux'
+           uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
            with:
               packages: libsecret-1-dev
               version: 1.0
@@ -22,15 +41,17 @@ jobs:
          - name: Setup Bun
            uses: oven-sh/setup-bun@v2
            with:
-              bun-version: latest
+              bun-version: ${{ vars.BUN_VERSION }}
 
          - name: Install dependencies
-           run: bun run prepare-dev
+           run: bun install --frozen-lockfile
 
          - name: Run Tests
+           if: matrix.mode == 'default'
            run: bun test
 
          - name: Run Tests (with native mode)
+           if: matrix.mode == 'native-git'
            env:
               GDX_USE_INLINE_SUBMODULE: off
               GDX_USE_INLINE_GIT_CONFIG: off

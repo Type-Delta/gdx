@@ -7,35 +7,51 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const DIST_DIR = path.join(__dirname, '../dist');
-const NATIVE_DIR = path.join(DIST_DIR, 'native');
+const NATIVE_DIR = path.join(__dirname, '../bin/native');
 const isWin = process.platform === 'win32';
 const binaryName = isWin ? 'gdx.exe' : 'gdx';
-const binaryPath = path.join(NATIVE_DIR, binaryName);
 
 if (process.env.GDX_NODE_SHIM === '1' && process.argv[2] === '--') {
    process.argv.splice(2, 1);
 }
 
-// Check if native binary exists
-if (fs.existsSync(binaryPath)) {
-   const child = spawn(binaryPath, process.argv.slice(2), {
-      stdio: 'inherit'
-   });
-
-   child.on('close', (code) => {
-      process.exit(code);
-   });
-
-   child.on('error', (err) => {
-      console.error('Failed to start native binary:', err);
-      process.exit(1);
-   });
-} else {
-   // Fallback to Node.js runtime (dist/index.js)
-   // Since dist/index.js is ESM, we use dynamic import
-   const jsEntry = path.join(DIST_DIR, 'index.js');
-   import(require('url').pathToFileURL(jsEntry)).catch(err => {
-      console.error('Failed to load JS fallback:', err);
-      process.exit(1);
-   });
+function getNativeBinaryPath() {
+   return path.join(NATIVE_DIR, binaryName);
 }
+
+function runLauncher() {
+   const binaryPath = getNativeBinaryPath();
+
+   // Check if native binary exists
+   if (fs.existsSync(binaryPath)) {
+      const child = spawn(binaryPath, process.argv.slice(2), {
+         stdio: 'inherit'
+      });
+
+      child.on('close', (code) => {
+         process.exit(code);
+      });
+
+      child.on('error', (err) => {
+         console.error('Failed to start native binary:', err);
+         process.exit(1);
+      });
+   } else {
+      // Fallback to Node.js runtime (dist/index.js)
+      // Since dist/index.js is ESM, we use dynamic import
+      const jsEntry = path.join(DIST_DIR, 'index.js');
+      import(require('url').pathToFileURL(jsEntry)).catch(err => {
+         console.error('Failed to load JS fallback:', err);
+         process.exit(1);
+      });
+   }
+}
+
+if (require.main === module) {
+   runLauncher();
+}
+
+module.exports = {
+   getNativeBinaryPath,
+   runLauncher,
+};

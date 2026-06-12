@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawnSync, execFileSync } = require('child_process');
 
 // Configuration
@@ -38,6 +39,35 @@ function writeInstallInfo(info) {
    fs.writeFileSync(INSTALL_INFO_PATH, JSON.stringify(info, null, 2));
 }
 
+function getNativeBinaryName(platform = process.platform) {
+   return platform === 'win32' ? 'gdx.exe' : 'gdx';
+}
+
+function getNativeBuildArgs(finalPath) {
+   return [
+      'build',
+      PKG_SRC_PATH,
+      `--outfile=${finalPath}`,
+      '--compile',
+      '--bytecode',
+      '--production',
+      '--keep-names',
+   ];
+}
+
+function createInstallInfo(mode, finalPath, useNativeShim) {
+   return {
+      mode,
+      platform: process.platform,
+      arch: process.arch,
+      version: getPackageVersion(),
+      userAgent: process.env.npm_config_user_agent || null,
+      useNativeShim,
+      ts: (new Date).toLocaleString(),
+      binaryPath: finalPath
+   };
+}
+
 function isTruthy(v) {
    return v === '1' || v === 'true' || v === 'yes';
 }
@@ -51,11 +81,10 @@ function getPrefixFromEnvOrNpm() {
    const npmExecPath = process.env.npm_execpath;
    if (!npmExecPath) return null;
 
-   const prefix = execFileSync(
-      `"${npmExecPath}"`,
-      ['config', 'get', 'prefix'],
-      { encoding: 'utf8', shell: true }
-   ).trim();
+   const prefix = execFileSync(npmExecPath, ['config', 'get', 'prefix'], {
+      encoding: 'utf8',
+      shell: false,
+   }).trim();
 
    return prefix || null;
 }
@@ -66,7 +95,10 @@ async function checkUrlExists(url) {
       const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
       return res.ok;
    } catch (err) {
-      throw new Error(`Network error while checking prebuilt availability: ${err.message} (${url})`);
+      throw new Error(
+         `Network error while checking prebuilt availability: ${err.message} (${url})`,
+         { cause: err }
+      );
    }
 }
 
@@ -76,13 +108,38 @@ async function downloadFile(url, tmpPath, destPath) {
       throw new Error(`Failed to download: ${res.statusText} (${url})`);
    }
 
-   const fileStream = fs.createWriteStream(destPath);
+   const fileStream = fs.createWriteStream(tmpPath);
    const stream = require('stream');
    const { promisify } = require('util');
    const pipeline = promisify(stream.pipeline);
 
    await pipeline(res.body, fileStream);
-   fs.renameSync(tmpPath, destPath);
+   if (tmpPath !== destPath) {
+      fs.renameSync(tmpPath, destPath);
+   }
+}
+
+function readSha256FromText(text, assetName) {
+   const trimmed = text.trim();
+   const match = trimmed.match(/\b([a-fA-F0-9]{64})\b/);
+   if (!match) {
+      throw new Error(`Invalid SHA256 checksum for ${assetName}.`);
+   }
+   return match[1].toLowerCase();
+}
+
+function sha256File(filePath) {
+   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function verifySha256(filePath, checksumText, assetName) {
+   const expected = readSha256FromText(checksumText, assetName);
+   const actual = sha256File(filePath);
+   if (actual !== expected) {
+      throw new Error(
+         `Checksum mismatch for ${assetName}. Expected ${expected}, got ${actual}.`
+      );
+   }
 }
 
 function setExecutable(filePath) {
@@ -232,6 +289,7 @@ async function tryDownloadPrebuilt() {
    const ext = platform === 'win32' ? '.exe' : '';
    const assetName = `gdx-${platform}-${arch}${ext}`;
    const url = `${PREBUILT_BASE_URL}/v${version}/${assetName}`;
+   const checksumUrl = `${url}.sha256`;
 
    log(`Checking availability of prebuilt binary: ${url}`);
    const exists = await checkUrlExists(url);
@@ -241,11 +299,21 @@ async function tryDownloadPrebuilt() {
 
    log(`Downloading prebuilt binary...`);
    const tmpPath = path.join(NATIVE_DIR, `${assetName}.tmp`);
+   const checksumTmpPath = path.join(NATIVE_DIR, `${assetName}.sha256.tmp`);
+   const checksumPath = path.join(NATIVE_DIR, `${assetName}.sha256`);
    const finalPath = path.join(NATIVE_DIR, 'gdx' + ext);
 
    ensureBinDir();
-   await downloadFile(url, tmpPath, finalPath);
-   setExecutable(finalPath);
+   try {
+      await downloadFile(url, tmpPath, tmpPath);
+      await downloadFile(checksumUrl, checksumTmpPath, checksumPath);
+      verifySha256(tmpPath, fs.readFileSync(checksumPath, 'utf8'), assetName);
+      fs.renameSync(tmpPath, finalPath);
+      setExecutable(finalPath);
+   } finally {
+      fs.rmSync(tmpPath, { force: true });
+      fs.rmSync(checksumTmpPath, { force: true });
+   }
 
    log(`Prebuilt binary installed to ${finalPath}`);
 
@@ -272,20 +340,11 @@ function tryBuildNative() {
 
    const platform = process.platform;
    const arch = process.arch;
-   const isWin = platform === 'win32';
-   const binaryName = isWin ? 'gdx.exe' : 'gdx';
+   const binaryName = getNativeBinaryName(platform);
    const finalPath = path.join(NATIVE_DIR, binaryName);
 
    // Build command
-   const args = [
-      'build',
-      PKG_SRC_PATH,
-      `--outfile=${finalPath}`,
-      '--compile',
-      '--bytecode',
-      '--production',
-      '--keep-names',
-   ];
+   const args = getNativeBuildArgs(finalPath);
 
    ensureBinDir();
    log(`Running: bun ${args.join(' ')}`);
@@ -297,16 +356,7 @@ function tryBuildNative() {
 
    log(`Native binary built at ${finalPath}`);
 
-   writeInstallInfo({
-      mode: 'built',
-      platform,
-      arch,
-      version: getPackageVersion(),
-      userAgent: process.env.npm_config_user_agent || null,
-      useNativeShim: overwriteGlobalShim(finalPath),
-      ts: (new Date).toLocaleString(),
-      binaryPath: finalPath
-   });
+   writeInstallInfo(createInstallInfo('built', finalPath, overwriteGlobalShim(finalPath)));
 }
 
 async function main() {
@@ -349,7 +399,13 @@ if (require.main === module) {
 
 module.exports = {
    buildNodeShimContents,
+   createInstallInfo,
+   downloadFile,
+   getNativeBinaryName,
+   getNativeBuildArgs,
    getLocalNodeModulesBinDir,
    installNodeFallbackShims,
    overwriteNodeShim,
+   readSha256FromText,
+   verifySha256,
 };

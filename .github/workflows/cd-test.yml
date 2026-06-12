@@ -11,6 +11,13 @@ on:
          - '.github/workflows/cd-test.yml'
    workflow_dispatch:
 
+permissions:
+   contents: read
+
+concurrency:
+   group: cd-test-${{ github.ref }}
+   cancel-in-progress: true
+
 jobs:
    pack:
       name: Build & Pack
@@ -32,18 +39,23 @@ jobs:
          - name: Setup Bun
            uses: oven-sh/setup-bun@v2
            with:
-              bun-version: latest
+              bun-version: ${{ vars.BUN_VERSION }}
 
          - name: Install Dependencies
-           run: bun install
+           run: bun install --frozen-lockfile
 
          - name: Pack
            run: npm pack
 
-         - name: Rename & Upload
+         - name: Rename Tarball
            run: |
               mv gdx-*.tgz gdx-test.tgz
-              curl -T gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
+
+         - name: Upload Tarball
+           uses: actions/upload-artifact@v4
+           with:
+              name: gdx-test-package
+              path: gdx-test.tgz
 
    test-install:
       name: Test Install
@@ -57,7 +69,7 @@ jobs:
          # install libsecret on linux
          - name: Install libsecret
            if: runner.os == 'Linux'
-           uses: awalsh128/cache-apt-pkgs-action@latest
+           uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05 # v1.6.0
            with:
               packages: libsecret-1-dev
               version: 1.0
@@ -65,11 +77,12 @@ jobs:
          - name: Setup Bun
            uses: oven-sh/setup-bun@v2
            with:
-              bun-version: latest
+              bun-version: ${{ vars.BUN_VERSION }}
 
          - name: Download Tarball
-           shell: bash
-           run: curl -o gdx-test.tgz ${{ secrets.S3_GDX_BUCKET }}/gdx-test.tgz
+           uses: actions/download-artifact@v4
+           with:
+              name: gdx-test-package
 
          - name: Test Install (Default/Node Fallback)
            shell: bash
