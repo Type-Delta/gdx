@@ -302,7 +302,7 @@ export async function dispatch(
                   const lintResult = await cmd.lint(ctx);
                   if (lintResult !== 0) {
                      if (behavior === 'error') {
-                        Logger.error('Lint failed. Push aborted.', 'lint');
+                        Logger.error('Push aborted. Use `--no-lint` to push anyway.', 'lint');
                         return 1;
                      } else {
                         quickPrint(
