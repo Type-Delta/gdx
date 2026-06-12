@@ -53,11 +53,11 @@ describe('gdx cache', async () => {
    it('should prune expired keys', async () => {
       resetCache();
       const cacheService = await getCache();
-      await cacheService.set('key.a', 'value-a', { maxAgeMinutes: 1 / 600 });
+      await cacheService.set('key.a', 'value-a', { maxAgeMinutes: 60 });
       await cacheService.set('key.b', 'value-b', { maxAgeMinutes: 60 });
+      const data = await cacheService.getAll();
+      data.entryMeta['key.a'].expiresAt = Date.now() - 1000;
       cacheService.flush();
-
-      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const ctx = createGdxContext(tmpDir, ['cache', 'prune']);
       const result = await cache(ctx);

@@ -9,7 +9,7 @@ import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testH
 import { getCache, resetCache } from '@/common/cache';
 import { $ as shell$ } from '@/modules/shell';
 import { commitMsgGenerator, commitMsgGeneratorInherent } from '@/templates/prompts';
-import { getConfig } from '@/common/config';
+import { getConfig, resetConfig } from '@/common/config';
 
 async function clearRemotes($: typeof shell$): Promise<void> {
    const remotes = (await $`git remote`).stdout
@@ -34,14 +34,19 @@ function extractGuidelineExamples(prompt: string): string[] {
 }
 
 describe('gdx commit auto', async () => {
-   // Set comprehensive mode via env var before creating test env
-   process.env.GDX_COMMIT_PATTERN = 'comprehensive';
-
    const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'commit-auto' });
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
 
+   async function useComprehensiveMode(): Promise<void> {
+      resetConfig();
+      const config = await getConfig();
+      await config.set('commit.commitPattern', 'comprehensive');
+      await config.save();
+   }
+
    it('should fail if no staged changes', async () => {
+      await useComprehensiveMode();
       const result = await commit.auto(ctx);
       expect(result).toBe(1);
       expect(buffer.stdout).toContain('No staged changes found');
@@ -62,6 +67,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should generate commit message and commit', async () => {
+      await useComprehensiveMode();
       // Set dummy editor to simulate open and close action from user
       await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
 
@@ -79,6 +85,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should respect --no-commit flag', async () => {
+      await useComprehensiveMode();
       // Modify file and stage
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'modified content');
       await $`${git$} add newfile.txt`;
@@ -94,6 +101,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should commit immediately with --yes', async () => {
+      await useComprehensiveMode();
       // Modify file and stage
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'yes mode content');
       await $`${git$} add newfile.txt`;
@@ -109,6 +117,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should accept --describe and still commit successfully', async () => {
+      await useComprehensiveMode();
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'described content');
       await $`${git$} add newfile.txt`;
 
@@ -128,6 +137,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should warn and ignore --yes when --no-commit is set', async () => {
+      await useComprehensiveMode();
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'ignored yes content');
       await $`${git$} add newfile.txt`;
 
@@ -143,6 +153,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should warn when --describe is provided without a value', async () => {
+      await useComprehensiveMode();
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'empty describe');
       await $`${git$} add newfile.txt`;
 
@@ -161,6 +172,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should print prompt and exit when --preview is set', async () => {
+      await useComprehensiveMode();
       await fs.writeFile(path.join(tmpDir, 'newfile.txt'), 'preview content');
       await $`${git$} add newfile.txt`;
 
@@ -175,6 +187,7 @@ describe('gdx commit auto', async () => {
    });
 
    it('should classify configured noisy glob patterns as noisy', async () => {
+      await useComprehensiveMode();
       const config = await getConfig();
       await config.set('commit.noisyFiles', ['**/*.generated.ts']);
       await config.save();
@@ -192,16 +205,21 @@ describe('gdx commit auto', async () => {
 });
 
 describe('gdx commit auto - inherit mode', async () => {
-   // Use inherit mode for these tests
-   process.env.GDX_COMMIT_PATTERN = 'inherit';
-
    const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv({
       suitName: 'commit-auto-inherit'
    });
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
    const { git$ } = ctx;
 
+   async function useInheritMode(): Promise<void> {
+      resetConfig();
+      const config = await getConfig();
+      await config.set('commit.commitPattern', 'inherit');
+      await config.save();
+   }
+
    it('should cache commit guidelines when repo has sufficient history', async () => {
+      await useInheritMode();
       // Reset cache to ensure clean state
       resetCache();
 
@@ -230,6 +248,7 @@ describe('gdx commit auto - inherit mode', async () => {
    });
 
    it('should reuse guidelines cache across worktrees', async () => {
+      await useInheritMode();
       await resetRepo();
       await clearRemotes($);
       resetCache();
@@ -266,6 +285,7 @@ describe('gdx commit auto - inherit mode', async () => {
    }, { timeout: 10000 });
 
    it('should share guidelines cache across ssh and https remotes', async () => {
+      await useInheritMode();
       await resetRepo();
       await clearRemotes($);
       resetCache();
@@ -315,6 +335,7 @@ describe('gdx commit auto - inherit mode', async () => {
    }, { timeout: 20000 });
 
    it('should fallback to comprehensive when history is insufficient', async () => {
+      await useInheritMode();
       // The repo starts with 1 initial commit from createTestEnv
       // This is < 5, so it should warn and continue (not fallback to comprehensive)
       // Reset repo to initial state
@@ -344,8 +365,6 @@ describe('gdx commit auto - inherit mode', async () => {
 });
 
 describe('learnCommitGuidelines', async () => {
-   process.env.GDX_COMMIT_PATTERN = 'inherit';
-
    const { tmpDir, $, it, resetRepo, tracker } = await createTestEnv({
       suitName: 'commit-guideline-learning',
    });

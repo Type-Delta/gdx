@@ -11,6 +11,7 @@ import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
 import litedent from '@/utils/litedent';
+import { redactSensitiveContent } from '@/utils/redact';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {
    const { git$ } = ctx;
@@ -28,6 +29,14 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       if (!latestCommitMessage || latestCommitMessage.length === 0) {
          Logger.error("Bro, you haven't committed anything yet. 🤣", 'nocap');
          return 1;
+      }
+
+      const redactedLatestCommitMessage = redactSensitiveContent(latestCommitMessage);
+      if (redactedLatestCommitMessage.redactionCount > 0) {
+         Logger.warn(
+            `Redacted ${redactedLatestCommitMessage.redactionCount} sensitive-looking value(s) before sending the latest commit message to the configured LLM provider.`,
+            'nocap'
+         );
       }
 
       // Display the commit message
@@ -48,7 +57,7 @@ export default async function nocap(ctx: GdxContext): Promise<number> {
       });
 
       const connection = llm.streamGenerate({
-         prompt: nocapPrompt(latestCommitMessage),
+         prompt: nocapPrompt(redactedLatestCommitMessage.text),
          temperature: 0.8,
          maxTokens: 269,
          reasoning: 'low',

@@ -5,6 +5,7 @@ import { cleanString, jsTime, ncc, strWrap } from '@lib/Tools';
 
 import { LOG_FILE_SIZE_LIMIT, LOG_PATH, SHOULD_WRITE_LOGS, VERSION, SGR } from '@/consts';
 import global from '@/global';
+import { redactSensitiveText } from '@/utils/redact';
 
 export type LogLevel = 'off' | 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'verbose';
 
@@ -65,7 +66,7 @@ const MessageColors = {
 
 class Logger {
    static logFile: string = LOG_PATH;
-   static logLevel: number = LogLevelMap[global.logLevel];
+   static logLevel: number = Number.POSITIVE_INFINITY;
    static timeLabels: Map<string, number> = new Map();
 
    private moduleName: string;
@@ -96,7 +97,11 @@ class Logger {
     * @returns True if a message at the given level would be logged, false otherwise.
     */
    static wouldLog(level: LogLevel): boolean {
-      return LogLevelMap[level] <= Logger.logLevel;
+      return LogLevelMap[level] <= Logger.getEffectiveLogLevel();
+   }
+
+   private static getEffectiveLogLevel(): number {
+      return Math.min(Logger.logLevel, LogLevelMap[global.logLevel]);
    }
 
    private static ensureInitialized(): void {
@@ -113,7 +118,7 @@ class Logger {
       const logDir = path.dirname(Logger.logFile);
       try {
          if (!fs.existsSync(logDir)) {
-            fs.mkdirSync(logDir, { recursive: true });
+            fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
          }
       } catch {
          // Silently fail if we can't create the directory
@@ -122,9 +127,10 @@ class Logger {
 
    private static logInternal(level: LogLevel, message: string, moduleName: string): void {
       const timestamp = new Date().toISOString();
+      const safeMessage = redactSensitiveText(message);
 
       // Create log record (for sink and file)
-      const record: LogRecord = { timestamp, level, message, module: moduleName };
+      const record: LogRecord = { timestamp, level, message: safeMessage, module: moduleName };
 
       // Call sink unconditionally (for test buffer.logs, even when SHOULD_WRITE_LOGS is false)
       if (loggerSink) {
@@ -132,16 +138,17 @@ class Logger {
       }
 
       // Check if we should print this message
-      if (LogLevelMap[level] <= LogLevelMap[global.logLevel]) {
-         Logger.printMessage(level, message, moduleName);
+      if (LogLevelMap[level] <= Logger.getEffectiveLogLevel()) {
+         Logger.printMessage(level, safeMessage, moduleName);
       }
 
       if (!SHOULD_WRITE_LOGS) return;
 
       Logger.ensureInitialized();
 
-      // Always store in allLogs (for file flush)
-      Logger.allLogs.push(record);
+      if (LogLevelMap[level] <= Logger.getEffectiveLogLevel()) {
+         Logger.allLogs.push(record);
+      }
    }
 
    private static printMessage(level: LogLevel, message: string, moduleName: string): void {
@@ -343,14 +350,7 @@ class Logger {
       try {
          const logDir = path.dirname(Logger.logFile);
          if (!fs.existsSync(logDir)) {
-            fs.mkdirSync(logDir, { recursive: true });
-         }
-
-         let fileContent = '';
-
-         // Read existing log file if it exists
-         if (fs.existsSync(Logger.logFile)) {
-            fileContent = fs.readFileSync(Logger.logFile, 'utf-8');
+            fs.mkdirSync(logDir, { recursive: true, mode: 0o700 });
          }
 
          // Format new logs
@@ -367,19 +367,15 @@ class Logger {
             })
             .join('\n');
 
-         // Combine content
-         let combinedContent = fileContent ? fileContent + '\n' + newLogs : newLogs;
-
-         // Check file size and rotate if necessary
-         const sizeBytes = Buffer.byteLength(combinedContent, 'utf-8');
-         if (sizeBytes > LOG_FILE_SIZE_LIMIT) {
-            // Remove first half of content
-            const lines = combinedContent.split('\n');
-            const removeCount = Math.floor(lines.length / 2);
-            combinedContent = lines.slice(removeCount).join('\n');
+         if (fs.existsSync(Logger.logFile)) {
+            const stats = fs.statSync(Logger.logFile);
+            if (stats.size > LOG_FILE_SIZE_LIMIT) {
+               fs.renameSync(Logger.logFile, `${Logger.logFile}.old`);
+            }
          }
 
-         fs.writeFileSync(Logger.logFile, combinedContent, 'utf-8');
+         fs.appendFileSync(Logger.logFile, `${newLogs}\n`, { encoding: 'utf-8', mode: 0o600 });
+         Logger.allLogs.length = 0;
       } catch {
          // Silently fail if we can't write the log file
       }

@@ -51,7 +51,7 @@ export default async function cache(ctx: GdxContext): Promise<number> {
 }
 
 async function pruneCache(): Promise<number> {
-   let cacheData: CacheStructure | null = null;
+   let cacheData: CacheStructure | null;
    try {
       cacheData = await loadCacheFile();
    } catch (err) {
@@ -176,7 +176,7 @@ async function expireCacheKeys(rawKeys: string[]): Promise<number> {
       return 1;
    }
 
-   let cacheData: CacheStructure | null = null;
+   let cacheData: CacheStructure | null;
    try {
       cacheData = await loadCacheFile();
    } catch (err) {

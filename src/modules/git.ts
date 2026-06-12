@@ -443,10 +443,13 @@ export function normalizeRemoteUrl(rawUrl: string): string {
    let trimmed = rawUrl.trim();
    if (!trimmed) return '';
 
-   trimmed = trimmed.replace(/\\+/g, '/');
+   const isWindowsDrivePath = /^[A-Za-z]:[\\/]/.test(trimmed);
+   if (!isWindowsDrivePath) {
+      trimmed = trimmed.replace(/\\+/g, '/');
+   }
 
    const scpLike = trimmed.match(/^(?:[^@]+@)?([^:/]+):(.+)$/);
-   if (scpLike && !trimmed.includes('://')) {
+   if (scpLike && !trimmed.includes('://') && !isWindowsDrivePath) {
       const host = scpLike[1].toLowerCase();
       const repoPath = scpLike[2];
       return normalizeRemoteHostPath(host, repoPath);
@@ -474,7 +477,7 @@ export async function getDefaultRemoteName(git$: GdxContext['git$']): Promise<st
    const cached = await cache.getOneOff<string | null>(cacheKey);
    if (cached !== undefined) return cached;
 
-   let result: string | null = null;
+   let result: string | null;
    try {
       const { stdout: remoteStdout } = await $`${git$} remote`;
       const remotes = remoteStdout
@@ -710,6 +713,10 @@ function getDefaultGlobalGitConfigPath(): string {
    const home = process.env.HOME || process.env.USERPROFILE || '';
    if (!home) return path.resolve('.gitconfig');
 
+   const xdgConfigHome = process.env.XDG_CONFIG_HOME || path.join(home, '.config');
+   const xdgConfigPath = path.join(xdgConfigHome, 'git', 'config');
+   if (fs.existsSync(xdgConfigPath)) return xdgConfigPath;
+
    return path.join(home, '.gitconfig');
 }
 
@@ -800,6 +807,20 @@ async function readParsedGitConfig(configFilePath: string): Promise<Record<strin
       gitConfigFileCache.set(resolvedPath, { mtime: null, content: empty });
       return empty;
    }
+}
+
+async function gitConfigFileMayContainInclude(configFilePath: string): Promise<boolean> {
+   try {
+      const content = await fs.readFile(configFilePath, 'utf-8');
+      return /^\s*\[include(?:If)?(?:\s|])/im.test(content);
+   } catch {
+      return false;
+   }
+}
+
+async function gitConfigLookupFilesContainInclude(lookupFiles: string[]): Promise<boolean> {
+   const checks = await Promise.all(lookupFiles.map((file) => gitConfigFileMayContainInclude(file)));
+   return checks.some(Boolean);
 }
 
 /**
@@ -1095,6 +1116,16 @@ export async function getGitConfigValue(
    }
 
    const lookupFiles = await getGitConfigLookupFiles(git$, resolved.repoPath);
+   if (await gitConfigLookupFilesContainInclude(lookupFiles)) {
+      try {
+         const { stdout } =
+            await $`${resolved.gitExec} -C ${resolved.repoPath} config ${configKey}`;
+         return stdout.trim();
+      } catch {
+         return '';
+      }
+   }
+
    let resolvedValue = '';
 
    for (const lookupFile of lookupFiles) {
@@ -1163,7 +1194,7 @@ export async function setGitConfigValue(
 
    await writeParsedGitConfigToFile(configFilePath, parsed);
    const cache = await getCache();
-   await cache.delete(`git.config.${configKey}`);
+   await cache.delete(createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`));
 }
 
 /**
@@ -1208,7 +1239,7 @@ export async function unsetGitConfigValue(
 
    await writeParsedGitConfigToFile(configFilePath, parsed);
    const cache = await getCache();
-   await cache.delete(`git.config.${configKey}`);
+   await cache.delete(createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`));
 }
 
 /**
@@ -1367,7 +1398,7 @@ export async function removeGitConfigSection(
 
 /**
  * Gets git config value, cached for the session.
- * Cache key: 'git.config.<key>'
+ * Cache key: 'git.config.<repo-scope-and-key-hash>'
  *
  * @param git$ - Git executable reference.
  * @param configKey - The git config key (e.g., 'user.email', 'user.name').
@@ -1378,7 +1409,7 @@ export async function getGitConfigCached(
    configKey: string
 ): Promise<string> {
    const cache = await getCache();
-   const cacheKey = `git.config.${configKey}`;
+   const cacheKey = createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`);
 
    // Try to get from cache first
    const cached = await cache.get<string>(cacheKey);
@@ -1457,7 +1488,7 @@ export async function getGitBranchesCached(
  */
 export async function getGitTagsCached(git$: GdxContext['git$']): Promise<string[]> {
    const cache = await getCache();
-   const cacheKey = 'git.tags';
+   const cacheKey = createCacheKey('git.tags', getGitScope(git$));
 
    const cached = await cache.get<string[]>(cacheKey);
    if (cached) {
@@ -1495,7 +1526,7 @@ export async function getGitAuthorExistsCached(
    email: string
 ): Promise<boolean> {
    const cache = await getCache();
-   const cacheKey = `git.author.${email}`;
+   const cacheKey = createCacheKey('git.author', `${getGitScope(git$)}|${email}`);
 
    const cached = await cache.get<boolean>(cacheKey);
    if (cached !== undefined) {
@@ -1969,7 +2000,7 @@ function readGitmodulesEntries(worktreePath: string): Map<string, GitmodulesEntr
    const gitmodulesPath = path.join(worktreePath, '.gitmodules');
    if (!fs.existsSync(gitmodulesPath)) return entries;
 
-   let content = '';
+   let content: string;
    try {
       content = fs.readFileSync(gitmodulesPath, 'utf-8');
    } catch {
@@ -2079,7 +2110,7 @@ async function getSubmoduleGitlinks(
    worktreePath: string
 ): Promise<Map<string, string>> {
    const map = new Map<string, string>();
-   let output = '';
+   let output: string;
    try {
       output = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
    } catch {
@@ -2216,7 +2247,7 @@ export async function addSubmodule(
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
    const normalizedPath = normalizeSubmodulePath(submodulePath);
    const mode = await getInlineSubmoduleMode();
-   const allowFileProtocol = options?.allowFileProtocol !== false;
+   const allowFileProtocol = options?.allowFileProtocol === true;
    const quiet = options?.quiet !== false;
    const force = !!options?.force;
    const normalizedUrl = normalizeSubmoduleUrl(submoduleUrl);
@@ -2267,7 +2298,7 @@ export async function addSubmodule(
       : false;
    if (!fs.existsSync(gitMarker) || markerIsDirectory) {
       await cloneSubmoduleWithSeparateGitDir(gitExec, worktreePath, normalizedUrl, normalizedPath, {
-         allowFileProtocol: options?.allowFileProtocol !== false,
+         allowFileProtocol: options?.allowFileProtocol === true,
          quiet: !!options?.quiet,
          reference,
          branch,
@@ -2606,7 +2637,7 @@ export async function updateSubmodules(
    const noFetch = options?.noFetch === true;
    const strategy = options?.strategy || 'checkout';
    const quiet = options?.quiet !== false;
-   const allowFileProtocol = options?.allowFileProtocol !== false;
+   const allowFileProtocol = options?.allowFileProtocol === true;
    const requestedPaths = normalizeSubmodulePaths(options?.paths);
    const requestedPathSet = requestedPaths.length > 0 ? new Set<string>(requestedPaths) : null;
    const mode = await getInlineSubmoduleMode();
@@ -2906,7 +2937,7 @@ export async function getCommitRangeLog(options: {
    excludeRefs?: string[];
 }): Promise<CommitLogResult> {
    const { gitExec, repoPath, range, maxCount, formatTemplate: format, excludeRefs } = options;
-   let logOutput = '';
+   let logOutput: string;
    try {
       const logArgs = ['-C', repoPath, 'log', `--pretty=format:${format || '%h %s'}`, range];
       const excludes = excludeRefs?.filter((ref) => ref && ref.trim().length > 0) ?? [];
@@ -2915,7 +2946,11 @@ export async function getCommitRangeLog(options: {
       }
       logOutput = (await $`${gitExec} ${logArgs}`).stdout.trim();
    } catch {
-      logOutput = '';
+      return {
+         commits: [],
+         moreCount: 0,
+         totalCount: 0,
+      };
    }
 
    const allCommits = logOutput

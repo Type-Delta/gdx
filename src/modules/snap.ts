@@ -628,12 +628,25 @@ async function applyWorktreeSnapshot(
    }
 
    if (snapshot.meta.branchName && snapshot.meta.headRef) {
-      await $`${git$} checkout -B ${snapshot.meta.branchName} ${snapshot.meta.headCommit}`;
+      const existingBranchCommit = (
+         await revParseCached(git$, [
+            '--verify',
+            `${snapshot.meta.branchName}^{commit}`,
+         ]).catch(() => '')
+      ).trim();
+
+      if (existingBranchCommit && existingBranchCommit !== targetCommit && !force) {
+         throw new Error(
+            `Branch '${snapshot.meta.branchName}' already points to a different commit. Re-run with --force to move it to the snapshot commit.`
+         );
+      }
+
+      await $`${git$} checkout -B ${snapshot.meta.branchName} ${targetCommit}`;
    } else {
-      await $`${git$} checkout --detach ${snapshot.meta.headCommit}`;
+      await $`${git$} checkout --detach ${targetCommit}`;
    }
 
-   await $`${git$} reset --hard ${snapshot.meta.headCommit}`;
+   await $`${git$} reset --hard ${targetCommit}`;
    await $`${git$} clean -fd`;
 
    await ensureSnapshotDirectories();
@@ -654,18 +667,20 @@ async function applyWorktreeSnapshot(
          await $`${git$} apply --cached --binary --whitespace=nowarn ${stagedPatchPath}`;
 
          for (const entry of stagedStatuses) {
-            const targetPath = path.join(currentRepo.repoRoot, ...entry.path.split('/'));
+            const safePath = validateSnapshotRelativePath(entry.path);
+            const targetPath = resolveSnapshotRepoPath(currentRepo.repoRoot, safePath);
             if (entry.status === 'D') {
                await fs.rm(targetPath, { force: true, recursive: true });
                continue;
             }
 
             if ((entry.status === 'R' || entry.status === 'C') && entry.oldPath) {
-               const oldPath = path.join(currentRepo.repoRoot, ...entry.oldPath.split('/'));
+               const safeOldPath = validateSnapshotRelativePath(entry.oldPath);
+               const oldPath = resolveSnapshotRepoPath(currentRepo.repoRoot, safeOldPath);
                await fs.rm(oldPath, { force: true, recursive: true });
             }
 
-            await $`${git$} checkout -- ${entry.path}`;
+            await $`${git$} checkout -- ${safePath}`;
          }
       }
 
@@ -678,7 +693,7 @@ async function applyWorktreeSnapshot(
          if (!entryPath.startsWith('worktree/untracked/')) continue;
          const relativePath = entryPath.slice('worktree/untracked/'.length);
          const safePath = validateSnapshotRelativePath(relativePath);
-         const destination = path.join(currentRepo.repoRoot, ...safePath.split('/'));
+         const destination = resolveSnapshotRepoPath(currentRepo.repoRoot, safePath);
          const destinationDir = path.dirname(destination);
          if (!fs.existsSync(destinationDir)) {
             fs.mkdirSync(destinationDir, { recursive: true });
@@ -1042,11 +1057,26 @@ function validateSnapshotRelativePath(relativePath: string): string {
    return normalized;
 }
 
+function resolveSnapshotRepoPath(repoRoot: string, relativePath: string): string {
+   const resolvedRoot = path.resolve(repoRoot);
+   const resolvedPath = path.resolve(resolvedRoot, ...relativePath.split('/'));
+   const relativeToRoot = path.relative(resolvedRoot, resolvedPath);
+
+   if (
+      relativeToRoot === '..' ||
+      relativeToRoot.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativeToRoot)
+   ) {
+      throw new Error(`Snapshot archive path escapes repository root: '${relativePath}'.`);
+   }
+
+   return resolvedPath;
+}
+
 function parseNullSeparated(output: string): string[] {
    return output
       .split('\0')
-      .map((item) => item.trim())
-      .filter(Boolean);
+      .filter((item) => item.length > 0);
 }
 
 function normalizePatchText(output: string): string {

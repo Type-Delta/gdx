@@ -110,6 +110,7 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
    const config = await getConfig();
    const args = ctx.args.slice(1);
    popLocalOption(args);
+   const reveal = args.popOption('--reveal') !== null;
    const key = args[0];
 
    if (!key || args.length !== 1) {
@@ -127,7 +128,11 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   quickPrint(String(value));
+   if (SECURE_CONF_KEYS.includes(key) && !reveal) {
+      quickPrint(strClamp(String(value), 20, 'mid', -1));
+   } else {
+      quickPrint(String(value));
+   }
    return 0;
 }
 
@@ -196,7 +201,7 @@ async function unsetConfigValue(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   let didReset = false;
+   let didReset: boolean;
    try {
       didReset = isLocal ? await config.resetLocal(key) : await config.reset(key);
    } catch (err) {

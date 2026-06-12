@@ -62,7 +62,7 @@ export async function getStatMTime(filePath: string | null): Promise<number | un
  */
 export function normalizeSync(inputPath: string): string {
    if (!inputPath) return '';
-   let resolved = inputPath;
+   let resolved: string;
    try {
       resolved = fs.realpathSync.native
          ? fs.realpathSync.native(inputPath)

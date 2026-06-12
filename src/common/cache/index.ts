@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import path from 'path';
+import nodeFs from 'fs';
 import * as fs from '@/modules/fs';
 
 import { beforeExit, Err } from '@lib/Tools';
@@ -315,7 +316,7 @@ export class CacheService {
       // Ensure intermediate objects exist
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
-         if (!(key in target) || typeof target[key] !== 'object') {
+         if (!(key in target) || target[key] === null || typeof target[key] !== 'object') {
             target[key] = {};
          }
          target = target[key];
@@ -353,7 +354,7 @@ export class CacheService {
 
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
-         if (!(key in target) || typeof target[key] !== 'object') {
+         if (!(key in target) || target[key] === null || typeof target[key] !== 'object') {
             target[key] = {};
          }
          target = target[key];
@@ -497,9 +498,14 @@ export class CacheService {
 
       try {
          const dirPath = path.dirname(this.cachePath);
-         fs.mkdirSync(dirPath, { recursive: true });
+         fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
          const cacheJson = JSON.stringify(this.cache);
-         fs.writeFileSync(this.cachePath, cacheJson, 'utf-8');
+         const tmpPath = path.join(
+            dirPath,
+            `${path.basename(this.cachePath)}.tmp.${process.pid}.${Date.now()}`
+         );
+         fs.writeFileSync(tmpPath, cacheJson, { encoding: 'utf-8', mode: 0o600 });
+         nodeFs.renameSync(tmpPath, this.cachePath);
          this.dirty = false;
          this.logger.debug(`Cache flushed to ${this.cachePath}`);
       } catch (e) {

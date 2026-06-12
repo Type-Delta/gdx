@@ -291,11 +291,10 @@ describe('CacheService', async () => {
       const cache = new CacheService(cacheFile8);
 
       // Set two keys with different expiry times
-      await cache.set('key.a', 'value-a', { maxAgeMinutes: 1 / 600 }); // Expire in ~100ms
+      await cache.set('key.a', 'value-a', { maxAgeMinutes: 60 });
       await cache.set('key.b', 'value-b', { maxAgeMinutes: 60 }); // Expire later
-
-      // Wait for key.a to expire
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      const data = await cache.getAll();
+      data.entryMeta['key.a'].expiresAt = Date.now() - 1000;
 
       // Get key.a (should be expired and deleted)
       const valueA = await cache.get('key.a');

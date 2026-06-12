@@ -1,4 +1,6 @@
 import * as fs from '@/modules/fs';
+import crypto from 'crypto';
+import nodeFs from 'fs';
 import path from 'path';
 
 import { strWrap, yuString } from '@lib/Tools';
@@ -14,6 +16,23 @@ import global from '@/global';
 import { getRepoRootCached, revParseCached } from '@/modules/git';
 import litedent from '@/utils/litedent';
 
+interface ClearBackupIndexEntry {
+   path: string;
+   name: string;
+   createdAt: string;
+}
+
+interface ClearBackupIndex {
+   version: 1;
+   backups: ClearBackupIndexEntry[];
+}
+
+interface ClearBackupFile {
+   name: string;
+   path: string;
+   stats: nodeFs.Stats;
+}
+
 export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
@@ -27,24 +46,20 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       getRepoRootCached(git$),
    ]);
    const projectName = path.basename(repoRoot);
-   const osTemp = TEMP_DIR;
+   const backupDir = getClearBackupDir(repoRoot, branchName);
    const backupFileBlob = `${projectName}_${branchName}_backup_*.patch`;
-
-   // backup files naming pattern
-   const prefix = `${projectName}_${branchName}_backup_`;
-   const suffix = `.patch`;
 
    // LIST subcommand
    if (subCommand === 'list') {
       quickPrint(`${SGR.cyan}Project:${SGR.reset} ${projectName}`);
       quickPrint(`${SGR.cyan}Branch:${SGR.reset} ${branchName}`);
-      quickPrint(`${SGR.cyan}Backup location:${SGR.reset} ${osTemp}`);
+      quickPrint(`${SGR.cyan}Backup location:${SGR.reset} ${backupDir}`);
       quickPrint(`${SGR.cyan}Use \`git clear pardon\` to restore the latest backup.${SGR.reset}\n`);
       quickPrint(
          `${SGR.cyan}Looking for backup patch files matching:${SGR.reset} ${backupFileBlob}\n`
       );
 
-      const backupFiles = await getBackupFiles(osTemp, prefix, suffix);
+      const backupFiles = await getBackupFiles(backupDir);
 
       if (backupFiles.length === 0) {
          quickPrint(
@@ -73,7 +88,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
 
    // Clean up old backup files (older than 7 days)
    // We do this synchronously here for simplicity, unlike the async job in PS
-   const allBackupFiles = await getBackupFiles(osTemp, prefix, suffix);
+   const allBackupFiles = await getBackupFiles(backupDir);
    const sevenDaysAgo = new Date();
    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -81,6 +96,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       if (file.stats.mtime < sevenDaysAgo) {
          try {
             fs.unlinkSync(file.path);
+            await removeBackupIndexEntry(backupDir, file.path);
             allBackupFiles.splice(allBackupFiles.indexOf(file), 1);
          } catch (e) {
             Logger.error(
@@ -133,6 +149,7 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       try {
          await $inherit`${git$} apply ${latestBackup.path}`;
          fs.unlinkSync(latestBackup.path);
+         await removeBackupIndexEntry(backupDir, latestBackup.path);
          quickPrint(
             `${SGR.cyan}Pardon applied successfully from backup: ${SGR.bright}${latestBackup.path}${SGR.reset}`
          );
@@ -165,21 +182,35 @@ export default async function clear(ctx: GdxContext): Promise<number> {
       .replace(/[-:T.]/g, '')
       .slice(0, 14); // yyyyMMddHHmmss
    const backupFileName = `${projectName}_${branchName}_backup_${timestamp}.patch`;
-   const backupFilePath = path.join(osTemp, backupFileName);
+   const backupFilePath = path.join(backupDir, backupFileName);
 
    // Stage all changes (including untracked) to capture them in the patch
    await $inherit`${git$} add -A`;
 
-   const backupExitCode = await execGit(
-      git$,
-      ['-c', 'color.ui=never', 'diff', '--cached', '--binary', '--no-color', '--no-ext-diff'],
-      backupFilePath,
-      '>'
-   );
-
-   if (backupExitCode !== 0) {
-      Logger.error('Failed to create backup patch. Clear aborted.', 'clear');
-      return backupExitCode || 1;
+   await ensureClearBackupDir(backupDir);
+   try {
+      nodeFs.closeSync(nodeFs.openSync(backupFilePath, 'wx', 0o600));
+      const backupExitCode = await execGit(
+         git$,
+         ['-c', 'color.ui=never', 'diff', '--cached', '--binary', '--no-color', '--no-ext-diff'],
+         backupFilePath,
+         '>'
+      );
+      if (backupExitCode !== 0) {
+         throw new Error(`git diff exited with code ${backupExitCode}.`);
+      }
+      await appendBackupIndexEntry(backupDir, {
+         path: backupFilePath,
+         name: backupFileName,
+         createdAt: new Date().toISOString(),
+      });
+   } catch (err) {
+      await fs.unlink(backupFilePath).catch(() => undefined);
+      Logger.error(
+         `Failed to create backup patch. Clear aborted.\n${yuString(err, { color: true })}`,
+         'clear'
+      );
+      return 1;
    }
 
    quickPrint(
@@ -201,7 +232,7 @@ export const help = {
          Safely backup and clear local working changes.
 
          ${SGR.bright + _2PointGradient('DESCRIPTION', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in the OS temporary directory and then resets the working tree to a clean HEAD via \`${SGR.cyan}git reset --hard${SGR.reset}\` and \`${SGR.cyan}git clean -fd${SGR.reset}\`. The latest patch is kept so you can restore it with \`${SGR.cyan}${EXECUTABLE_NAME} clear pardon${SGR.reset}\`.
+         Creates a patch file containing the current unstaged, staged, and untracked changes, stores it in gdx's private backup directory and then resets the working tree to a clean HEAD via \`${SGR.cyan}git reset --hard${SGR.reset}\` and \`${SGR.cyan}git clean -fd${SGR.reset}\`. The latest patch is kept so you can restore it with \`${SGR.cyan}${EXECUTABLE_NAME} clear pardon${SGR.reset}\`.
 
          ${SGR.bright + _2PointGradient('SUBCOMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Show available backup patch files for this project/branch.
@@ -242,17 +273,106 @@ export const structure = {
    $root: ['list', 'pardon'],
 } as const satisfies CommandStructure;
 
-async function getBackupFiles(backupDir: string, prefix: string, suffix: string) {
-   const files = fs.readdirSync(backupDir);
-   const matchedFiles = files.filter((f) => f.startsWith(prefix) && f.endsWith(suffix));
+function getDynamicTempDir(): string {
+   const envTempDir = process.env.GDX_TEMP_DIR;
+   if (envTempDir) {
+      const testTempDir = path.join(envTempDir, 'tmp');
+      if (process.env.NODE_ENV === 'test' && fs.existsSync(testTempDir)) {
+         return testTempDir;
+      }
+      return envTempDir;
+   }
 
-   const fileStats = await Promise.all(
-      matchedFiles.map(async (f) => {
-         const fullPath = path.join(backupDir, f);
-         const stats = await fs.stat(fullPath);
-         return { name: f, path: fullPath, stats };
-      })
-   );
+   return TEMP_DIR;
+}
 
-   return fileStats.sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
+function getClearBackupRoot(): string {
+   return path.join(getDynamicTempDir(), 'gdx', 'clear');
+}
+
+function getClearBackupDir(repoRoot: string, branchName: string): string {
+   const repoHash = crypto.createHash('sha256').update(repoRoot).digest('hex').slice(0, 16);
+   return path.join(getClearBackupRoot(), repoHash, branchName);
+}
+
+function getClearBackupIndexPath(backupDir: string): string {
+   return path.join(backupDir, 'index.json');
+}
+
+async function ensureClearBackupDir(backupDir: string): Promise<void> {
+   await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
+   if (process.platform !== 'win32') {
+      await nodeFs.promises.chmod(backupDir, 0o700);
+   }
+}
+
+async function readBackupIndex(backupDir: string): Promise<ClearBackupIndex> {
+   try {
+      const index = JSON.parse(
+         await fs.readFile(getClearBackupIndexPath(backupDir), 'utf-8')
+      ) as ClearBackupIndex;
+      if (index.version !== 1 || !Array.isArray(index.backups)) {
+         return { version: 1, backups: [] };
+      }
+      return index;
+   } catch {
+      return { version: 1, backups: [] };
+   }
+}
+
+async function writeBackupIndex(backupDir: string, index: ClearBackupIndex): Promise<void> {
+   await ensureClearBackupDir(backupDir);
+   await fs.writeFile(getClearBackupIndexPath(backupDir), JSON.stringify(index, null, 2), {
+      encoding: 'utf-8',
+      mode: 0o600,
+   });
+}
+
+async function appendBackupIndexEntry(
+   backupDir: string,
+   entry: ClearBackupIndexEntry
+): Promise<void> {
+   const index = await readBackupIndex(backupDir);
+   index.backups = [
+      entry,
+      ...index.backups.filter((existing) => existing.path !== entry.path),
+   ];
+   await writeBackupIndex(backupDir, index);
+}
+
+async function removeBackupIndexEntry(backupDir: string, backupPath: string): Promise<void> {
+   const index = await readBackupIndex(backupDir);
+   const resolvedBackupPath = path.resolve(backupPath);
+   index.backups = index.backups.filter((entry) => path.resolve(entry.path) !== resolvedBackupPath);
+   await writeBackupIndex(backupDir, index);
+}
+
+async function getBackupFiles(backupDir: string): Promise<ClearBackupFile[]> {
+   const index = await readBackupIndex(backupDir);
+   const backupDirRealPath = path.resolve(backupDir);
+   const backups: ClearBackupFile[] = [];
+   const keptEntries: ClearBackupIndexEntry[] = [];
+
+   for (const entry of index.backups) {
+      const entryPath = path.resolve(entry.path);
+      if (entryPath !== backupDirRealPath && !entryPath.startsWith(`${backupDirRealPath}${path.sep}`)) {
+         continue;
+      }
+
+      try {
+         const lstat = nodeFs.lstatSync(entryPath);
+         if (!lstat.isFile()) continue;
+         const stats = await fs.stat(entryPath);
+         backups.push({ name: path.basename(entryPath), path: entryPath, stats });
+         keptEntries.push(entry);
+      } catch {
+         // Drop stale metadata entries below.
+      }
+   }
+
+   if (keptEntries.length !== index.backups.length) {
+      await writeBackupIndex(backupDir, { version: 1, backups: keptEntries });
+   }
+
+   return backups.sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime());
 }

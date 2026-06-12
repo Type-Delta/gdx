@@ -32,6 +32,7 @@ import { getCache } from '@/common/cache';
 import { assertInGitWorktree, getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
 import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
 import litedent from '@/utils/litedent';
+import { redactSensitiveContent } from '@/utils/redact';
 
 /**
  * Generates a hash for the given value.
@@ -390,18 +391,26 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
+   const redactedSummary = redactSensitiveContent(stagedSummary.summary);
+   if (redactedSummary.redactionCount > 0) {
+      Logger.warn(
+         `Redacted ${redactedSummary.redactionCount} sensitive-looking value(s) before sending the staged summary to the configured LLM provider.`,
+         'commit'
+      );
+   }
+
    // Determine which prompt to use based on pattern setting
    let prompt: string;
    if (commitPattern === 'inherit') {
       const guidelines = await getCommitGuidelines(git$, config);
       if (guidelines) {
-         prompt = commitMsgGeneratorInherent(stagedSummary.summary, guidelines, userDescription);
+         prompt = commitMsgGeneratorInherent(redactedSummary.text, guidelines, userDescription);
       } else {
          // Fallback to comprehensive if learning failed
-         prompt = commitMsgGenerator(stagedSummary.summary, userDescription);
+         prompt = commitMsgGenerator(redactedSummary.text, userDescription);
       }
    } else {
-      prompt = commitMsgGenerator(stagedSummary.summary, userDescription);
+      prompt = commitMsgGenerator(redactedSummary.text, userDescription);
    }
 
    if (shouldPreview) {
@@ -512,7 +521,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             commitArgs.push('-m', part);
          }
 
-         await $inherit`${git$} commit ${commitArgs} ${passThruArgs}`.catch(noop);
+         await $inherit`${git$} commit ${commitArgs} ${passThruArgs}`;
          return 0;
       }
 
@@ -520,10 +529,12 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       const tempFile = path.join(TEMP_DIR, `gdx_commit_msg_${Date.now()}.txt`);
       await fs.writeFile(tempFile, generatedMsg, 'utf8');
 
-      await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`.catch(noop);
-
-      await fs.unlink(tempFile).catch(noop);
-      return 0;
+      try {
+         await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`;
+         return 0;
+      } finally {
+         await fs.unlink(tempFile).catch(noop);
+      }
    } catch (err) {
       Logger.error(yuString(err, { color: true }), 'commit');
       return 1;

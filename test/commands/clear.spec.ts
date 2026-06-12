@@ -5,6 +5,20 @@ import path from 'path';
 import clear from '@/commands/clear';
 import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 
+async function findClearPatches(rootDir: string): Promise<string[]> {
+   const found: string[] = [];
+   const entries = await fs.readdir(rootDir, { withFileTypes: true });
+   for (const entry of entries) {
+      const entryPath = path.join(rootDir, entry.name);
+      if (entry.isDirectory()) {
+         found.push(...(await findClearPatches(entryPath)));
+      } else if (entry.isFile() && entry.name.endsWith('.patch')) {
+         found.push(entryPath);
+      }
+   }
+   return found;
+}
+
 describe('gdx clear', async () => {
    const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({ suitName: 'clear' });
    const { git$ } = createGdxContext(tmpDir);
@@ -28,10 +42,14 @@ describe('gdx clear', async () => {
       expect(files).not.toContain('staged.txt');
       expect(files).not.toContain('untracked.txt');
 
-      // Verify backup exists in temp dir
-      const backupDir = path.join(tmpRootDir, 'tmp');
-      const backupFiles = (await fs.readdir(backupDir)).filter(
-         (f) => f.includes('_backup_') && f.endsWith('.patch')
+      // Verify backup exists in gdx's private clear backup directory, not top-level temp.
+      const tempDir = path.join(tmpRootDir, 'tmp');
+      const backupDir = path.join(tempDir, 'gdx', 'clear');
+      const topLevelTempFiles = await fs.readdir(tempDir);
+      const backupFiles = await findClearPatches(backupDir);
+
+      expect(topLevelTempFiles.some((f) => f.includes('_backup_') && f.endsWith('.patch'))).toBe(
+         false
       );
       expect(backupFiles.length).toBe(1);
    });
@@ -74,14 +92,12 @@ describe('gdx clear', async () => {
       const clearResult = await clear(createGdxContext(tmpDir));
       expect(clearResult).toBe(0);
 
-      const backupDir = path.join(tmpRootDir, 'tmp');
-      const backupFiles = (await fs.readdir(backupDir)).filter(
-         (f) => f.includes('_backup_') && f.endsWith('.patch')
-      );
+      const backupDir = path.join(tmpRootDir, 'tmp', 'gdx', 'clear');
+      const backupFiles = await findClearPatches(backupDir);
 
       expect(backupFiles.length).toBe(1);
 
-      const patchContent = await fs.readFile(path.join(backupDir, backupFiles[0]), 'utf-8');
+      const patchContent = await fs.readFile(backupFiles[0], 'utf-8');
       expect(patchContent.includes('\u001b[')).toBe(false);
 
       const pardonResult = await clear(createGdxContext(tmpDir, ['clear', 'pardon']));
