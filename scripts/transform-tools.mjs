@@ -39,7 +39,7 @@ const outputFile = path.resolve(__dirname, '../lib/esm/Tools.js');
  *
  * @param {object} param0 - Babel types
  */
-const transformToolsToTreeShakeable = ({ types: t }) => {
+export const transformToolsToTreeShakeable = ({ types: t }) => {
    /** Names of every Tools member; used to rewrite `Tools.<name>` -> `<name>`. */
    const memberNames = new Set();
    /** Guard so the rebuilt (still ObjectExpression) `const Tools` isn't reprocessed. */
@@ -191,7 +191,7 @@ const transformToolsToTreeShakeable = ({ types: t }) => {
    };
 };
 
-async function run() {
+export async function run() {
    try {
       const code = await fs.readFile(inputFile, 'utf8');
       const result = await transformAsync(code, {
@@ -215,4 +215,6 @@ async function run() {
    }
 }
 
-run();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+   run();
+}
