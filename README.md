@@ -188,7 +188,7 @@ using detected package managers (see `parallel.init` config for options), and **
 ignored env files** if configured (see `parallel.envPaths` config for options),
 getting the fork ready for work in no time.
 
-### 5. Git Output for Human
+### 5. Git Output for Humans
 
 Admit it, Git's default output isn't exactly designed for readability.
 `gdx` enhances the output of some commands with better formatting to make it less "git" to read.
@@ -226,7 +226,7 @@ Similar to how `gdx` wraps git, `gdx gh` wraps the GitHub CLI (`gh`) to provides
 
 #### Example: `gdx gh repo create`
 
-Instead of asking you millions of obvious questions, gdx looks around to figure out what you want and only asks you questions that matter.
+Instead of asking you millions of obvious questions, gdx looks around to figure out what you want and only asks what matter.
 
 <details>
 <summary><strong>See how it works</strong></summary>
@@ -321,7 +321,7 @@ flowchart TD
 
 </details>
 
-With this you will only be asked a maximum of 4 questions, only the one you care about.
+With this you will only be asked a maximum of 4 questions, only the ones you care about.
 
 Oh! did I mention that the "Form" now looks like this?
 
