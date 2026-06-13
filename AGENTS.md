@@ -23,7 +23,7 @@ See [COMMIT_MESSAGE_CONVENTIONS.md](./docs/agent/COMMIT_MESSAGE_CONVENTIONS.md).
 
 ```bash
 bun run check   # Runs lint, typecheck, and build checks
-bun test        # Runs tests with Bun's test runner (set timeout >= 8mins)
+bun run test    # Runs tests with Bun's test runner (set timeout >= 8mins)
 ```
 
 ### Development Setup
@@ -255,3 +255,4 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Dynamic imports of first-party modules often hurt performance** (more info in [DYNAMIC_IMPORTS.CAVEAT.md](./docs/agent/DYNAMIC_IMPORTS.CAVEAT.md))
 - **Not having npm publish GitHub Actions workflow is actually a choice** (more info in [NPM_PUBLISH.CAVEAT.md](./docs/agent/NPM_PUBLISH.CAVEAT.md))
 - **Pinned `which@2.0.2` to avoid multiple versions of `which` in the bundle**
+- **Tests use custom harness: check `testHelper.ts` for details** (more info in [TEST_HARNESS.CAVEAT.md](./docs/agent/TEST_HARNESS.CAVEAT.md), read this when writing tests)

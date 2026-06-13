@@ -87,7 +87,7 @@ describe('gdx stats', async () => {
          expect(totalCommits).toBeTruthy();
          expect(totalCommits![1]).toBe('0');
       } finally {
-         resetRepo('full');
+         await resetRepo('full');
       }
    });
 

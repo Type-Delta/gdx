@@ -48,7 +48,8 @@ jobs:
 
          - name: Run Tests
            if: matrix.mode == 'default'
-           run: bun test
+           # Use the serial mode for better test output readability in CI logs.
+           run: bun test:serial
 
          - name: Run Tests (with native mode)
            if: matrix.mode == 'native-git'

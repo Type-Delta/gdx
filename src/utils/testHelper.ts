@@ -526,17 +526,78 @@ function overrideModules(
    return tracker;
 }
 
+/**
+ * Identifier shared by every test process/module instance belonging to the same
+ * `bun test` invocation.
+ *
+ * - With `bun test --parallel`, every worker is a child of the same orchestrator
+ *   process, so the parent pid identifies the run across workers. (`--parallel`
+ *   also implies `--isolate`, which reloads this module per file, so a module-level
+ *   flag alone cannot dedupe the env clearing.)
+ * - In serial mode a single process runs all files; its own pid identifies the run.
+ */
+function getTestRunKey(): string {
+   if (process.env.BUN_TEST_WORKER_ID) {
+      return `parallel-${process.ppid}`;
+   }
+   return `serial-${process.pid}`;
+}
+
+/**
+ * Removes leftovers in `test/env` from previous test runs, exactly once per
+ * `bun test` invocation — even when multiple worker processes (`--parallel`)
+ * or per-file module reloads (`--isolate`) race to call it.
+ *
+ * Coordination protocol:
+ * 1. If a marker file named after the current run key already exists, a sibling
+ *    of this run has already claimed the clearing — do nothing.
+ * 2. Otherwise snapshot the directory listing, then try to create the marker
+ *    with the exclusive `wx` flag. Losing that race means a sibling claimed it
+ *    first — do nothing.
+ * 3. The winner deletes only the entries from its pre-claim snapshot. No sibling
+ *    can have created an env before the marker existed, so everything in the
+ *    snapshot (including markers of previous runs) is guaranteed stale, and
+ *    envs created by siblings afterwards are never touched.
+ */
 async function clearTestEnvs() {
    if (testEnvCleared) return;
 
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
-   try {
-      console.log(`Clearing all test envs in: ${baseTestEnvDir}`);
-      fs.rmSync(baseTestEnvDir, { recursive: true, force: true });
+   const markerName = `.gdx-test-run-${getTestRunKey()}`;
+   const markerPath = path.join(baseTestEnvDir, markerName);
+
+   fs.mkdirSync(baseTestEnvDir, { recursive: true });
+
+   if (fs.existsSync(markerPath)) {
       testEnvCleared = true;
-   } catch {
-      console.error(`Failed to clear test envs in: ${baseTestEnvDir}`);
+      return;
    }
+
+   let staleEntries: string[];
+   try {
+      staleEntries = fs.readdirSync(baseTestEnvDir);
+   } catch {
+      console.error(`Failed to list test envs in: ${baseTestEnvDir}`);
+      return;
+   }
+
+   try {
+      fs.writeFileSync(markerPath, `pid: ${process.pid}\n`, { flag: 'wx' });
+   } catch {
+      testEnvCleared = true;
+      return;
+   }
+
+   console.log(`Clearing stale test envs in: ${baseTestEnvDir}`);
+   for (const entry of staleEntries) {
+      if (entry === markerName) continue;
+      try {
+         fs.rmSync(path.join(baseTestEnvDir, entry), { recursive: true, force: true });
+      } catch {
+         console.error(`Failed to remove stale test env: ${entry}`);
+      }
+   }
+   testEnvCleared = true;
 }
 
 /**
@@ -582,12 +643,19 @@ async function writeTestDebugLog(
    });
 }
 
+/**
+ * Multiplier applied to per-test timeouts. Parallel workers (`bun test --parallel`)
+ * contend for CPU and disk, so tests calibrated for serial runs need more headroom.
+ */
+const TEST_TIMEOUT_SCALE = process.env.BUN_TEST_WORKER_ID ? 3 : 1;
+
 function defineBunIt(tracker: TestEnvTracker, lifecycle?: TestLifecycle) {
    return function (name: string, fn: () => Promise<void> | void, options?: { timeout?: number }) {
       options = {
          timeout: 10000, // Default timeout of 10 seconds for each test
          ...options,
       };
+      options.timeout! *= TEST_TIMEOUT_SCALE;
 
       return it(
          name,
