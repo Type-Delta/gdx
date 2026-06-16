@@ -77,13 +77,13 @@ class Logger {
       message: string;
       module: string;
    }> = [
-      {
-         timestamp: new Date().toISOString(),
-         level: 'info',
-         message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
-         module: 'logger',
-      },
-   ];
+         {
+            timestamp: new Date().toISOString(),
+            level: 'info',
+            message: `\n\n=== New gdx session started ===\nLocalMachineDate: ${new Date().toLocaleString()}\nAppVersion: ${VERSION}\nPlatform: ${process.platform}\nArch: ${process.arch}\n`,
+            module: 'logger',
+         },
+      ];
 
    constructor(moduleName: string) {
       this.moduleName = moduleName;
@@ -342,7 +342,10 @@ class Logger {
       }
    }
 
-   private static flushLogs(): void {
+   /**
+    * Writes buffered log records to disk synchronously.
+    */
+   public static flushLogs(): void {
       if (Logger.allLogs.length === 0) {
          return;
       }

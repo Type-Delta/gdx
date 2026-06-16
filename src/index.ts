@@ -109,9 +109,11 @@ async function main(): Promise<number> {
          quickPrint(global.finalStringOutput);
       }
 
+      Logger.flushLogs();
       process.exit(global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode);
    } catch (err) {
       Logger.error(yuString(err, { color: true }));
+      Logger.flushLogs();
       process.exit(1);
    }
 })();
