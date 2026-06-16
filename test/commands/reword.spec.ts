@@ -6,6 +6,7 @@ import reword from '@/commands/reword';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig } from '@/common/config';
 import { $ as shell$ } from '@/modules/shell';
+import { resetConfig } from '@/common/config';
 
 async function readCommitMessage(repoPath: string, ref: string): Promise<string> {
    const $ = shell$({ cwd: repoPath });
@@ -157,5 +158,73 @@ describe('gdx reword', async () => {
 
       const status = (await $`git status --porcelain`).stdout;
       expect(status).toContain(' M note.txt');
+   });
+
+   it('rewords HEAD non-interactively with -m', async () => {
+      await resetRepo();
+
+      await $`git commit --allow-empty --no-verify -m ${'old subject'} -m ${'old body'}`;
+
+      const ctx = createGdxContext(tmpDir, [
+         'reword',
+         '-m',
+         'new subject',
+         '--message',
+         'new body',
+      ]);
+      const result = await reword(ctx);
+
+      expect(result).toBe(0);
+      expect(tracker.openedPaths.length).toBe(0);
+
+      const message = await readCommitMessage(tmpDir, 'HEAD');
+      expect(message).toBe('new subject\n\nnew body');
+   });
+
+   it('rewords an older commit non-interactively with -m and keeps descendants', async () => {
+      await resetRepo();
+
+      await fs.writeFile(path.join(tmpDir, 'older-message.txt'), 'first');
+      await $`git add older-message.txt`;
+      await $`git commit --no-verify -m ${'first subject'}`;
+      await fs.writeFile(path.join(tmpDir, 'newer-message.txt'), 'second');
+      await $`git add newer-message.txt`;
+      await $`git commit --no-verify -m ${'second subject'}`;
+
+      const ctx = createGdxContext(tmpDir, ['reword', '~1', '-m', 'new first subject']);
+      const result = await reword(ctx);
+
+      expect(result).toBe(0);
+      expect(tracker.openedPaths.length).toBe(0);
+
+      const olderMessage = await readCommitMessage(tmpDir, 'HEAD~1');
+      const latestMessage = await readCommitMessage(tmpDir, 'HEAD');
+      expect(olderMessage).toBe('new first subject');
+      expect(latestMessage).toBe('second subject');
+   });
+
+   it('regenerates and applies a message with auto --yes without opening an editor', async () => {
+      await resetRepo();
+      resetConfig();
+      const config = await getConfig();
+      await config.set('commit.commitPattern', 'comprehensive');
+      await config.save();
+
+      await fs.writeFile(path.join(tmpDir, 'auto-reword.txt'), 'before');
+      await $`git add auto-reword.txt`;
+      await $`git commit --no-verify -m ${'old auto subject'}`;
+      await fs.writeFile(path.join(tmpDir, 'auto-reword.txt'), 'after');
+      await $`git add auto-reword.txt`;
+      await $`git commit --no-verify -m ${'message to replace'}`;
+
+      const ctx = createGdxContext(tmpDir, ['reword', 'auto', '--yes']);
+      const result = await reword(ctx);
+
+      expect(result).toBe(0);
+      expect(tracker.openedPaths.length).toBe(0);
+
+      const message = await readCommitMessage(tmpDir, 'HEAD');
+      expect(message).toContain('Mock response from LLM');
+      expect(buffer.stdout).toContain('Generated Commit Message');
    });
 });

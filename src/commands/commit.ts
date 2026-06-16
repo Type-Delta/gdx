@@ -46,6 +46,19 @@ interface CommitHeaderSample {
    header: string;
 }
 
+export interface AutoCommitMessageOptions {
+   diffSummary: string;
+   userDescription?: string;
+   emptySummaryError?: string;
+   logScope?: string;
+   promptOnly?: boolean;
+}
+
+export interface AutoCommitMessageResult {
+   message: string;
+   prompt: string;
+}
+
 /**
  * Returns the fixed-length header prefix used for style comparison.
  */
@@ -342,6 +355,152 @@ async function getCommitGuidelines(
    return guideline;
 }
 
+/**
+ * Normalizes a generated commit message for use with Git.
+ *
+ * @param message - Raw message returned by the LLM.
+ * @returns Message with surrounding quotes removed and body wrapped to 72 columns.
+ */
+export function normalizeGeneratedCommitMessage(message: string): string {
+   let generatedMsg = message.replace(/(^\s*["'`]*|["'`]*\s*$)/g, '');
+
+   const titleBodySplit = generatedMsg.indexOf('\n');
+   if (titleBodySplit !== -1) {
+      const cmiTitle = generatedMsg.slice(0, titleBodySplit);
+      const cmiBody = generatedMsg.slice(titleBodySplit + 1).trim();
+      generatedMsg =
+         cmiTitle +
+         '\n\n' +
+         strWrap(cmiBody, 72, {
+            mode: 'softboundary',
+            redundancyLv: -1,
+         });
+   }
+
+   return generatedMsg;
+}
+
+/**
+ * Generates a commit message from a prepared diff summary.
+ *
+ * @param ctx - Command context.
+ * @param options - Generation inputs and behavior flags.
+ * @returns The generated message and prompt, or null on failure.
+ */
+export async function generateAutoCommitMessage(
+   ctx: GdxContext,
+   options: AutoCommitMessageOptions
+): Promise<AutoCommitMessageResult | null> {
+   const { git$ } = ctx;
+   const userDescription = options.userDescription?.trim() || '';
+   const logScope = options.logScope || 'commit';
+
+   if (!options.diffSummary.trim()) {
+      Logger.error(options.emptySummaryError || 'Unable to generate commit message from empty diff summary.', logScope);
+      return null;
+   }
+
+   const config = await getConfig();
+   const showThinking = config.get<boolean>('llm.showThinking', true);
+   const commitPattern = config.get<'inherit' | 'comprehensive'>('commit.commitPattern', 'inherit');
+
+   const redactedSummary = redactSensitiveContent(options.diffSummary);
+   if (redactedSummary.redactionCount > 0) {
+      Logger.warn(
+         `Redacted ${redactedSummary.redactionCount} sensitive-looking value(s) before sending the diff summary to the configured LLM provider.`,
+         logScope
+      );
+   }
+
+   let prompt: string;
+   if (commitPattern === 'inherit') {
+      const guidelines = await getCommitGuidelines(git$, config);
+      if (guidelines) {
+         prompt = commitMsgGeneratorInherent(redactedSummary.text, guidelines, userDescription);
+      } else {
+         prompt = commitMsgGenerator(redactedSummary.text, userDescription);
+      }
+   } else {
+      prompt = commitMsgGenerator(redactedSummary.text, userDescription);
+   }
+
+   if (options.promptOnly) {
+      return { message: '', prompt };
+   }
+
+   quickPrint(`${SGR.cyan}Generating commit message based on changes...${SGR.reset}\n`);
+
+   const llm = await getLLMProvider();
+
+   const spin = spinner({
+      message: 'connecting...',
+      animateGradient: false,
+   });
+
+   const connection = llm.streamGenerate({
+      prompt,
+      temperature: 0.14,
+      reasoning: 'low',
+   });
+
+   let generatedMsg = '';
+   let hasReceivedContent = false;
+   let isReasoning = false;
+   let thinkingBuffer = '';
+
+   for await (const response of connection) {
+      if (response.error) {
+         spin.stop();
+         Logger.error(
+            response.error.message + (response.error.cause ? ': ' + response.error.cause : ''),
+            logScope
+         );
+         Logger.debug(`LLM error details: ${Err.from(response.error)}`, logScope);
+         return null;
+      }
+
+      if (response.thinkingChunk) {
+         if (!isReasoning) {
+            isReasoning = true;
+            spin.options.animateGradient = true;
+            if (!showThinking) spin.options.message = 'reasoning...';
+         }
+
+         if (showThinking) {
+            thinkingBuffer = (thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')).slice(
+               -32
+            );
+            spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
+         }
+         continue;
+      }
+
+      if (response.chunk) {
+         if (!hasReceivedContent) {
+            hasReceivedContent = true;
+            spin.stop();
+            quickPrint(`${SGR.cyan}Generated Commit Message:${SGR.reset}`);
+         }
+         quickPrint(response.chunk, '');
+         generatedMsg += response.chunk;
+      }
+   }
+
+   if (!generatedMsg) {
+      quickPrint('\n');
+      Logger.error('Unable to generate commit message (empty response).', logScope);
+      return null;
+   }
+
+   const originalMsg = generatedMsg;
+   generatedMsg = normalizeGeneratedCommitMessage(generatedMsg);
+
+   redrawText(originalMsg, generatedMsg);
+   quickPrint('');
+
+   return { message: generatedMsg, prompt };
+}
+
 async function autoCommit(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
@@ -369,8 +528,6 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
    }
 
    const config = await getConfig();
-   const showThinking = config.get<boolean>('llm.showThinking', true);
-   const commitPattern = config.get<'inherit' | 'comprehensive'>('commit.commitPattern', 'inherit');
    const noisyFilePatterns = config.get<string[]>('commit.noisyFiles', []);
    const resolvedNoisyPatterns = Array.isArray(noisyFilePatterns)
       ? noisyFilePatterns.filter((entry) => typeof entry === 'string')
@@ -391,116 +548,21 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       return 1;
    }
 
-   const redactedSummary = redactSensitiveContent(stagedSummary.summary);
-   if (redactedSummary.redactionCount > 0) {
-      Logger.warn(
-         `Redacted ${redactedSummary.redactionCount} sensitive-looking value(s) before sending the staged summary to the configured LLM provider.`,
-         'commit'
-      );
-   }
-
-   // Determine which prompt to use based on pattern setting
-   let prompt: string;
-   if (commitPattern === 'inherit') {
-      const guidelines = await getCommitGuidelines(git$, config);
-      if (guidelines) {
-         prompt = commitMsgGeneratorInherent(redactedSummary.text, guidelines, userDescription);
-      } else {
-         // Fallback to comprehensive if learning failed
-         prompt = commitMsgGenerator(redactedSummary.text, userDescription);
-      }
-   } else {
-      prompt = commitMsgGenerator(redactedSummary.text, userDescription);
-   }
-
-   if (shouldPreview) {
-      quickPrint(prompt);
-      return 0;
-   }
-
-   quickPrint(`${SGR.cyan}Generating commit message based on staged changes...${SGR.reset}\n`);
-
    try {
-      const llm = await getLLMProvider();
-
-      const spin = spinner({
-         message: 'connecting...',
-         animateGradient: false,
+      const generated = await generateAutoCommitMessage(ctx, {
+         diffSummary: stagedSummary.summary,
+         userDescription,
+         promptOnly: shouldPreview,
       });
 
-      const connection = llm.streamGenerate({
-         prompt,
-         temperature: 0.14,
-         reasoning: 'low',
-      });
+      if (!generated) return 1;
 
-      let generatedMsg = '';
-      let hasReceivedContent = false;
-      let isReasoning = false;
-      let thinkingBuffer = '';
-
-      for await (const response of connection) {
-         if (response.error) {
-            spin.stop();
-            Logger.error(
-               response.error.message + (response.error.cause ? ': ' + response.error.cause : ''),
-               'commit'
-            );
-            Logger.debug(`LLM error details: ${Err.from(response.error)}`, 'commit');
-            return 1;
-         }
-
-         if (response.thinkingChunk) {
-            if (!isReasoning) {
-               isReasoning = true;
-               spin.options.animateGradient = true;
-               if (!showThinking) spin.options.message = 'reasoning...';
-            }
-
-            if (showThinking) {
-               thinkingBuffer = (
-                  thinkingBuffer + response.thinkingChunk.replace(/[\n\r]/g, '')
-               ).slice(-32);
-               spin.options.message = `reasoning... ${thinkingBuffer.trim()}`;
-            }
-            continue;
-         }
-
-         if (response.chunk) {
-            if (!hasReceivedContent) {
-               hasReceivedContent = true;
-               spin.stop();
-               quickPrint(`${SGR.cyan}Generated Commit Message:${SGR.reset}`);
-            }
-            quickPrint(response.chunk, '');
-            generatedMsg += response.chunk;
-         }
+      if (shouldPreview) {
+         quickPrint(generated.prompt);
+         return 0;
       }
 
-      if (!generatedMsg) {
-         quickPrint('\n'); // 2 Final newline after message output
-         Logger.error('Unable to generate commit message (empty response).', 'commit');
-         return 1;
-      }
-
-      const originalMsg = generatedMsg;
-      generatedMsg = generatedMsg.replace(/(^\s*["'`]*|["'`]*\s*$)/g, ''); // Remove surrounding quotes if any
-
-      const titleBodySplit = generatedMsg.indexOf('\n');
-      if (titleBodySplit !== -1) {
-         const cmiTitle = generatedMsg.slice(0, titleBodySplit);
-         const cmiBody = generatedMsg.slice(titleBodySplit + 1).trim();
-         generatedMsg =
-            cmiTitle +
-            '\n\n' +
-            strWrap(cmiBody, 72, {
-               mode: 'softboundary',
-               redundancyLv: -1,
-            }); // Wrap at 72 chars
-      }
-
-      redrawText(originalMsg, generatedMsg); // replace streaming prompt with wrapped version
-      quickPrint('');
+      const generatedMsg = generated.message;
 
       if (shouldNoCommit) {
          if (shouldYes) {

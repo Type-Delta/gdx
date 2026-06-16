@@ -85,6 +85,7 @@ export interface CommitDiffSummaryOptions {
    normalFileCharCap?: number;
    noisyFileCharCap?: number;
    noisyPatterns?: string[];
+   diffArgs?: string[];
 }
 
 export interface CommitDiffSummaryResult {
@@ -111,8 +112,29 @@ export async function buildStagedCommitDiffSummary(
    git$: string | string[],
    options: CommitDiffSummaryOptions = {}
 ): Promise<CommitDiffSummaryResult> {
+   return await buildCommitDiffSummary(git$, {
+      ...options,
+      diffArgs: ['--cached'],
+   });
+}
+
+/**
+ * Builds a diff summary optimized for LLM commit message generation.
+ *
+ * The output intentionally keeps high-signal file changes while trimming
+ * whitespace-only and low-importance hunks when files exceed category budgets.
+ *
+ * @param git$ - Git executable (or scoped command array).
+ * @param options - Optional character budget overrides and git diff arguments.
+ * @returns Structured summary text and a changes presence flag.
+ */
+export async function buildCommitDiffSummary(
+   git$: string | string[],
+   options: CommitDiffSummaryOptions = {}
+): Promise<CommitDiffSummaryResult> {
    const normalFileCharCap = options.normalFileCharCap ?? DEFAULT_NORMAL_FILE_CHAR_CAP;
    const noisyFileCharCap = options.noisyFileCharCap ?? DEFAULT_NOISY_FILE_CHAR_CAP;
+   const diffArgs = options.diffArgs || [];
    const noisyMatchers = (options.noisyPatterns || [...COMMIT_DEFAULT_NOISY_FILES])
       .map((pattern) => buildPathGlobMatcher(pattern))
       .filter((matcher): matcher is (value: string) => boolean => Boolean(matcher));
@@ -121,11 +143,11 @@ export async function buildStagedCommitDiffSummary(
    }
 
    const [nameStatusOut, numstatOut, statOut, shortstatOut, patchOut] = await Promise.all([
-      $`${git$} diff --cached --name-status -z -M -C --find-copies-harder`,
-      $`${git$} diff --cached --numstat -z -M -C --find-copies-harder`,
-      $`${git$} -c color.ui=never diff --cached --stat -M -C --find-copies-harder`,
-      $`${git$} diff --cached --shortstat`,
-      $`${git$} -c color.ui=never diff --cached --patch --no-ext-diff -M -C --find-copies-harder`,
+      $`${git$} diff ${diffArgs} --name-status -z -M -C --find-copies-harder`,
+      $`${git$} diff ${diffArgs} --numstat -z -M -C --find-copies-harder`,
+      $`${git$} -c color.ui=never diff ${diffArgs} --stat -M -C --find-copies-harder`,
+      $`${git$} diff ${diffArgs} --shortstat`,
+      $`${git$} -c color.ui=never diff ${diffArgs} --patch --no-ext-diff -M -C --find-copies-harder`,
    ]);
 
    const nameStatusEntries = parseNameStatusZ(nameStatusOut.stdout);
