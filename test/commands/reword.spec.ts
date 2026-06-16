@@ -32,6 +32,42 @@ await writeFile(targetFile, ${JSON.stringify(message)}, 'utf8');
    await config.save();
 }
 
+async function configureFakeCodeEditor(projectDir: string, message: string): Promise<string> {
+   const fakeEditorDir = path.join(projectDir, 'fake-code-editor');
+   const editorScriptPath = path.join(fakeEditorDir, 'fake-code-editor.mjs');
+   const argsPath = path.join(fakeEditorDir, 'args.txt');
+   const editorPath = path.join(fakeEditorDir, process.platform === 'win32' ? 'code.cmd' : 'code');
+
+   await fs.mkdir(fakeEditorDir, { recursive: true });
+   await fs.writeFile(
+      editorScriptPath,
+      `import { writeFile } from 'fs/promises';
+
+const args = process.argv.slice(2);
+await writeFile(${JSON.stringify(argsPath)}, args.join('\\n'), 'utf8');
+await writeFile(args[args.length - 1], ${JSON.stringify(message)}, 'utf8');
+`
+   );
+
+   await fs.writeFile(
+      editorPath,
+      process.platform === 'win32'
+         ? `@echo off\r\nbun "%~dp0fake-code-editor.mjs" %*\r\n`
+         : `#!/usr/bin/env sh\nbun "$(dirname "$0")/fake-code-editor.mjs" "$@"\n`
+   );
+
+   if (process.platform !== 'win32') {
+      await fs.chmod(editorPath, 0o755);
+   }
+
+   const config = await getConfig();
+   await config.reset('reword.editor');
+   await config.set('defaultEditor', `${editorPath} --reuse-window`);
+   await config.save();
+
+   return argsPath;
+}
+
 describe('gdx reword', async () => {
    const { tmpDir, $, tracker, buffer, it, resetRepo } = await createTestEnv({
       suitName: 'reword',
@@ -64,6 +100,27 @@ describe('gdx reword', async () => {
       const diffIndex = buffer.stdout.indexOf('@@ -');
       expect(diffIndex).toBeGreaterThan(-1);
       expect(rewroteIndex).toBeGreaterThan(diffIndex);
+   });
+
+   it('adds wait flag to known fallback editors before opening the message', async () => {
+      await resetRepo();
+
+      await $`git commit --allow-empty --no-verify -m ${'fallback editor subject'}`;
+
+      const expectedMessage = 'fallback editor updated subject';
+      const editorArgsPath = await configureFakeCodeEditor(tmpDir, expectedMessage);
+
+      const ctx = createGdxContext(tmpDir, ['reword']);
+      const result = await reword(ctx);
+
+      expect(result).toBe(0);
+
+      const editorArgs = (await fs.readFile(editorArgsPath, 'utf8')).split('\n');
+      expect(editorArgs[0]).toBe('--wait');
+      expect(editorArgs[1]).toBe('--reuse-window');
+
+      const message = await readCommitMessage(tmpDir, 'HEAD');
+      expect(message).toBe(expectedMessage);
    });
 
    it('rewords an older commit message exactly and keeps working tree changes', async () => {

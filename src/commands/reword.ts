@@ -9,6 +9,7 @@ import {
    openInEditor,
    spinner,
    SpinnerController,
+   tokenizeCommand,
 } from '@/modules/shell';
 import { getConfig } from '@/common/config';
 import {
@@ -74,7 +75,17 @@ async function resolveRewordEditor(): Promise<string> {
    }
 
    if (fallback && fallback.trim().length > 0) {
-      return fallback.trim();
+      const cmd = fallback.trim();
+      const execArgs = tokenizeCommand(cmd);
+      const exec = path.basename(execArgs[0], path.extname(execArgs[0]));
+      if (
+         (!execArgs.includes('--wait') || !execArgs.includes('-w')) &&
+         ['code', 'subl', 'zed', 'mate', 'bbedit', 'nova', 'gedit'].includes(exec)
+      ) {
+         return execArgs[0] + ' --wait ' + execArgs.slice(1).join(' ');
+      }
+
+      return cmd;
    }
 
    throw new Err('No editor configured.', 'EDITOR_NOT_CONFIGURED');
