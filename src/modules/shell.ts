@@ -2,7 +2,7 @@ import _whichLib from 'which';
 import { execa, ExecaMethod, Options, ExecaError } from 'execa';
 import type { MinimalVerboseObject } from '@node/execa/types/verbose';
 
-import { CheckCache, Err, MathKit, ncc, yuString } from '@lib/Tools';
+import { CheckCache, Err, MathKit, ex_length, ncc, yuString } from '@lib/Tools';
 
 import { Easing, hslToRgbVec, radialGradient, RgbVec, rgbVec2decimal } from './graphics';
 import { SpinnerOptions } from '@/common/types';
@@ -36,6 +36,22 @@ export interface SpinnerController {
     * Spinner options reference, can be used to read or modify options on the fly (e.g. change frames or animation settings dynamically)
     */
    options: Required<SpinnerOptions>;
+}
+
+export interface RedrawTextOptions {
+   /**
+    * Complexity level for terminal display-width measurement.
+    * @see ex_length
+    */
+   redundancyLv?: number;
+   /**
+    * String appended after the final line.
+    */
+   end?: string;
+   /**
+    * Redraw text that is still on the current terminal line.
+    */
+   inline?: boolean;
 }
 
 const logger = new Logger('shell');
@@ -226,6 +242,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
       gradientSpeed: 0.13,
       gradientInterval: 3,
       progress: { current: 0, total: -1 },
+      widthCalculationLv: -1,
       ...options,
    } satisfies Required<SpinnerOptions>;
 
@@ -250,6 +267,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
    let isRunning = true;
    let intervalId: NodeJS.Timeout | null = null;
    let nextDraw: number = 0;
+   let lastLineContent = '';
 
    const render = () => {
       if (!isRunning) return;
@@ -261,6 +279,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
       // Draw message
       if (options.message) {
          const lineContent = ' ' + options.message + renderProgress();
+         lastLineContent = lineContent;
 
          if (options.animateGradient && CheckCache.supportsColor >= 3) {
             // Create animated gradient effect with easing
@@ -288,8 +307,11 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
          }
       }
 
-      // Clear the current line and move cursor to start then write frame
-      process.stdout.write('\r\x1b[K' + frame);
+      redrawText(lastLineContent, frame, {
+         end: '',
+         inline: true,
+         redundancyLv: options.widthCalculationLv
+      });
       if (shouldStep) {
          frameIndex++;
          nextDraw = performance.now() + options.interval!;
@@ -314,8 +336,13 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
             clearInterval(intervalId);
             intervalId = null;
          }
-         // Clear line and show cursor
-         process.stdout.write('\r\x1b[K\x1b[?25h');
+         redrawText(lastLineContent, '', {
+            end: '',
+            inline: true,
+            redundancyLv: options.widthCalculationLv
+         });
+         lastLineContent = '';
+         process.stdout.write('\x1b[?25h');
       },
       /**
        * Resumes the spinner if it was stopped
@@ -324,7 +351,7 @@ export function spinner(options: SpinnerOptions = {}): SpinnerController {
          if (!isRunning) {
             // Hide cursor then add a new line if requested
             process.stdout.write('\x1b[?25l' + (newline ? '\n' : ''));
-
+            lastLineContent = '';
             // Restart animation loop
             isRunning = true;
             intervalId = setInterval(render, options.interval);
@@ -573,20 +600,47 @@ function execaCustomLogger(_verboseLine: string, verboseObject: MinimalVerboseOb
 }
 
 /**
+ * Estimates how many terminal rows a string occupies after automatic line wrapping.
+ * @param text - The previously printed text to measure.
+ * @param redundancyLv - Complexity level for terminal display-width measurement.
+ * @returns The number of terminal rows occupied by the text.
+ */
+function estimateTerminalRowCount(text: string, redundancyLv: number): number {
+   const terminalWidth = Math.floor(process.stdout.columns || global.terminalWidth || 100);
+   const width = terminalWidth > 0 ? terminalWidth : 100;
+
+   return text.split('\n').reduce((count, line) => {
+      const lineWidth = ex_length(line, redundancyLv);
+      return count + Math.max(1, Math.ceil(lineWidth / width));
+   }, 0);
+}
+
+/**
  * Redraws text in the terminal by moving the cursor up to the start of the previous text and overwriting it with new text.
  * This is useful for updating progress messages or dynamic content without adding new lines.
+ * @param prev - The previously printed text.
+ * @param next - The replacement text to print.
+ * @param options - Redraw behavior and display-width measurement options.
  */
-export function redrawText(prev: string, next: string): void {
-   const originalLnCount = prev.length - prev.replace(/\n/g, '').length + 1;
+export function redrawText(prev: string, next: string, options: RedrawTextOptions = {}): void {
+   const { redundancyLv = -1, end = '\n', inline = false } = options;
+   const originalLnCount = estimateTerminalRowCount(prev, redundancyLv);
 
-   // Move cursor up to the start of the original message
-   process.stdout.write(`\x1b[${originalLnCount}F`);
+   if (inline) {
+      if (originalLnCount > 1) process.stdout.write(`\x1b[${originalLnCount - 1}F`);
+      process.stdout.write('\r');
+   } else {
+      // Move cursor up to the start of the original message
+      process.stdout.write(`\x1b[${originalLnCount}F`);
+   }
 
    // Clear from cursor to end of screen
    process.stdout.write(`\x1b[0J`);
 
    // Rewrite message line by line, clearing each line first
-   for (const line of next.split('\n')) {
-      process.stdout.write(`\x1b[2K${line}\n`);
+   const lines = next.split('\n');
+   for (const [index, line] of lines.entries()) {
+      const lineEnd = index === lines.length - 1 ? end : '\n';
+      process.stdout.write(`\x1b[2K${line}${lineEnd}`);
    }
 }

@@ -37,6 +37,12 @@ export interface SpinnerOptions {
       current: number;
       total: number;
    };
+   /**
+    * Redundancy level for width calculation, where -1 and 0 assume the frame only
+    * has standard half-width characters, and higher values allow for more wide
+    * characters (e.g. emojis) without the frame redrawing.
+    */
+   widthCalculationLv?: number;
 }
 
 export interface CommandHelpObj {

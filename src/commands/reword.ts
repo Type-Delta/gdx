@@ -8,6 +8,7 @@ import {
    $,
    copyToClipboard,
    openInEditor,
+   redrawText,
    spinner,
    SpinnerController,
    tokenizeCommand,
@@ -31,6 +32,7 @@ import { buildCommitDiffSummary } from '@/modules/diff-summary';
 import { generateAutoCommitMessage } from '@/commands/commit';
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+const WAITING_FOR_EDITOR_HINT = 'hint: waiting for your editor to close the file...';
 
 /**
  * Git author metadata used when creating a rewritten commit.
@@ -656,17 +658,17 @@ export default async function reword(ctx: GdxContext): Promise<number> {
          } else {
             await fs.writeFile(tempFile, generated.message, 'utf8');
             const editor = await resolveRewordEditor();
-            quickPrint(`hint: waiting for your editor to close the file...`, '');
+            quickPrint(WAITING_FOR_EDITOR_HINT, '');
             await openInEditor(tempFile, editor);
-            quickPrint(`\x1b[1G\x1b[K`, '');
+            redrawText(WAITING_FOR_EDITOR_HINT, '', { end: '', inline: true });
             updatedMessage = await fs.readFile(tempFile, 'utf8');
          }
       } else {
          await fs.writeFile(tempFile, originalMessage, 'utf8');
          const editor = await resolveRewordEditor();
-         quickPrint(`hint: waiting for your editor to close the file...`, '');
+         quickPrint(WAITING_FOR_EDITOR_HINT, '');
          await openInEditor(tempFile, editor);
-         quickPrint(`\x1b[1G\x1b[K`, ''); // Move cursor to start of line and clear to end to clean up any editor hints
+         redrawText(WAITING_FOR_EDITOR_HINT, '', { end: '', inline: true });
          updatedMessage = await fs.readFile(tempFile, 'utf8');
       }
 
