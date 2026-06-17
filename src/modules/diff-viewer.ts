@@ -19,6 +19,7 @@ import {
    pager,
    PagerActionResult,
    PAGER_DEFAULT_OPTIONS,
+   expandTabs,
 } from './pager';
 import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
@@ -1106,6 +1107,10 @@ export class DiffViewerRenderer implements PagerRenderer {
          newRevision: 'HEAD',
          ...this.options.highlighting,
       };
+      diffText = expandTabs(diffText, this.options.tabWidth);
+      this.options.preambleLines = this.options.preambleLines.map((line) =>
+         expandTabs(line, this.options.tabWidth)
+      );
       this.logger.debug('Initializing DiffViewerRenderer with options: ' + yuString(this.options));
 
       this.lastWidth = getTerminalWidth();
@@ -1626,10 +1631,14 @@ export async function viewDiff(
       maxHunkSize: config.get<number>('viewer.highlighting.maxHunkSize', 200000),
       ...options.highlighting,
    };
+   const tabWidth =
+      options.tabWidth ??
+      config.get<number>('viewer.tabWidth', PAGER_DEFAULT_OPTIONS.tabWidth);
 
    logger.time('Preparing diff highlighting');
    const renderer = new DiffViewerRenderer(diffBody, {
       ...options,
+      tabWidth,
       preambleLines,
       highlighting: highlightingConfig,
    });
@@ -1641,6 +1650,7 @@ export async function viewDiff(
 
    return pagerWithRenderer(renderer, {
       ...options,
+      tabWidth,
       showLineNumbers: true,
    });
 }

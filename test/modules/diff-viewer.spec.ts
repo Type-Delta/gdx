@@ -615,6 +615,25 @@ const addedOnly = 20;
          expect(stripAnsiColor(rendered)).toContain('+ new value');
       });
 
+      it('should replace tabs using the configured tab width before rendering', () => {
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -0,0 +1 @@
++\tconst value = true;`;
+
+         const renderer = new DiffViewerRenderer(diffText, {
+            tabWidth: 4,
+            disableSyntaxHighlighting: true,
+         });
+         const rendered = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+            renderer.getLine(i)
+         ).join('\n');
+
+         expect(rendered).not.toContain('\t');
+         expect(stripAnsiColor(rendered)).toContain('+     const value = true;');
+      });
+
       it('should keep deleted line content when line numbers overlap', async () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts

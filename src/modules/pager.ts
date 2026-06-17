@@ -41,6 +41,8 @@ export interface PagerActionResult {
 }
 
 export interface PagerOptions {
+   /** Number of spaces used to render each tab character. Default: 2 */
+   tabWidth?: number;
    /** Whether to show line numbers. Default: false */
    showLineNumbers?: boolean;
    /** Width of line number column. Default: 4 */
@@ -95,6 +97,7 @@ export interface PagerRenderer {
 
 /** Default pager configuration */
 export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'> = {
+   tabWidth: 2,
    showLineNumbers: false,
    lineNumberWidth: 5,
    wrapLines: true,
@@ -206,7 +209,7 @@ export class SimplePagerRenderer implements PagerRenderer {
          ...PAGER_DEFAULT_OPTIONS,
          ...options,
       } as Required<PagerOptions>;
-      this.lines = content.split('\n');
+      this.lines = expandTabs(content, this.options.tabWidth).split('\n');
       this.lastWidth = getTerminalWidth();
       this.lastHeight = getTerminalHeight();
       this.updateRenderedLines();
@@ -305,6 +308,17 @@ export class SimplePagerRenderer implements PagerRenderer {
 }
 
 /**
+ * Replaces tabs with a fixed number of spaces so terminal width calculations
+ * operate on the same characters that will be rendered.
+ * @param content - Text that may contain tab characters.
+ * @param tabWidth - Number of spaces used for each tab.
+ * @returns Content with every tab replaced by spaces.
+ */
+export function expandTabs(content: string, tabWidth: number): string {
+   return content.replace(/\t/g, ' '.repeat(tabWidth));
+}
+
+/**
  * Displays content in an interactive pager with less-like navigation.
  * @param content - The text content to display
  * @param options - Pager configuration options
@@ -316,7 +330,10 @@ export async function pager(
    const config = await getConfig();
    const opts = {
       ...PAGER_DEFAULT_OPTIONS,
-      ...{ exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior') },
+      ...{
+         exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior'),
+         tabWidth: config.get<number>('viewer.tabWidth', PAGER_DEFAULT_OPTIONS.tabWidth),
+      },
       ...options
    };
 
@@ -336,7 +353,10 @@ export async function pagerWithRenderer(
    const config = await getConfig();
    const opts = {
       ...PAGER_DEFAULT_OPTIONS,
-      ...{ exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior') },
+      ...{
+         exitBehavior: config.get<'clearScreen' | 'nextLine'>('viewer.exitBehavior'),
+         tabWidth: config.get<number>('viewer.tabWidth', PAGER_DEFAULT_OPTIONS.tabWidth),
+      },
       ...options
    };
 

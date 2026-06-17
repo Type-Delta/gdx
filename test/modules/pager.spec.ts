@@ -31,6 +31,20 @@ describe('pager module', async () => {
       expect(stripAnsiColor(renderer.getLine(0))).toBe('single line');
    });
 
+   it('should replace tabs with two spaces by default', () => {
+      const renderer = new SimplePagerRenderer('before\tafter');
+
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('before  after');
+      expect(renderer.getLine(0)).not.toContain('\t');
+   });
+
+   it('should replace tabs using the configured tab width', () => {
+      const renderer = new SimplePagerRenderer('\tindented', { tabWidth: 4 });
+
+      expect(stripAnsiColor(renderer.getLine(0))).toBe('    indented');
+      expect(renderer.getLine(0)).not.toContain('\t');
+   });
+
    it('should show line numbers when enabled', () => {
       const content = 'line1\nline2\nline3';
       const renderer = new SimplePagerRenderer(content, {

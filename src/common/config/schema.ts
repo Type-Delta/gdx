@@ -53,6 +53,7 @@ export const GdxConfigSchema = t.Object({
    ),
    viewer: t.Optional(
       t.Object({
+         tabWidth: t.Optional(t.Integer({ minimum: 1 })),
          highlighting: t.Optional(
             t.Object({
                fullfileHighlight: t.Optional(t.Boolean()),
@@ -126,6 +127,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       envPaths: '',
    },
    viewer: {
+      tabWidth: 2,
       highlighting: {
          fullfileHighlight: true,
          maxHunkSize: 200000,
@@ -167,6 +169,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
    'viewer.highlighting.fullfileHighlight': 'GDX_VIEWER_HIGHLIGHTING_FULLFILE_HIGHLIGHT',
    'viewer.highlighting.maxHunkSize': 'GDX_VIEWER_HIGHLIGHTING_MAX_HUNK_SIZE',
+   'viewer.tabWidth': 'GDX_VIEWER_TAB_WIDTH',
    'viewer.exitBehavior': 'GDX_VIEWER_EXIT_BEHAVIOR',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
    developerMode: 'GDX_DEVELOPER_MODE',
@@ -208,6 +211,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'parallel.envPaths':
       'Colon-separated list of .gitignore patterns for env files to copy into new forks',
    viewer: 'Configuration for enhanced terminal viewers',
+   'viewer.tabWidth': 'Number of spaces used to render each tab character',
    'viewer.highlighting': 'Configuration for syntax highlighting in enhanced viewers',
    'viewer.highlighting.fullfileHighlight':
       'Highlight diffs by loading full old/new file contents from git or FS when possible (disable for files exceeding viewer.highlighting.maxHunkSize)',
