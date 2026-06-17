@@ -24,3 +24,9 @@ unreachable and tree-shakeable.
 > (returning a promise) instead of throwing/blocking. This is safe only because gdx never
 > imports them and they are tree-shaken out of the production bundle. If a sync method is
 > ever needed, drop this patch instead of relying on those exports.
+
+The patch also makes Execa's early spawn-error handling compatible with Bun's
+`ChildProcess` implementation. Bun exposes standard stream properties such as `stdin`
+and `stdout` as getter-only prototype properties, so Execa's `Object.assign()` throws
+and masks the original spawn error. Defining writable own properties preserves Execa's
+dummy-process API and reports the actual process error.

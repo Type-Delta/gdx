@@ -23,3 +23,25 @@ index d59fe0da2218cae9432c19130466905a7d10ca11..6fd0722c13ec842d4c2a276854b1449f
  };
  
  const parseArguments = ({mapArguments, firstArgument, nextArguments, deepOptions, boundOptions}) => {
+diff --git a/lib/return/early-error.js b/lib/return/early-error.js
+index 621c091..dc10727 100644
+--- a/lib/return/early-error.js
++++ b/lib/return/early-error.js
+@@ -41,7 +41,10 @@
+-	Object.assign(subprocess, {
+-		stdin,
+-		stdout,
+-		stderr,
+-		all,
+-		stdio,
+-	});
++	// Bun exposes these ChildProcess properties as getter-only prototype properties.
++	// Define own properties so the original spawn error is preserved on Bun as well as Node.js.
++	for (const [property, value] of Object.entries({stdin, stdout, stderr, all, stdio})) {
++		Object.defineProperty(subprocess, property, {
++			value,
++			writable: true,
++			configurable: true,
++			enumerable: true,
++		});
++	}
