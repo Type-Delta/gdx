@@ -146,9 +146,8 @@ class Logger {
 
       Logger.ensureInitialized();
 
-      if (LogLevelMap[level] <= Logger.getEffectiveLogLevel()) {
-         Logger.allLogs.push(record);
-      }
+      // File logs are diagnostic history and must not inherit the terminal display filter.
+      Logger.allLogs.push(record);
    }
 
    private static printMessage(level: LogLevel, message: string, moduleName: string): void {
