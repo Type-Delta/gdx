@@ -14,7 +14,7 @@ import {
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec, spinner } from '../modules/shell';
-import { quickPrint, routeItems } from '../utils/utilities';
+import { quickPrint } from '../utils/utilities';
 import graph from './graph';
 import { argsSet } from '../modules/arguments';
 import {
@@ -151,8 +151,10 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          ? $`${git$} cat-file --batch-all-objects --batch-check=%(objectname):%(objectsize)`
          : Promise.resolve({ stdout: '' });
       const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
-      const firstCommitFormat = `%ar ${SGR.reset + SGR.dim}[at %h] (on %ad)` + SGR.reset;
-      const lastCommitFormat = `%ar ${SGR.reset + SGR.dim}[at %h] (on %ad)` + SGR.reset;
+      const useCompactCommitTime = global.terminalWidth <= 100;
+      const commitTimeFormat = useCompactCommitTime
+         ? '%ar%x09%h%x09%aI'
+         : '%ar%x09%h%x09%ad';
       const topContributorRawPromise = isAllScope
          ? $`${git$} log --all --format=%aN%x09%ae --numstat`
          : Promise.resolve({ stdout: '' });
@@ -194,8 +196,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             ? $`${git$} rev-list --all --reverse`
             : $`${git$} rev-list --all --author=${email} --reverse`,
          isAllScope
-            ? $`${git$} log --all -1 --format=${lastCommitFormat}`
-            : $`${git$} log --all --author=${email} -1 --format=${lastCommitFormat}`,
+            ? $`${git$} log --all -1 --format=${commitTimeFormat}`
+            : $`${git$} log --all --author=${email} -1 --format=${commitTimeFormat}`,
          getNormalizedRemoteUrl(git$),
          getSubmodules(git$, repoRoot),
          objectInventoryPromise,
@@ -319,10 +321,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       let firstCommitTime = 'Never';
       if (firstCommitSha) {
          const firstCommitTimeRes =
-            await $`${git$} show -s --format=${firstCommitFormat} ${firstCommitSha}`;
-         firstCommitTime = firstCommitTimeRes.stdout.trim() || 'Never';
+            await $`${git$} show -s --format=${commitTimeFormat} ${firstCommitSha}`;
+         firstCommitTime =
+            formatCommitTime(firstCommitTimeRes.stdout, useCompactCommitTime) || 'Never';
       }
-      const lastCommitTime = lastCommitTimeRes.stdout.trim() || 'Never';
+      const lastCommitTime =
+         formatCommitTime(lastCommitTimeRes.stdout, useCompactCommitTime) || 'Never';
       const numStatSize =
          Buffer.byteLength(projectLineStatsRes.stdout) +
          (isAllScope ? 0 : Buffer.byteLength(scopedLogStatsRes.stdout));
@@ -368,8 +372,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
   Total Lines Removed: ${SGR.red}- ${formatInteger(totalRemoved)} lines ${SGR.reset}${SGR.dim}${linesRemovedHint + SGR.reset}
 ${contributionLine}
   Most Active Branch:  ${SGR.cyan}${topBranch}${SGR.reset} (${maxCommits} commits)
-  First Commit:        ${SGR.yellow}${firstCommitTime}${SGR.reset}
-  Last Commit:         ${SGR.yellow}${lastCommitTime}${SGR.reset}`);
+  First Commit:        ${firstCommitTime}
+  Last Commit:         ${lastCommitTime}`);
 
       if (languageCatalog) {
          const languageLabel =
@@ -380,13 +384,13 @@ ${contributionLine}
          const languageFiles =
             resolvedLanguageMetricMode === 'net'
                ? scopedNumStat.netFiles.map((file) => ({
-                    filePath: file.filePath,
-                    lines: file.netLines,
-                 }))
+                  filePath: file.filePath,
+                  lines: file.netLines,
+               }))
                : scopedNumStat.activityFiles.map((file) => ({
-                    filePath: file.filePath,
-                    lines: file.activityLines,
-                 }));
+                  filePath: file.filePath,
+                  lines: file.activityLines,
+               }));
          const usageBar = renderLanguageUsageBar(languageCatalog, languageFiles, languageBarWidth);
 
          if (usageBar) {
@@ -790,6 +794,38 @@ function formatInteger(value: number): string {
 }
 
 /**
+ * Formats raw Git commit timing fields as a compact stats timestamp.
+ *
+ * @param raw - Tab-separated relative time, abbreviated hash, and author date.
+ * @param compact - Whether to use the compact timestamp for narrow terminals.
+ * @returns Colored commit timestamp, or an empty string for malformed input.
+ */
+function formatCommitTime(raw: string, compact: boolean): string {
+   const [relativeTime, hash, authorDate] = raw.trim().split('\t');
+   if (!relativeTime || !hash || !authorDate) return '';
+
+   const relativePart = `${SGR.yellow}${relativeTime}`;
+   const detailColor = SGR.reset + SGR.white + SGR.dim;
+   if (!compact) {
+      return `${relativePart} ${detailColor}[at ${hash}] (on ${authorDate})${SGR.reset}`;
+   }
+
+   const matchedDate = authorDate?.match(
+      /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?([+-])(\d{2}):(\d{2})$/
+   );
+   if (!matchedDate) return '';
+
+   const [, year, month, day, offsetSign, offsetHours, offsetMinutes] = matchedDate;
+   const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+   const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+   const monthName = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+   const timezoneHours = String(Number(offsetHours));
+   const timezoneMinutes = offsetMinutes === '00' ? '' : `:${offsetMinutes}`;
+
+   return `${relativePart} ${detailColor}[${hash}] (${weekday} ${monthName} ${Number(day)} ${offsetSign}${timezoneHours}${timezoneMinutes})${SGR.reset}`;
+}
+
+/**
  * Builds a colored language usage bar and legend text.
  *
  * @param catalog - Language catalog used for extension lookup.
@@ -920,35 +956,29 @@ function renderLanguageUsageBar(
       .filter((bucket) => bucket.cols > 0)
       .sort((a, b) => b.lines - a.lines);
 
-   const topThreshold = totalLines * 0.18;
-   const [topBuckets, otherBuckets] = routeItems(renderedBuckets.slice(0, 6), (bucket, i) => {
-      if (bucket.lines >= topThreshold) return 0;
-      if (i === 0) return 0;
-      return 1;
-   });
-   const topBucketPcts = topBuckets!.map((bucket) =>
-      maxFraction((bucket.lines / totalLines) * 100, 1, true)
-   );
-
    const bar =
       renderedBuckets
          .map((bucket) => `${ncc(bucket.color, 'fg')}${'━'.repeat(bucket.cols)}`)
          .join('') + SGR.reset;
 
-   const legend =
-      topBuckets!
-         .map(
-            (bucket, i) =>
-               `${ncc(bucket.color, 'fg')}●${SGR.reset} ${topBucketPcts[i]}% ${bucket.name}`
-         )
-         .join(' ') +
-      SGR.dim +
-      ' ' +
-      (otherBuckets
-         ? otherBuckets
-              .map((bucket) => `${ncc(bucket.color, 'fg')}●${SGR.white} ${bucket.name}`)
-              .join(' ')
-         : '');
+   const topThreshold = totalLines * 0.18;
+   const legendEntries = renderedBuckets.slice(0, 6).map((bucket, index) => {
+      const marker = `${ncc(bucket.color, 'fg')}●${SGR.reset}`;
+      if (index === 0 || bucket.lines >= topThreshold) {
+         const percentage = maxFraction((bucket.lines / totalLines) * 100, 1, true);
+         return `${marker} ${percentage}% ${bucket.name}`;
+      }
+      return `${SGR.dim}${marker}${SGR.white} ${bucket.name}${SGR.reset}`;
+   });
+   const fittedLegendEntries: string[] = [];
+   let legendWidth = 0;
+   for (const entry of legendEntries) {
+      const entryWidth = ex_length(entry) + (fittedLegendEntries.length > 0 ? 1 : 0);
+      if (legendWidth + entryWidth > barWidth) break;
+      fittedLegendEntries.push(entry);
+      legendWidth += entryWidth;
+   }
+   const legend = fittedLegendEntries.join(' ');
 
    return { bar, legend };
 }

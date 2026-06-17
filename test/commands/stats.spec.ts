@@ -4,10 +4,12 @@ import path from 'path';
 import { CheckCache } from '@lib/Tools';
 
 import { getCache, resetCache } from '@/common/cache';
+import { SGR } from '@/consts';
 import * as fs from '@/modules/fs';
 import { addSubmodule } from '@/modules/git';
 import { stripAnsiColor } from '@/modules/graphics';
 import { languageConsts } from '@/modules/languages';
+import global from '@/global';
 
 import stats from '@/commands/stats';
 import {
@@ -215,23 +217,44 @@ describe('gdx stats', async () => {
       await $`${git$} -c user.name=${'Alice'} -c user.email=${'alice@example.com'} commit --no-verify --allow-empty -m ${'alice 2'}`;
 
       const authorCtx = createGdxContext(tmpDir, ['stats', '--author', 'alice@example.com']);
-      const result = await stats(authorCtx);
-      expect(result).toBe(0);
+      const originalTerminalWidth = global.terminalWidth;
+      global.terminalWidth = 100;
+      try {
+         const result = await stats(authorCtx);
+         expect(result).toBe(0);
 
-      const firstLine = stripAnsiColor(buffer.stdout)
-         .split('\n')
-         .find((line) => line.includes('First Commit:'));
-      const lastLine = stripAnsiColor(buffer.stdout)
-         .split('\n')
-         .find((line) => line.includes('Last Commit:'));
+         const coloredFirstLine = buffer.stdout
+            .split('\n')
+            .find((line) => line.includes('First Commit:'));
+         const firstLine = stripAnsiColor(coloredFirstLine ?? '');
+         const lastLine = stripAnsiColor(buffer.stdout)
+            .split('\n')
+            .find((line) => line.includes('Last Commit:'));
 
-      expect(firstLine).toBeTruthy();
-      expect(lastLine).toBeTruthy();
-      const firstHash = firstLine?.match(/\[at\s+([a-f0-9]+)\]/i)?.[1];
-      const lastHash = lastLine?.match(/\[at\s+([a-f0-9]+)\]/i)?.[1];
-      expect(firstHash).toBeTruthy();
-      expect(lastHash).toBeTruthy();
-      expect(firstHash).not.toBe(lastHash);
+         expect(firstLine).toBeTruthy();
+         expect(lastLine).toBeTruthy();
+         const firstHash = firstLine.match(/\[([a-f0-9]+)\]/i)?.[1];
+         const lastHash = lastLine?.match(/\[([a-f0-9]+)\]/i)?.[1];
+         expect(firstHash).toBeTruthy();
+         expect(lastHash).toBeTruthy();
+         expect(firstHash).not.toBe(lastHash);
+         expect(firstLine).toMatch(
+            /\d+ \w+ ago \[[a-f0-9]+\] \([A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2} [+-]\d{1,2}(?::\d{2})?\)/
+         );
+         expect(coloredFirstLine).toContain(`${SGR.yellow}${firstLine.match(/\d+ \w+ ago/)?.[0]}`);
+         expect(coloredFirstLine).toContain(`${SGR.white}${SGR.dim}[${firstHash}]`);
+
+         buffer.stdout = '';
+         global.terminalWidth = 101;
+         const wideResult = await stats(authorCtx);
+         expect(wideResult).toBe(0);
+         const wideFirstLine = stripAnsiColor(buffer.stdout)
+            .split('\n')
+            .find((line) => line.includes('First Commit:'));
+         expect(wideFirstLine).toMatch(/\d+ \w+ ago \[at [a-f0-9]+\] \(on .+\)/i);
+      } finally {
+         global.terminalWidth = originalTerminalWidth;
+      }
    });
 
    it('should hide Contributions row in --all and keep it in author scope', async () => {
@@ -266,6 +289,37 @@ describe('gdx stats', async () => {
       expect(buffer.stdout).toContain('Language Activity');
       expect(buffer.stdout).toContain('JavaScript');
       expect(buffer.stdout).toContain('━');
+   });
+
+   it('should hide lower-priority language buckets that exceed the bar width', async () => {
+      await seedLanguageCatalog();
+      await fs.writeFile(path.join(tmpDir, 'dominant.ts'), `${'const value = 1;\n'.repeat(20)}`);
+      await fs.writeFile(path.join(tmpDir, 'minor.js'), 'const minor = true;\n');
+      await $`${git$} add dominant.ts minor.js`;
+      await $`${git$} -c user.name=${'Legend User'} -c user.email=${'legend@example.com'} commit --no-verify -m ${'add legend fixtures'}`;
+
+      const originalTerminalWidth = global.terminalWidth;
+      global.terminalWidth = 50;
+      try {
+         const legendCtx = createGdxContext(tmpDir, [
+            'stats',
+            '--author',
+            'legend@example.com',
+         ]);
+         const result = await stats(legendCtx);
+         expect(result).toBe(0);
+
+         const legendLine = stripAnsiColor(buffer.stdout)
+            .split('\n')
+            .find((line) => line.includes('(Aggregated changes)'));
+         expect(legendLine).toBeTruthy();
+         const legend = legendLine!.slice(23);
+         expect(legend.length).toBeLessThanOrEqual(24);
+         expect(legend).toContain('TypeScript');
+         expect(legend).not.toContain('JavaScript');
+      } finally {
+         global.terminalWidth = originalTerminalWidth;
+      }
    });
 
    it('should render language usage from net lines (added - removed)', async () => {
