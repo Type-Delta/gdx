@@ -1,4 +1,4 @@
-import { describe, expect, mock } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import path from 'path';
 import { CheckCache } from '@lib/Tools';
 
@@ -13,6 +13,7 @@ import {
 } from '@/modules/diff-viewer';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
+import { MATCH_HIGHLIGHT_BG, preloadFuzzy } from '@/modules/fuzzy-search';
 import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
 
@@ -834,5 +835,119 @@ const addedOnly = 20;
          const result = canUseDiffViewer();
          expect(typeof result).toBe('boolean');
       });
+   });
+});
+
+describe('diff-viewer command palette search', async () => {
+   await preloadFuzzy();
+
+   const diffText = `diff --git a/alpha.ts b/alpha.ts
+--- a/alpha.ts
++++ b/alpha.ts
+@@ -1,3 +1,3 @@
+ const keepme = 1;
+-const target = 2;
++const target = 3;
+ const other = 4;
+diff --git a/beta.js b/beta.js
+--- a/beta.js
++++ b/beta.js
+@@ -1 +1 @@
+-zzz
++target here`;
+
+   const plainLines = (renderer: DiffViewerRenderer): string[] =>
+      Array.from({ length: renderer.getLineCount() }, (_, i) => stripAnsiColor(renderer.getLine(i)));
+
+   it('reports file search support when files are present', () => {
+      expect(new DiffViewerRenderer(diffText).supportsFileSearch()).toBeTrue();
+   });
+
+   it('content search filters content lines but keeps file headers and hunks', () => {
+      const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      const results = renderer.applySearch('target', 'content', true);
+      const joined = plainLines(renderer).join('\n');
+
+      // structural lines are retained
+      expect(joined).toContain('alpha.ts');
+      expect(joined).toContain('beta.js');
+      expect(joined).toContain('@@ -1,3 +1,3 @@');
+      // matching content is retained
+      expect(joined).toContain('const target = 3;');
+      expect(joined).toContain('target here');
+      // non-matching content is filtered out
+      expect(joined).not.toContain('const keepme = 1;');
+      expect(joined).not.toContain('const other = 4;');
+
+      expect(results.length).toBe(3);
+      expect(renderer.getLine(results[0].line)).toContain(MATCH_HIGHLIGHT_BG);
+   });
+
+   it('file search lists only matching file names and hides content', () => {
+      const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      const results = renderer.applySearch('beta', 'file', true);
+      const joined = plainLines(renderer).filter(Boolean).join('\n');
+
+      expect(results.length).toBe(1);
+      expect(joined).toContain('beta.js');
+      expect(joined).not.toContain('alpha.ts');
+      expect(joined).not.toContain('target'); // file content is hidden
+      expect(renderer.getLine(results[0].line)).toContain(MATCH_HIGHLIGHT_BG);
+   });
+
+   it('unfiltered (browsing) search keeps all lines and points results at matches', () => {
+      const filtered = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      filtered.applySearch('target', 'content', true);
+      const filteredCount = filtered.getLineCount();
+
+      const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      const results = renderer.applySearch('target', 'content', false);
+
+      expect(renderer.getLineCount()).toBeGreaterThan(filteredCount);
+      expect(plainLines(renderer).join('\n')).toContain('const keepme = 1;');
+      expect(stripAnsiColor(renderer.getLine(results[0].line))).toContain('target');
+   });
+
+   it('clearSearch restores the full rendered diff', () => {
+      const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      const fullCount = renderer.getLineCount();
+      renderer.applySearch('target', 'content', true);
+      expect(renderer.getLineCount()).toBeLessThan(fullCount);
+
+      renderer.clearSearch();
+      expect(renderer.getLineCount()).toBe(fullCount);
+   });
+
+   it('content filtering hides files that have no matching line', () => {
+      const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
+      renderer.applySearch('keepme', 'content', true); // only alpha.ts contains "keepme"
+      const joined = plainLines(renderer).join('\n');
+
+      expect(joined).toContain('alpha.ts');
+      expect(joined).toContain('const keepme = 1;');
+      expect(joined).not.toContain('beta.js'); // file with no match is hidden
+      expect(joined).not.toContain('target here');
+   });
+
+   it('content filtering hides hunks within a file that have no matching line', () => {
+      const multiHunk = `diff --git a/multi.ts b/multi.ts
+--- a/multi.ts
++++ b/multi.ts
+@@ -1,2 +1,2 @@
+-alpha one
++alpha two
+@@ -10,2 +10,2 @@
+-beta one
++beta two`;
+      const renderer = new DiffViewerRenderer(multiHunk, { disableSyntaxHighlighting: true });
+      renderer.applySearch('alpha', 'content', true); // only the first hunk matches
+      const joined = plainLines(renderer).join('\n');
+
+      expect(joined).toContain('multi.ts');
+      expect(joined).toContain('@@ -1,2 +1,2 @@');
+      expect(joined).toContain('alpha two');
+      // the non-matching hunk and its header are hidden
+      expect(joined).not.toContain('@@ -10,2 +10,2 @@');
+      expect(joined).not.toContain('beta');
    });
 });

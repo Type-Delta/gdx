@@ -45,7 +45,7 @@
     "build": "bun run transpile-esm && bun build ./src/index.ts --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "build:release:win32-x64": "bun run transpile-esm && bun build ./src/index.ts --outfile=./out/gdx-win32-x64.exe --compile --bytecode --production --keep-names",
     "ts-check": "bunx tsc --noEmit",
-    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=shiki --external=yaml --external=openai --external=fflate --external=diff --format=esm --production --keep-names && bun build ./src/workers/generic.worker.ts --outfile=./dist/workers/generic.worker.min.js --target=node --external=@shikijs/cli --format=esm --production --minify --keep-names",
+    "package:node": "bun run transpile-esm && bun build ./src/index.ts --outdir=./dist --target=node --external=keytar --external=cspell-lib --external=@shikijs/cli --external=shiki --external=yaml --external=openai --external=fflate --external=diff --external=@leeoniya/ufuzzy --format=esm --production --keep-names && bun build ./src/workers/generic.worker.ts --outfile=./dist/workers/generic.worker.min.js --target=node --external=@shikijs/cli --format=esm --production --minify --keep-names",
     "publish:npm": "npm login && npm publish --access public",
     "prepack": "bun run package:node",
     "postinstall": "node scripts/postinstall.cjs",
@@ -85,6 +85,7 @@
     "which": "2.0.2"
   },
   "dependencies": {
+    "@leeoniya/ufuzzy": "^1.0.19",
     "@shikijs/cli": "^4.1.0",
     "cspell-lib": "10.0.0",
     "diff": "^9.0.0",

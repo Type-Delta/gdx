@@ -7,6 +7,7 @@ import {
    clearTerminalCache,
 } from '@/modules/pager';
 import { stripAnsiColor } from '@/modules/graphics';
+import { MATCH_HIGHLIGHT_BG, preloadFuzzy } from '@/modules/fuzzy-search';
 
 describe('pager module', async () => {
    it('should create SimplePagerRenderer with content', () => {
@@ -164,5 +165,51 @@ describe('pager module', async () => {
       );
 
       expect(lines.some((line) => line.includes('alpha'))).toBeTrue();
+   });
+});
+
+describe('SimplePagerRenderer search', async () => {
+   await preloadFuzzy();
+
+   it('should not support file search for plain content', () => {
+      expect(new SimplePagerRenderer('a\nb').supportsFileSearch()).toBeFalse();
+   });
+
+   it('should filter to matching lines and highlight matches when filtered', () => {
+      const renderer = new SimplePagerRenderer('alpha\nbeta\ngamma beta\ndelta');
+      const results = renderer.applySearch('beta', 'content', true);
+
+      const lines = Array.from({ length: renderer.getLineCount() }, (_, i) =>
+         stripAnsiColor(renderer.getLine(i))
+      );
+      expect(lines).toEqual(['beta', 'gamma beta']);
+      expect(results.length).toBe(2);
+      // the matched substring carries the consistent highlight background
+      expect(renderer.getLine(0)).toContain(MATCH_HIGHLIGHT_BG);
+   });
+
+   it('should keep all lines but still highlight matches when unfiltered', () => {
+      const renderer = new SimplePagerRenderer('alpha\nbeta\ngamma');
+      const results = renderer.applySearch('beta', 'content', false);
+
+      expect(renderer.getLineCount()).toBe(3);
+      expect(results.length).toBe(1);
+      expect(stripAnsiColor(renderer.getLine(results[0].line))).toContain('beta');
+   });
+
+   it('should restore all lines after clearSearch', () => {
+      const renderer = new SimplePagerRenderer('alpha\nbeta\ngamma');
+      renderer.applySearch('beta', 'content', true);
+      expect(renderer.getLineCount()).toBe(1);
+
+      renderer.clearSearch();
+      expect(renderer.getLineCount()).toBe(3);
+   });
+
+   it('should clear the filter when the query is empty', () => {
+      const renderer = new SimplePagerRenderer('alpha\nbeta\ngamma');
+      const results = renderer.applySearch('', 'content', true);
+      expect(results).toEqual([]);
+      expect(renderer.getLineCount()).toBe(3);
    });
 });

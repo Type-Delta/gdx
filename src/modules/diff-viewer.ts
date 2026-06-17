@@ -13,6 +13,8 @@ import {
    pagerWithRenderer,
    PagerRenderer,
    PagerOptions,
+   PagerSearchMode,
+   PagerSearchResult,
    getTerminalWidth,
    getTerminalHeight,
    clearTerminalCache,
@@ -21,6 +23,7 @@ import {
    PAGER_DEFAULT_OPTIONS,
    expandTabs,
 } from './pager';
+import { fuzzyMatch, highlightMatchRanges } from './fuzzy-search';
 import { bgRgb, colorMix, fgRgb, inferAnsiStyles, RgbVec, serializeAnsiStyles } from './graphics';
 import Logger from '@/utils/logger';
 import { $, spinner, SpinnerController } from './shell';
@@ -1055,6 +1058,22 @@ export class DiffViewerRenderer implements PagerRenderer {
    private lastHeight: number = 0;
    private logger = new Logger('diff-renderer');
 
+   /** Active command-palette search state, or null when no search is applied. */
+   private searchState: {
+      mode: PagerSearchMode;
+      filtered: boolean;
+      /** Match ranges per matched content line (add/delete/context/modify). */
+      contentMatches: Map<DiffLine, number[]>;
+      /** Match ranges per matched file (by parsedDiffs index), keyed on the new path. */
+      fileMatches: Map<number, number[]>;
+      /** Match ranges per matched preamble line (by preamble index). */
+      preambleMatches: Map<number, number[]>;
+   } | null = null;
+   /** Rendered-line index where each searchable unit begins, recorded during render. */
+   private renderStartByDiffLine = new Map<DiffLine, number>();
+   private renderStartByFile = new Map<number, number>();
+   private renderStartByPreamble = new Map<number, number>();
+
    /** Blended background colors for diff lines (translucent effect) */
    private readonly ADDED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.green, 0.13);
    private readonly DELETED_BG = colorMix(CATPPUCCIN_VPALETTE.base, CATPPUCCIN_VPALETTE.red, 0.13);
@@ -1318,7 +1337,12 @@ export class DiffViewerRenderer implements PagerRenderer {
       }
    }
 
-   private renderLine(line: DiffLine, width: number, blockBg: RgbVec): string[] {
+   private renderLine(
+      line: DiffLine,
+      width: number,
+      blockBg: RgbVec,
+      searchRanges?: number[]
+   ): string[] {
       const rendered: string[] = [];
       const lineNumWidth = this.options.lineNumberWidth;
       const gutterWidth = this.options.showLineNumbers ? lineNumWidth + 3 : 0;
@@ -1361,15 +1385,22 @@ export class DiffViewerRenderer implements PagerRenderer {
             return rendered;
       }
 
-      const displayContent = line.inlineSegments
+      // Modify lines interleave struck-through old text with new text, so their
+      // visible characters do not align 1:1 with `line.content`. Skip the inline
+      // rendering for them when overlaying a search highlight so the match ranges
+      // (computed against `line.content`) land on the right characters.
+      const useInline = line.inlineSegments && !(searchRanges && line.type === 'modify');
+      let displayContent = useInline
          ? this.renderInlineSegments(
-            line.inlineSegments,
+            line.inlineSegments!,
             line.type,
             bgCode,
             line.highlightedContent || line.content,
             line.content
          )
          : line.highlightedContent || line.content;
+      if (searchRanges)
+         displayContent = highlightMatchRanges(displayContent, searchRanges, bgRgb(bgCode));
       const lineNum = line.newLineNum ?? line.oldLineNum;
       const lineNumStr =
          lineNum !== undefined ? String(lineNum).padStart(lineNumWidth) : ' '.repeat(lineNumWidth);
@@ -1493,17 +1524,25 @@ export class DiffViewerRenderer implements PagerRenderer {
       );
    }
 
-   private renderFileName(oldName: string, newName: string, width: number): string {
+   private renderFileName(
+      oldName: string,
+      newName: string,
+      width: number,
+      searchRanges?: number[]
+   ): string {
       const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
+      const shownNew = searchRanges
+         ? highlightMatchRanges(newName, searchRanges, bgRgb(bgCode))
+         : newName;
       if (oldName === newName) {
          return this.padLineWithBg(
-            `    ${fgRgb(CATPPUCCIN_VPALETTE.lavender)}${STYLES.bold(newName)}`,
+            `    ${fgRgb(CATPPUCCIN_VPALETTE.lavender)}${STYLES.bold(shownNew)}`,
             width,
             bgCode
          );
       }
       return this.padLineWithBg(
-         `    ${fgRgb(CATPPUCCIN_VPALETTE.yellow)}${oldName} -> ${newName}`,
+         `    ${fgRgb(CATPPUCCIN_VPALETTE.yellow)}${oldName} -> ${shownNew}`,
          width,
          bgCode
       );
@@ -1531,17 +1570,64 @@ export class DiffViewerRenderer implements PagerRenderer {
       return [this.padLineWithBg(color + line, width, blockBg)];
    }
 
+   /**
+    * Determines, for content-search filtering, whether a file has any matching
+    * line and which of its hunks contain a match. Files and hunks without a match
+    * are hidden entirely in the filtered view.
+    * @param diff - The parsed file diff.
+    * @param contentMatches - Matched content lines for the active search.
+    */
+   private fileMatchInfo(
+      diff: ParsedDiff,
+      contentMatches: Map<DiffLine, number[]>
+   ): { fileHasMatch: boolean; visibleHunks: Set<DiffLine> } {
+      const visibleHunks = new Set<DiffLine>();
+      let fileHasMatch = false;
+      let currentHunk: DiffLine | null = null;
+      for (const line of diff.lines) {
+         if (line.type === 'hunk') {
+            currentHunk = line;
+            continue;
+         }
+         const isContent =
+            line.type === 'add' ||
+            line.type === 'delete' ||
+            line.type === 'context' ||
+            line.type === 'modify';
+         if (isContent && contentMatches.has(line)) {
+            fileHasMatch = true;
+            if (currentHunk) visibleHunks.add(currentHunk);
+         }
+      }
+      return { fileHasMatch, visibleHunks };
+   }
+
    private updateRenderedLines(): void {
       this.renderedLines = [];
+      this.renderStartByDiffLine = new Map();
+      this.renderStartByFile = new Map();
+      this.renderStartByPreamble = new Map();
       const width = this.lastWidth;
       const baseBlockBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.2);
 
-      if (this.options.preambleLines.length > 0) {
-         for (const line of this.options.preambleLines) {
+      const search = this.searchState;
+      const fileFiltered = search?.filtered === true && search.mode === 'file';
+      const contentFiltered = search?.filtered === true && search.mode === 'content';
+
+      // Preamble is treated as its own "file": searchable content with no path,
+      // so it is hidden in file-search mode and filtered like content otherwise.
+      if (!fileFiltered && this.options.preambleLines.length > 0) {
+         for (let p = 0; p < this.options.preambleLines.length; p++) {
+            const ranges = search?.mode === 'content' ? search.preambleMatches.get(p) : undefined;
+            if (contentFiltered && ranges === undefined) continue;
+            this.renderStartByPreamble.set(p, this.renderedLines.length);
+            const line = ranges
+               ? highlightMatchRanges(this.options.preambleLines[p], ranges, bgRgb(baseBlockBg))
+               : this.options.preambleLines[p];
             this.renderedLines.push(...this.renderPreambleLine(line, width, baseBlockBg, 3));
          }
 
-         if (this.parsedDiffs.length > 0) {
+         if (this.parsedDiffs.length > 0 && !search?.filtered) {
             this.renderedLines.push(this.padLineWithBg(' ', width, baseBlockBg));
          }
       }
@@ -1549,8 +1635,28 @@ export class DiffViewerRenderer implements PagerRenderer {
       for (let i = 0; i < this.parsedDiffs.length; i++) {
          const diff = this.parsedDiffs[i];
          const blockBg = baseBlockBg;
+         const fileRanges = search?.mode === 'file' ? search.fileMatches.get(i) : undefined;
 
-         if (i !== 0) {
+         // File-search filtering: show only matching file-name lines, drop content.
+         if (fileFiltered) {
+            if (fileRanges === undefined) continue;
+            this.renderStartByFile.set(i, this.renderedLines.length);
+            this.renderedLines.push(
+               this.renderFileName(diff.oldFileName, diff.newFileName, width, fileRanges)
+            );
+            continue;
+         }
+
+         // Content filtering hides files with no matching line, and within a shown
+         // file hides hunks (and their headers) that contain no match.
+         let visibleHunks: Set<DiffLine> | null = null;
+         if (contentFiltered) {
+            const info = this.fileMatchInfo(diff, search.contentMatches);
+            if (!info.fileHasMatch) continue;
+            visibleHunks = info.visibleHunks;
+         }
+
+         if (i !== 0 && !contentFiltered) {
             this.renderedLines.push(
                this.padLineWithBg(' ', width, blockBg),
                this.padLineWithBg(
@@ -1561,10 +1667,24 @@ export class DiffViewerRenderer implements PagerRenderer {
                this.padLineWithBg(' ', width, blockBg)
             );
          }
-         this.renderedLines.push(this.renderFileName(diff.oldFileName, diff.newFileName, width));
+         this.renderStartByFile.set(i, this.renderedLines.length);
+         this.renderedLines.push(
+            this.renderFileName(diff.oldFileName, diff.newFileName, width, fileRanges)
+         );
 
          for (const line of diff.lines) {
-            this.renderedLines.push(...this.renderLine(line, width, blockBg));
+            const isContent =
+               line.type === 'add' ||
+               line.type === 'delete' ||
+               line.type === 'context' ||
+               line.type === 'modify';
+            if (contentFiltered) {
+               if (line.type === 'hunk' && !visibleHunks!.has(line)) continue;
+               if (isContent && !search.contentMatches.has(line)) continue;
+            }
+            if (isContent) this.renderStartByDiffLine.set(line, this.renderedLines.length);
+            const ranges = search?.mode === 'content' ? search.contentMatches.get(line) : undefined;
+            this.renderedLines.push(...this.renderLine(line, width, blockBg, ranges));
          }
       }
    }
@@ -1602,6 +1722,95 @@ export class DiffViewerRenderer implements PagerRenderer {
          ...this.options,
          ...options,
       };
+      this.updateRenderedLines();
+   }
+
+   supportsFileSearch(): boolean {
+      return this.parsedDiffs.length > 0;
+   }
+
+   applySearch(query: string, mode: PagerSearchMode, filtered: boolean): PagerSearchResult[] {
+      if (!query) {
+         this.clearSearch();
+         return [];
+      }
+
+      if (mode === 'file') {
+         const paths = this.parsedDiffs.map((diff) => diff.newFileName);
+         const { idx, ranges } = fuzzyMatch(paths, query);
+         const fileMatches = new Map<number, number[]>();
+         idx.forEach((diffIndex, k) => fileMatches.set(diffIndex, ranges[k]));
+         this.searchState = {
+            mode,
+            filtered,
+            contentMatches: new Map(),
+            fileMatches,
+            preambleMatches: new Map(),
+         };
+         this.updateRenderedLines();
+
+         const results: PagerSearchResult[] = [];
+         for (const diffIndex of idx) {
+            const line = this.renderStartByFile.get(diffIndex);
+            if (line !== undefined) results.push({ line });
+         }
+         return results;
+      }
+
+      // Content search: match against every content line (and preamble lines),
+      // tracking each haystack entry's origin so matches map back to the model.
+      const haystack: string[] = [];
+      const origin: ({ kind: 'preamble'; index: number } | { kind: 'line'; line: DiffLine })[] = [];
+      for (let p = 0; p < this.options.preambleLines.length; p++) {
+         haystack.push(this.options.preambleLines[p]);
+         origin.push({ kind: 'preamble', index: p });
+      }
+      for (const diff of this.parsedDiffs) {
+         for (const line of diff.lines) {
+            if (
+               line.type === 'add' ||
+               line.type === 'delete' ||
+               line.type === 'context' ||
+               line.type === 'modify'
+            ) {
+               haystack.push(line.content);
+               origin.push({ kind: 'line', line });
+            }
+         }
+      }
+
+      const { idx, ranges } = fuzzyMatch(haystack, query);
+      const contentMatches = new Map<DiffLine, number[]>();
+      const preambleMatches = new Map<number, number[]>();
+      idx.forEach((haystackIndex, k) => {
+         const source = origin[haystackIndex];
+         if (source.kind === 'preamble') preambleMatches.set(source.index, ranges[k]);
+         else contentMatches.set(source.line, ranges[k]);
+      });
+      this.searchState = {
+         mode,
+         filtered,
+         contentMatches,
+         fileMatches: new Map(),
+         preambleMatches,
+      };
+      this.updateRenderedLines();
+
+      const results: PagerSearchResult[] = [];
+      for (const haystackIndex of idx) {
+         const source = origin[haystackIndex];
+         const line =
+            source.kind === 'preamble'
+               ? this.renderStartByPreamble.get(source.index)
+               : this.renderStartByDiffLine.get(source.line);
+         if (line !== undefined) results.push({ line });
+      }
+      return results;
+   }
+
+   clearSearch(): void {
+      if (!this.searchState) return;
+      this.searchState = null;
       this.updateRenderedLines();
    }
 }

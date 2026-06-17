@@ -13,6 +13,12 @@ import {
 import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
 import ttys from '@/modules/tty-strings';
+import { fuzzyMatch, highlightMatchRanges, preloadFuzzy } from './fuzzy-search';
+
+/** Number of terminal rows occupied by the command palette band when open. */
+const PALETTE_ROWS = 3;
+/** How far the selected result's background is mixed toward the foreground color. */
+const SELECTED_LINE_BG_MIX = 0.18;
 
 /**
  * Options for configuring pager behavior.
@@ -32,7 +38,18 @@ export interface PagerStatusContext {
    statusText?: string | (() => string);
    actions?: PagerAction[];
    copyModeAvailable?: boolean;
+   /** Whether the command palette (Ctrl+P) is available for this content. */
+   searchAvailable?: boolean;
    redundancyLv?: number;
+}
+
+/** Search mode for the pager command palette. */
+export type PagerSearchMode = 'content' | 'file';
+
+/** A single navigable search result (a matched line in the rendered buffer). */
+export interface PagerSearchResult {
+   /** Rendered-line index to scroll to when this result is selected. */
+   line: number;
 }
 
 export interface PagerActionResult {
@@ -93,6 +110,22 @@ export interface PagerRenderer {
    onResize?: (width: number, height: number) => void;
    /** Updates renderer options that can change while the pager is active */
    updateOptions?: (options: Partial<PagerOptions>) => void;
+   /**
+    * Whether content is separated into files, which enables file-search mode in
+    * the command palette. Implement {@link applySearch} to enable the palette.
+    */
+   supportsFileSearch?: () => boolean;
+   /**
+    * Applies a search to the content, mutating the rendered output in place.
+    * @param query - The plain search needle.
+    * @param mode - `'content'` searches line content; `'file'` searches file names/paths.
+    * @param filtered - When true, non-matching content lines are hidden (live palette);
+    *   when false, all lines are shown with matches highlighted (browsing after Enter).
+    * @returns Navigable results in document order; empty when there is no query or no match.
+    */
+   applySearch?: (query: string, mode: PagerSearchMode, filtered: boolean) => PagerSearchResult[];
+   /** Clears any active search filter/highlight and restores normal rendering. */
+   clearSearch?: () => void;
 }
 
 /** Default pager configuration */
@@ -126,6 +159,9 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
       ];
       if (context?.copyModeAvailable) {
          navHintParts.push(`${SGR.bright + cyan}c${white + SGR.normal} copy mode`);
+      }
+      if (context?.searchAvailable) {
+         navHintParts.push(`${SGR.bright + cyan}^P${white + SGR.normal} search`);
       }
       navHintParts.push(`${SGR.bright + cyan}q${white + SGR.normal} quit`);
       const navHint =
@@ -203,6 +239,10 @@ export class SimplePagerRenderer implements PagerRenderer {
    private options: Required<PagerOptions>;
    private lastWidth: number = 0;
    private lastHeight: number = 0;
+   /** Active search state, or null when no search is applied. */
+   private search: { matches: Map<number, number[]>; filtered: boolean } | null = null;
+   /** Rendered-line index where each logical line begins (-1 when filtered out). */
+   private lineRenderStart: number[] = [];
 
    constructor(content: string, options: PagerOptions = {}) {
       this.options = {
@@ -225,9 +265,16 @@ export class SimplePagerRenderer implements PagerRenderer {
          : width;
 
       this.renderedLines = [];
+      this.lineRenderStart = new Array(this.lines.length).fill(-1);
 
       for (let i = 0; i < this.lines.length; i++) {
-         const line = this.lines[i];
+         const matchRanges = this.search?.matches.get(i);
+         if (this.search?.filtered && matchRanges === undefined) continue;
+
+         this.lineRenderStart[i] = this.renderedLines.length;
+         const line = matchRanges
+            ? highlightMatchRanges(this.lines[i], matchRanges, contentBg)
+            : this.lines[i];
 
          if (this.options.wrapLines && ttys.stringWidth(line) > contentWidth) {
             const wrapped = ttys.stringWrap(line, contentWidth, {
@@ -253,6 +300,37 @@ export class SimplePagerRenderer implements PagerRenderer {
             }
          }
       }
+   }
+
+   supportsFileSearch(): boolean {
+      // ponytail: plain content has no file structure, so only content search applies.
+      return false;
+   }
+
+   applySearch(query: string, _mode: PagerSearchMode, filtered: boolean): PagerSearchResult[] {
+      if (!query) {
+         this.clearSearch();
+         return [];
+      }
+
+      const { idx, ranges } = fuzzyMatch(this.lines, query);
+      const matches = new Map<number, number[]>();
+      idx.forEach((lineIndex, k) => matches.set(lineIndex, ranges[k]));
+      this.search = { matches, filtered };
+      this.updateRenderedLines();
+
+      const results: PagerSearchResult[] = [];
+      for (const lineIndex of idx) {
+         const start = this.lineRenderStart[lineIndex];
+         if (start >= 0) results.push({ line: start });
+      }
+      return results;
+   }
+
+   clearSearch(): void {
+      if (!this.search) return;
+      this.search = null;
+      this.updateRenderedLines();
    }
 
    private formatLineNumber(num: number, rPad: number, bg: RgbVec): string {
@@ -382,6 +460,15 @@ export async function pagerWithRenderer(
    const canUseCopyMode = opts.showLineNumbers;
    const performanceSamples: number[] = [];
 
+   // Command palette (Ctrl+P) state. Enabled when the renderer can search.
+   const searchable = typeof renderer.applySearch === 'function';
+   let paletteState: 'closed' | 'open' | 'browsing' = 'closed';
+   let query = '';
+   let results: PagerSearchResult[] = [];
+   let selectedResult = 0;
+   // Warm up the fuzzy matcher in the background so the first Ctrl+P is instant.
+   if (searchable) void preloadFuzzy();
+
    // Hide cursor and clear screen
    process.stdout.write('\x1b[?25l');
    process.stdout.write('\x1b[2J\x1b[H');
@@ -397,34 +484,127 @@ export async function pagerWithRenderer(
       const startTime = performance.now();
       const currentHeight = getTerminalHeight();
       const currentWidth = getTerminalWidth();
-      const lines = renderer.render(currentLine, currentHeight, currentWidth);
+      const paletteOpen = searchable && paletteState === 'open';
+      const headerRows = paletteOpen ? PALETTE_ROWS : 0;
 
-      process.stdout.write('\x1b[H');
+      // renderer.render(start, h, w) yields h-1 viewport lines; the palette band
+      // (when open) pushes content down so results are never hidden under it.
+      const contentLines = renderer.render(
+         currentLine,
+         currentHeight - headerRows,
+         currentWidth
+      );
 
-      for (const line of lines) {
-         process.stdout.write('\x1b[K' + line + '\n');
+      const selectedLine =
+         results.length > 0 && paletteState !== 'closed'
+            ? results[Math.min(selectedResult, results.length - 1)]?.line
+            : undefined;
+
+      const frame: string[] = [];
+      if (paletteOpen) frame.push(...buildPaletteRows(currentWidth));
+      for (let i = 0; i < contentLines.length; i++) {
+         const isSelected = selectedLine !== undefined && currentLine + i === selectedLine;
+         frame.push(isSelected ? lightenLineBg(contentLines[i]) : contentLines[i]);
       }
 
-      // Status bar
       if (opts.showStatus) {
          const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
             statusText: opts.statusText,
             actions: opts.actions,
             copyModeAvailable: canUseCopyMode,
+            searchAvailable: searchable,
             redundancyLv: resolvedRedundancy,
          });
-         const padding = Math.max(
-            0,
-            currentWidth - ttys.stringWidth(statusLine)
-         );
+         const padding = Math.max(0, currentWidth - ttys.stringWidth(statusLine));
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
-         process.stdout.write(
-            '\x1b[K' + bgColor + dimColor + statusLine + ' '.repeat(padding) + SGR.reset
-         );
+         frame.push(bgColor + dimColor + statusLine + ' '.repeat(padding) + SGR.reset);
       }
+
+      // Compose the whole frame and emit it in a single write. Drawing every row
+      // (palette included) in one go removes the gap between clearing the old
+      // frame and painting the new one, which is what caused typing to flicker.
+      process.stdout.write('\x1b[H' + frame.map((row) => '\x1b[K' + row).join('\n'));
+
       if (performanceSamples.length > 30) performanceSamples.shift();
       performanceSamples.push(performance.now() - startTime);
+   }
+
+   /**
+    * Builds the command palette as {@link PALETTE_ROWS} full-width rows: a centered
+    * bordered input box over a popup-colored band that spans the whole terminal.
+    */
+   function buildPaletteRows(width: number): string[] {
+      const { mode } = searchModeFor(query);
+      const boxWidth = Math.min(64, Math.max(28, width - 4));
+      const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2));
+      const rightPad = Math.max(0, width - boxWidth - leftPad);
+      const innerWidth = boxWidth - 2;
+
+      const popupBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.6);
+      const bg = bgRgb(popupBg);
+      const borderFg = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
+      const labelFg = fgRgb(CATPPUCCIN_VPALETTE.cyan);
+      const textFg = fgRgb(CATPPUCCIN_VPALETTE.text);
+      const dimFg = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
+
+      const label = renderer.supportsFileSearch?.()
+         ? mode === 'file'
+            ? 'files'
+            : 'text '
+         : 'find ';
+      const count = results.length
+         ? `${selectedResult + 1}/${results.length}`
+         : query
+            ? '0/0'
+            : '';
+      const countWidth = count ? count.length + 1 : 0; // trailing space before border
+
+      // fixed left parts: ' '(1) + label(5) + ' ❯ '(3) + query + cursor(1)
+      const fixedLeft = 1 + 5 + 3 + 1;
+      const queryBudget = Math.max(1, innerWidth - fixedLeft - countWidth);
+      // Keep the tail (nearest the cursor) visible and clamp by display width so a
+      // wide-character query can't overflow the box and wrap onto a fourth row.
+      const q =
+         ttys.stringWidth(query) > queryBudget
+            ? ttys.stringLimit(query, queryBudget, 'start')
+            : query;
+      const gap = Math.max(0, innerWidth - fixedLeft - ttys.stringWidth(q) - countWidth);
+
+      const midInner =
+         ' ' +
+         labelFg + label +
+         dimFg + ' ❯ ' +
+         textFg + q + SGR.bright + '▏' + SGR.normal + bg +
+         ' '.repeat(gap) +
+         dimFg + (count && !(query && results.length) ? SGR.red : '') + (count ? count + ' ' : '');
+
+      const padL = bg + ' '.repeat(leftPad);
+      const padR = bg + ' '.repeat(rightPad) + SGR.reset;
+      const border = bg + borderFg;
+      return [
+         padL + border + '╭' + '─'.repeat(innerWidth) + '╮' + padR,
+         padL + border + '│' + midInner + border + '│' + padR,
+         padL + border + '╰' + '─'.repeat(innerWidth) + '╯' + padR,
+      ];
+   }
+
+   /**
+    * Lightens every truecolor background in a rendered line so the currently
+    * selected search result stands out from the surrounding content.
+    */
+   function lightenLineBg(line: string): string {
+      return line.replace(
+         /\x1b\[48;2;(\d+);(\d+);(\d+)m/g,
+         (_full, r: string, g: string, b: string) =>
+            bgRgb(
+               colorMix(
+                  [Number(r), Number(g), Number(b)] as RgbVec,
+                  CATPPUCCIN_VPALETTE.text,
+                  SELECTED_LINE_BG_MIX
+               )
+            )
+      );
    }
 
    /**
@@ -473,7 +653,118 @@ export async function pagerWithRenderer(
          totalLines = renderer.getLineCount();
       }
 
+      // Rebuild search results against the resized layout so navigation stays accurate.
+      if (searchable && paletteState !== 'closed') runSearch(paletteState === 'open');
+
       render();
+   }
+
+   /**
+    * Resolves the search mode and bare needle from the raw palette query.
+    * A leading `%` forces content search when file search is available;
+    * otherwise the default is file search (when supported) or content search.
+    */
+   function searchModeFor(raw: string): { mode: PagerSearchMode; needle: string } {
+      const canFile = renderer.supportsFileSearch?.() ?? false;
+      if (canFile && raw.startsWith('%')) return { mode: 'content', needle: raw.slice(1) };
+      if (canFile) return { mode: 'file', needle: raw };
+      return { mode: 'content', needle: raw };
+   }
+
+   /** Number of content rows visible, accounting for the palette band and status bar. */
+   function visibleContentRows(): number {
+      return getTerminalHeight() - (paletteState === 'open' ? PALETTE_ROWS : 0) - 1;
+   }
+
+   /** Scrolls the viewport so the currently selected result is centered. */
+   function scrollToSelected(): void {
+      if (results.length === 0) return;
+      const visible = visibleContentRows();
+      const target = results[Math.min(selectedResult, results.length - 1)]?.line ?? 0;
+      const maxLine = Math.max(0, renderer.getLineCount() - visible);
+      currentLine = Math.max(0, Math.min(maxLine, target - Math.floor(visible / 2)));
+   }
+
+   /** Runs the current query against the renderer and refreshes navigation state. */
+   function runSearch(filtered: boolean): void {
+      const { mode, needle } = searchModeFor(query);
+      results = renderer.applySearch?.(needle, mode, filtered) ?? [];
+      totalLines = renderer.getLineCount();
+      if (selectedResult >= results.length) selectedResult = Math.max(0, results.length - 1);
+      const visible = visibleContentRows();
+      currentLine = Math.min(currentLine, Math.max(0, totalLines - visible));
+      scrollToSelected();
+   }
+
+   /** Opens (or re-opens) the palette in live-filter mode, preserving the query. */
+   async function openPalette(): Promise<void> {
+      await preloadFuzzy();
+      paletteState = 'open';
+      runSearch(true);
+      render();
+   }
+
+   /** Turns off search entirely and restores the normal, unfiltered view. */
+   function clearSearchAndClose(): void {
+      paletteState = 'closed';
+      query = '';
+      results = [];
+      selectedResult = 0;
+      renderer.clearSearch?.();
+      totalLines = renderer.getLineCount();
+      const visible = getTerminalHeight() - 1;
+      currentLine = Math.min(currentLine, Math.max(0, totalLines - visible));
+   }
+
+   /** Whether a key chunk is printable text that should be appended to the query. */
+   function isPrintableInput(key: string): boolean {
+      return key.length > 0 && key[0] >= ' ' && key[0] !== '\x7f' && !key.startsWith('\x1b');
+   }
+
+   /** Handles keyboard input while the palette is focused. */
+   function handlePaletteKey(key: string): void {
+      switch (key) {
+         case '\x10': // Ctrl+P
+         case '\x1b': // Esc -> turn off search/filter
+            clearSearchAndClose();
+            render();
+            return;
+         case '\x03': // Ctrl+C -> quit pager
+            isRunning = false;
+            return;
+         case '\r':
+         case '\n': // Enter -> browse: unfilter, keep highlights, jump to selection
+            paletteState = 'browsing';
+            runSearch(false);
+            render();
+            return;
+         case '\x7f':
+         case '\b': // Backspace
+            query = query.slice(0, -1);
+            selectedResult = 0;
+            runSearch(true);
+            render();
+            return;
+         case '\x1b[A': // Up
+         case '\x1b[5~': // Page Up
+            selectedResult = Math.max(0, selectedResult - 1);
+            scrollToSelected();
+            render();
+            return;
+         case '\x1b[B': // Down
+         case '\x1b[6~': // Page Down
+            selectedResult = Math.min(Math.max(0, results.length - 1), selectedResult + 1);
+            scrollToSelected();
+            render();
+            return;
+      }
+
+      if (isPrintableInput(key)) {
+         query += key;
+         selectedResult = 0;
+         runSearch(true);
+         render();
+      }
    }
 
    /**
@@ -484,6 +775,23 @@ export async function pagerWithRenderer(
       const currentHeight = getTerminalHeight();
       const visibleCount = currentHeight - 1;
       const maxLine = Math.max(0, renderer.getLineCount() - visibleCount);
+
+      // Command palette routing.
+      if (searchable && paletteState === 'open') {
+         handlePaletteKey(key);
+         return;
+      }
+      if (searchable && key === '\x10') {
+         // Ctrl+P opens from normal view, or re-opens from browsing to change filtering.
+         void openPalette();
+         return;
+      }
+      if (searchable && paletteState === 'browsing' && key === '\x1b') {
+         // Esc while browsing results clears the search and stays in the pager.
+         clearSearchAndClose();
+         render();
+         return;
+      }
 
       if (key === 'c' && renderer.updateOptions) {
          if (canUseCopyMode) {
