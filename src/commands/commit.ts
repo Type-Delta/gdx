@@ -435,6 +435,7 @@ export async function generateAutoCommitMessage(
    const spin = spinner({
       message: 'connecting...',
       animateGradient: false,
+      widthCalculationLv: 2
    });
 
    const connection = llm.streamGenerate({

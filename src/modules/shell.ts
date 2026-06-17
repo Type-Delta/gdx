@@ -634,13 +634,15 @@ export function redrawText(prev: string, next: string, options: RedrawTextOption
       process.stdout.write(`\x1b[${originalLnCount}F`);
    }
 
-   // Clear from cursor to end of screen
-   process.stdout.write(`\x1b[0J`);
-
    // Rewrite message line by line, clearing each line first
    const lines = next.split('\n');
    for (const [index, line] of lines.entries()) {
       const lineEnd = index === lines.length - 1 ? end : '\n';
       process.stdout.write(`\x1b[2K${line}${lineEnd}`);
+   }
+
+   if (originalLnCount > lines.length) {
+      // Clear from cursor to end of screen
+      process.stdout.write(`\x1b[0J`);
    }
 }
