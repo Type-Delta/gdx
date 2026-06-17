@@ -13,6 +13,8 @@ import {
 } from '@/modules/diff-viewer';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { stripAnsiColor } from '@/modules/graphics';
+import { getConfig } from '@/common/config';
+import Logger from '@/utils/logger';
 
 let shikiLoadCount = 0;
 let shikiCodeToANSICount = 0;
@@ -448,6 +450,60 @@ const addedOnly = 20;
    });
 
    describe('DiffViewerRenderer', () => {
+      it('should only write replacing debug snapshots in developer mode', async () => {
+         const debugDirectory = path.join(tmpDir, 'diff-debug-snapshots');
+         const parsedDiffPath = path.join(debugDirectory, 'parsed-diffs-debug.json');
+         const renderedDiffPath = path.join(debugDirectory, 'diff-rendered-debug.json');
+         const originalLogFile = Logger.logFile;
+         const config = await getConfig();
+         const diffText = `diff --git a/test.ts b/test.ts
+--- a/test.ts
++++ b/test.ts
+@@ -1 +1 @@
+-const oldMarker = 1;
++const replacementMarker = 1;`;
+
+         Logger.logFile = path.join(debugDirectory, 'gdx.log');
+         await fs.rm(debugDirectory, { recursive: true, force: true });
+
+         try {
+            expect(config.get<boolean>('developerMode')).toBeFalse();
+            const defaultRenderer = new DiffViewerRenderer(diffText, {
+               disableSyntaxHighlighting: true,
+            });
+            await defaultRenderer.prepareHighlighting();
+            await Bun.sleep(20);
+            expect(fs.existsSync(parsedDiffPath)).toBeFalse();
+            expect(fs.existsSync(renderedDiffPath)).toBeFalse();
+
+            await config.set('developerMode', true);
+            await fs.mkdir(debugDirectory, { recursive: true });
+            await Promise.all([
+               fs.writeFile(parsedDiffPath, 'stale parsed data', 'utf-8'),
+               fs.writeFile(renderedDiffPath, 'stale rendered data', 'utf-8'),
+            ]);
+
+            const developerRenderer = new DiffViewerRenderer(diffText, {
+               disableSyntaxHighlighting: true,
+            });
+            await developerRenderer.prepareHighlighting();
+
+            for (let attempt = 0; attempt < 100; attempt++) {
+               const renderedContent = await fs.readFile(renderedDiffPath, 'utf-8');
+               if (renderedContent.includes('replacementMarker')) break;
+               await Bun.sleep(5);
+            }
+
+            expect(await fs.readFile(parsedDiffPath, 'utf-8')).not.toContain('stale parsed data');
+            const renderedContent = await fs.readFile(renderedDiffPath, 'utf-8');
+            expect(renderedContent).toContain('replacementMarker');
+            expect(renderedContent).not.toContain('stale rendered data');
+         } finally {
+            Logger.logFile = originalLogFile;
+            await config.set('developerMode', false);
+         }
+      });
+
       it('should create renderer with diff text', () => {
          const diffText = `diff --git a/test.ts b/test.ts
 --- a/test.ts

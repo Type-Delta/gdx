@@ -65,6 +65,7 @@ export const GdxConfigSchema = t.Object({
       })
    ),
    defaultEditor: t.String(),
+   developerMode: t.Optional(t.Boolean()),
    enhancedOutput: t.Optional(t.Boolean()),
    useInlineSubmodule: t.Optional(
       t.Union([t.Literal('off'), t.Literal('internal'), t.Literal('all')])
@@ -132,6 +133,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
       exitBehavior: 'nextLine',
    },
    defaultEditor: 'code',
+   developerMode: false,
    enhancedOutput: true,
    useInlineSubmodule: 'internal',
    useInlineGitConfig: 'internal',
@@ -167,6 +169,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'viewer.highlighting.maxHunkSize': 'GDX_VIEWER_HIGHLIGHTING_MAX_HUNK_SIZE',
    'viewer.exitBehavior': 'GDX_VIEWER_EXIT_BEHAVIOR',
    defaultEditor: 'GDX_DEFAULT_EDITOR',
+   developerMode: 'GDX_DEVELOPER_MODE',
    enhancedOutput: 'GDX_ENHANCED_OUTPUT',
    useInlineSubmodule: 'GDX_USE_INLINE_SUBMODULE',
    useInlineGitConfig: 'GDX_USE_INLINE_GIT_CONFIG',
@@ -213,6 +216,7 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'viewer.exitBehavior':
       "Behavior when exiting the pager ('nextLine' keeps content in scroll buffer, 'clearScreen' removes pager content from scroll buffer, and 'none' leaves the content and cursor position unchanged)",
    defaultEditor: 'Default code editor to open files with',
+   developerMode: 'Write/capture additional developer diagnostics; may impact performance',
    enhancedOutput:
       "Whether to enhanced Git's output (modify the output of some git commands when conditions are met)",
    useInlineSubmodule:

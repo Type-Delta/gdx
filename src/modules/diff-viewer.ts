@@ -141,6 +141,40 @@ let diffPromise: Promise<DiffModule> | null = null;
 let highlightThreaded: Threaded | null = null;
 const logger = new Logger('diff-viewer');
 
+/**
+ * Writes the latest parsed and rendered diff snapshots beside the application log.
+ * Existing snapshots are replaced, and write failures are recorded without interrupting rendering.
+ * @param parsedDiffs The parsed diffs containing syntax-highlighted line content.
+ * @param renderedLines The final terminal lines produced by the renderer.
+ */
+function writeDiffDebugSnapshots(parsedDiffs: ParsedDiff[], renderedLines: string[]): void {
+   const logDirectory = path.dirname(Logger.logFile);
+   const parsedDiffPath = path.join(logDirectory, 'parsed-diffs-debug.json');
+   const renderedDiffPath = path.join(logDirectory, 'diff-rendered-debug.json');
+   const parsedDiffContent = JSON.stringify(
+      parsedDiffs.map((diff) =>
+         diff.lines
+            .filter((line) => line.highlightedContent !== undefined)
+            .map((line) => line.highlightedContent)
+      ),
+      null,
+      2
+   );
+   const renderedDiffContent = JSON.stringify(renderedLines, null, 2);
+
+   void fs
+      .mkdir(logDirectory, { recursive: true, mode: 0o700 })
+      .then(() =>
+         Promise.all([
+            fs.writeFile(parsedDiffPath, parsedDiffContent, 'utf-8'),
+            fs.writeFile(renderedDiffPath, renderedDiffContent, 'utf-8'),
+         ])
+      )
+      .catch((error) => {
+         logger.debug(`Failed to write diff debug snapshots: ${Err.from(error)}`);
+      });
+}
+
 async function getShiki(): Promise<ShikijsCliModule> {
    shikiPromise ??= import('@shikijs/cli');
    return await shikiPromise;
@@ -1085,10 +1119,12 @@ export class DiffViewerRenderer implements PagerRenderer {
    }
 
    async prepareHighlighting(spinnerCtrl?: SpinnerController): Promise<void> {
+      const developerMode = (await getConfig()).get<boolean>('developerMode', false);
       await logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
 
       if (this.options.disableSyntaxHighlighting) {
          logger.time('Post-processing', () => this.updateRenderedLines());
+         if (developerMode) writeDiffDebugSnapshots(this.parsedDiffs, this.renderedLines);
          return;
       }
 
@@ -1145,14 +1181,7 @@ export class DiffViewerRenderer implements PagerRenderer {
          'Post-processing after highlighting',
          () => this.updateRenderedLines(),
       );
-      // fs.writeFileSync('parsed-diffs-debug.json', JSON.stringify(this.parsedDiffs.map(l =>
-      //    l.lines
-      //       .filter(l => l.highlightedContent !== undefined)
-      //       .map(l => l.highlightedContent)
-      // ), null, 2),
-      //    'utf-8'
-      // );
-      // fs.writeFileSync('diff-rendered-debug.json', JSON.stringify(this.renderedLines, null, 2), 'utf-8');
+      if (developerMode) writeDiffDebugSnapshots(this.parsedDiffs, this.renderedLines);
    }
 
    /**
@@ -1441,7 +1470,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
    private renderHunkHeader(content: string, width: number, contentWidth: number): string {
       const bgCode = colorMix(CATPPUCCIN_VPALETTE.crust, CATPPUCCIN_VPALETTE.surface0, 0.3);
-      content = ttys.stringLimit(content, contentWidth, 'end');
+      content = ttys.stringLimit(content, contentWidth - 2, 'end');
 
       return this.padLineWithBg(
          `${SGR.dim + bgRgb(CATPPUCCIN_VPALETTE.cyan) + fgRgb(bgCode)}    ↕   ${bgRgb(bgCode) + fgRgb(CATPPUCCIN_VPALETTE.cyan)} ${STYLES.italic(content)}`,

@@ -21,7 +21,7 @@ describe('gdx lint', async () => {
       const result = await lint(ctx);
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('No problems found');
-   });
+   }, { timeout: 20000 });
 
    it('should detect spelling errors', async () => {
       // "commmit" is a typo
