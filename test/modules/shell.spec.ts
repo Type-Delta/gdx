@@ -99,6 +99,6 @@ describe('shell', () => {
 
       redrawText('old', 'new', { end: '', inline: true });
 
-      expect(output.join('')).toBe('\r\x1b[0J\x1b[2Knew');
+      expect(output.join('')).toBe('\r\x1b[2Knew');
    });
 });
