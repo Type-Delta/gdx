@@ -44,16 +44,17 @@ jobs:
               bun-version: ${{ vars.BUN_VERSION }}
 
          - name: Install dependencies
-           run: bun install --frozen-lockfile
+           run: bun install --frozen-lockfile && bun run transpile-esm
 
          - name: Run Tests
            if: matrix.mode == 'default'
            # Use the serial mode for better test output readability in CI logs.
-           run: bun test:serial
+           run: bun run test:serial
 
          - name: Run Tests (with native mode)
            if: matrix.mode == 'native-git'
            env:
               GDX_USE_INLINE_SUBMODULE: off
               GDX_USE_INLINE_GIT_CONFIG: off
-           run: bun test
+           # Use the parallel mode for speed, expect previous step to catch most test failures and provide better logs.
+           run: bun run test
