@@ -142,6 +142,20 @@ describe('pager module', async () => {
       expect(renderer.getLineCount()).toBeGreaterThanOrEqual(1);
    });
 
+   it('should not overflow width on wrapped continuation lines without line numbers', () => {
+      // Regression: continuation lines used a lineNumberWidth-wide gutter even when
+      // line numbers were hidden, pushing wrapped rows past the terminal width.
+      const renderer = new SimplePagerRenderer(`a\n${'x'.repeat(200)}\nb`, {
+         showLineNumbers: false,
+         wrapLines: true,
+      });
+      renderer.onResize(40, 24);
+
+      for (let i = 0; i < renderer.getLineCount(); i++) {
+         expect(stripAnsiColor(renderer.getLine(i)).length).toBeLessThanOrEqual(40);
+      }
+   });
+
    it('should auto-detect redundancy level for fullwidth content', () => {
       const content = 'alpha 漢字 beta';
       const renderer = new SimplePagerRenderer(content, {

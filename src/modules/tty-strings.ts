@@ -151,7 +151,7 @@ function stringLimit(str: string, limit: number, dropLocation: 'mid' | 'start' |
  */
 function stringWrap(str: string, maxWidth: number, options: StringWrapOptions = {}) {
    // eslint-disable-next-line prefer-const
-   let { indent = '', firstIndent = '', mode = 'softboundary', redundancyLv = 0 } = options;
+   let { indent = '', firstIndent = null, mode = 'softboundary', redundancyLv = 0 } = options;
    str = String(str);
 
    if (redundancyLv < 1)
@@ -168,11 +168,17 @@ function stringWrap(str: string, maxWidth: number, options: StringWrapOptions = 
       .split(/\r?\n/g)
       // wrap each line
       .map((line, i) => {
-         const wrapped = wrapLine(ansiStack, line, maxWidth, mode === 'strict', false)
-         if (firstIndent && i === 0)
+         const wrapped = wrapLine(ansiStack, line, maxWidth, mode === 'strict', false);
+         let indentStart = 0;
+
+         if (firstIndent !== null && i === 0) {
             wrapped[0] = (firstIndent as string) + wrapped[0];
-         else if (indent)
-            wrapped[0] = (indent as string) + wrapped[0];
+            indentStart = 1;
+         }
+         if (indent) {
+            for (let j = indentStart; j < wrapped.length; j++)
+               wrapped[j] = (indent as string) + wrapped[j];
+         }
          return wrapped.join('\n');
       })
       // rejoin each wrapped line

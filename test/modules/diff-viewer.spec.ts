@@ -918,6 +918,25 @@ diff --git a/beta.js b/beta.js
       expect(renderer.getLineCount()).toBe(fullCount);
    });
 
+   it('wraps preamble lines without exceeding the width', () => {
+      // Regression: preamble wrapping added the indent on top of a full-width wrap,
+      // making wrapped/long lines exceed the terminal width by the indent.
+      const preambleLines = [
+         'commit ' + 'a'.repeat(60),
+         '',
+         '    ' + 'word '.repeat(30).trim(),
+      ];
+      const renderer = new DiffViewerRenderer(
+         `diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-x\n+y`,
+         { disableSyntaxHighlighting: true, preambleLines }
+      );
+      renderer.onResize(40, 24);
+
+      for (let i = 0; i < renderer.getLineCount(); i++) {
+         expect(stripAnsiColor(renderer.getLine(i)).length).toBeLessThanOrEqual(40);
+      }
+   });
+
    it('content filtering hides files that have no matching line', () => {
       const renderer = new DiffViewerRenderer(diffText, { disableSyntaxHighlighting: true });
       renderer.applySearch('keepme', 'content', true); // only alpha.ts contains "keepme"

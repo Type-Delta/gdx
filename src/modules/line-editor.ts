@@ -81,6 +81,18 @@ function parseCsi(params: string, final: string): KeyEvent | null {
    }
    if (final === 'Z') return key('tab', { shift: true });
 
+   // CSI-u (fixterms / kitty): `<codepoint>;<modifier>u`. Only emitted by
+   // terminals in an enhanced keyboard mode; lets us distinguish chords like
+   // Ctrl+Shift+P from Ctrl+P. Unmodified/shift-only keys stay plain chars.
+   if (final === 'u') {
+      const codePoint = parts[0];
+      if (!codePoint || Number.isNaN(codePoint)) return null;
+      const mods = decodeModifier(parts[1]);
+      const ch = String.fromCodePoint(codePoint);
+      if (!mods.ctrl && !mods.alt) return key('char', { char: ch, shift: mods.shift ?? false });
+      return key(ch.toLowerCase(), mods);
+   }
+
    const name = CSI_FINAL_KEYS[final];
    if (!name) return null;
    return key(name, decodeModifier(parts[1]));

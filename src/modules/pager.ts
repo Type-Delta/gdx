@@ -14,11 +14,32 @@ import { CATPPUCCIN_VPALETTE, SGR } from '@/consts';
 import { getConfig } from '@/common/config';
 import ttys from '@/modules/tty-strings';
 import { fuzzyMatch, highlightMatchRanges, preloadFuzzy } from './fuzzy-search';
+import { KeyEvent, LineBuffer, parseInput } from './line-editor';
 
-/** Number of terminal rows occupied by the command palette band when open. */
+/** Number of terminal rows occupied by the command palette input box when open. */
 const PALETTE_ROWS = 3;
+/** Maximum command rows shown in the palette dropdown at once. */
+const MAX_COMMAND_ROWS = 8;
+/** Inverse-video toggles used to draw the rect text cursor inside the palette input. */
+const INVERT_ON = '\x1b[7m';
+const INVERT_OFF = '\x1b[27m';
 /** How far the selected result's background is mixed toward the foreground color. */
 const SELECTED_LINE_BG_MIX = 0.18;
+
+/**
+ * A command shown in the pager command palette (the `>` prefix). Commands are
+ * filtered by title and run on Enter.
+ */
+interface PaletteCommand {
+   /** Display title, also the fuzzy-search target. */
+   title: string;
+   /** One-line explanation shown beside the title and in the keybind guide. */
+   description: string;
+   /** Whether the command is currently applicable; hidden when false. */
+   available: () => boolean;
+   /** Performs the command. */
+   run: () => void;
+}
 
 /**
  * Options for configuring pager behavior.
@@ -32,6 +53,14 @@ export interface PagerAction {
    label: string;
    /** Action identifier to return */
    action: string;
+   /** Longer explanation shown beside the action in the command palette. */
+   description?: string;
+   /**
+    * When true, the action is surfaced in the footer hint line (subject to the
+    * active statusFormat). Non-primary actions are still reachable via the
+    * command palette. Default: false.
+    */
+   primary?: boolean;
 }
 
 export interface PagerStatusContext {
@@ -141,34 +170,24 @@ export const PAGER_DEFAULT_OPTIONS: Omit<Required<PagerOptions>, 'redundancyLv'>
       const endLines = Math.min(current + getTerminalHeight() - 2, total);
       const statusText =
          typeof context?.statusText === 'function' ? context.statusText() : context?.statusText;
-      const actionHint = context?.actions
-         ? context.actions
-            .map((action) => {
-               const keys = Array.isArray(action.key) ? action.key : [action.key];
-               const keyLabel = action.displayKey ?? keys[0] ?? '';
-               if (!keyLabel) return '';
-               return `${SGR.bright + cyan}${keyLabel}${white + SGR.normal} ${action.label}`;
-            })
-            .filter(Boolean)
-            .join(`${SGR.dim},${SGR.normal} `)
-         : '';
-      const navHintParts = [
-         actionHint
-            ? `${SGR.bright + cyan}↑ ↓ b n${white + SGR.normal} navigate`
-            : `${SGR.bright + cyan}↑ ↓ b n Home End${white + SGR.normal} to navigate`,
-      ];
-      if (context?.copyModeAvailable) {
-         navHintParts.push(`${SGR.bright + cyan}c${white + SGR.normal} copy mode`);
+      // Footer stays minimal: navigate, primary actions, search, quit. Non-primary
+      // actions (and copy mode) are discoverable via the command palette / guide.
+      const navHintParts = [`${SGR.bright + cyan}↑ ↓${white + SGR.normal} navigate`];
+      for (const action of context?.actions ?? []) {
+         if (!action.primary) continue;
+         const keys = Array.isArray(action.key) ? action.key : [action.key];
+         const keyLabel = action.displayKey ?? keys[0] ?? '';
+         if (keyLabel) {
+            navHintParts.push(`${SGR.bright + cyan}${keyLabel}${white + SGR.normal} ${action.label}`);
+         }
       }
       if (context?.searchAvailable) {
-         navHintParts.push(`${SGR.bright + cyan}^P${white + SGR.normal} search`);
+         navHintParts.push(`${SGR.bright + cyan}^P${white + SGR.normal} search/menu`);
       }
       navHintParts.push(`${SGR.bright + cyan}q${white + SGR.normal} quit`);
-      const navHint =
-         navHintParts.join(`${SGR.dim},${SGR.normal} `) +
-         (actionHint ? `${SGR.dim},${SGR.normal}` : '');
+      const navHint = navHintParts.join(`${SGR.dim},${SGR.normal} `);
 
-      const leftParts = [statusText, navHint, actionHint].filter(Boolean).join(' ');
+      const leftParts = [statusText, navHint].filter(Boolean).join(' ');
 
       const locationInfo =
          ex_length(leftParts, 0) > termWidth * 0.6
@@ -282,9 +301,14 @@ export class SimplePagerRenderer implements PagerRenderer {
             });
             const splitted = wrapped.split('\n');
             const gutter = this.options.showLineNumbers ? this.formatLineNumber(i + 1, gutterRPad, gutterBg) : '';
+            // Continuation lines get a blank gutter only when line numbers are shown;
+            // otherwise it would add lineNumberWidth spurious columns and overflow the row.
+            const contGutter = this.options.showLineNumbers
+               ? this.formatLineNumber(-1, gutterRPad, gutterBg)
+               : '';
             let lastStyles;
             for (let i = 0; i < splitted.length; i++) {
-               const g = i === 0 ? gutter : this.formatLineNumber(-1, gutterRPad, gutterBg);
+               const g = i === 0 ? gutter : contGutter;
 
                if (lastStyles) splitted[i] = serializeAnsiStyles(lastStyles) + splitted[i];
 
@@ -453,6 +477,13 @@ export async function pagerWithRenderer(
    process.stdin.resume();
    process.stdin.setEncoding('utf-8');
 
+   // Start from fresh terminal dimensions and relayout the renderer for them. A
+   // stale cache (e.g. a resize since the renderer was built, or a prior pager in
+   // a long-lived session) would otherwise make the frame taller/wider than the
+   // viewport and scroll the top rows — including the palette — off-screen.
+   clearTerminalCache();
+   if (renderer.onResize) renderer.onResize(getTerminalWidth(), getTerminalHeight());
+
    let currentLine = 0;
    let totalLines = renderer.getLineCount();
    let isRunning = true;
@@ -460,20 +491,61 @@ export async function pagerWithRenderer(
    const canUseCopyMode = opts.showLineNumbers;
    const performanceSamples: number[] = [];
 
-   // Command palette (Ctrl+P) state. Enabled when the renderer can search.
+   // Command palette state. Enabled when the renderer can search; the `>` prefix
+   // switches the palette into command mode.
    const searchable = typeof renderer.applySearch === 'function';
+   let activeRenderer: PagerRenderer = renderer;
    let paletteState: 'closed' | 'open' | 'browsing' = 'closed';
-   let query = '';
+   const paletteBuffer = new LineBuffer();
    let results: PagerSearchResult[] = [];
+   let commandResults: { command: PaletteCommand; titleRanges: number[]; descRanges: number[] }[] =
+      [];
    let selectedResult = 0;
+   // Horizontal scroll offset of the palette input field viewport.
+   let paletteViewOffset = 0;
+   // View saved while the "List Keybinds" guide takes over the pager.
+   let savedView: { renderer: PagerRenderer; currentLine: number } | null = null;
    // Warm up the fuzzy matcher in the background so the first Ctrl+P is instant.
    if (searchable) void preloadFuzzy();
 
-   // Hide cursor and clear screen
+   // Caller actions are runnable from the palette; primary ones also show in the footer.
+   const actionCommands: PaletteCommand[] = (opts.actions ?? []).map((action) => ({
+      title: action.label,
+      description: action.description ?? '',
+      available: () => savedView === null,
+      run: () => runAction(action),
+   }));
+
+   const commands: PaletteCommand[] = [
+      ...actionCommands,
+      {
+         title: 'List Keybinds',
+         description: 'Show keyboard shortcuts and navigation',
+         available: () => savedView === null,
+         run: () => openHelpPage(),
+      },
+      {
+         title: 'Toggle Copy Mode',
+         description: 'Change layout for copying text',
+         available: () => canUseCopyMode && savedView === null,
+         run: () => toggleCopyMode(),
+      },
+      {
+         title: 'Quit',
+         description: 'Exit the pager',
+         available: () => true,
+         run: () => quitPager(),
+      },
+   ];
+
    process.stdout.write('\x1b[?25l');
+   // Disable line wrap while painting: each frame row is exactly one screen row, so
+   // a row the terminal measures as slightly too wide (e.g. emoji/ambiguous-width
+   // characters whose rendered width differs from our estimate) is clipped at the
+   // margin instead of wrapping and scrolling the top of the view off-screen.
+   process.stdout.write('\x1b[?7l');
    process.stdout.write('\x1b[2J\x1b[H');
 
-   // Disable Logger output while pager is active
    const originalLogLevel = Logger.logLevel;
    Logger.logLevel = -1;
 
@@ -485,46 +557,63 @@ export async function pagerWithRenderer(
       const currentHeight = getTerminalHeight();
       const currentWidth = getTerminalWidth();
       const paletteOpen = searchable && paletteState === 'open';
-      const headerRows = paletteOpen ? PALETTE_ROWS : 0;
 
-      // renderer.render(start, h, w) yields h-1 viewport lines; the palette band
-      // (when open) pushes content down so results are never hidden under it.
-      const contentLines = renderer.render(
+      // The palette band is the input box plus, in command mode, a dropdown list.
+      const paletteRows: string[] = [];
+      if (paletteOpen) {
+         paletteRows.push(...buildPaletteRows(currentWidth));
+         if (paletteMode() === 'command') paletteRows.push(...buildCommandListRows(currentWidth));
+      }
+      const headerRows = paletteRows.length;
+
+      // activeRenderer.render(start, h, w) yields h-1 viewport lines; the palette
+      // band (when open) pushes content down so results are never hidden under it.
+      const contentLines = activeRenderer.render(
          currentLine,
          currentHeight - headerRows,
          currentWidth
       );
 
       const selectedLine =
-         results.length > 0 && paletteState !== 'closed'
+         paletteState !== 'closed' && paletteMode() === 'search' && results.length > 0
             ? results[Math.min(selectedResult, results.length - 1)]?.line
             : undefined;
 
-      const frame: string[] = [];
-      if (paletteOpen) frame.push(...buildPaletteRows(currentWidth));
+      const frame: string[] = [...paletteRows];
       for (let i = 0; i < contentLines.length; i++) {
          const isSelected = selectedLine !== undefined && currentLine + i === selectedLine;
          frame.push(isSelected ? lightenLineBg(contentLines[i]) : contentLines[i]);
       }
 
       if (opts.showStatus) {
-         const statusLine = opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
-            statusText: opts.statusText,
-            actions: opts.actions,
-            copyModeAvailable: canUseCopyMode,
-            searchAvailable: searchable,
-            redundancyLv: resolvedRedundancy,
-         });
+         // The palette and the keybind guide override the footer with their own hints.
+         const statusLine = paletteOpen
+            ? buildPaletteFooter()
+            : savedView
+               ? buildHelpFooter()
+               : opts.statusFormat(currentLine + 1, totalLines, currentWidth, {
+                  statusText: opts.statusText,
+                  actions: opts.actions,
+                  copyModeAvailable: canUseCopyMode,
+                  searchAvailable: searchable,
+                  redundancyLv: resolvedRedundancy,
+               });
          const padding = Math.max(0, currentWidth - ttys.stringWidth(statusLine));
          const bgColor = bgRgb(opts.backgroundColor);
          const dimColor = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
          frame.push(bgColor + dimColor + statusLine + ' '.repeat(padding) + SGR.reset);
       }
 
+      // Never write more rows than the real viewport, so a too-large height can't
+      // push the top rows (the palette) off-screen. Read rows directly to defend
+      // even against a stale dimension cache.
+      const viewportRows = process.stdout.rows || currentHeight;
+      const visibleFrame = frame.length > viewportRows ? frame.slice(0, viewportRows) : frame;
+
       // Compose the whole frame and emit it in a single write. Drawing every row
       // (palette included) in one go removes the gap between clearing the old
       // frame and painting the new one, which is what caused typing to flicker.
-      process.stdout.write('\x1b[H' + frame.map((row) => '\x1b[K' + row).join('\n'));
+      process.stdout.write('\x1b[H' + visibleFrame.map((row) => '\x1b[K' + row).join('\n'));
 
       if (performanceSamples.length > 30) performanceSamples.shift();
       performanceSamples.push(performance.now() - startTime);
@@ -535,7 +624,8 @@ export async function pagerWithRenderer(
     * bordered input box over a popup-colored band that spans the whole terminal.
     */
    function buildPaletteRows(width: number): string[] {
-      const { mode } = searchModeFor(query);
+      const raw = paletteBuffer.text;
+      const command = paletteMode() === 'command';
       const boxWidth = Math.min(64, Math.max(28, width - 4));
       const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2));
       const rightPad = Math.max(0, width - boxWidth - leftPad);
@@ -544,40 +634,52 @@ export async function pagerWithRenderer(
       const popupBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.6);
       const bg = bgRgb(popupBg);
       const borderFg = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
-      const labelFg = fgRgb(CATPPUCCIN_VPALETTE.cyan);
+      const labelFg = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
       const textFg = fgRgb(CATPPUCCIN_VPALETTE.text);
       const dimFg = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
 
-      const label = renderer.supportsFileSearch?.()
-         ? mode === 'file'
-            ? 'files'
-            : 'text '
-         : 'find ';
-      const count = results.length
-         ? `${selectedResult + 1}/${results.length}`
-         : query
-            ? '0/0'
-            : '';
+      const label = command
+         ? 'cmds '
+         : activeRenderer.supportsFileSearch?.()
+            ? searchModeFor(raw).mode === 'file'
+               ? 'files'
+               : 'text '
+            : 'find ';
+      const total = command ? commandResults.length : results.length;
+      const hasQuery = command ? raw.length > 1 : raw.length > 0;
+      const count = total ? `${selectedResult + 1}/${total}` : hasQuery ? '0/0' : '';
       const countWidth = count ? count.length + 1 : 0; // trailing space before border
 
-      // fixed left parts: ' '(1) + label(5) + ' ❯ '(3) + query + cursor(1)
-      const fixedLeft = 1 + 5 + 3 + 1;
-      const queryBudget = Math.max(1, innerWidth - fixedLeft - countWidth);
-      // Keep the tail (nearest the cursor) visible and clamp by display width so a
-      // wide-character query can't overflow the box and wrap onto a fourth row.
-      const q =
-         ttys.stringWidth(query) > queryBudget
-            ? ttys.stringLimit(query, queryBudget, 'start')
-            : query;
-      const gap = Math.max(0, innerWidth - fixedLeft - ttys.stringWidth(q) - countWidth);
+      // Windowed input with an inverse-video rect cursor (matches form.ts): the
+      // cursor occupies the cell of its character instead of inserting a glyph, so
+      // typing never shifts the text. The viewport keeps the cursor in view.
+      const fixedLeft = 1 + 3 + 3; // ' ' + label(7) + ' '(3)
+      const fieldWidth = Math.max(1, innerWidth - fixedLeft - countWidth);
+      const avail = Math.max(1, fieldWidth - 1); // reserve a cell for the cursor block
+      const chars = Array.from(raw);
+      const cur = Math.min(paletteBuffer.cursor, chars.length);
+
+      if (cur < paletteViewOffset) paletteViewOffset = cur;
+      if (cur > paletteViewOffset + avail) paletteViewOffset = cur - avail;
+      if (paletteViewOffset > 0 && chars.length - paletteViewOffset < avail) {
+         paletteViewOffset = Math.max(0, chars.length - avail);
+      }
+
+      const viewEnd = paletteViewOffset + avail;
+      const pre = chars.slice(paletteViewOffset, Math.min(cur, viewEnd)).join('');
+      const cursorChar = chars[cur] ?? ' ';
+      const post = chars.slice(cur + 1, viewEnd).join('');
+      const field = textFg + pre + INVERT_ON + cursorChar + INVERT_OFF + post;
+      const fieldVisible = ttys.stringWidth(pre + cursorChar + post);
+      const gap = Math.max(0, innerWidth - fixedLeft - fieldVisible - countWidth);
 
       const midInner =
          ' ' +
          labelFg + label +
-         dimFg + ' ❯ ' +
-         textFg + q + SGR.bright + '▏' + SGR.normal + bg +
+         dimFg + ' ' +
+         field + bg +
          ' '.repeat(gap) +
-         dimFg + (count && !(query && results.length) ? SGR.red : '') + (count ? count + ' ' : '');
+         (count ? (total ? dimFg : fgRgb(CATPPUCCIN_VPALETTE.red)) + count + ' ' : '');
 
       const padL = bg + ' '.repeat(leftPad);
       const padR = bg + ' '.repeat(rightPad) + SGR.reset;
@@ -587,6 +689,92 @@ export async function pagerWithRenderer(
          padL + border + '│' + midInner + border + '│' + padR,
          padL + border + '╰' + '─'.repeat(innerWidth) + '╯' + padR,
       ];
+   }
+
+   /**
+    * Builds the command-mode dropdown rows shown directly beneath the input box,
+    * one per matching command, with the selected row lightened and match
+    * characters highlighted.
+    */
+   function buildCommandListRows(width: number): string[] {
+      const boxWidth = Math.min(64, Math.max(28, width - 4));
+      const leftPad = Math.max(0, Math.floor((width - boxWidth) / 2));
+      const rightPad = Math.max(0, width - boxWidth - leftPad);
+
+      const popupBg = colorMix(CATPPUCCIN_VPALETTE.mantle, CATPPUCCIN_VPALETTE.surface0, 0.6);
+      const selBg = colorMix(popupBg, CATPPUCCIN_VPALETTE.text, SELECTED_LINE_BG_MIX);
+      const bgPad = bgRgb(popupBg);
+      const padL = bgPad + ' '.repeat(leftPad);
+      const padR = bgPad + ' '.repeat(rightPad) + SGR.reset;
+      const dimFg = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
+      const titleFg = fgRgb(CATPPUCCIN_VPALETTE.text);
+
+      // Pads the already-styled inner to the box width using its visible length.
+      const row = (inner: string, innerWidth: number, rowBg: string): string => {
+         const pad = Math.max(0, boxWidth - innerWidth);
+         return padL + rowBg + inner + ' '.repeat(pad) + padR;
+      };
+
+      // A trailing blank popup row gives the dropdown some breathing room above
+      // the content beneath it.
+      const blank = row('', 0, bgRgb(popupBg));
+
+      if (commandResults.length === 0) {
+         const text = ' no matching commands';
+         return [row(dimFg + text, text.length, bgRgb(popupBg)), blank];
+      }
+
+      const visible = commandResults.slice(0, MAX_COMMAND_ROWS);
+      const rows = visible.map(({ command, titleRanges, descRanges }, idx) => {
+         const selected = idx === selectedResult;
+         const rowBg = bgRgb(selected ? selBg : popupBg);
+         const arrow = selected ? fgRgb(CATPPUCCIN_VPALETTE.lavender) + '❯' : ' ';
+         // Trim the description (plain text) so the row never overflows the box,
+         // then style — avoids slicing through ANSI escapes.
+         const fixed = 3 + command.title.length + 1; // ' ' arrow ' ' title ' '
+         const maxDesc = Math.max(0, boxWidth - fixed);
+         const desc =
+            command.description.length > maxDesc
+               ? command.description.slice(0, Math.max(0, maxDesc - 1)) + '…'
+               : command.description;
+         const innerWidth = fixed + desc.length;
+         const inner =
+            ` ${arrow} ` +
+            titleFg +
+            highlightMatchRanges(command.title, titleRanges, rowBg) +
+            ' ' +
+            dimFg +
+            highlightMatchRanges(desc, descRanges, rowBg);
+         return row(inner, innerWidth, rowBg);
+      });
+      rows.push(blank);
+      return rows;
+   }
+
+   /** Formats a single `key label` footer hint. */
+   function footerHint(keys: string, label: string): string {
+      const cyan = fgRgb(CATPPUCCIN_VPALETTE.cyan);
+      const white = fgRgb(CATPPUCCIN_VPALETTE.overlay0);
+      return `${SGR.bright + cyan}${keys}${white + SGR.normal} ${label}`;
+   }
+
+   /** Builds the palette footer hint line shown while the palette is open. */
+   function buildPaletteFooter(): string {
+      const action = paletteMode() === 'command' ? footerHint('↵', 'run') : footerHint('↵', 'go to match');
+      const parts = [
+         footerHint('↑ ↓', 'select'),
+         action,
+         footerHint('Esc', 'close'),
+         footerHint('%', 'search'),
+         footerHint('>', 'commands'),
+      ];
+      return '  ' + parts.join(`${SGR.dim},${SGR.normal} `);
+   }
+
+   /** Builds the footer hint line shown while the keybind guide is open. */
+   function buildHelpFooter(): string {
+      const parts = [footerHint('↑ ↓', 'navigate'), footerHint('Esc', 'back'), footerHint('q', 'quit')];
+      return '  ' + parts.join(`${SGR.dim},${SGR.normal} `);
    }
 
    /**
@@ -615,8 +803,9 @@ export async function pagerWithRenderer(
       process.stdin.off('data', keyHandler);
       process.stdout.off('resize', resizeHandler);
 
-      // Show cursor
+      // Show cursor and restore line wrap (disabled during painting).
       process.stdout.write('\x1b[?25h');
+      process.stdout.write('\x1b[?7h');
 
       if (opts.exitBehavior === 'clearScreen') {
          // Clear the screen and move cursor to top-left, remove content from scroll buffer
@@ -648,15 +837,20 @@ export async function pagerWithRenderer(
       const newWidth = getTerminalWidth();
       const newHeight = getTerminalHeight();
 
-      if (renderer.onResize) {
-         renderer.onResize(newWidth, newHeight);
-         totalLines = renderer.getLineCount();
+      if (activeRenderer.onResize) {
+         activeRenderer.onResize(newWidth, newHeight);
+         totalLines = activeRenderer.getLineCount();
       }
 
-      // Rebuild search results against the resized layout so navigation stays accurate.
-      if (searchable && paletteState !== 'closed') runSearch(paletteState === 'open');
+      // Rebuild palette results against the resized layout so navigation stays accurate.
+      if (searchable && paletteState !== 'closed') refreshPalette();
 
       render();
+   }
+
+   /** Whether the palette is in command mode (the `>` prefix). */
+   function paletteMode(): 'search' | 'command' {
+      return paletteBuffer.text.startsWith('>') ? 'command' : 'search';
    }
 
    /**
@@ -665,7 +859,7 @@ export async function pagerWithRenderer(
     * otherwise the default is file search (when supported) or content search.
     */
    function searchModeFor(raw: string): { mode: PagerSearchMode; needle: string } {
-      const canFile = renderer.supportsFileSearch?.() ?? false;
+      const canFile = activeRenderer.supportsFileSearch?.() ?? false;
       if (canFile && raw.startsWith('%')) return { mode: 'content', needle: raw.slice(1) };
       if (canFile) return { mode: 'file', needle: raw };
       return { mode: 'content', needle: raw };
@@ -681,90 +875,280 @@ export async function pagerWithRenderer(
       if (results.length === 0) return;
       const visible = visibleContentRows();
       const target = results[Math.min(selectedResult, results.length - 1)]?.line ?? 0;
-      const maxLine = Math.max(0, renderer.getLineCount() - visible);
+      const maxLine = Math.max(0, activeRenderer.getLineCount() - visible);
       currentLine = Math.max(0, Math.min(maxLine, target - Math.floor(visible / 2)));
    }
 
-   /** Runs the current query against the renderer and refreshes navigation state. */
+   /** Runs the buffer search for the current query and refreshes navigation state. */
    function runSearch(filtered: boolean): void {
-      const { mode, needle } = searchModeFor(query);
-      results = renderer.applySearch?.(needle, mode, filtered) ?? [];
-      totalLines = renderer.getLineCount();
+      const { mode, needle } = searchModeFor(paletteBuffer.text);
+      results = activeRenderer.applySearch?.(needle, mode, filtered) ?? [];
+      totalLines = activeRenderer.getLineCount();
       if (selectedResult >= results.length) selectedResult = Math.max(0, results.length - 1);
       const visible = visibleContentRows();
       currentLine = Math.min(currentLine, Math.max(0, totalLines - visible));
       scrollToSelected();
    }
 
-   /** Opens (or re-opens) the palette in live-filter mode, preserving the query. */
-   async function openPalette(): Promise<void> {
-      await preloadFuzzy();
-      paletteState = 'open';
-      runSearch(true);
+   /** Number of selectable entries in the active palette mode. */
+   function currentResultCount(): number {
+      return paletteMode() === 'command' ? commandResults.length : results.length;
+   }
+
+   /**
+    * Filters the available commands by the given needle. Title matches rank first
+    * (with title highlight ranges); commands whose description matches but whose
+    * title does not are appended with lower priority (with description highlights).
+    */
+   function filterCommands(
+      needle: string
+   ): { command: PaletteCommand; titleRanges: number[]; descRanges: number[] }[] {
+      const available = commands.filter((command) => command.available());
+      if (!needle) {
+         return available.map((command) => ({ command, titleRanges: [], descRanges: [] }));
+      }
+
+      const titleMatch = fuzzyMatch(
+         available.map((command) => command.title),
+         needle
+      );
+      const matchedTitle = new Set(titleMatch.idx);
+      const result: { command: PaletteCommand; titleRanges: number[]; descRanges: number[] }[] =
+         titleMatch.idx.map((i, k) => ({
+            command: available[i],
+            titleRanges: titleMatch.ranges[k],
+            descRanges: [],
+         }));
+
+      const descMatch = fuzzyMatch(
+         available.map((command) => command.description),
+         needle
+      );
+      descMatch.idx.forEach((i, k) => {
+         if (matchedTitle.has(i)) return;
+         result.push({ command: available[i], titleRanges: [], descRanges: descMatch.ranges[k] });
+      });
+
+      return result;
+   }
+
+   /** Re-evaluates the palette for the current query (search filter or command list). */
+   function refreshPalette(): void {
+      if (paletteMode() === 'command') {
+         commandResults = filterCommands(paletteBuffer.text.slice(1).trimStart());
+         activeRenderer.clearSearch?.();
+         results = [];
+         totalLines = activeRenderer.getLineCount();
+      } else {
+         commandResults = [];
+         runSearch(true);
+      }
+      if (selectedResult >= currentResultCount()) {
+         selectedResult = Math.max(0, currentResultCount() - 1);
+      }
+   }
+
+   /** Moves the palette selection by delta and scrolls to it in search mode. */
+   function moveSelection(delta: number): void {
+      const count = currentResultCount();
+      if (count === 0) return;
+      selectedResult = Math.max(0, Math.min(count - 1, selectedResult + delta));
+      if (paletteMode() === 'search') scrollToSelected();
+   }
+
+   /** Handles Enter in the palette: run the selected command, or jump to the match. */
+   function onPaletteEnter(): void {
+      if (paletteMode() === 'command') {
+         const selected = commandResults[selectedResult];
+         if (!selected) return;
+         selected.command.run();
+         if (isRunning) {
+            clearSearchAndClose();
+            render();
+         }
+         return;
+      }
+      // Search mode: stop filtering, keep highlights, jump to the selected match.
+      paletteState = 'browsing';
+      runSearch(false);
       render();
    }
 
-   /** Turns off search entirely and restores the normal, unfiltered view. */
+   /** Opens (or re-opens) the palette, optionally pre-filling the query. */
+   async function openPalette(prefill?: string): Promise<void> {
+      await preloadFuzzy();
+      if (prefill !== undefined) paletteBuffer.setText(prefill);
+      selectedResult = 0;
+      paletteViewOffset = 0;
+      paletteState = 'open';
+      refreshPalette();
+      render();
+   }
+
+   /** Turns off the palette entirely and restores the normal, unfiltered view. */
    function clearSearchAndClose(): void {
       paletteState = 'closed';
-      query = '';
+      paletteBuffer.setText('');
       results = [];
+      commandResults = [];
       selectedResult = 0;
-      renderer.clearSearch?.();
-      totalLines = renderer.getLineCount();
+      activeRenderer.clearSearch?.();
+      totalLines = activeRenderer.getLineCount();
       const visible = getTerminalHeight() - 1;
       currentLine = Math.min(currentLine, Math.max(0, totalLines - visible));
    }
 
-   /** Whether a key chunk is printable text that should be appended to the query. */
-   function isPrintableInput(key: string): boolean {
-      return key.length > 0 && key[0] >= ' ' && key[0] !== '\x7f' && !key.startsWith('\x1b');
+   /** Toggles copy mode (hides the gutter/line numbers for clean text selection). */
+   function toggleCopyMode(): void {
+      if (!canUseCopyMode || !activeRenderer.updateOptions) return;
+      opts.showLineNumbers = !opts.showLineNumbers;
+      activeRenderer.updateOptions({ showLineNumbers: opts.showLineNumbers });
+      totalLines = activeRenderer.getLineCount();
+      const visible = getTerminalHeight() - 1;
+      currentLine = Math.min(currentLine, Math.max(0, totalLines - visible));
    }
 
-   /** Handles keyboard input while the palette is focused. */
-   function handlePaletteKey(key: string): void {
-      switch (key) {
-         case '\x10': // Ctrl+P
-         case '\x1b': // Esc -> turn off search/filter
-            clearSearchAndClose();
-            render();
-            return;
-         case '\x03': // Ctrl+C -> quit pager
-            isRunning = false;
-            return;
-         case '\r':
-         case '\n': // Enter -> browse: unfilter, keep highlights, jump to selection
-            paletteState = 'browsing';
-            runSearch(false);
-            render();
-            return;
-         case '\x7f':
-         case '\b': // Backspace
-            query = query.slice(0, -1);
-            selectedResult = 0;
-            runSearch(true);
-            render();
-            return;
-         case '\x1b[A': // Up
-         case '\x1b[5~': // Page Up
-            selectedResult = Math.max(0, selectedResult - 1);
-            scrollToSelected();
-            render();
-            return;
-         case '\x1b[B': // Down
-         case '\x1b[6~': // Page Down
-            selectedResult = Math.min(Math.max(0, results.length - 1), selectedResult + 1);
-            scrollToSelected();
-            render();
-            return;
+   /** Requests pager exit, recording an abort result for interactive sessions. */
+   function quitPager(): void {
+      if ((opts.actions?.length ?? 0) > 0 && !actionResult) {
+         actionResult = { action: 'abort', key: 'q' };
+      }
+      isRunning = false;
+   }
+
+   /** Triggers a caller-defined action, exiting the pager with its result. */
+   function runAction(action: PagerAction): void {
+      const keys = Array.isArray(action.key) ? action.key : [action.key];
+      actionResult = { action: action.action, key: keys[0] ?? '' };
+      isRunning = false;
+   }
+
+   /** Replaces the view with the keybind guide until the user presses Esc. */
+   function openHelpPage(): void {
+      savedView = { renderer: activeRenderer, currentLine };
+      activeRenderer = new SimplePagerRenderer(buildKeybindGuide(), {
+         showLineNumbers: false, // the guide never shows line numbers
+         wrapLines: true,
+         backgroundColor: opts.backgroundColor,
+      });
+      currentLine = 0;
+      totalLines = activeRenderer.getLineCount();
+   }
+
+   /** Restores the view saved before the keybind guide was opened. */
+   function closeHelpPage(): void {
+      if (!savedView) return;
+      activeRenderer = savedView.renderer;
+      currentLine = savedView.currentLine;
+      savedView = null;
+      totalLines = activeRenderer.getLineCount();
+   }
+
+   /**
+    * Builds the styled keybind guide from the currently available actions.
+    * Uses foreground-only styling (no bg / full reset mid-line) so the renderer's
+    * background fills each row cleanly.
+    */
+   function buildKeybindGuide(): string {
+      const P = CATPPUCCIN_VPALETTE;
+      const keyFg = fgRgb(P.cyan);
+      const descFg = fgRgb(P.overlay1);
+      const lines: string[] = [
+         '',
+         `  ${fgRgb(P.lavender)}${SGR.bright}▍ Keyboard Shortcuts & Navigation${SGR.normal}`,
+         '',
+      ];
+      const section = (title: string, rows: [string, string][]): void => {
+         lines.push(`  ${fgRgb(P.blue)}${SGR.bright}${title}${SGR.normal}`);
+         for (const [keys, desc] of rows) {
+            lines.push(`    ${keyFg}${keys.padEnd(24)}${descFg}${desc}`);
+         }
+         lines.push('');
+      };
+
+      section('Navigation', [
+         ['↑ / k', 'Scroll up'],
+         ['↓ / j', 'Scroll down'],
+         ['b / PageUp', 'Page up'],
+         ['n / Space / PageDown', 'Page down'],
+         ['g / Home', 'Go to top'],
+         ['G / End', 'Go to bottom'],
+      ]);
+
+      if (searchable) {
+         section('Search & Commands', [
+            ['Ctrl+P', 'Open the search palette'],
+            ['Ctrl+Shift+P', 'Open the command palette'],
+            ['>', 'Run a command (in the palette)'],
+            ['%', 'Search line content (in the palette)'],
+            ['↑ / ↓', 'Select a match or command'],
+            ['Enter', 'Jump to match / run command'],
+            ['Esc', 'Close the palette'],
+         ]);
       }
 
-      if (isPrintableInput(key)) {
-         query += key;
-         selectedResult = 0;
-         runSearch(true);
-         render();
+      if (canUseCopyMode) {
+         section('Copy mode', [['c', 'Toggle copy mode (hide gutter for clean copy)']]);
       }
+
+      const actions = opts.actions ?? [];
+      if (actions.length > 0) {
+         section(
+            'Actions',
+            actions.map((action) => {
+               const keys = Array.isArray(action.key) ? action.key : [action.key];
+               return [action.displayKey ?? keys[0] ?? '', action.description || action.label] as [
+                  string,
+                  string,
+               ];
+            })
+         );
+      }
+
+      section('General', [
+         ['q / Esc', 'Return from this guide'],
+         ['Ctrl+C', 'Quit the pager'],
+      ]);
+
+      return lines.join('\n');
+   }
+
+   /** Handles a decoded key event while the palette is focused. */
+   function handlePaletteEvent(event: KeyEvent): void {
+      // Ctrl+P / Ctrl+Shift+P or Esc turn the palette off.
+      if (event.name === 'escape' || (event.ctrl && event.name === 'p')) {
+         clearSearchAndClose();
+         render();
+         return;
+      }
+      if (event.ctrl && event.name === 'c') {
+         isRunning = false;
+         return;
+      }
+      if (event.name === 'enter') {
+         onPaletteEnter();
+         return;
+      }
+      if (event.name === 'up' || event.name === 'pageup') {
+         moveSelection(-1);
+         render();
+         return;
+      }
+      if (event.name === 'down' || event.name === 'pagedown') {
+         moveSelection(1);
+         render();
+         return;
+      }
+
+      // Everything else is text editing handled by the line buffer (word jumps,
+      // Ctrl+Backspace, Home/End, etc.). Re-run the palette only when text changes.
+      const before = paletteBuffer.text;
+      if (!paletteBuffer.handleKey(event)) return;
+      if (paletteBuffer.text !== before) {
+         selectedResult = 0;
+         refreshPalette();
+      }
+      render();
    }
 
    /**
@@ -774,38 +1158,31 @@ export async function pagerWithRenderer(
    function handleKey(key: string): void {
       const currentHeight = getTerminalHeight();
       const visibleCount = currentHeight - 1;
-      const maxLine = Math.max(0, renderer.getLineCount() - visibleCount);
+      const maxLine = Math.max(0, activeRenderer.getLineCount() - visibleCount);
 
-      // Command palette routing.
-      if (searchable && paletteState === 'open') {
-         handlePaletteKey(key);
+      // The keybind guide is a modal overlay: Esc or q returns to the previous
+      // view (restoring its scroll position and state); only Ctrl+C hard-quits.
+      if (savedView && (key === '\x1b' || key === 'q')) {
+         closeHelpPage();
+         render();
          return;
       }
-      if (searchable && key === '\x10') {
-         // Ctrl+P opens from normal view, or re-opens from browsing to change filtering.
-         void openPalette();
-         return;
-      }
+      // Esc while browsing search results clears the search and stays in the pager.
       if (searchable && paletteState === 'browsing' && key === '\x1b') {
-         // Esc while browsing results clears the search and stays in the pager.
          clearSearchAndClose();
          render();
          return;
       }
 
-      if (key === 'c' && renderer.updateOptions) {
-         if (canUseCopyMode) {
-            opts.showLineNumbers = !opts.showLineNumbers;
-            renderer.updateOptions({ showLineNumbers: opts.showLineNumbers });
-            totalLines = renderer.getLineCount();
-            const updatedMaxLine = Math.max(0, totalLines - visibleCount);
-            currentLine = Math.min(currentLine, updatedMaxLine);
-            render();
-         }
+      // Copy mode toggle (disabled while viewing the guide).
+      if (key === 'c' && !savedView) {
+         toggleCopyMode();
+         render();
          return;
       }
 
-      const actionBindings = opts.actions || [];
+      // Caller-defined actions (disabled while viewing the guide).
+      const actionBindings = savedView ? [] : opts.actions || [];
       if (actionBindings.length > 0) {
          for (const action of actionBindings) {
             const keys = Array.isArray(action.key) ? action.key : [action.key];
@@ -868,11 +1245,30 @@ export async function pagerWithRenderer(
 
    const resizeHandler = (): void => handleResize();
    const keyHandler = (chunk: Buffer): void => {
-      handleKey(chunk.toString());
+      const data = chunk.toString();
 
-      if (!isRunning) {
-         cleanup();
+      // While the palette is focused, route keys through the line-editor parser so
+      // editing chords (Ctrl+Backspace, word jumps, Home/End) work as expected.
+      if (searchable && paletteState === 'open') {
+         for (const event of parseInput(data)) {
+            handlePaletteEvent(event);
+            if (!isRunning) break;
+         }
+         if (!isRunning) cleanup();
+         return;
       }
+
+      // Ctrl+P opens the search palette; Ctrl+Shift+P opens it in command mode.
+      if (searchable) {
+         const open = parseInput(data).find((event) => event.ctrl && event.name === 'p');
+         if (open) {
+            void openPalette(open.shift ? '>' : undefined);
+            return;
+         }
+      }
+
+      handleKey(data);
+      if (!isRunning) cleanup();
    };
 
    process.stdout.on('resize', resizeHandler);

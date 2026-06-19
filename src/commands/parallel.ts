@@ -30,7 +30,7 @@ import {
 import { _2PointGradient, bgRgb, fgRgb } from '@/modules/graphics';
 import global from '@/global';
 import { viewDiff } from '@/modules/diff-viewer';
-import { PagerActionResult } from '@/modules/pager';
+import { PagerAction, PagerActionResult } from '@/modules/pager';
 import {
    deinitSubmodules,
    getDirtySubmodules,
@@ -1928,15 +1928,15 @@ async function interactiveCherryPickDecision(
       submodulePath,
       conflictInfo: preview.conflictInfo,
    });
-   const actions = preview.isEmpty
+   const actions: PagerAction[] = preview.isEmpty
       ? [
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
+         { key: 's', label: 'skip', action: 'skip', description: 'Skip this change', primary: true },
+         { key: 'u', label: 'undo', action: 'undo', description: 'Undo the last applied change' },
       ]
       : [
-         { key: 'a', label: 'apply', action: 'apply' },
-         { key: 's', label: 'skip', action: 'skip' },
-         { key: 'u', label: 'undo', action: 'undo' },
+         { key: 'a', label: 'apply', action: 'apply', description: 'Apply this change', primary: true },
+         { key: 's', label: 'skip', action: 'skip', description: 'Skip this change', primary: true },
+         { key: 'u', label: 'undo', action: 'undo', description: 'Undo the last applied change' },
       ];
 
    const statusText = getInteractiveStatusText({

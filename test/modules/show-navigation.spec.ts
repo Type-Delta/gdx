@@ -154,28 +154,28 @@ describe('show navigation helpers', async () => {
    it('should hide unavailable show navigation actions', () => {
       expect(
          buildShowCommitNavigationActions({
-            previous: 'older',
+            prev: 'older',
             next: 'newer',
          }).map((action) => action.label)
-      ).toEqual(['previous', 'next']);
+      ).toEqual(['prev', 'next']);
 
       expect(
          buildShowCommitNavigationActions({
-            previous: null,
+            prev: null,
             next: 'newer',
          }).map((action) => action.label)
       ).toEqual(['next']);
 
       expect(
          buildShowCommitNavigationActions({
-            previous: 'older',
+            prev: 'older',
             next: null,
          }).map((action) => action.label)
-      ).toEqual(['previous']);
+      ).toEqual(['prev']);
 
       expect(
          buildShowCommitNavigationActions({
-            previous: null,
+            prev: null,
             next: null,
          })
       ).toEqual([]);
@@ -284,10 +284,10 @@ describe('show navigation helpers', async () => {
 
       expect(
          buildShowCommitNavigationActions({
-            previous: blobCommits[blobReadmeTwoIndex + 1] ?? null,
+            prev: blobCommits[blobReadmeTwoIndex + 1] ?? null,
             next: blobCommits[blobReadmeTwoIndex - 1] ?? null,
          }).map((action) => action.label)
-      ).toEqual(['previous', 'next']);
+      ).toEqual(['prev', 'next']);
 
       expect(blobPlan).not.toBeNull();
       if (!blobPlan) throw new Error('Expected blob navigation plan');
@@ -298,10 +298,10 @@ describe('show navigation helpers', async () => {
          blobPlan
       );
       expect(adjacentBlobCommits).toEqual({
-         previous: readmeOne,
+         prev: readmeOne,
          next: readmeTwo,
       });
       expect(buildShowCommitNavigationActions(adjacentBlobCommits).map((action) => action.label))
-         .toEqual(['previous', 'next']);
+         .toEqual(['prev', 'next']);
    });
 });

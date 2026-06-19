@@ -1555,19 +1555,23 @@ export class DiffViewerRenderer implements PagerRenderer {
       leftPadding: number
    ): string[] {
       if (!line) return [this.padLineWithBg(' ', width, blockBg)];
-      line = ' '.repeat(leftPadding) + line; // Indent preamble lines to align with diff content
-      const contentWidth = width;
       const color = fgRgb(CATPPUCCIN_VPALETTE.overlay1);
+      const containerPadding = 4;
 
-      if (this.options.wrapLines && ttys.stringWidth(line) > contentWidth) {
-         const wrapped = ttys.stringWrap(line, contentWidth, {
+      // Indent preamble lines to align with diff content. stringWrap puts the
+      // indent in front of each line, so wrap to the content width (terminal width
+      // minus the indent) to keep every line — wrapped or not — within `width`.
+      if (this.options.wrapLines && leftPadding + containerPadding + ttys.stringWidth(line) > width) {
+         const wrapped = ttys.stringWrap(line, Math.max(1, width - leftPadding - containerPadding), {
             mode: 'strict',
-            indent: leftPadding,
+            indent: leftPadding + containerPadding,
+            firstIndent: leftPadding,
+            redundancyLv: 2
          });
          return wrapped.split('\n').map((part) => this.padLineWithBg(color + part, width, blockBg));
       }
 
-      return [this.padLineWithBg(color + line, width, blockBg)];
+      return [this.padLineWithBg(color + ' '.repeat(leftPadding) + line, width, blockBg)];
    }
 
    /**

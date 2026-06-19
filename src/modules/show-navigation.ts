@@ -56,7 +56,7 @@ export interface ShowBlobNavigationPlan extends ShowCommitNavigationPlan {
 }
 
 export interface ShowCommitAdjacentCommits {
-   previous: string | null;
+   prev: string | null;
    next: string | null;
 }
 
@@ -354,7 +354,7 @@ async function findAdjacentShowCommit(
    git$: GdxContext['git$'],
    currentCommit: string,
    plan: ShowCommitNavigationPlan,
-   direction: 'previous' | 'next'
+   direction: 'prev' | 'next'
 ): Promise<string | null> {
    const adjacentCommits = await findAdjacentShowCommits(git$, currentCommit, plan);
    return adjacentCommits[direction];
@@ -380,13 +380,13 @@ export async function findAdjacentShowCommits(
    const currentIndex = commits.indexOf(currentCommit);
    if (currentIndex !== -1) {
       return {
-         previous: commits[currentIndex + 1] ?? null,
+         prev: commits[currentIndex + 1] ?? null,
          next: commits[currentIndex - 1] ?? null,
       };
    }
 
    const pathspecIndex = plan.navigationArgs.indexOf('--');
-   if (pathspecIndex === -1) return { previous: null, next: null };
+   if (pathspecIndex === -1) return { prev: null, next: null };
 
    const historyArgs = plan.navigationArgs.slice(0, pathspecIndex);
    const historyResult = await $`${git$} log --format=%H ${historyArgs}`;
@@ -395,7 +395,7 @@ export async function findAdjacentShowCommits(
       .map((line) => line.trim())
       .filter(Boolean);
    const historyIndex = historyCommits.indexOf(currentCommit);
-   if (historyIndex === -1) return { previous: null, next: null };
+   if (historyIndex === -1) return { prev: null, next: null };
 
    const commitIndex = new Map(historyCommits.map((commit, index) => [commit, index]));
    let previous: string | null = null;
@@ -418,7 +418,7 @@ export async function findAdjacentShowCommits(
       }
    }
 
-   return { previous, next };
+   return { prev: previous, next };
 }
 
 /**
@@ -431,12 +431,14 @@ export function buildShowCommitNavigationActions(
 ): PagerAction[] {
    const actions: PagerAction[] = [];
 
-   if (adjacentCommits.previous) {
+   if (adjacentCommits.prev) {
       actions.push({
          key: LEFT_ARROW_KEY,
          displayKey: '←',
-         label: 'previous',
+         label: 'prev',
          action: SHOW_PREVIOUS_COMMIT_ACTION,
+         description: 'Show the previous commit',
+         primary: true,
       });
    }
 
@@ -446,6 +448,8 @@ export function buildShowCommitNavigationActions(
          displayKey: '→',
          label: 'next',
          action: SHOW_NEXT_COMMIT_ACTION,
+         description: 'Show the next commit',
+         primary: true,
       });
    }
 
@@ -508,7 +512,7 @@ async function viewShowBlob(
          ? [
             'index',
             await highlightShowBlobContent(content, plan.path),
-            { previous: null, next: null },
+            { prev: null, next: null },
          ]
          : await Promise.all([
             resolveHeadRelativeCommitRef(ctx.git$, commit, false),
@@ -611,7 +615,7 @@ export async function viewInteractiveShow(
    ) {
       process.stdout.write('\x1b[H');
       process.stdout.clearScreenDown();
-      const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
+      const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'prev' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {
          Logger.warn('Attempted to navigate beyond available commits, but no adjacent commit was found. This is unexpected since navigation actions should have been disabled. Reloading current commit as fallback.', 'show-navigation');
@@ -651,7 +655,7 @@ export async function viewInteractiveShowBlob(
    ) {
       process.stdout.write('\x1b[H');
       process.stdout.clearScreenDown();
-      const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'previous' : 'next';
+      const direction = action.action === SHOW_PREVIOUS_COMMIT_ACTION ? 'prev' : 'next';
       const adjacentCommit = await findAdjacentShowCommit(ctx.git$, currentCommit, plan, direction);
       if (!adjacentCommit) {
          Logger.warn('Attempted to navigate beyond available commits, but no adjacent commit was found. This is unexpected since navigation actions should have been disabled. Reloading current commit as fallback.', 'show-navigation');

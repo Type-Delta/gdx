@@ -58,6 +58,18 @@ describe('parseInput', () => {
       expect(keys).toHaveLength(3);
       expect(keys[1].char).toBe('😀');
    });
+
+   it('parses CSI-u modified keys (e.g. Ctrl+Shift+P) as chords', () => {
+      // 112 = 'p', modifier 6 = ctrl+shift
+      expect(parseInput('\x1b[112;6u')[0]).toMatchObject({ name: 'p', ctrl: true, shift: true });
+      // ctrl-only stays a chord
+      expect(parseInput('\x1b[112;5u')[0]).toMatchObject({ name: 'p', ctrl: true, shift: false });
+   });
+
+   it('treats unmodified/shift-only CSI-u keys as plain characters', () => {
+      expect(parseInput('\x1b[97u')[0]).toMatchObject({ name: 'char', char: 'a' });
+      expect(parseInput('\x1b[97;2u')[0]).toMatchObject({ name: 'char', char: 'a', shift: true });
+   });
 });
 
 describe('LineBuffer', () => {
