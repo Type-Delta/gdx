@@ -256,3 +256,4 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Not having npm publish GitHub Actions workflow is actually a choice** (more info in [NPM_PUBLISH.CAVEAT.md](./docs/agent/NPM_PUBLISH.CAVEAT.md))
 - **Pinned `which@2.0.2` to avoid multiple versions of `which` in the bundle**
 - **Tests use custom harness: check `testHelper.ts` for details** (more info in [TEST_HARNESS.CAVEAT.md](./docs/agent/TEST_HARNESS.CAVEAT.md), read this when writing tests)
+- **Post-install diagnostics are an opt-in integration suite, not a normal Bun test.** Its source is `test/post-install.validator.ts` (intentionally without `.spec.ts`/`.test.ts`).

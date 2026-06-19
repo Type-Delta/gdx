@@ -6,6 +6,8 @@ on:
          - main
       paths:
          - 'package.json'
+         - 'src/commands/doctor.ts'
+         - 'test/post-install.validator.ts'
          - 'scripts/launcher.cjs'
          - 'scripts/postinstall.cjs'
          - '.github/workflows/cd-test.yml'

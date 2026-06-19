@@ -42,8 +42,8 @@ jobs:
 
          - name: Generate SHA256 checksum
            run: |
-              $hash = (Get-FileHash ./out/gdx-win32-x64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-              "$hash  gdx-win32-x64.exe" > ./out/gdx-win32-x64.exe.sha256
+              $hash = (Get-FileHash ./bin/gdx-win32-x64.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  gdx-win32-x64.exe" > ./bin/gdx-win32-x64.exe.sha256
 
          - name: Extract Release Notes
            run: ./scripts/extract-release-notes.ps1 -tag "${{ github.ref_name }}"
@@ -53,5 +53,5 @@ jobs:
            with:
               body_path: release_notes.md
               files: |
-                 ./out/gdx-win32-x64.exe
-                 ./out/gdx-win32-x64.exe.sha256
+                 ./bin/gdx-win32-x64.exe
+                 ./bin/gdx-win32-x64.exe.sha256
