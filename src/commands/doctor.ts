@@ -7,7 +7,14 @@ import { arrToString, yuString, strWrap, remap, Err, hyperlink, CheckCache } fro
 
 import { quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
-import { EXECUTABLE_NAME, GDX_RESULT_FILE, VERSION, SGR } from '../consts';
+import {
+   EXECUTABLE_NAME,
+   GDX_RESULT_FILE,
+   VERSION,
+   BUILD,
+   IS_CUSTOM_BUILD,
+   SGR
+} from '../consts';
 import global from '@/global';
 import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
@@ -67,7 +74,9 @@ export default async function doctor(): Promise<number> {
       hasIssues = true;
    }
 
-   quickPrint(`Version: ${SGR.cyan + VERSION + SGR.reset}`);
+   quickPrint(
+      `Version: ${SGR.cyan + VERSION + SGR.reset}${IS_CUSTOM_BUILD && BUILD !== 'dev' ? SGR.dim + ` (${BUILD})` + SGR.reset : ''}`
+   );
    quickPrint(`Platform: ${SGR.magenta + process.platform} (${process.arch})` + SGR.reset);
    quickPrint(`Processor: ${SGR.cyan + (os.cpus()[0]?.model || 'N/A') + SGR.reset} ${os.availableParallelism()}/${os.cpus().length} logical cores`);
    quickPrint(

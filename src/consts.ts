@@ -22,7 +22,15 @@ export const GDX_CACHE_SCHEMA_VERSION = 1; // Increment this if there are breaki
 export const GIT_DIR_NAME = '.git';
 export const GDX_SIGNAL_CODE = 150;
 export const GDX_RESULT_FILE = process.env.GDX_RESULT;
-export const VERSION = pkg.version || 'unknown';
+const BASE_VERSION = pkg.version || 'unknown';
+/**
+ * git-describe of the source this binary was built from (e.g. `v0.4.6-31-g8c3405f-dirty`),
+ * or `'dev'` when run from source. Inlined at build time by `bun build --env='GDX_BUILD*'`.
+ */
+export const BUILD = process.env.GDX_BUILD || 'dev';
+/** False only when built from a clean release tag matching the package version. */
+export const IS_CUSTOM_BUILD = BUILD !== `v${BASE_VERSION}`;
+export const VERSION = IS_CUSTOM_BUILD ? `${BASE_VERSION}-dev` : BASE_VERSION;
 export const REPO_README_URL = pkg.homepage || '';
 export const SHOULD_WRITE_LOGS =
    process.env.GDX_WRITE_LOGS != null ? inferBool(process.env.GDX_WRITE_LOGS) : true;

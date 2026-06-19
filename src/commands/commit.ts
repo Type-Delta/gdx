@@ -496,7 +496,7 @@ export async function generateAutoCommitMessage(
    const originalMsg = generatedMsg;
    generatedMsg = normalizeGeneratedCommitMessage(generatedMsg);
 
-   redrawText(originalMsg, generatedMsg);
+   redrawText(originalMsg, generatedMsg, { redundancyLv: 2 });
    quickPrint('');
 
    return { message: generatedMsg, prompt };

@@ -1,6 +1,14 @@
 import { hyperlink, strJustify, strWrap } from '@lib/Tools';
 
-import { GDX_VPALETTE, EXECUTABLE_NAME, REPO_README_URL, VERSION, SGR } from '@/consts';
+import {
+   GDX_VPALETTE,
+   EXECUTABLE_NAME,
+   REPO_README_URL,
+   VERSION,
+   BUILD,
+   IS_CUSTOM_BUILD,
+   SGR,
+} from '@/consts';
 import { quickPrint } from '@/utils/utilities';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
@@ -66,7 +74,7 @@ export default function help(name?: string): number {
             `
 ──────────────────────────────
 ${SGR.bright + _2PointGradient('GDX (Git Developer eXperience)', GDX_VPALETTE.OceanDeepBlue, GDX_VPALETTE.OceanGreen, 0.32, 1) + SGR.reset}
-Version: ${SGR.cyan + VERSION + SGR.reset}
+Version: ${SGR.cyan + VERSION + SGR.reset}${IS_CUSTOM_BUILD && BUILD !== 'dev' ? SGR.dim + ` (${BUILD})` + SGR.reset : ''}
 ──────────────────────────────
 
 Git, but with better DX. The raw power of Git,
