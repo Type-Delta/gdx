@@ -312,6 +312,15 @@ export const INLINE_DIFF_SEQUENCE_LENGTH_SPLIT_THRESH = 3;
  * The higher this value, the longer the segments can be to still be considered part of the same sequence, resulting in more "modify" lines and less separate "add"/"delete" lines.
  */
 export const INLINE_DIFF_SEGMENT_LENGTH_SPLIT_THRESH = 7;
+/**
+ * char-level inline diffing is Myers, O(N·D) in the edit distance D.
+ * A wholesale replacement block (e.g. 100 fully-rewritten lock-file lines) has a
+ * huge D — ~58s on a single block — and produces unreadable char-soup anyway.
+ * Cap D so jsdiff bails (returns undefined) in ~60ms and we fall back to plain
+ * +/- lines. Raise it if a legit block with >this-many changed chars ever needs
+ * inline marks; cost grows ~O(this²).
+ */
+export const MAX_INLINE_EDIT_DISTANCE = 1000;
 
 // Commit guideline learning constants
 export const COMMIT_HEADER_SAMPLE_LIMIT = 50;

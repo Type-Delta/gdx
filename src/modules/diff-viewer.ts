@@ -37,6 +37,7 @@ import {
    ANSI_SGR_REGEX,
    DIFF_HEADER_TEXT_REGEX,
    SGR,
+   MAX_INLINE_EDIT_DISTANCE,
 } from '@/consts';
 import { DiffModule, GdxContext, ShikijsCliModule } from '@/common/types';
 import { quickPrint } from '@/utils/utilities';
@@ -1139,13 +1140,15 @@ export class DiffViewerRenderer implements PagerRenderer {
          `Terminal size: ${this.lastWidth}x${this.lastHeight}`
       );
       this.parsedDiffs = this.logger.time('Parsing diff output', () => parseDiffOutput(diffText));
-      this.updateRenderedLines();
+      logger.time(
+         'Initial parsed diff rendering',
+         () => this.updateRenderedLines(),
+      );
    }
 
    async prepareHighlighting(spinnerCtrl?: SpinnerController): Promise<void> {
       const developerMode = (await getConfig()).get<boolean>('developerMode', false);
-      await logger.time('Preparing inline diffs', () => this.prepareInlineDiffs());
-
+      await logger.time('Preparing inline diffs', this.prepareInlineDiffs.bind(this));
       if (this.options.disableSyntaxHighlighting) {
          logger.time('Post-processing', () => this.updateRenderedLines());
          if (developerMode) writeDiffDebugSnapshots(this.parsedDiffs, this.renderedLines);
@@ -1284,30 +1287,40 @@ export class DiffViewerRenderer implements PagerRenderer {
             if (isSingleLineReplacement) {
                const oldLine = deletedLines[0];
                const newLine = addedLines[0];
-               changes = diffWordsWithSpace(oldLine.content, newLine.content);
-               const inlineSegments = buildMergedInlineSegments(changes);
-               deletedText = oldLine.content;
-               addedText = newLine.content;
+               changes =
+                  diffWordsWithSpace(oldLine.content, newLine.content, {
+                     maxEditLength: MAX_INLINE_EDIT_DISTANCE,
+                  }) ?? null;
+               if (changes) {
+                  const inlineSegments = buildMergedInlineSegments(changes);
+                  deletedText = oldLine.content;
+                  addedText = newLine.content;
 
-               if (!shouldDisplayMultiline(changes)) {
-                  const modifyLine: DiffLine = {
-                     type: 'modify',
-                     content: newLine.content,
-                     oldLineNum: oldLine.oldLineNum,
-                     newLineNum: newLine.newLineNum,
-                     inlineSegments,
-                  };
+                  if (!shouldDisplayMultiline(changes)) {
+                     const modifyLine: DiffLine = {
+                        type: 'modify',
+                        content: newLine.content,
+                        oldLineNum: oldLine.oldLineNum,
+                        newLineNum: newLine.newLineNum,
+                        inlineSegments,
+                     };
 
-                  diff.lines.splice(blockStart, blockEnd - blockStart, modifyLine);
-                  i = blockStart + 1;
-                  continue;
+                     diff.lines.splice(blockStart, blockEnd - blockStart, modifyLine);
+                     i = blockStart + 1;
+                     continue;
+                  }
                }
             }
 
             if (!changes) {
                deletedText = deletedLines.map((line) => line.content).join('\n');
                addedText = addedLines.map((line) => line.content).join('\n');
-               changes = diffChars(deletedText, addedText);
+               changes =
+                  diffChars(deletedText, addedText, {
+                     maxEditLength: MAX_INLINE_EDIT_DISTANCE,
+                  }) ?? null;
+               // Block too divergent to inline-diff cheaply; leave it as plain +/- lines.
+               if (!changes) continue;
             }
 
             const addSegments = buildLineInlineSegments(changes, 'add');
