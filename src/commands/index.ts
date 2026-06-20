@@ -18,6 +18,7 @@ import tag from './tag';
 import __completion from './__completion';
 import snap from './snap';
 import gh from './gh';
+import history from './history';
 
 export default {
    __completion,
@@ -40,4 +41,5 @@ export default {
    tag,
    snap,
    gh,
+   history,
 };

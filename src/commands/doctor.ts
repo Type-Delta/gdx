@@ -15,6 +15,7 @@ import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
 import { getCache } from '@/common/cache';
 import litedent from '@/utils/litedent';
+import { GDX_HISTORY_GUARD_ENV } from '@/modules/shell';
 
 interface PostInstallDiagnosticResult {
    name: string;
@@ -147,7 +148,7 @@ export default async function doctor(): Promise<number> {
 
    // Detect git
    try {
-      const gitVer = await execa('git', ['--version']);
+      const gitVer = await execa('git', ['--version'], { env: GDX_HISTORY_GUARD_ENV });
       quickPrint(`Git: ${SGR.cyan + gitVer.stdout.trim() + SGR.reset}`);
 
       // Check path

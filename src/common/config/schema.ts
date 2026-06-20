@@ -27,6 +27,12 @@ export const GdxConfigSchema = t.Object({
          undoLimit: t.Optional(t.Integer({ minimum: 0 })),
       })
    ),
+   history: t.Optional(
+      t.Object({
+         enabled: t.Optional(t.Boolean()),
+         maxEntries: t.Optional(t.Integer({ minimum: 0 })),
+      })
+   ),
    commit: t.Optional(
       t.Object({
          commitPattern: t.Optional(t.Union([t.Literal('inherit'), t.Literal('comprehensive')])),
@@ -110,6 +116,10 @@ export const DEFAULT_CONFIG: GdxConfig = {
    stash: {
       undoLimit: 10,
    },
+   history: {
+      enabled: true,
+      maxEntries: 100,
+   },
    commit: {
       commitPattern: 'inherit',
       guidelineCacheDays: 30,
@@ -142,7 +152,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    maxThreadWorkers: 8,
 };
 
-export const LOCAL_CONFIG_ALLOWED_PREFIXES = ['llm.', 'lint.', 'parallel.'] as const;
+export const LOCAL_CONFIG_ALLOWED_PREFIXES = ['llm.', 'lint.', 'parallel.', 'history.'] as const;
 export const LOCAL_CONFIG_ALLOWED_KEYS = ['commit.commitPattern', 'commit.noisyFiles'] as const;
 export const LOCAL_CONFIG_BLOCKED_KEYS = ['llm.showThinking'] as const;
 
@@ -160,6 +170,8 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
+   'history.enabled': 'GDX_HISTORY_ENABLED',
+   'history.maxEntries': 'GDX_HISTORY_MAX_ENTRIES',
    'commit.commitPattern': 'GDX_COMMIT_PATTERN',
    'commit.guidelineCacheDays': 'GDX_COMMIT_GUIDELINE_CACHE_DAYS',
    'reword.editor': 'GDX_REWORD_EDITOR',
@@ -193,6 +205,9 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KiB',
    'stash.undoLimit': 'Max number of stash drops to keep in history',
+   history: 'Repository-local transactional undo and redo journal',
+   'history.enabled': 'Record supported commands routed through or invoked by GDX',
+   'history.maxEntries': 'Maximum number of transactions retained per worktree timeline',
    commit: 'Configuration for commit message generation',
    'commit.commitPattern':
       'Commit message pattern (inherit: learn from repo, comprehensive: fixed format)',

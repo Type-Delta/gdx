@@ -220,6 +220,7 @@ export const GDX_COMMANDS = [
    'doctor',
    'snap',
    'gh',
+   'history',
 ];
 
 export const GDX_SHORTHANDS = [

@@ -1,4 +1,5 @@
 import { Err, yuString } from '../lib/esm/Tools';
+import path from 'path';
 
 import cmd from './commands';
 import { execGit, whichExec } from './modules/shell';
@@ -9,7 +10,7 @@ import { getShellScript } from './templates/shell';
 import global from './global';
 import Logger from './utils/logger';
 import { dispatch } from './cli/dispatch';
-import { getConfig, resolveLocalConfigPathFromGit } from './common/config';
+import { getConfig, resolveRepositoryLocationFromGit } from './common/config';
 
 const _args = process.argv.slice(2);
 
@@ -95,7 +96,10 @@ async function main(): Promise<number> {
    }
 
    const config = await getConfig();
-   config.setLocalConfigPath(await resolveLocalConfigPathFromGit(ctx.git$));
+   ctx.repository = await resolveRepositoryLocationFromGit(ctx.git$);
+   config.setLocalConfigPath(
+      ctx.repository ? path.join(ctx.repository.gitDir, '.gdxrc.toml') : undefined
+   );
    global.threadResources.setMax(config.get<number>('maxThreadWorkers') || 1);
 
    // Dispatch to main routing logic

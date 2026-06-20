@@ -29,6 +29,7 @@ import {
    validateConfigValue,
 } from '@/modules/typebox';
 import { revParseCached } from '@/modules/git';
+import { GdxRepositoryLocation } from '@/common/types';
 
 type KeytarApi = {
    getPassword(service: string, account: string): Promise<string | null>;
@@ -710,17 +711,42 @@ function resolveLocalConfigPath(currentDir = CURRENT_DIR): string | undefined {
 }
 
 export async function resolveLocalConfigPathFromGit(git$: string | string[]): Promise<string | undefined> {
-   try {
-      const gitDir = (await revParseCached(git$, ['--path-format=absolute', '--git-dir'])).trim();
-      if (gitDir) return path.join(gitDir, CONFIG_FILE_NAME);
-   } catch {
-      // Fall back to filesystem probing for tests or unusual Git installations.
-   }
+   const repository = await resolveRepositoryLocationFromGit(git$);
+   if (repository) return path.join(repository.gitDir, CONFIG_FILE_NAME);
 
    if (!Array.isArray(git$)) return resolveLocalConfigPath();
    const cwdFlagIndex = git$.indexOf('-C');
    const currentDir = cwdFlagIndex >= 0 ? git$[cwdFlagIndex + 1] : CURRENT_DIR;
    return currentDir ? resolveLocalConfigPath(currentDir) : undefined;
+}
+
+/** Resolves reusable repository paths with the same startup Git call used for local config. */
+export async function resolveRepositoryLocationFromGit(
+   git$: string | string[]
+): Promise<GdxRepositoryLocation | undefined> {
+   try {
+      const output = (
+         await revParseCached(git$, [
+            '--path-format=absolute',
+            '--show-toplevel',
+            '--git-common-dir',
+            '--git-dir',
+         ])
+      )
+         .split(/\r?\n/)
+         .filter(Boolean);
+      if (output.length === 3) {
+         const [root, commonGitDir, gitDir] = output;
+         return {
+            root: path.resolve(root),
+            commonGitDir: path.resolve(commonGitDir),
+            gitDir: path.resolve(gitDir),
+         };
+      }
+   } catch {
+      return undefined;
+   }
+   return undefined;
 }
 
 /**

@@ -11,6 +11,9 @@ import { getConfig } from '@/common/config';
 import global from '@/global';
 import { getWhichExecCached } from './cache-controller';
 import Logger from '@/utils/logger';
+
+/** Environment marker inherited by every subprocess spawned through GDX. */
+export const GDX_HISTORY_GUARD_ENV = { GDX_HISTORY_GUARD: '1' } as const;
 import { unlinkSync, writeFileSync } from './fs';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
 import { readLine } from './line-editor';
@@ -115,6 +118,7 @@ export const isTTY = () => process.stdout.isTTY && process.stdin.isTTY;
  * Configured to pipe stdout and stderr.
  */
 export const $ = limitExeca(execa({
+   env: GDX_HISTORY_GUARD_ENV,
    stdout: 'pipe',
    stderr: 'pipe',
    verbose: execaCustomLogger,
@@ -127,6 +131,7 @@ export const $ = limitExeca(execa({
 export function createAbortableExec(options: Options = {}) {
    const controller = new AbortController();
    const _shell = limitExeca(execa({
+      env: GDX_HISTORY_GUARD_ENV,
       cancelSignal: controller.signal,
       ...options,
       verbose: execaCustomLogger,
@@ -143,6 +148,7 @@ export function createAbortableExec(options: Options = {}) {
  * An execa instance configured to inherit stdin/stdout/stderr from the parent process.
  */
 export const $inherit = limitExeca(execa({
+   env: GDX_HISTORY_GUARD_ENV,
    stdin: 'inherit',
    stdout: 'inherit',
    stderr: 'inherit',
@@ -492,6 +498,7 @@ export async function execCommand(
    try {
       if (redirectTo) {
          const redirect$ = limitExeca(execa({
+            env: GDX_HISTORY_GUARD_ENV,
             stdin: 'inherit',
             stdout: {
                file: redirectTo,
