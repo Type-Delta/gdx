@@ -6,10 +6,8 @@ import { execa } from 'execa';
 import { dispatch } from '@/cli/dispatch';
 import history from '@/commands/history';
 import {
-   defaultHistoryObserverCommand,
    getHistoryObserverHookStatus,
    installHistoryObserverHook,
-   readHistoryObserverSpool,
    uninstallHistoryObserverHook,
 } from '@/modules/history/observer';
 import {
@@ -22,47 +20,38 @@ import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 describe('history reference-transaction observer', async () => {
    const { tmpDir, $, it, resetRepo } = await createTestEnv({ suitName: 'history-observer' });
    const ctx = createGdxContext(tmpDir);
-   const observerCommand = [
-      process.execPath,
-      path.resolve('src/index.ts'),
-      'history',
-      '__hook-entry',
-   ];
+   const gitCommand = Array.isArray(ctx.git$) ? ctx.git$ : [ctx.git$];
+   const shell =
+      process.platform === 'win32'
+         ? path.resolve(path.dirname(gitCommand[0]), '..', 'bin', 'sh.exe')
+         : 'sh';
 
    async function reset(): Promise<void> {
       await resetRepo('full');
    }
 
-   it('pins the default hook command to the current runtime or binary', () => {
-      expect(defaultHistoryObserverCommand(['gdx.exe', '-C', tmpDir])).toEqual([
-         process.execPath,
-         'history',
-         '__hook-entry',
-      ]);
-      expect(defaultHistoryObserverCommand(['bun.exe', 'src/index.ts', '-C', tmpDir])).toEqual([
-         process.execPath,
-         path.resolve('src/index.ts'),
-         'history',
-         '__hook-entry',
-      ]);
-      expect(defaultHistoryObserverCommand(['node.exe', 'scripts/launcher.cjs', '-C', tmpDir])).toEqual([
-         process.execPath,
-         path.resolve('scripts/launcher.cjs'),
-         'history',
-         '__hook-entry',
-      ]);
-   });
-
    it('preserves and restores an existing hook byte-for-byte', async () => {
       await reset();
       const paths = await resolveHistoryStoragePaths(ctx.git$);
       const hook = path.join(paths.commonGitDir, 'hooks', 'reference-transaction');
-      const original = Buffer.from('#!/bin/sh\nprintf original >/dev/null\n', 'utf8');
+      const original = Buffer.from(
+         '#!/bin/sh\nprintf \'%s\\n\' "$1" >>chained-phases\ncat >>chained-input\n',
+         'utf8'
+      );
       await fs.mkdir(path.dirname(hook), { recursive: true });
       await fs.writeFile(hook, original, { mode: 0o755 });
+      await fs.chmod(hook, 0o755);
 
-      expect((await installHistoryObserverHook(ctx, { observerCommand })).state).toBe('installed');
+      expect((await installHistoryObserverHook(ctx)).state).toBe('installed');
       expect((await fs.readFile(hook, 'utf8'))).toContain('gdx-history-reference-transaction-v1');
+      await execa(shell, [hook, 'prepared'], { cwd: paths.commonGitDir, input: 'prepared\n' });
+      await execa(shell, [hook, 'committed'], { cwd: paths.commonGitDir, input: 'committed\n' });
+      expect(await fs.readFile(path.join(paths.commonGitDir, 'chained-phases'), 'utf8')).toBe(
+         'prepared\ncommitted\n'
+      );
+      expect(await fs.readFile(path.join(paths.commonGitDir, 'chained-input'), 'utf8')).toBe(
+         'prepared\ncommitted\n'
+      );
       expect((await uninstallHistoryObserverHook(ctx)).state).toBe('not-installed');
       expect(await fs.readFile(hook)).toEqual(original);
    });
@@ -74,9 +63,7 @@ describe('history reference-transaction observer', async () => {
       await fs.writeFile(fakeGit, "console.log('git version 2.28.0')\n");
       const oldCtx = { ...ctx, git$: [process.execPath, fakeGit] };
 
-      await expect(installHistoryObserverHook(oldCtx, { observerCommand })).rejects.toThrow(
-         'does not support'
-      );
+      await expect(installHistoryObserverHook(oldCtx)).rejects.toThrow('does not support');
       expect(
          await fs.stat(paths.historyDir).then(() => true).catch(() => false)
       ).toBeFalse();
@@ -88,26 +75,53 @@ describe('history reference-transaction observer', async () => {
       ).toBeFalse();
    });
 
-   it('imports one direct atomic ref batch and avoids duplicate routed events', async () => {
+   it('filters non-committed phases in shell and atomically spools committed stdin', async () => {
       await reset();
-      await installHistoryObserverHook(ctx, { observerCommand });
+      const status = await installHistoryObserverHook(ctx);
+      const paths = await resolveHistoryStoragePaths(ctx.git$);
+      const spool = path.join(paths.spoolDir, 'reference-transaction-spool');
+      const input = `${'0'.repeat(40)} ${'1'.repeat(40)} refs/heads/direct\n`;
+      const wrapper = await fs.readFile(status.hookPath!, 'utf8');
+      const runPhase = (phase: string) =>
+         execa(shell, [status.hookPath!, phase], { input });
 
-      const gitCommand = Array.isArray(ctx.git$) ? ctx.git$ : [ctx.git$];
+      expect(wrapper).not.toContain('__hook-entry');
+      expect(wrapper).not.toContain(process.execPath);
+      await runPhase('prepared');
+      await runPhase('aborted');
+      expect(await fs.readdir(spool)).toEqual([]);
+
+      await runPhase('committed');
+      const files = await fs.readdir(spool);
+      expect(files).toHaveLength(1);
+      expect(await fs.readFile(path.join(spool, files[0]), 'utf8')).toBe(input);
+   });
+
+   it('imports one direct atomic ref batch and keeps routed Git out of the spool', async () => {
+      await reset();
+      await installHistoryObserverHook(ctx);
+
       await execa(gitCommand[0], [...gitCommand.slice(1), 'branch', 'direct-observed', 'HEAD'], {
          env: { GDX_HISTORY_GUARD: undefined },
       });
-      const pending = await readHistoryObserverSpool(ctx);
+      const paths = await resolveHistoryStoragePaths(ctx.git$);
+      const pending = await fs.readdir(
+         path.join(paths.spoolDir, 'reference-transaction-spool')
+      );
       expect(pending).toHaveLength(1);
-      expect(pending[0].source).toBe('git-hook');
-      expect(pending[0].capability).toBe('exact');
+      expect(pending[0]).toEndWith('.raw');
+      expect((await readHistoryTimeline(ctx.git$)).entries).toHaveLength(0);
 
       expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
       expect((await readHistoryTimeline(ctx.git$)).entries).toHaveLength(1);
-      expect(await readHistoryObserverSpool(ctx)).toHaveLength(0);
+      expect(
+         await fs.readdir(path.join(paths.spoolDir, 'reference-transaction-spool'))
+      ).toHaveLength(0);
 
       expect(await dispatch(createGdxContext(tmpDir, ['branch', 'routed-once']))).toBe(0);
-      expect((await readHistoryTimeline(ctx.git$)).entries).toHaveLength(2);
-      expect(await readHistoryObserverSpool(ctx)).toHaveLength(0);
+      expect(
+         await fs.readdir(path.join(paths.spoolDir, 'reference-transaction-spool'))
+      ).toHaveLength(0);
    });
 
    it('reconciles newer reflog entries only when history is directly invoked', async () => {
@@ -134,16 +148,14 @@ describe('history reference-transaction observer', async () => {
       await fs.mkdir(custom, { recursive: true });
       await $`${ctx.git$} config core.hooksPath ${custom}`;
 
-      await expect(installHistoryObserverHook(ctx, { observerCommand })).rejects.toThrow(
-         'Manually chain'
-      );
+      await expect(installHistoryObserverHook(ctx)).rejects.toThrow('Manually chain');
       expect(await fs.readdir(custom)).toEqual([]);
       expect((await getHistoryObserverHookStatus(ctx)).state).toBe('custom-hooks-path');
    });
 
    it('refuses to remove an externally modified managed hook', async () => {
       await reset();
-      const status = await installHistoryObserverHook(ctx, { observerCommand });
+      const status = await installHistoryObserverHook(ctx);
       await fs.appendFile(status.hookPath!, '# modified\n');
 
       await expect(uninstallHistoryObserverHook(ctx)).rejects.toThrow('externally modified');

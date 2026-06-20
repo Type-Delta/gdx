@@ -221,6 +221,19 @@ export interface HistoryFingerprints {
    after: HistoryRepositoryFingerprint;
 }
 
+/** Minimal Git-native operation used to move between transaction boundaries. */
+export type HistoryInverseRecipe =
+   | { kind: 'head-soft'; before: HistoryHeadState; after: HistoryHeadState }
+   | { kind: 'switch'; before: HistoryHeadState; after: HistoryHeadState }
+   | { kind: 'refs'; changes: HistoryRefChange[] }
+   | {
+        kind: 'raw-index';
+        before: HistoryArtifactReference | null;
+        after: HistoryArtifactReference | null;
+        beforeChecksum: string;
+        afterChecksum: string;
+     };
+
 /** Durable description of one reversible repository transaction. */
 export interface HistoryTransactionManifest {
    schemaVersion: HistorySchemaVersion;
@@ -236,6 +249,8 @@ export interface HistoryTransactionManifest {
    paths?: HistoryPathChange[];
    control?: HistoryControlChange;
    fingerprints: HistoryFingerprints;
+   /** Action-specific best-effort inverse. Absent on audit/reflog records. */
+   recipe?: HistoryInverseRecipe;
    undoUnavailableReason?: string;
 }
 

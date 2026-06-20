@@ -222,7 +222,7 @@ describe('history storage', async () => {
       expect(await readHistoryTransactionManifest(git$, 'tx_third')).toBeNull();
    });
 
-   it('prunes oldest entries and keeps the cursor valid', async () => {
+   it('prunes bounded history and removes discarded redo files', async () => {
       await resetHistory();
       await recordHistoryTransaction(git$, transaction('tx_one'), { maxEntries: 2 });
       await recordHistoryTransaction(git$, transaction('tx_two'), { maxEntries: 2 });
@@ -239,6 +239,7 @@ describe('history storage', async () => {
       const discarded = await discardHistoryRedoTail(git$);
       expect(discarded.discardedIds).toEqual(['tx_three']);
       expect(discarded.timeline).toMatchObject({ entries: ['tx_two'], cursor: 1 });
+      expect(await readHistoryTransactionManifest(git$, 'tx_three')).toBeNull();
    });
 
    it('serializes concurrent writers without losing transactions', async () => {

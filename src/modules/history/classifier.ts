@@ -1,9 +1,4 @@
 /**
- * Repository state that can be captured around a reversible action.
- */
-export type HistoryDomain = 'refs' | 'index' | 'worktree' | 'untracked' | 'stash' | 'config';
-
-/**
  * How the history dispatcher should treat an invocation.
  */
 export type HistoryDisposition = 'no-history' | 'reversible' | 'audit-only' | 'unknown';
@@ -11,18 +6,12 @@ export type HistoryDisposition = 'no-history' | 'reversible' | 'audit-only' | 'u
 /**
  * State capture requested for a reversible action.
  */
-export interface ReversibleCapturePlan {
-   /** State domains that can be changed by the action. */
-   domains: HistoryDomain[];
-   /** Explicit pathspecs, or an empty array when the action is repository-wide. */
-   pathspecs: string[];
-   /** User-supplied flags that permit existing state to be overwritten. */
-   overwriteFlags: string[];
-   /** Whether the action can overwrite or discard existing state. */
-   overwrites: boolean;
-   /** Whether sequencer/merge and symbolic-HEAD state must be captured. */
-   needsControlState: boolean;
-}
+export type ReversibleCapturePlan =
+   | { kind: 'head-soft' }
+   | { kind: 'switch' }
+   | { kind: 'refs'; refs: readonly string[] }
+   | { kind: 'raw-index'; redo: boolean }
+   | { kind: 'audit' };
 
 /**
  * Pure classification result consumed by dispatch history capture.
@@ -260,22 +249,6 @@ const SENSITIVE_CONFIG_KEY =
    /(?:credential|password|passwd|passphrase|token|secret|api[-_]?key|private[-_]?key|extraheader|authorization|oauth)/i;
 const REDACTED = '[REDACTED]';
 
-const PATH_OPTION_VALUES = new Set([
-   '-m',
-   '--message',
-   '-F',
-   '--file',
-   '--author',
-   '--date',
-   '--cleanup',
-   '--fixup',
-   '--squash',
-   '--pathspec-from-file',
-   '--source',
-   '--conflict',
-   '--recurse-submodules',
-]);
-
 /**
  * Returns the unique progressive match used by top-level dispatch.
  * @param input - User-provided route token.
@@ -434,90 +407,41 @@ function normalizeSubcommand(
 }
 
 /**
- * Extracts explicit pathspecs while skipping options with values.
- * @param argv - Full command argv.
- * @param start - First possible pathspec index.
- * @param includePositionals - Whether pre-terminator positionals are pathspecs.
- * @returns Extracted pathspecs in user order.
- */
-function extractPathspecs(
-   argv: readonly string[],
-   start: number,
-   includePositionals: boolean
-): string[] {
-   const separator = argv.indexOf('--', start);
-   if (separator >= 0) return argv.slice(separator + 1);
-   if (!includePositionals) return [];
-
-   const pathspecs: string[] = [];
-   for (let index = start; index < argv.length; index++) {
-      const argument = argv[index];
-      if (PATH_OPTION_VALUES.has(argument)) {
-         index++;
-      } else if (!argument.startsWith('-')) {
-         pathspecs.push(argument);
-      }
-   }
-   return pathspecs;
-}
-
-/**
- * Collects canonical overwrite flags relevant to one routed action.
- * @param route - Canonical route.
- * @param argv - Raw argv.
- * @returns Deduplicated canonical overwrite flags.
- */
-function getOverwriteFlags(route: string, argv: readonly string[]): string[] {
-   const flags: string[] = [];
-   const add = (flag: string): void => {
-      if (!flags.includes(flag)) flags.push(flag);
-   };
-
-   for (const argument of argv.slice(1)) {
-      if (argument === '--force' || argument === '-f') add('--force');
-      if (argument === '--hard' || (route === 'reset' && argument === '-h')) add('--hard');
-      if (argument === '--discard-changes') add('--discard-changes');
-      if (argument === '--overwrite-ignore') add('--overwrite-ignore');
-      if (argument === '-B') add('-B');
-      if (argument === '-C' && route === 'switch') add('-C');
-      if (argument === '-D' && route === 'branch') add('-D');
-      if (argument === '--amend' && route === 'commit') add('--amend');
-      if (/^-[^-]*f/.test(argument) && route === 'clean') add('--force');
-      if (/^-[^-]*x/.test(argument) && route === 'clean') add('-x');
-      if (/^-[^-]*X/.test(argument) && route === 'clean') add('-X');
-   }
-   return flags;
-}
-
-/**
  * Creates the common reversible result payload.
  * @param base - Result fields shared by every disposition.
  * @param action - Stable action identifier.
- * @param domains - Affected repository domains.
- * @param pathspecs - Explicit targeted paths.
- * @param options - Capture behavior overrides.
+ * @param capture - Minimal action-specific inverse inputs.
  * @returns Reversible classification.
  */
 function reversible(
    base: Omit<HistoryActionClassification, 'disposition' | 'action' | 'capture'>,
    action: string,
-   domains: HistoryDomain[],
-   pathspecs: string[] = [],
-   options: { overwriteFlags?: string[]; overwrites?: boolean; control?: boolean } = {}
+   capture: ReversibleCapturePlan
 ): HistoryActionClassification {
-   const overwriteFlags = options.overwriteFlags || [];
    return {
       ...base,
       disposition: 'reversible',
       action,
-      capture: {
-         domains,
-         pathspecs,
-         overwriteFlags,
-         overwrites: options.overwrites ?? overwriteFlags.length > 0,
-         needsControlState: options.control ?? false,
-      },
+      capture,
    };
+}
+
+/** Resolves direct branch refs for simple create/delete/move forms. */
+function branchRefs(argv: readonly string[]): string[] {
+   const names = argv.slice(1).filter((value) => !value.startsWith('-'));
+   if (!names.length) return [];
+   const selected = hasOption(argv, '--delete', '-d', '-D') ? names : names.slice(0, 1);
+   return [...new Set(selected.map((name) => `refs/heads/${name}`))];
+}
+
+/** Resolves the tag directly named by create/delete/force forms. */
+function tagRefs(argv: readonly string[]): string[] {
+   const names = argv.slice(1).filter((value) => !value.startsWith('-'));
+   if (hasOption(argv, '--delete', '-d')) {
+      return [...new Set(names.map((name) => `refs/tags/${name}`))];
+   }
+   if (names[0] === 'move' || names[0] === 'mv') return [];
+   return names[0] ? [`refs/tags/${names[0]}`] : [];
 }
 
 /**
@@ -635,211 +559,93 @@ export function classifyHistoryAction(argv: readonly string[]): HistoryActionCla
    if (!route) return withoutCapture(base, 'unknown', null);
    if (ALWAYS_READ_ONLY.has(route)) return withoutCapture(base, 'no-history', route);
 
+   // ponytail: only cheap, identifiable inverses are reversible; the journal audits the rest.
    if (route === 'commit') {
       if (hasOption(argv, '--dry-run')) return withoutCapture(base, 'no-history', 'commit:dry-run');
-      const amend = hasOption(argv, '--amend');
-      return reversible(
-         base,
-         amend ? 'commit:amend' : 'commit',
-         ['refs', 'index'],
-         extractPathspecs(argv, 1, true),
-         { overwriteFlags: amend ? ['--amend'] : [], overwrites: amend, control: true }
-      );
+      return reversible(base, hasOption(argv, '--amend') ? 'commit:amend' : 'commit', {
+         kind: 'head-soft',
+      });
    }
-
    if (route === 'branch') {
       if (isReadOnlyBranch(argv)) return withoutCapture(base, 'no-history', 'branch:list');
-      const overwriteFlags = getOverwriteFlags(route, argv);
-      const changesConfig = hasOption(
-         argv,
-         '--set-upstream-to',
-         '--unset-upstream',
-         '--edit-description'
-      );
-      return reversible(base, 'branch', changesConfig ? ['refs', 'config'] : ['refs'], [], {
-         overwriteFlags,
-      });
+      if (
+         hasOption(
+            argv,
+            '--set-upstream-to',
+            '--unset-upstream',
+            '--edit-description',
+            '--move',
+            '-m',
+            '-M',
+            '--copy',
+            '-c',
+            '-C'
+         )
+      ) {
+         return withoutCapture(base, 'audit-only', 'branch');
+      }
+      const refs = branchRefs(argv);
+      return refs.length
+         ? reversible(base, 'branch', { kind: 'refs', refs })
+         : withoutCapture(base, 'audit-only', 'branch');
    }
-
    if (route === 'tag') {
-      const subcommand = normalizeSubcommand(argv[1], ['move', 'mv'], true);
-      if (isReadOnlyTag(argv) && !subcommand) return withoutCapture(base, 'no-history', 'tag:list');
-      const overwriteFlags = getOverwriteFlags(route, argv);
-      return reversible(base, subcommand ? 'tag:move' : 'tag', ['refs'], [], {
-         overwriteFlags,
-         overwrites: overwriteFlags.length > 0 || subcommand != null || argv.includes('-d'),
-      });
+      if (isReadOnlyTag(argv)) return withoutCapture(base, 'no-history', 'tag:list');
+      const refs = tagRefs(argv);
+      return refs.length
+         ? reversible(base, 'tag', { kind: 'refs', refs })
+         : withoutCapture(base, 'audit-only', 'tag');
    }
-
-   if (route === 'fetch') {
-      if (hasOption(argv, '--dry-run')) return withoutCapture(base, 'no-history', 'fetch:dry-run');
-      return reversible(base, 'fetch', ['refs'], [], {
-         overwriteFlags: getOverwriteFlags(route, argv),
-         control: true,
-      });
-   }
-
    if (route === 'reset') {
-      const pathspecs = extractPathspecs(argv, 1, false);
-      const mode =
-         hasOption(argv, '--hard') || argv.includes('-h')
-            ? 'hard'
-            : hasOption(argv, '--soft') || argv.includes('-s')
-              ? 'soft'
-              : hasOption(argv, '--merge')
-                ? 'merge'
-                : hasOption(argv, '--keep')
-                  ? 'keep'
-                  : 'mixed';
-      const domains: HistoryDomain[] = pathspecs.length
-         ? ['index']
-         : mode === 'soft'
-           ? ['refs']
-           : mode === 'hard' || mode === 'merge' || mode === 'keep'
-             ? ['refs', 'index', 'worktree']
-             : ['refs', 'index'];
-      const overwriteFlags = getOverwriteFlags(route, argv);
-      return reversible(
-         base,
-         pathspecs.length ? 'reset:paths' : `reset:${mode}`,
-         domains,
-         pathspecs,
-         {
-            overwriteFlags,
-            overwrites: mode !== 'soft' || pathspecs.length > 0,
-            control: !pathspecs.length,
-         }
-      );
+      const isSoft = hasOption(argv, '--soft') || argv.includes('-s');
+      const hasPaths = argv.includes('--');
+      return isSoft && !hasPaths
+         ? reversible(base, 'reset:soft', { kind: 'head-soft' })
+         : withoutCapture(base, 'audit-only', 'reset');
    }
-
    if (route === 'add' || route === 'stage') {
       if (hasOption(argv, '--dry-run')) return withoutCapture(base, 'no-history', 'add:dry-run');
-      return reversible(base, 'add', ['index'], extractPathspecs(argv, 1, true));
+      return reversible(base, 'add', { kind: 'raw-index', redo: true });
    }
-
-   if (route === 'rm') {
-      if (hasOption(argv, '--dry-run')) return withoutCapture(base, 'no-history', 'rm:dry-run');
-      const cached = hasOption(argv, '--cached');
-      return reversible(
-         base,
-         'rm',
-         cached ? ['index'] : ['index', 'worktree'],
-         extractPathspecs(argv, 1, true),
-         {
-            overwriteFlags: getOverwriteFlags(route, argv),
-            overwrites: true,
-         }
+   if (route === 'checkout') return withoutCapture(base, 'audit-only', 'checkout');
+   if (route === 'switch') {
+      const destructive = hasOption(
+          argv,
+          '--force',
+          '-f',
+         '--discard-changes',
+         '--orphan',
+         '--create',
+         '--force-create',
+          '-b',
+          '-B',
+          '-c',
+          '-C'
       );
+      return destructive
+         ? withoutCapture(base, 'audit-only', 'switch')
+         : reversible(base, 'switch', { kind: 'switch' });
    }
-
-   if (route === 'restore') {
-      const staged = hasOption(argv, '--staged', '-S');
-      const worktree = hasOption(argv, '--worktree', '-W') || !staged;
-      const domains: HistoryDomain[] = [];
-      if (staged) domains.push('index');
-      if (worktree) domains.push('worktree');
-      return reversible(base, 'restore', domains, extractPathspecs(argv, 1, true), {
-         overwrites: true,
-      });
-   }
-
-   if (route === 'checkout' || route === 'switch') {
-      const pathspecs = route === 'checkout' ? extractPathspecs(argv, 1, false) : [];
-      const overwriteFlags = getOverwriteFlags(route, argv);
-      return reversible(
-         base,
-         pathspecs.length ? 'checkout:paths' : route,
-         pathspecs.length ? ['worktree'] : ['refs', 'index', 'worktree'],
-         pathspecs,
-         { overwriteFlags, control: !pathspecs.length }
-      );
-   }
-
-   if (route === 'merge' || route === 'rebase' || route === 'cherry-pick' || route === 'revert') {
-      if (hasOption(argv, '--quit')) {
-         return reversible(base, `${route}:quit`, [], [], { control: true });
-      }
-      const mode = hasOption(argv, '--abort')
-         ? 'abort'
-         : hasOption(argv, '--continue')
-           ? 'continue'
-           : hasOption(argv, '--skip')
-             ? 'skip'
-             : null;
-      return reversible(
-         base,
-         mode ? `${route}:${mode}` : route,
-         ['refs', 'index', 'worktree'],
-         [],
-         {
-            overwriteFlags: getOverwriteFlags(route, argv),
-            overwrites: mode === 'abort' || mode === 'skip',
-            control: true,
-         }
-      );
-   }
-
    if (route === 'stash') {
-      const subcommand =
-         normalizeSubcommand(
-            argv[1],
-            ['apply', 'pop', 'list', 'drop', 'clear', 'show', 'push', 'save', 'create', 'store'],
-            true
-         ) || 'push';
-      if (subcommand === 'drop' && argv[2] === 'pardon') {
+      if (argv[1] === 'drop' && argv[2] === 'pardon') {
          return withoutCapture(base, 'no-history', 'stash:drop:pardon');
       }
-      if (subcommand === 'list' || subcommand === 'show' || subcommand === 'create') {
+      if (normalizeSubcommand(argv[1], ['drop']) === 'drop') {
+         return reversible(base, 'stash:drop', { kind: 'refs', refs: ['refs/stash'] });
+      }
+      const subcommand = normalizeSubcommand(argv[1], ['list', 'show', 'create']) ?? 'push';
+      if (['list', 'show', 'create'].includes(subcommand)) {
          return withoutCapture(base, 'no-history', `stash:${subcommand}`);
       }
-      const pathStart = argv[1] && !argv[1].startsWith('-') ? 2 : 1;
-      const pathspecs =
-         subcommand === 'push' || subcommand === 'save'
-            ? extractPathspecs(argv, pathStart, false)
-            : [];
-      const domains: HistoryDomain[] = ['stash'];
-      if (
-         subcommand === 'push' ||
-         subcommand === 'save' ||
-         subcommand === 'apply' ||
-         subcommand === 'pop'
-      ) {
-         domains.push('index', 'worktree');
-      }
-      if (
-         hasOption(argv, '--include-untracked', '--all') ||
-         argv.includes('-u') ||
-         argv.includes('-a')
-      ) {
-         domains.push('untracked');
-      }
-      return reversible(base, `stash:${subcommand}`, domains, pathspecs, {
-         overwrites: subcommand === 'clear' || subcommand === 'drop' || subcommand === 'pop',
-      });
    }
-
-   if (route === 'clean') {
-      if (hasOption(argv, '--dry-run') || argv.includes('-n')) {
-         return withoutCapture(base, 'no-history', 'clean:dry-run');
-      }
-      return reversible(base, 'clean', ['worktree', 'untracked'], extractPathspecs(argv, 1, true), {
-         overwriteFlags: getOverwriteFlags(route, argv),
-         overwrites: true,
-      });
+   if (route === 'clear' && normalizeSubcommand(argv[1], ['list']) === 'list') {
+      return withoutCapture(base, 'no-history', 'clear:list');
    }
-
-   if (route === 'clear') {
-      const subcommand = normalizeSubcommand(argv[1], ['list', 'pardon']);
-      if (subcommand === 'list') return withoutCapture(base, 'no-history', 'clear:list');
-      return reversible(
-         base,
-         subcommand === 'pardon' ? 'clear:pardon' : 'clear',
-         ['index', 'worktree', 'untracked'],
-         [],
-         {
-            overwrites: true,
-         }
-      );
+   if (
+      ['fetch', 'rm', 'restore', 'merge', 'rebase', 'cherry-pick', 'revert', 'stash', 'clean', 'clear'].includes(route)
+   ) {
+      const dryRun = hasOption(argv, '--dry-run') || (route === 'clean' && argv.includes('-n'));
+      return withoutCapture(base, dryRun ? 'no-history' : 'audit-only', route);
    }
 
    if (route === 'remote') {

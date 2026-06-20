@@ -32,7 +32,6 @@ import {
    HistoryTransactionManifest,
    HistoryWorktreeRegistration,
 } from '@/modules/history/types';
-import { createWorktreeSnapshot } from '@/modules/snap';
 import Logger from '@/utils/logger';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
@@ -117,7 +116,7 @@ async function reconcileDirectHistory(ctx: GdxContext): Promise<void> {
       const config = await getConfig();
       await importHistoryObserverSpool(
          ctx,
-         config.get<number>('history.maxEntries') ?? DEFAULT_HISTORY_MAX_ENTRIES
+         config.get<number>('history.maxEntries', DEFAULT_HISTORY_MAX_ENTRIES)
       );
    } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -200,7 +199,7 @@ async function collectListEntries(
 ): Promise<HistoryListEntry[]> {
    if (!allWorktrees) return await entriesForWorktree(ctx, 'current');
 
-   const state = await readHistoryRepositoryState(ctx.git$);
+   const state = await readHistoryRepositoryState(ctx.git$, ctx.repository);
    if (!state || Object.keys(state.worktrees).length === 0) {
       return await entriesForWorktree(ctx, 'current');
    }
@@ -228,8 +227,8 @@ async function collectListEntries(
 /** Loads one worktree timeline and attaches stable all-scope relative selectors. */
 async function entriesForWorktree(ctx: GdxContext, label: string): Promise<HistoryListEntry[]> {
    const [timeline, manifests] = await Promise.all([
-      readHistoryTimeline(ctx.git$),
-      listHistoryTransactions(ctx.git$),
+      readHistoryTimeline(ctx.git$, ctx.repository),
+      listHistoryTransactions(ctx.git$, ctx.repository),
    ]);
    const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
    return timeline.entries.flatMap((id, index) => {
@@ -250,7 +249,15 @@ async function entriesForWorktree(ctx: GdxContext, label: string): Promise<Histo
 function contextForWorktree(ctx: GdxContext, worktree: HistoryWorktreeRegistration): GdxContext {
    const git$ = Array.isArray(ctx.git$) ? [...ctx.git$] : [ctx.git$];
    git$.push('-C', worktree.root);
-   return { git$, args: ctx.args };
+   return {
+      git$,
+      args: ctx.args,
+      repository: {
+         root: worktree.root,
+         gitDir: worktree.gitDir,
+         commonGitDir: worktree.commonGitDir,
+      },
+   };
 }
 
 /** Displays all useful persisted fields for one selected transaction. */
@@ -258,8 +265,11 @@ async function showCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
    const positionals = args.slice(2);
    if (positionals.length > 1) throw new Error('Usage: gdx history show [id|~index]');
    const selector = positionals[0] ?? '~0';
-   const manifest = await resolveHistoryTransaction(ctx.git$, selector, { scope: 'all' });
-   const timeline = await readHistoryTimeline(ctx.git$);
+   const manifest = await resolveHistoryTransaction(ctx.git$, selector, {
+      scope: 'all',
+      repository: ctx.repository,
+   });
+   const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
    const index = timeline.entries.indexOf(manifest.id);
 
    quickPrint(`${SGR.bright}History transaction${SGR.reset}`);
@@ -293,13 +303,12 @@ async function moveCommand(
    args: ArgsSet,
    direction: 'undo' | 'redo'
 ): Promise<number> {
-   const force = args.popOption('--force', 2) !== null;
    const positionals = args.slice(2);
    if (positionals.length > 1) {
-      throw new Error(`Usage: gdx history ${direction} [count] [--force]`);
+      throw new Error(`Usage: gdx history ${direction} [count]`);
    }
    const count = positionals.length ? parsePositiveInteger(positionals[0], 'count') : 1;
-   const timeline = await readHistoryTimeline(ctx.git$);
+   const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
    const ids = requestedMoveIds(timeline, direction, count);
    if (!ids.length) {
       quickPrint(`${SGR.yellow}Nothing to ${direction}.${SGR.reset}`);
@@ -319,11 +328,10 @@ async function moveCommand(
       return 1;
    }
 
-   if (force) await createForceSnapshot(ctx);
    const completed =
       direction === 'undo'
-         ? await undoHistory(ctx, { count, force })
-         : await redoHistory(ctx, { count, force });
+         ? await undoHistory(ctx, { count })
+         : await redoHistory(ctx, { count });
 
    const completedIds = completed.map((manifest) => manifest.id).join(', ');
    quickPrint(
@@ -339,7 +347,7 @@ async function findUnavailableRestoration(
    ids: string[]
 ): Promise<HistoryTransactionManifest | null> {
    for (const id of ids) {
-      const manifest = await readHistoryTransactionManifest(ctx.git$, id);
+      const manifest = await readHistoryTransactionManifest(ctx.git$, id, ctx.repository);
       if (!manifest) throw new Error(`History manifest is missing: ${id}`);
       if (manifest.capability === 'audit-only' || manifest.undoUnavailableReason) return manifest;
    }
@@ -357,20 +365,6 @@ function requestedMoveIds(
    return timeline.entries.slice(Math.max(0, timeline.cursor - count), timeline.cursor).reverse();
 }
 
-/** Creates at most one mandatory safety snapshot before forced divergent restoration. */
-async function createForceSnapshot(ctx: GdxContext): Promise<void> {
-   try {
-      const snapshot = await createWorktreeSnapshot(ctx.git$);
-      quickPrint(`${SGR.green}Safety snapshot created: ${snapshot.hash}${SGR.reset}`);
-   } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(
-         `Required safety snapshot failed; history restoration was not attempted: ${reason}`,
-         { cause: error }
-      );
-   }
-}
-
 /** Prints actionable stale-state guidance for a refused restoration. */
 function printDivergence(divergence: HistoryDivergence): void {
    const surfaces = divergence.surfaces.join(', ');
@@ -381,8 +375,7 @@ function printDivergence(divergence: HistoryDivergence): void {
    );
    quickPrint(
       `${SGR.yellow}Inspect with ${EXECUTABLE_NAME} history show ${divergence.transaction.id}. ` +
-         `If the current state should be preserved, retry with ${EXECUTABLE_NAME} history ` +
-         `${divergence.direction} --force; GDX will create a safety snapshot first.${SGR.reset}`
+         `Undo/redo left the history cursor unchanged.${SGR.reset}`
    );
 }
 
@@ -419,17 +412,12 @@ async function pruneCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
    assertNoArguments(args, 2, 'prune');
    const config = await getConfig();
    const maxEntries = config.get<number>('history.maxEntries', DEFAULT_HISTORY_MAX_ENTRIES);
-   const result = await pruneHistory(ctx.git$, maxEntries);
-   if (!result.prunedIds.length) {
-      quickPrint(
-         `${SGR.cyan}History already satisfies the ${maxEntries}-transaction retention limit.${SGR.reset}`
-      );
-   } else {
-      quickPrint(
-         `${SGR.green}Pruned ${result.prunedIds.length} history ` +
-            `${result.prunedIds.length === 1 ? 'transaction' : 'transactions'}.${SGR.reset}`
-      );
-   }
+   const result = await pruneHistory(ctx.git$, maxEntries, ctx.repository);
+   quickPrint(
+      result.prunedIds.length
+         ? `${SGR.green}Pruned ${result.prunedIds.length} history transaction${result.prunedIds.length === 1 ? '' : 's'}.${SGR.reset}`
+         : `${SGR.cyan}History already satisfies the ${maxEntries}-transaction retention limit.${SGR.reset}`
+   );
    return 0;
 }
 
@@ -491,9 +479,9 @@ export const help = {
          transaction ID and a relative selector such as ~0. Use --all-worktrees to include every
          registered linked worktree and --limit <n> to change the 20-entry display limit.
 
-         Undo and redo refuse stale repository state. --force permits the restore only after GDX
-         successfully creates and prints a worktree safety snapshot. Hook management installs a
-         repository-local reference-transaction observer while preserving any existing hook.
+         Undo and redo refuse stale repository state without moving the history cursor. Hook
+         management installs a repository-local reference-transaction observer while preserving
+         any existing hook.
          `,
          100,
          { firstIndent: '  ', indent: '  ', mode: 'softboundary' }
@@ -504,8 +492,8 @@ export const help = {
          litedent`
          ${SGR.cyan}${EXECUTABLE_NAME} history [list] ${SGR.dim}[--limit <n>] [--all-worktrees]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} history show ${SGR.dim}[id|~index]${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} history undo ${SGR.dim}[count] [--force]${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} history redo ${SGR.dim}[count] [--force]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} history undo ${SGR.dim}[count]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} history redo ${SGR.dim}[count]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} history hook|unhook|status|prune${SGR.reset}
          `,
          100,
@@ -520,12 +508,8 @@ export const structure = {
          $allOf: ['--limit=', '--all-worktrees'],
       },
       show: {},
-      undo: {
-         $allOf: ['--force'],
-      },
-      redo: {
-         $allOf: ['--force'],
-      },
+      undo: {},
+      redo: {},
       hook: {},
       unhook: {},
       status: {},

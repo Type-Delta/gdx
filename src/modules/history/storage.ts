@@ -40,7 +40,7 @@ export interface HistoryLockOptions {
    retryMs?: number;
 }
 
-/** Retention options used while recording a transaction. */
+/** Recording options for bounded history and pre-resolved repository paths. */
 export interface HistoryRecordOptions {
    maxEntries?: number;
    /** Pre-resolved startup paths avoid audit-only Git/working-tree inspection. */
@@ -50,6 +50,7 @@ export interface HistoryRecordOptions {
 /** Options for resolving relative timeline selectors. */
 export interface HistorySelectorOptions {
    scope?: HistorySelectorScope;
+   repository?: GdxRepositoryLocation;
 }
 
 /** Error raised for malformed or incompatible persisted history data. */
@@ -214,9 +215,12 @@ export const ensureHistoryStorage = initializeHistoryStorage;
  * @returns Persisted state, or null when history has not been initialized.
  */
 export async function readHistoryRepositoryState(
-   git$: GdxContext['git$']
+   git$: GdxContext['git$'],
+   repository?: GdxRepositoryLocation
 ): Promise<HistoryRepositoryState | null> {
-   const paths = await resolveHistoryStoragePaths(git$);
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
    return await readRepositoryStateFile(paths.stateFile);
 }
 
@@ -228,8 +232,13 @@ export const readHistoryState = readHistoryRepositoryState;
  * @param git$ - Git executable/context from GdxContext.
  * @returns Persisted timeline, or an in-memory empty timeline when absent.
  */
-export async function readHistoryTimeline(git$: GdxContext['git$']): Promise<HistoryTimeline> {
-   const paths = await resolveHistoryStoragePaths(git$);
+export async function readHistoryTimeline(
+   git$: GdxContext['git$'],
+   repository?: GdxRepositoryLocation
+): Promise<HistoryTimeline> {
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
    return (
       (await readTimelineFile(paths.timelineFile, paths.id)) ??
       createEmptyTimeline(paths.id, new Date().toISOString())
@@ -261,10 +270,10 @@ export function createHistoryTransactionId(): HistoryTransactionId {
 }
 
 /**
- * Records a transaction, discarding the redo tail and enforcing retention.
+ * Records a transaction and discards the redo tail from the active timeline.
  * @param git$ - Git executable/context from GdxContext.
  * @param input - Strict transaction data to persist.
- * @param options - Retention options.
+ * @param options - Pre-resolved repository paths and legacy options.
  * @returns Manifest, resulting timeline, and discarded IDs.
  */
 export async function recordHistoryTransaction(
@@ -319,8 +328,6 @@ export async function recordHistoryTransaction(
       const state = registerWorktree(existingState ?? createEmptyRepositoryState(now), paths, now);
       await atomicWriteJson(paths.stateFile, state);
       await removeTransactionFiles(paths, [...discardedRedoIds, ...prunedIds]);
-      await removeTransactionCapsules(git$, [...discardedRedoIds, ...prunedIds]);
-
       return { manifest, timeline: nextTimeline, discardedRedoIds, prunedIds };
    });
 }
@@ -360,10 +367,13 @@ export const writeHistoryTransaction = writeHistoryTransactionManifest;
  */
 export async function readHistoryTransactionManifest(
    git$: GdxContext['git$'],
-   id: HistoryTransactionId
+   id: HistoryTransactionId,
+   repository?: GdxRepositoryLocation
 ): Promise<HistoryTransactionManifest | null> {
    assertSafeId(id, 'transaction');
-   const paths = await resolveHistoryStoragePaths(git$);
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
    const manifest = await readJsonFile<HistoryTransactionManifest>(transactionFile(paths, id));
    if (!manifest) return null;
    assertTransactionManifest(manifest, paths.id);
@@ -379,11 +389,12 @@ export const readHistoryTransaction = readHistoryTransactionManifest;
  * @returns Existing transaction manifests from oldest to newest.
  */
 export async function listHistoryTransactions(
-   git$: GdxContext['git$']
+   git$: GdxContext['git$'],
+   repository?: GdxRepositoryLocation
 ): Promise<HistoryTransactionManifest[]> {
-   const timeline = await readHistoryTimeline(git$);
+   const timeline = await readHistoryTimeline(git$, repository);
    const manifests = await Promise.all(
-      timeline.entries.map((id) => readHistoryTransactionManifest(git$, id))
+      timeline.entries.map((id) => readHistoryTransactionManifest(git$, id, repository))
    );
    return manifests.filter((manifest): manifest is HistoryTransactionManifest => manifest !== null);
 }
@@ -396,9 +407,12 @@ export async function listHistoryTransactions(
  */
 export async function setHistoryCursor(
    git$: GdxContext['git$'],
-   cursor: number
+   cursor: number,
+   repository?: GdxRepositoryLocation
 ): Promise<HistoryTimeline> {
-   const paths = await resolveHistoryStoragePaths(git$);
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
    return await withResolvedHistoryLock(paths, async () => {
       const timeline =
          (await readTimelineFile(paths.timelineFile, paths.id)) ??
@@ -440,7 +454,7 @@ export async function moveHistoryCursor(
 }
 
 /**
- * Discards the current worktree's redo tail and its unreferenced manifests.
+ * Discards the current worktree's redo tail and obsolete transaction files.
  * @param git$ - Git executable/context from GdxContext.
  * @returns Discarded IDs and updated timeline.
  */
@@ -464,7 +478,6 @@ export async function discardHistoryRedoTail(git$: GdxContext['git$']): Promise<
       };
       await atomicWriteJson(paths.timelineFile, nextTimeline);
       await removeTransactionFiles(paths, discardedIds);
-      await removeTransactionCapsules(git$, discardedIds);
       return { discardedIds, timeline: nextTimeline };
    });
 }
@@ -473,25 +486,27 @@ export async function discardHistoryRedoTail(git$: GdxContext['git$']): Promise<
 export const discardRedoTail = discardHistoryRedoTail;
 
 /**
- * Prunes oldest transactions to the requested retention limit.
+ * Prunes the oldest entries to the requested retention limit.
  * @param git$ - Git executable/context from GdxContext.
- * @param maxEntries - Maximum number of timeline entries to retain.
+ * @param maxEntries - Maximum retained timeline entries.
  * @returns Pruned IDs and updated timeline.
  */
 export async function pruneHistory(
    git$: GdxContext['git$'],
-   maxEntries: number = DEFAULT_HISTORY_MAX_ENTRIES
+   maxEntries: number = DEFAULT_HISTORY_MAX_ENTRIES,
+   repository?: GdxRepositoryLocation
 ): Promise<{ prunedIds: HistoryTransactionId[]; timeline: HistoryTimeline }> {
    const limit = normalizeMaxEntries(maxEntries);
-   const paths = await resolveHistoryStoragePaths(git$);
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
    return await withResolvedHistoryLock(paths, async () => {
       const timeline =
          (await readTimelineFile(paths.timelineFile, paths.id)) ??
          createEmptyTimeline(paths.id, new Date().toISOString());
       const count = Math.max(0, timeline.entries.length - limit);
       const prunedIds = timeline.entries.slice(0, count);
-      if (prunedIds.length === 0) return { prunedIds, timeline };
-
+      if (!prunedIds.length) return { prunedIds, timeline };
       const nextTimeline: HistoryTimeline = {
          ...timeline,
          revision: timeline.revision + 1,
@@ -501,7 +516,6 @@ export async function pruneHistory(
       };
       await atomicWriteJson(paths.timelineFile, nextTimeline);
       await removeTransactionFiles(paths, prunedIds);
-      await removeTransactionCapsules(git$, prunedIds);
       return { prunedIds, timeline: nextTimeline };
    });
 }
@@ -519,7 +533,7 @@ export async function resolveHistorySelector(
    options: HistorySelectorOptions = {}
 ): Promise<HistoryTimelineSelection> {
    if (!selector) throw new HistorySelectorError('History selector cannot be empty.');
-   const timeline = await readHistoryTimeline(git$);
+   const timeline = await readHistoryTimeline(git$, options.repository);
    const scope = options.scope ?? 'applied';
    let id: string;
    let relativeIndex: number;
@@ -572,7 +586,7 @@ export async function resolveHistoryTransaction(
    options: HistorySelectorOptions = {}
 ): Promise<HistoryTransactionManifest> {
    const selection = await resolveHistorySelector(git$, selector, options);
-   const manifest = await readHistoryTransactionManifest(git$, selection.id);
+   const manifest = await readHistoryTransactionManifest(git$, selection.id, options.repository);
    if (!manifest) {
       throw new HistoryStorageError(`History manifest is missing: ${selection.id}`);
    }
@@ -1061,44 +1075,16 @@ function transactionFile(paths: HistoryStoragePaths, id: string): string {
    return path.join(paths.transactionsDir, `${id}.json`);
 }
 
-/**
- * Removes obsolete manifests after their timeline references are gone.
- * @param paths - Resolved storage paths.
- * @param ids - Transaction IDs to remove.
- */
-async function removeTransactionFiles(paths: HistoryStoragePaths, ids: string[]): Promise<void> {
+/** Removes obsolete manifests and their optional local artifacts. */
+async function removeTransactionFiles(paths: HistoryStoragePaths, ids: readonly string[]): Promise<void> {
    await Promise.all(
       [...new Set(ids)].map(async (id) => {
          assertSafeId(id, 'transaction');
-         await fs.unlink(transactionFile(paths, id)).catch((error: unknown) => {
-            if (!isFileSystemError(error, 'ENOENT')) throw error;
-         });
+         await fs.rm(transactionFile(paths, id), { force: true });
          await fs.rm(path.join(paths.historyDir, 'artifacts', id), {
             recursive: true,
             force: true,
          });
-      })
-   );
-}
-
-/** Removes private object-retention refs for discarded/pruned transactions. */
-async function removeTransactionCapsules(
-   git$: GdxContext['git$'],
-   ids: readonly string[]
-): Promise<void> {
-   await Promise.all(
-      [...new Set(ids)].map(async (id) => {
-         assertSafeId(id, 'transaction');
-         await $({ reject: false })`${git$} update-ref -d refs/gdx/history/keep/${id}`;
-         const tagPrefix = `refs/gdx/history/keep/${id}-tag-`;
-         const tagRefs = (
-            await $({ reject: false })`${git$} for-each-ref --format=%(refname) ${tagPrefix}`
-         ).stdout
-            .split(/\r?\n/)
-            .filter((ref) => ref.startsWith(tagPrefix));
-         await Promise.all(
-            tagRefs.map((ref) => $({ reject: false })`${git$} update-ref -d ${ref}`)
-         );
       })
    );
 }
@@ -1484,18 +1470,6 @@ function assertSafeId(id: string, label: string): void {
 }
 
 /**
- * Normalizes and validates a retention limit.
- * @param maxEntries - Requested limit.
- * @returns Non-negative integer limit.
- */
-function normalizeMaxEntries(maxEntries = DEFAULT_HISTORY_MAX_ENTRIES): number {
-   if (!Number.isInteger(maxEntries) || maxEntries < 0) {
-      throw new HistoryStorageError('History maxEntries must be a non-negative integer.');
-   }
-   return maxEntries;
-}
-
-/**
  * Tests for a plain non-null object.
  * @param value - Value to inspect.
  * @returns True for non-array objects.
@@ -1512,6 +1486,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function isFileSystemError(error: unknown, code: string): boolean {
    return isRecord(error) && error.code === code;
+}
+
+/** Validates and defaults the bounded timeline size. */
+function normalizeMaxEntries(maxEntries = DEFAULT_HISTORY_MAX_ENTRIES): number {
+   if (!Number.isSafeInteger(maxEntries) || maxEntries < 1) {
+      throw new HistoryStorageError('History maxEntries must be a positive integer.');
+   }
+   return maxEntries;
 }
 
 /**

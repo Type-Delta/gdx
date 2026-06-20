@@ -4,15 +4,17 @@ import path from 'path';
 
 import { GdxContext } from '@/common/types';
 import {
+   createHistoryStoragePaths,
    readHistoryTransactionManifest,
    recordHistoryTransaction,
    resolveHistoryStoragePaths,
 } from '@/modules/history/storage';
 import { $ } from '@/modules/shell';
-import { createTransactionCapsule } from '@/modules/history/transaction';
+import { compareVersions } from '@/utils/utilities';
 import {
    HISTORY_SCHEMA_VERSION,
    type HistoryCapability,
+   type HistoryInverseRecipe,
    type HistoryRefChange,
    type HistoryRefState,
    type HistoryRepositoryFingerprint,
@@ -28,7 +30,7 @@ const ORIGINAL_HOOK_FILE = 'reference-transaction.original';
 const HOOK_SPOOL_DIR = 'reference-transaction-spool';
 const REFLOG_SPOOL_DIR = 'reflog-spool';
 const REFLOG_METADATA_FILE = 'reflog-checkpoint.json';
-const MIN_REFERENCE_TRANSACTION_VERSION = [2, 29, 0] as const;
+const MIN_REFERENCE_TRANSACTION_VERSION = '2.29.0';
 const PRIVATE_REF_PREFIX = 'refs/gdx/history/';
 const MAX_STORED_DEDUPE_KEYS = 4096;
 const OBSERVED_REFLOG_MATCH_WINDOW_MS = 5 * 60 * 1000;
@@ -55,14 +57,7 @@ export interface HistoryObservedRefTransaction {
 /** Result returned by the fail-open hook entry helper. */
 export interface HistoryObserverHookResult {
    recorded: boolean;
-   ignoredReason?: 'guarded' | 'phase' | 'empty' | 'invalid' | 'error';
-   transaction?: HistoryObservedRefTransaction;
-}
-
-/** Options accepted by the hook installer. */
-export interface HistoryObserverInstallOptions {
-   /** Command prefix used by the wrapper to enter GDX. Primarily useful for tests. */
-   observerCommand?: string[];
+   ignoredReason?: 'guarded' | 'phase' | 'empty' | 'error';
 }
 
 /** Current state of the managed reference-transaction hook. */
@@ -84,7 +79,7 @@ interface ManagedHookMetadata {
    version: 1;
    hookPath: string;
    wrapperHash: string;
-   observerCommand: string[];
+   observerCommand?: string[];
    installedAt: string;
    original: {
       backupPath: string;
@@ -97,7 +92,6 @@ interface ManagedHookMetadata {
 interface HookEntryOptions {
    observerDir: string;
    stdin?: Buffer | string;
-   cwd?: string;
    env?: NodeJS.ProcessEnv;
 }
 
@@ -147,10 +141,15 @@ export async function verifyReferenceTransactionSupport(
       patch: Number(match[3] ?? 0),
       raw,
    };
-   if (compareVersion(version, MIN_REFERENCE_TRANSACTION_VERSION) < 0) {
+   if (
+      compareVersions(
+         `${version.major}.${version.minor}.${version.patch}`,
+         MIN_REFERENCE_TRANSACTION_VERSION
+      ) < 0
+   ) {
       throw new Error(
          `Git ${version.major}.${version.minor}.${version.patch} does not support the ` +
-            `reference-transaction hook; Git 2.29.0 or newer is required.`
+         `reference-transaction hook; Git 2.29.0 or newer is required.`
       );
    }
    return version;
@@ -165,12 +164,13 @@ export async function verifyReferenceTransactionSupport(
  * @returns The resulting observer status.
  */
 export async function installHistoryObserverHook(
-   ctx: GdxContext,
-   options: HistoryObserverInstallOptions = {}
+   ctx: GdxContext
 ): Promise<HistoryObserverStatus> {
    // This must stay before every target-repository filesystem mutation.
    await verifyReferenceTransactionSupport(ctx);
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
+   const paths = ctx.repository
+      ? createHistoryStoragePaths(ctx.repository)
+      : await resolveHistoryStoragePaths(ctx.git$);
    const customHooksPath = await readCustomHooksPath(ctx);
    if (customHooksPath) throw customHooksPathError(customHooksPath);
 
@@ -180,7 +180,27 @@ export async function installHistoryObserverHook(
    const existingMetadata = await readManagedMetadata(metadataPath);
    if (existingMetadata) {
       const status = await inspectManagedHook(existingMetadata, hookPath);
-      if (status.state === 'installed') return status;
+      if (status.state === 'installed') {
+         if (!existingMetadata.observerCommand) return status;
+
+         const oldWrapper = await fs.readFile(hookPath);
+         const wrapper = renderManagedWrapper(paths.spoolDir, existingMetadata.original);
+         const upgraded = {
+            ...existingMetadata,
+            wrapperHash: hashBytes(wrapper),
+            observerCommand: undefined,
+         };
+         await fs.mkdir(path.join(paths.spoolDir, HOOK_SPOOL_DIR), { recursive: true });
+         try {
+            await writeFileAtomic(hookPath, wrapper, 0o100755);
+            await writeJsonAtomic(metadataPath, upgraded);
+         } catch (error) {
+            await writeFileAtomic(hookPath, oldWrapper, 0o100755).catch(() => undefined);
+            await writeJsonAtomic(metadataPath, existingMetadata).catch(() => undefined);
+            throw error;
+         }
+         return inspectManagedHook(upgraded, hookPath);
+      }
       throw new Error(status.message);
    }
 
@@ -188,7 +208,7 @@ export async function installHistoryObserverHook(
    if (existingBytes?.includes(Buffer.from(MANAGED_MARKER))) {
       throw new Error(
          'The reference-transaction hook looks GDX-managed but its metadata is missing. ' +
-            'Refusing to replace it; restore or remove it manually after inspection.'
+         'Refusing to replace it; restore or remove it manually after inspection.'
       );
    }
    if (await fileExists(backupPath)) {
@@ -197,33 +217,28 @@ export async function installHistoryObserverHook(
       );
    }
 
-   const command = options.observerCommand ?? defaultHistoryObserverCommand();
-   if (!command.length || command.some((part) => part.includes('\0'))) {
-      throw new Error('Observer command must contain at least one NUL-free argument.');
-   }
-
    const existingStat = existingBytes ? await fs.stat(hookPath) : null;
    const original =
       existingBytes && existingStat
          ? {
-              backupPath,
-              hash: hashBytes(existingBytes),
-              mode: existingStat.mode,
-              executable: (existingStat.mode & 0o111) !== 0,
-           }
+            backupPath,
+            hash: hashBytes(existingBytes),
+            mode: existingStat.mode,
+            executable: process.platform === 'win32' || (existingStat.mode & 0o111) !== 0,
+         }
          : null;
-   const wrapper = renderManagedWrapper(command, paths.spoolDir, original);
+   const wrapper = renderManagedWrapper(paths.spoolDir, original);
    const metadata: ManagedHookMetadata = {
       version: 1,
       hookPath,
       wrapperHash: hashBytes(wrapper),
-      observerCommand: command,
       installedAt: new Date().toISOString(),
       original,
    };
 
    await fs.mkdir(path.dirname(hookPath), { recursive: true });
    await fs.mkdir(paths.observersDir, { recursive: true });
+   await fs.mkdir(path.join(paths.spoolDir, HOOK_SPOOL_DIR), { recursive: true });
 
    let backupWritten = false;
    let metadataWritten = false;
@@ -246,22 +261,6 @@ export async function installHistoryObserverHook(
 }
 
 /**
- * Builds the hook entry command from the current executable invocation.
- * Script-based development/package runs need both the runtime and entry script;
- * native compiled binaries can re-enter through process.execPath alone.
- */
-export function defaultHistoryObserverCommand(argv = process.argv): string[] {
-   const entry = argv[1];
-   const entryName = entry ? path.basename(entry).toLowerCase() : '';
-   const scriptEntryNames = new Set(['index.ts', 'index.js', 'launcher.cjs']);
-   const command =
-      entry && scriptEntryNames.has(entryName)
-         ? [process.execPath, path.resolve(entry)]
-         : [process.execPath];
-   return [...command, 'history', '__hook-entry'];
-}
-
-/**
  * Removes the managed hook and atomically restores any original hook bytes.
  * Externally modified wrappers and backups are deliberately left untouched.
  * @param ctx - GDX context for the target repository.
@@ -270,7 +269,9 @@ export function defaultHistoryObserverCommand(argv = process.argv): string[] {
 export async function uninstallHistoryObserverHook(
    ctx: GdxContext
 ): Promise<HistoryObserverStatus> {
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
+   const paths = ctx.repository
+      ? createHistoryStoragePaths(ctx.repository)
+      : await resolveHistoryStoragePaths(ctx.git$);
    const customHooksPath = await readCustomHooksPath(ctx);
    if (customHooksPath) throw customHooksPathError(customHooksPath);
 
@@ -294,7 +295,7 @@ export async function uninstallHistoryObserverHook(
       if (!backup || hashBytes(backup) !== metadata.original.hash) {
          throw new Error(
             'The saved original reference-transaction hook was modified or removed. ' +
-               'Refusing to restore it automatically.'
+            'Refusing to restore it automatically.'
          );
       }
       await writeFileAtomic(hookPath, backup, metadata.original.mode);
@@ -329,7 +330,9 @@ export async function getHistoryObserverHookStatus(
       supportError = error instanceof Error ? error : new Error(String(error));
    }
 
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
+   const paths = ctx.repository
+      ? createHistoryStoragePaths(ctx.repository)
+      : await resolveHistoryStoragePaths(ctx.git$);
    const hookPath = path.join(paths.commonGitDir, 'hooks', HOOK_NAME);
    const customHooksPath = await readCustomHooksPath(ctx);
    if (customHooksPath) {
@@ -369,7 +372,7 @@ export async function getHistoryObserverHookStatus(
  * phase is persisted, and all failures are converted to a fail-open result so
  * the original Git operation cannot be failed by observer bookkeeping.
  * @param phase - Git's hook phase (`prepared`, `committed`, or `aborted`).
- * @param options - Observer directory, optional stdin, cwd, and environment.
+ * @param options - Observer directory, optional stdin and environment.
  * @returns Whether one committed batch was durably spooled.
  */
 export async function runHistoryObserverHookEntry(
@@ -385,20 +388,17 @@ export async function runHistoryObserverHookEntry(
 
       const input = options.stdin === undefined ? await readStdin() : Buffer.from(options.stdin);
       if (input.length === 0) return { recorded: false, ignoredReason: 'empty' };
-      const refs = parseReferenceTransactionInput(input);
-      if (!refs.length) return { recorded: false, ignoredReason: 'invalid' };
-
-      const createdAt = new Date().toISOString();
-      const transaction = createObservedTransaction({
-         createdAt,
-         source: 'git-hook',
-         capability: classifyHookCapability(refs),
-         refs,
-         cwd: options.cwd ?? process.cwd(),
-         message: null,
-      });
-      await appendObservedTransaction(options.observerDir, HOOK_SPOOL_DIR, transaction);
-      return { recorded: true, transaction };
+      await writeFileAtomic(
+         path.join(
+            options.observerDir,
+            HOOK_SPOOL_DIR,
+            `raw-${process.pid}-${randomUUID()}.raw`
+         ),
+         input,
+         0o100600,
+         true
+      );
+      return { recorded: true };
    } catch {
       return { recorded: false, ignoredReason: 'error' };
    }
@@ -414,7 +414,9 @@ export async function runHistoryObserverHookEntry(
 export async function reconcileHistoryReflogs(
    ctx: GdxContext
 ): Promise<HistoryReflogReconciliationResult> {
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
+   const paths = ctx.repository
+      ? createHistoryStoragePaths(ctx.repository)
+      : await resolveHistoryStoragePaths(ctx.git$);
    const reflogRoot = path.join(paths.commonGitDir, 'logs', 'refs');
    const metadataPath = path.join(paths.observersDir, REFLOG_METADATA_FILE);
    const hadCheckpointMetadata = await fileExists(metadataPath);
@@ -425,8 +427,8 @@ export async function reconcileHistoryReflogs(
    const firstScanCutoff = hadCheckpointMetadata
       ? Number.NEGATIVE_INFINITY
       : managed
-        ? Date.parse(managed.installedAt)
-        : Date.now();
+         ? Date.parse(managed.installedAt)
+         : Date.now();
    const knownTransitions = await collectKnownTransitions(paths);
    const imported: HistoryObservedRefTransaction[] = [];
    let skippedDuplicate = 0;
@@ -448,6 +450,10 @@ export async function reconcileHistoryReflogs(
          const parsed = parseReflogLine(line.bytes);
          if (!parsed || parsed.oldOid === parsed.newOid) {
             if (!parsed) skippedMalformed++;
+            checkpoint = checkpointAfterLine(line);
+            continue;
+         }
+         if (parsed.message.startsWith('gdx history ')) {
             checkpoint = checkpointAfterLine(line);
             continue;
          }
@@ -493,21 +499,6 @@ export async function reconcileHistoryReflogs(
 }
 
 /**
- * Reads pending hook and reflog spool records without deleting them.
- * @param ctx - GDX context for the repository.
- * @returns Pending records ordered by creation time and stable ID.
- */
-export async function readHistoryObserverSpool(
-   ctx: GdxContext
-): Promise<HistoryObservedRefTransaction[]> {
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
-   const records = await readObservedTransactions(paths.spoolDir);
-   return records.sort(
-      (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
-   );
-}
-
-/**
  * Imports pending hook/reflog ref batches into the current worktree timeline.
  * This is intentionally explicit so normal dispatch and hook execution never
  * perform reconciliation or journal reads.
@@ -519,12 +510,39 @@ export async function importHistoryObserverSpool(
    ctx: GdxContext,
    maxEntries = 100
 ): Promise<HistoryTransactionManifest[]> {
-   const paths = await resolveHistoryStoragePaths(ctx.git$);
+   const paths = ctx.repository
+      ? createHistoryStoragePaths(ctx.repository)
+      : await resolveHistoryStoragePaths(ctx.git$);
+   const rawFiles = await listRawFiles(path.join(paths.spoolDir, HOOK_SPOOL_DIR));
    const files = [
       ...(await listJsonFiles(path.join(paths.spoolDir, HOOK_SPOOL_DIR))),
       ...(await listJsonFiles(path.join(paths.spoolDir, REFLOG_SPOOL_DIR))),
    ];
    const pending: Array<{ file: string; record: HistoryObservedRefTransaction }> = [];
+   for (const file of rawFiles) {
+      const input = await fs.readFile(file).catch(() => null);
+      if (!input) continue;
+      const refs = parseReferenceTransactionInput(input);
+      if (!refs.length) {
+         await fs.rm(file, { force: true });
+         continue;
+      }
+      const stat = await fs.stat(file);
+      pending.push({
+         file,
+         record: createObservedTransaction(
+            {
+               createdAt: stat.mtime.toISOString(),
+               source: 'git-hook',
+               capability: classifyHookCapability(refs),
+               refs,
+               cwd: paths.root,
+               message: null,
+            },
+            path.basename(file)
+         ),
+      });
+   }
    for (const file of files) {
       const parsed = await readJsonIfPresent(file);
       if (isObservedTransaction(parsed)) pending.push({ file, record: parsed });
@@ -537,9 +555,12 @@ export async function importHistoryObserverSpool(
 
    const imported: HistoryTransactionManifest[] = [];
    for (const { file, record } of pending) {
-      const existing = await readHistoryTransactionManifest(ctx.git$, record.id).catch(() => null);
+      const existing = await readHistoryTransactionManifest(
+         ctx.git$,
+         record.id,
+         ctx.repository
+      ).catch(() => null);
       if (existing) {
-         await createTransactionCapsule(ctx, existing);
          await fs.rm(file, { force: true });
          continue;
       }
@@ -554,13 +575,13 @@ export async function importHistoryObserverSpool(
             capability: record.capability,
             command: record.message
                ? {
-                    command: record.message,
-                    argv: [],
-                    cwd: record.cwd,
-                    startedAt: record.createdAt,
-                    finishedAt: record.createdAt,
-                    exitCode: 0,
-                 }
+                  command: record.message,
+                  argv: [],
+                  cwd: record.cwd,
+                  startedAt: record.createdAt,
+                  finishedAt: record.createdAt,
+                  exitCode: 0,
+               }
                : undefined,
             refs: record.refs,
             fingerprints: { before, after },
@@ -569,12 +590,9 @@ export async function importHistoryObserverSpool(
                   ? 'The direct observer did not receive enough state to restore this action.'
                   : undefined,
          },
-         { maxEntries }
+         { maxEntries, repository: ctx.repository }
       );
       imported.push(result.manifest);
-      if (result.timeline.entries.includes(result.manifest.id)) {
-         await createTransactionCapsule(ctx, result.manifest);
-      }
       await fs.rm(file, { force: true });
    }
    return imported;
@@ -675,10 +693,11 @@ function classifyHookCapability(refs: HistoryRefChange[]): HistoryObservedCapabi
 
 /** Builds a stable persisted observer transaction. */
 function createObservedTransaction(
-   input: Omit<HistoryObservedRefTransaction, 'schemaVersion' | 'id' | 'dedupeKey'>
+   input: Omit<HistoryObservedRefTransaction, 'schemaVersion' | 'id' | 'dedupeKey'>,
+   nonce: string = randomUUID()
 ): HistoryObservedRefTransaction {
    const dedupeKey = transitionDedupeKey(input.refs);
-   const idSeed = `${input.source}\0${input.createdAt}\0${dedupeKey}\0${randomUUID()}`;
+   const idSeed = `${input.source}\0${input.createdAt}\0${dedupeKey}\0${nonce}`;
    return {
       schemaVersion: HISTORY_SCHEMA_VERSION,
       id: `${input.source}-${hashText(idSeed).slice(0, 24)}`,
@@ -728,40 +747,44 @@ async function readCustomHooksPath(ctx: GdxContext): Promise<string | null> {
 function customHooksPathError(customPath: string): Error {
    return new Error(
       `core.hooksPath is configured as "${customPath}". GDX will not rewrite a custom/shared ` +
-         'hook directory. Manually chain `gdx history __hook-entry` from its ' +
-         'reference-transaction hook, passing the phase arguments and an identical copy of stdin.'
+      'hook directory. Manually chain `gdx history __hook-entry` from its ' +
+      'reference-transaction hook, passing the phase arguments and an identical copy of stdin.'
    );
 }
 
 /** Renders the fail-open POSIX wrapper executed by Git for all platforms. */
 function renderManagedWrapper(
-   command: string[],
    observerDir: string,
    original: ManagedHookMetadata['original']
 ): Buffer {
-   const observerInvocation = [...command, '--observer-dir', observerDir]
-      .map(quoteShellArgument)
-      .join(' ');
+   const spoolDir = hookShellPath(path.join(observerDir, HOOK_SPOOL_DIR));
    const originalInvocation = original?.executable
-      ? `${quoteShellArgument(original.backupPath)} "$@" <"$gdx_input"\n` +
-        'gdx_original_status=$?\n'
+      ? `${quoteShellArgument(hookShellPath(original.backupPath))} "$@" <"$gdx_input"\n` +
+      'gdx_original_status=$?\n'
       : 'gdx_original_status=0\n';
    const fallback = original?.executable
-      ? `exec ${quoteShellArgument(original.backupPath)} "$@"`
+      ? `exec ${quoteShellArgument(hookShellPath(original.backupPath))} "$@"`
       : 'exit 0';
    return Buffer.from(
       '#!/bin/sh\n' +
-         `${MANAGED_MARKER}\n` +
-         'gdx_input="${TMPDIR:-/tmp}/gdx-history-hook-$$-${PPID:-0}"\n' +
-         'umask 077\n' +
-         `if ! ( : >"$gdx_input" ); then ${fallback}; fi\n` +
-         `if ! cat >"$gdx_input"; then rm -f "$gdx_input"; ${fallback}; fi\n` +
-         'trap \'rm -f "$gdx_input"\' EXIT HUP INT TERM\n' +
-         originalInvocation +
-         'if [ "$gdx_original_status" -eq 0 ]; then\n' +
-         `  ${observerInvocation} "$@" <"$gdx_input" >/dev/null 2>&1 || :\n` +
-         'fi\n' +
-         'exit "$gdx_original_status"\n',
+      `${MANAGED_MARKER}\n` +
+      `gdx_original=${original?.executable ? quoteShellArgument(hookShellPath(original.backupPath)) : "''"}\n` +
+      'if [ "${GDX_HISTORY_GUARD:-}" = 1 ] || [ "${1:-}" != committed ]; then\n' +
+      '  if [ -n "$gdx_original" ]; then exec "$gdx_original" "$@"; fi\n' +
+      '  exit 0\n' +
+      'fi\n' +
+      `gdx_spool=${quoteShellArgument(spoolDir)}\n` + // ponytail: PID names avoid spawning mktemp; stale collisions fail open.
+      'gdx_input="$gdx_spool/.raw-$$-${PPID:-0}"\n' +
+      'gdx_output="$gdx_spool/raw-$$-${PPID:-0}.raw"\n' +
+      'umask 077\n' +
+      `if ! ( set -C; : >"$gdx_input" ) 2>/dev/null; then ${fallback}; fi\n` +
+      `if ! cat >"$gdx_input"; then rm -f "$gdx_input"; ${fallback}; fi\n` +
+      'trap \'rm -f "$gdx_input"\' EXIT HUP INT TERM\n' +
+      originalInvocation +
+      'if [ "$gdx_original_status" -eq 0 ]; then\n' +
+      '  mv "$gdx_input" "$gdx_output" 2>/dev/null || :\n' +
+      'fi\n' +
+      'exit "$gdx_original_status"\n',
       'utf8'
    );
 }
@@ -803,8 +826,7 @@ async function readManagedMetadata(file: string): Promise<ManagedHookMetadata | 
    if (
       value.version !== 1 ||
       typeof value.hookPath !== 'string' ||
-      typeof value.wrapperHash !== 'string' ||
-      !Array.isArray(value.observerCommand)
+      typeof value.wrapperHash !== 'string'
    )
       return null;
    return value as ManagedHookMetadata;
@@ -923,6 +945,18 @@ async function collectKnownTransitions(
       ...(await readObservedTransactions(paths.spoolDir)),
       ...(await readTransactionManifests(paths.transactionsDir)),
    ];
+   for (const file of await listRawFiles(path.join(paths.spoolDir, HOOK_SPOOL_DIR))) {
+      const [input, stat] = await Promise.all([
+         fs.readFile(file).catch(() => null),
+         fs.stat(file).catch(() => null),
+      ]);
+      if (input && stat) {
+         records.push({
+            createdAt: stat.mtime.toISOString(),
+            refs: parseReferenceTransactionInput(input),
+         });
+      }
+   }
    for (const record of records) {
       const timestampMs = Date.parse(record.createdAt);
       if (!Number.isFinite(timestampMs)) continue;
@@ -978,9 +1012,25 @@ async function readTransactionManifests(
    for (const file of await listJsonFiles(transactionDir)) {
       const parsed = await readJsonIfPresent(file);
       if (!parsed || typeof parsed !== 'object') continue;
-      const value = parsed as { createdAt?: unknown; refs?: unknown };
+      const value = parsed as { createdAt?: unknown; refs?: unknown; recipe?: unknown };
       if (typeof value.createdAt === 'string' && Array.isArray(value.refs)) {
-         records.push({ createdAt: value.createdAt, refs: value.refs as HistoryRefChange[] });
+         const refs = [...(value.refs as HistoryRefChange[])];
+         const recipe = value.recipe as HistoryInverseRecipe | undefined;
+         if (recipe?.kind === 'head-soft') {
+            const before = recipe.before.value;
+            const after = recipe.after.value;
+            if (
+               before.kind === 'symbolic' &&
+               after.kind === 'symbolic' &&
+               before.target === after.target &&
+               before.target.startsWith('refs/') &&
+               before.oid &&
+               after.oid
+            ) {
+               refs.push(oidRefChange(before.target, before.oid, after.oid));
+            }
+         }
+         records.push({ createdAt: value.createdAt, refs });
       }
    }
    return records;
@@ -1048,6 +1098,15 @@ async function listJsonFiles(root: string): Promise<string[]> {
    const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
    return entries
       .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+      .map((entry) => path.join(root, entry.name))
+      .sort();
+}
+
+/** Lists complete raw hook batches awaiting direct-history import. */
+async function listRawFiles(root: string): Promise<string[]> {
+   const entries = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+   return entries
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.raw'))
       .map((entry) => path.join(root, entry.name))
       .sort();
 }
@@ -1133,6 +1192,13 @@ async function readStdin(): Promise<Buffer> {
    return Buffer.concat(chunks);
 }
 
+/** Converts native Windows paths for the MSYS shell used by Git hooks. */
+function hookShellPath(value: string): string {
+   const normalized = value.replaceAll('\\', '/');
+   const drive = normalized.match(/^([A-Za-z]):\/(.*)$/);
+   return drive ? `/${drive[1].toLowerCase()}/${drive[2]}` : normalized;
+}
+
 /** Quotes one fixed argument for the POSIX shell used by Git hooks. */
 function quoteShellArgument(value: string): string {
    return `'${value.replace(/'/g, `'"'"'`)}'`;
@@ -1146,16 +1212,4 @@ function hashBytes(value: Uint8Array): string {
 /** SHA-256 helper for canonical text. */
 function hashText(value: string): string {
    return hashBytes(Buffer.from(value, 'utf8'));
-}
-
-/** Compares a parsed version against a minimum tuple. */
-function compareVersion(
-   version: { major: number; minor: number; patch: number },
-   minimum: readonly [number, number, number]
-): number {
-   const values = [version.major, version.minor, version.patch];
-   for (let index = 0; index < minimum.length; index++) {
-      if (values[index] !== minimum[index]) return values[index] - minimum[index];
-   }
-   return 0;
 }

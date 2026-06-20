@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import history from '@/commands/history';
+import { dispatch } from '@/cli/dispatch';
 import {
    readHistoryTimeline,
    recordHistoryTransaction,
@@ -13,11 +14,10 @@ import {
    HistoryRepositoryFingerprint,
    HistoryTransactionInput,
 } from '@/modules/history/types';
-import { listSnapshots } from '@/modules/snap';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx history command', async () => {
-   const { tmpDir, $, buffer, it } = await createTestEnv({ suitName: 'history-command' });
+   const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'history-command' });
    const ctx = createGdxContext(tmpDir);
 
    /** Removes journal state without disturbing the isolated repository itself. */
@@ -158,50 +158,42 @@ describe('gdx history command', async () => {
       expect((await fs.stat(checkpoint)).isFile()).toBe(true);
    });
 
-   it('creates and prints one force snapshot before restoring the requested count', async () => {
+   it('refuses audit-only undo without moving the cursor', async () => {
       await resetHistory();
-      const branch = (await $`${ctx.git$} symbolic-ref --quiet HEAD`).stdout.trim();
-      const oid = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
-      const first = transaction('tx_force_one', '2026-06-20T04:00:00.000Z', 'force one');
-      const second = transaction('tx_force_two', '2026-06-20T05:00:00.000Z', 'force two');
-      first.refs = [{ name: branch, before: { kind: 'oid', oid }, after: { kind: 'oid', oid } }];
-      second.refs = [{ name: branch, before: { kind: 'oid', oid }, after: { kind: 'oid', oid } }];
-      await recordHistoryTransaction(ctx.git$, first);
-      await recordHistoryTransaction(ctx.git$, second);
+      const entry = transaction('tx_audit', '2026-06-20T04:00:00.000Z', 'audit only');
+      entry.capability = 'audit-only';
+      entry.undoUnavailableReason = 'Destructive direct Git operation retained for audit.';
+      await recordHistoryTransaction(ctx.git$, entry);
 
       expect(await history(createGdxContext(tmpDir, ['history', 'undo']))).toBe(1);
-      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(2);
-      expect(output()).toContain('diverged from the recorded boundary');
-      expect(output()).toContain('history undo --force');
-
-      buffer.stdout = '';
-      buffer.stderr = '';
-      buffer.logs = '';
-      expect(await history(createGdxContext(tmpDir, ['history', 'undo', '2', '--force']))).toBe(0);
-
-      const timeline = await readHistoryTimeline(ctx.git$);
-      const snapshots = await listSnapshots(ctx.git$);
-      expect(timeline.entries).toEqual(['tx_force_one', 'tx_force_two']);
-      expect(timeline.cursor).toBe(0);
-      expect(snapshots).toHaveLength(1);
-      expect(output()).toContain('Safety snapshot created:');
-      expect(output()).toContain(snapshots[0].hash);
-      expect(output()).toContain('Undid 2 history transactions');
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(1);
+      expect(output()).toContain('Cannot undo tx_audit');
+      expect(output()).toContain('retained for audit');
    });
 
-   it('does not create a force snapshot when undo or redo has no work', async () => {
+   it('bails cleanly when undo or redo has no work', async () => {
       await resetHistory();
       buffer.stdout = '';
       buffer.stderr = '';
       buffer.logs = '';
 
-      const before = await listSnapshots(ctx.git$);
-      expect(await history(createGdxContext(tmpDir, ['history', 'undo', '--force']))).toBe(0);
-      expect(await history(createGdxContext(tmpDir, ['history', 'redo', '--force']))).toBe(0);
+      expect(await history(createGdxContext(tmpDir, ['history', 'undo']))).toBe(0);
+      expect(await history(createGdxContext(tmpDir, ['history', 'redo']))).toBe(0);
 
-      expect(await listSnapshots(ctx.git$)).toHaveLength(before.length);
       expect(output()).toContain('Nothing to undo.');
       expect(output()).toContain('Nothing to redo.');
-      expect(output()).not.toContain('Safety snapshot created:');
+   });
+
+   it('keeps the redo tail after reconciling a history-generated reflog entry', async () => {
+      await fs.writeFile(path.join(tmpDir, 'redo.txt'), 'redo\n');
+      await dispatch(createGdxContext(tmpDir, ['add', 'redo.txt']));
+      await resetHistory();
+      await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'redo test']));
+
+      expect(await history(createGdxContext(tmpDir, ['history', 'undo']))).toBe(0);
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(0);
+      expect(await history(createGdxContext(tmpDir, ['history', 'redo']))).toBe(0);
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(1);
+      expect(output()).toContain('Redid 1 history transaction');
    });
 });
