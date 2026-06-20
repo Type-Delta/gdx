@@ -37,7 +37,6 @@ export default async function doctor(): Promise<number> {
    let hasIssues = false;
 
    const isBun = Boolean(process.versions.bun);
-   const isNode = !isBun;
    const isNative = isBun && !/[\\/]bun(?:\.exe)?$/i.test(process.execPath);
 
    if (!isNative) {
@@ -88,6 +87,14 @@ export default async function doctor(): Promise<number> {
       hasIssues = true;
    }
 
+   const configuredRuntime =
+      process.env.GDX_RUNTIME_SHIM === '1' && typeof installInfo?.runtime === 'string'
+         ? installInfo.runtime
+         : null;
+   const isNub = !isNative && configuredRuntime === 'nub';
+   const isNode = !isNative && !isBun && !isNub;
+   const runtimeName = isNative || isBun ? 'Bun' : isNub ? 'Nub' : isNode ? 'Node' : 'Unknown';
+
    quickPrint(
       `Version: ${SGR.cyan + VERSION + SGR.reset}${IS_CUSTOM_BUILD && BUILD !== 'dev' ? SGR.dim + ` (${BUILD})` + SGR.reset : ''}`
    );
@@ -96,20 +103,30 @@ export default async function doctor(): Promise<number> {
       `Processor: ${SGR.cyan + (os.cpus()[0]?.model || 'N/A') + SGR.reset} ${os.availableParallelism()}/${os.cpus().length} logical cores`
    );
    quickPrint(
-      `Runtime: ${SGR.magenta + (isBun ? 'Bun' : isNode ? 'Node' : 'Unknown') + (isNative ? ' (Native)' : '') + SGR.reset}`
+      `Runtime: ${SGR.magenta + runtimeName + (isNative ? ' (Native)' : '') + SGR.reset}`
    );
    quickPrint(
       `Terminal color support index: ${SGR.cyan + CheckCache.supportsColor + SGR.reset + SGR.dim} ${CheckCache.supportsColor === 0 ? '(No color)' : CheckCache.supportsColor === 1 ? '(16 colors)' : CheckCache.supportsColor === 2 ? '(8bit color)' : CheckCache.supportsColor === 3 ? '(24bit True color)' : ''}` +
-         SGR.reset
+      SGR.reset
    );
    quickPrint(`TTY mode: ${SGR.cyan + (process.stdout.isTTY ? 'Yes' : 'No') + SGR.reset}`);
 
    // Detect runtimes
    try {
+      const nubVer = await execa('nub', ['--version']);
+      quickPrint(
+         `Nub: ${SGR.cyan + nubVer.stdout.trim().split(/\r?\n/)[0] + SGR.reset}` +
+         (!isNub ? SGR.dim + ` (inactive)` + SGR.reset : '')
+      );
+   } catch {
+      quickPrint(`Nub: Not found`);
+   }
+
+   try {
       const bunVer = await execa('bun', ['--version']);
       quickPrint(
          `Bun: ${SGR.cyan + bunVer.stdout.trim() + SGR.reset}` +
-            (!isBun ? SGR.dim + ` (inactive)` + SGR.reset : '')
+         (!isBun ? SGR.dim + ` (inactive)` + SGR.reset : '')
       );
    } catch {
       quickPrint(`Bun: Not found`);
@@ -119,7 +136,7 @@ export default async function doctor(): Promise<number> {
       const nodeVer = await execa('node', ['--version']);
       quickPrint(
          `Node: ${SGR.cyan + nodeVer.stdout.trim() + SGR.reset}` +
-            (!isNode ? SGR.dim + ` (inactive)` + SGR.reset : '')
+         (!isNode ? SGR.dim + ` (inactive)` + SGR.reset : '')
       );
    } catch {
       quickPrint(`Node: Not found`);
@@ -128,9 +145,9 @@ export default async function doctor(): Promise<number> {
    // Installation mode (native vs interpreted)
    quickPrint(
       `Installation mode: ${isNative ? SGR.green + 'Native' + SGR.reset : SGR.yellow + 'Interpreted' + SGR.reset}` +
-         (process.env.NODE_ENV === 'production'
-            ? ''
-            : SGR.bright + ' (development mode)' + SGR.reset)
+      (process.env.NODE_ENV === 'production'
+         ? ''
+         : SGR.bright + ' (development mode)' + SGR.reset)
    );
 
    quickPrint(
@@ -212,12 +229,12 @@ async function runPostInstallDiagnostics(
    isNative: boolean
 ): Promise<PostInstallDiagnosticResult[]> {
    const candidates = [
-      path.join(packageRoot, 'dist/diagnostics/post-install.validator.js'),
-      path.join(path.dirname(process.execPath), 'diagnostics/post-install.validator.js'),
-      path.join(path.dirname(process.execPath), '../../dist/diagnostics/post-install.validator.js'),
+      path.join(packageRoot, 'dist/diagnostics/postinstall.validator.js'),
+      path.join(path.dirname(process.execPath), 'diagnostics/postinstall.validator.js'),
+      path.join(path.dirname(process.execPath), '../../dist/diagnostics/postinstall.validator.js'),
       path.join(
          path.dirname(fileURLToPath(import.meta.url)),
-         '../../test/post-install.validator.ts'
+         '../../test/postinstall.validator.ts'
       ),
    ];
    const artifactPath = candidates.find((candidate) => fs.existsSync(candidate));
