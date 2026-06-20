@@ -564,6 +564,7 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       }
 
       const generatedMsg = generated.message;
+      let gitExitCode = 0;
 
       if (shouldNoCommit) {
          if (shouldYes) {
@@ -584,8 +585,10 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
             commitArgs.push('-m', part);
          }
 
-         await $inherit`${git$} commit ${commitArgs} ${passThruArgs}`;
-         return 0;
+         gitExitCode = await $inherit`${git$} commit ${commitArgs} ${passThruArgs}`
+            .then((child) => child.exitCode)
+            .catch((err) => err.exitCode || 1);
+         return gitExitCode;
       }
 
       // Write to temp file and commit
@@ -593,8 +596,10 @@ async function autoCommit(ctx: GdxContext): Promise<number> {
       await fs.writeFile(tempFile, generatedMsg, 'utf8');
 
       try {
-         await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`;
-         return 0;
+         gitExitCode = await $inherit`${git$} commit -F ${tempFile} --edit ${passThruArgs}`
+            .then((child) => child.exitCode)
+            .catch((err) => err.exitCode || 1);
+         return gitExitCode;
       } finally {
          await fs.unlink(tempFile).catch(noop);
       }
