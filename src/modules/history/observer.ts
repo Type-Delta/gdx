@@ -698,9 +698,10 @@ function createObservedTransaction(
 ): HistoryObservedRefTransaction {
    const dedupeKey = transitionDedupeKey(input.refs);
    const idSeed = `${input.source}\0${input.createdAt}\0${dedupeKey}\0${nonce}`;
+   const prefix = input.source === 'reflog' ? 'rf' : 'gh';
    return {
       schemaVersion: HISTORY_SCHEMA_VERSION,
-      id: `${input.source}-${hashText(idSeed).slice(0, 24)}`,
+      id: `${prefix}${hashText(idSeed).slice(0, 24)}`,
       dedupeKey,
       ...input,
    };

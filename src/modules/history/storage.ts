@@ -4,6 +4,7 @@ import path from 'path';
 
 import { GdxContext, GdxRepositoryLocation } from '@/common/types';
 import { $ } from '@/modules/shell';
+import Logger from '@/utils/logger';
 
 import {
    HISTORY_CAPABILITIES,
@@ -266,7 +267,7 @@ export async function withHistoryStorageLock<T>(
  * @returns A stable ID suitable for manifest filenames and selectors.
  */
 export function createHistoryTransactionId(): HistoryTransactionId {
-   return `tx_${crypto.randomUUID().replaceAll('-', '')}`;
+   return `tx${crypto.randomUUID().replaceAll('-', '')}`;
 }
 
 /**
@@ -328,6 +329,11 @@ export async function recordHistoryTransaction(
       const state = registerWorktree(existingState ?? createEmptyRepositoryState(now), paths, now);
       await atomicWriteJson(paths.stateFile, state);
       await removeTransactionFiles(paths, [...discardedRedoIds, ...prunedIds]);
+      Logger.info(
+         `Recorded history transaction ${manifest.id}` +
+            (manifest.command?.command ? ` observing: ${manifest.command.command}` : ''),
+         'history'
+      );
       return { manifest, timeline: nextTimeline, discardedRedoIds, prunedIds };
    });
 }
@@ -521,9 +527,9 @@ export async function pruneHistory(
 }
 
 /**
- * Resolves an exact/unique ID or a zero-based ~index selector.
+ * Resolves an exact/unique ID or a zero-based index selector.
  * @param git$ - Git executable/context from GdxContext.
- * @param selector - Transaction ID, unique ID prefix, or ~index.
+ * @param selector - Transaction ID, unique ID prefix, or index.
  * @param options - Relative selector scope; defaults to applied entries.
  * @returns Stable ID and timeline position.
  */
@@ -538,7 +544,8 @@ export async function resolveHistorySelector(
    let id: string;
    let relativeIndex: number;
 
-   const relativeMatch = /^~(\d+)$/.exec(selector);
+   // Index selectors are bare integers; a leading ~ stays accepted for compatibility.
+   const relativeMatch = /^~?(\d+)$/.exec(selector);
    if (relativeMatch) {
       relativeIndex = Number(relativeMatch[1]);
       const candidates = relativeSelectorCandidates(timeline, scope);
@@ -576,7 +583,7 @@ export async function resolveHistorySelector(
 /**
  * Resolves a selector and loads its transaction manifest.
  * @param git$ - Git executable/context from GdxContext.
- * @param selector - Transaction ID, unique ID prefix, or ~index.
+ * @param selector - Transaction ID, unique ID prefix, or index.
  * @param options - Relative selector scope.
  * @returns The selected transaction manifest.
  */

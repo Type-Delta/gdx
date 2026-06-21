@@ -4,6 +4,7 @@ import { getConfig } from '@/common/config';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import { EXECUTABLE_NAME, SGR } from '@/consts';
 import { ArgsSet } from '@/modules/arguments';
+import { formatTable } from '@/modules/graphics';
 import {
    getHistoryObserverHookStatus,
    importHistoryObserverSpool,
@@ -171,19 +172,28 @@ async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number):
       return 0;
    }
 
-   quickPrint(
-      `${SGR.bright}Selector  State    Created                   Source    ID / Command${SGR.reset}`
-   );
-   for (const entry of visible) {
-      const worktree = allWorktrees ? ` ${SGR.dim}[${entry.worktree}]${SGR.reset}` : '';
+   const header = ['#', 'State', 'Created', 'Source', 'ID', 'Command'];
+   if (allWorktrees) header.push('Worktree');
+   const rows = visible.map((entry) => {
       const command = formatCommand(entry.manifest);
-      quickPrint(
-         `${SGR.cyan}${entry.selector.padEnd(9)}${SGR.reset}${entry.state.padEnd(9)}` +
-            `${formatDate(entry.manifest.createdAt).padEnd(26)}` +
-            `${entry.manifest.source.padEnd(10)}` +
-            `${entry.manifest.id}${worktree}${command ? ` ${SGR.dim}${command}${SGR.reset}` : ''}`
-      );
-   }
+      const row = [
+         `${SGR.cyan}${entry.selector}${SGR.reset}`,
+         entry.state,
+         formatDate(entry.manifest.createdAt),
+         entry.manifest.source,
+         entry.manifest.id.slice(0, 7),
+         command ? `${SGR.dim}${command}${SGR.reset}` : '',
+      ];
+      if (allWorktrees) row.push(`${SGR.dim}${entry.worktree}${SGR.reset}`);
+      return row;
+   });
+   quickPrint(
+      formatTable([header.map((label) => `${SGR.bright}${label}${SGR.reset}`), ...rows], {
+         padding: [0, 2, 0, 0],
+         borderStyle: 'none',
+         redundancyLv: 0,
+      })
+   );
    if (entries.length > visible.length) {
       quickPrint(
          `${SGR.dim}Showing ${visible.length} of ${entries.length}; use --limit <n> to show more.${SGR.reset}`
@@ -237,7 +247,7 @@ async function entriesForWorktree(ctx: GdxContext, label: string): Promise<Histo
       return [
          {
             manifest,
-            selector: `~${timeline.entries.length - index - 1}`,
+            selector: `${timeline.entries.length - index - 1}`,
             state: index < timeline.cursor ? 'applied' : 'redo',
             worktree: label,
          },
@@ -263,8 +273,8 @@ function contextForWorktree(ctx: GdxContext, worktree: HistoryWorktreeRegistrati
 /** Displays all useful persisted fields for one selected transaction. */
 async function showCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
    const positionals = args.slice(2);
-   if (positionals.length > 1) throw new Error('Usage: gdx history show [id|~index]');
-   const selector = positionals[0] ?? '~0';
+   if (positionals.length > 1) throw new Error('Usage: gdx history show [id|index]');
+   const selector = positionals[0] ?? '0';
    const manifest = await resolveHistoryTransaction(ctx.git$, selector, {
       scope: 'all',
       repository: ctx.repository,
@@ -274,9 +284,9 @@ async function showCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
 
    quickPrint(`${SGR.bright}History transaction${SGR.reset}`);
    quickPrint(`ID: ${manifest.id}`);
-   quickPrint(`Selector: ${index >= 0 ? `~${timeline.entries.length - index - 1}` : selector}`);
+   quickPrint(`Index: ${index >= 0 ? `${timeline.entries.length - index - 1}` : selector}`);
    quickPrint(`State: ${index >= 0 && index < timeline.cursor ? 'applied' : 'redo'}`);
-   quickPrint(`Created: ${manifest.createdAt}`);
+   quickPrint(`Created: ${formatDate(manifest.createdAt)}`);
    quickPrint(`Source: ${manifest.source}`);
    quickPrint(`Capability: ${manifest.capability}`);
    if (manifest.command) {
@@ -333,11 +343,16 @@ async function moveCommand(
          ? await undoHistory(ctx, { count })
          : await redoHistory(ctx, { count });
 
-   const completedIds = completed.map((manifest) => manifest.id).join(', ');
    quickPrint(
       `${SGR.green}${direction === 'undo' ? 'Undid' : 'Redid'} ${completed.length} history ` +
-         `${completed.length === 1 ? 'transaction' : 'transactions'}.${SGR.reset} ${SGR.dim}${completedIds}${SGR.reset}`
+         `${completed.length === 1 ? 'transaction' : 'transactions'}.${SGR.reset}`
    );
+   for (const manifest of completed) {
+      const action = formatCommand(manifest);
+      quickPrint(
+         `  ${SGR.dim}${manifest.id.slice(0, 7)}${SGR.reset}${action ? ` ${action}` : ''}`
+      );
+   }
    return 0;
 }
 
@@ -453,9 +468,15 @@ function formatCommand(manifest: HistoryTransactionManifest): string {
       : '';
 }
 
-/** Formats an ISO date without fractional seconds. */
+/** Formats a stored ISO timestamp as a compact local-time string. */
 function formatDate(value: string): string {
-   return value.replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+   const date = new Date(value);
+   if (Number.isNaN(date.getTime())) return value;
+   const pad = (part: number) => String(part).padStart(2, '0');
+   return (
+      `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+      `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+   );
 }
 
 /** Summarizes persisted restoration surfaces for show output. */
@@ -476,7 +497,7 @@ export const help = {
          Inspect and restore GDX's repository-local transaction journal.
 
          ${EXECUTABLE_NAME} history lists the current worktree newest first. Each entry has a stable
-         transaction ID and a relative selector such as ~0. Use --all-worktrees to include every
+         transaction ID and an index such as 0 (0 is newest). Use --all-worktrees to include every
          registered linked worktree and --limit <n> to change the 20-entry display limit.
 
          Undo and redo refuse stale repository state without moving the history cursor. Hook
@@ -491,7 +512,7 @@ export const help = {
       strWrap(
          litedent`
          ${SGR.cyan}${EXECUTABLE_NAME} history [list] ${SGR.dim}[--limit <n>] [--all-worktrees]${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} history show ${SGR.dim}[id|~index]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} history show ${SGR.dim}[id|index]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} history undo ${SGR.dim}[count]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} history redo ${SGR.dim}[count]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} history hook|unhook|status|prune${SGR.reset}

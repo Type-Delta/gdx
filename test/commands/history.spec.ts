@@ -86,25 +86,29 @@ describe('gdx history command', async () => {
          transaction('tx_third', '2026-06-20T03:00:00.000Z', 'third command')
       );
 
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
       expect(await history(createGdxContext(tmpDir, ['history', '--limit', '2']))).toBe(0);
-      expect(output()).toContain('~0');
-      expect(output()).toContain('tx_third');
-      expect(output()).toContain('tx_second');
+      expect(output()).toContain('#');
+      expect(output()).not.toContain('~0');
+      expect(output()).toContain('tx_thir');
+      expect(output()).toContain('tx_seco');
       expect(output()).not.toContain('tx_first');
 
       buffer.stdout = '';
       buffer.stderr = '';
       buffer.logs = '';
       expect(await history(createGdxContext(tmpDir, ['history', 'list', '--limit=1']))).toBe(0);
-      expect(output()).toContain('tx_third');
-      expect(output()).not.toContain('tx_second');
+      expect(output()).toContain('tx_thir');
+      expect(output()).not.toContain('tx_seco');
 
       buffer.stdout = '';
       buffer.stderr = '';
       buffer.logs = '';
-      expect(await history(createGdxContext(tmpDir, ['history', 'show', '~1']))).toBe(0);
+      expect(await history(createGdxContext(tmpDir, ['history', 'show', '1']))).toBe(0);
       expect(output()).toContain('ID: tx_second');
-      expect(output()).toContain('Selector: ~1');
+      expect(output()).toContain('Index: 1');
       expect(output()).toContain('Command: second command');
    });
 
