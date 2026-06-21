@@ -53,6 +53,26 @@ describe('best-effort history transactions', async () => {
       expect((await $`${ctx.git$} rev-parse HEAD`).stdout.trim()).toBe(after);
    });
 
+   it('records failed audit-only commands with their exit code', async () => {
+      await reset();
+      const exitCode = await dispatch(
+         createGdxContext(tmpDir, ['checkout', 'history-branch-that-does-not-exist'])
+      );
+      expect(exitCode).not.toBe(0);
+      const [manifest] = await listHistoryTransactions(ctx.git$);
+      expect(manifest.capability).toBe('audit-only');
+      expect(manifest.command?.exitCode).toBe(exitCode);
+   });
+
+   it('does not create a transaction when a commit fails without changing HEAD', async () => {
+      await reset();
+      const exitCode = await dispatch(
+         createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'expected failure'])
+      );
+      expect(exitCode).not.toBe(0);
+      expect(await listHistoryTransactions(ctx.git$)).toEqual([]);
+   });
+
    it('undoes amend and soft reset HEAD moves', async () => {
       await reset();
       await fs.writeFile(path.join(tmpDir, 'amend.txt'), 'one\n');

@@ -3,7 +3,7 @@ import path from 'path';
 
 import cmd from './commands';
 import { execGit, whichExec } from './modules/shell';
-import { quickPrint } from './utils/utilities';
+import { normalizeExitCode, quickPrint } from './utils/utilities';
 import { ArgsSet, stripGitGlobalArgs } from './modules/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
@@ -25,6 +25,11 @@ async function main(): Promise<number> {
    const args = ctx.args;
    Logger.debug(`Parsed arguments: ${yuString(args.toArray())}`, 'gdx');
 
+   // Completion must be ultra-fast: avoid whichExec('git')
+   if (args[0] === '__completion') {
+      return await cmd.__completion({ ...ctx, git$: 'git' });
+   }
+
    if (args[0] === '--init') {
       const shell = args.popValue('--shell') || args.popValue('--init');
       const cmdAlias = args.popValue('--cmd');
@@ -44,11 +49,6 @@ async function main(): Promise<number> {
          );
          return 1;
       }
-   }
-
-   // Completion must be ultra-fast: avoid whichExec('git')
-   if (args[0] === '__completion') {
-      return await cmd.__completion({ ...ctx, git$: 'git' });
    }
 
    const git$ = await whichExec('git');
@@ -108,13 +108,17 @@ async function main(): Promise<number> {
 
 (async () => {
    try {
-      const exitCode = await main();
+      Logger.time('Session');
+      let exitCode = normalizeExitCode(await main());
       if (global.finalStringOutput) {
          quickPrint(global.finalStringOutput);
       }
 
+      exitCode = global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode;
+      Logger.timeEnd('Session');
+      Logger.debug(`Exiting with code ${exitCode}`);
       Logger.flushLogs();
-      process.exit(global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode);
+      process.exit(exitCode);
    } catch (err) {
       Logger.error(yuString(err, { color: true }));
       Logger.flushLogs();

@@ -3,7 +3,7 @@ import { Err } from '@lib/Tools';
 import cmd from '@/commands';
 import { GDX_COMMANDS, SGR } from '@/consts';
 import { $, execGit, printCommandExecution } from '@/modules/shell';
-import { compareVersions, progressiveMatch, quickPrint } from '@/utils/utilities';
+import { compareVersions, normalizeExitCode, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
@@ -128,6 +128,14 @@ async function dispatchCore(
    ctx: GdxContext,
    state: DispatchState
 ): Promise<number> {
+   return normalizeExitCode(await dispatchCoreUnchecked(ctx, state));
+}
+
+/** Executes the command router before normalizing its result to an integer exit code. */
+async function dispatchCoreUnchecked(
+   ctx: GdxContext,
+   state: DispatchState
+): Promise<unknown> {
    const args = ctx.args;
    const originalArgs = args.slice(0);
 
