@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { cleanString, jsTime, ncc, strWrap } from '@lib/Tools';
+import { cleanString, jsTime, ncc, strWrap, CheckCache, Err } from '@lib/Tools';
 
 import { LOG_FILE_SIZE_LIMIT, LOG_PATH, SHOULD_WRITE_LOGS, VERSION, SGR } from '@/consts';
 import global from '@/global';
@@ -159,15 +159,16 @@ class Logger {
          indent: '  ',
       });
 
-      const formattedMessage =
-         ncc(bgColor) +
+      const formattedMessage = CheckCache.supportsColor >= 1
+         ? ncc(bgColor) +
          SGR.bright +
-         SGR.white +
+         (level !== 'warn' ? SGR.white : SGR.black) +
          ` ${badge} ` +
          SGR.reset +
          SGR.invert +
          ` ${moduleName} ${SGR.reset + ncc(messageColor)} ${wrappedMessage}` +
-         SGR.reset;
+         SGR.reset
+         : `[${badge}] ${moduleName}: ${message}`;
 
       if (level === 'fatal' || level === 'error') {
          process.stderr.write(formattedMessage + '\n');
@@ -378,8 +379,8 @@ class Logger {
 
          fs.appendFileSync(Logger.logFile, `${newLogs}\n`, { encoding: 'utf-8', mode: 0o600 });
          Logger.allLogs.length = 0;
-      } catch {
-         // Silently fail if we can't write the log file
+      } catch (err) {
+         Logger.warn(`Failed to write logs to disk. Logs will be lost for this session. Error: ${Err.from(err).message}`, 'logger');
       }
    }
 }
