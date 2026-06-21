@@ -558,9 +558,11 @@ export async function getMainWorktreeRoot(git$: GdxContext['git$']): Promise<str
    const cached = await cache.getOneOff<string>(cacheKey);
    if (cached !== undefined) return cached;
 
-   const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim() || process.cwd();
+   const [repoRoot, commonDir] = await Promise.all([
+      revParseCached(git$, ['--show-toplevel']).then((dir) => dir.trim() || process.cwd()),
+      revParseCached(git$, ['--git-common-dir']),
+   ]);
 
-   const commonDir = (await revParseCached(git$, ['--git-common-dir'])).trim();
    if (!commonDir) {
       await cache.setOneOff(cacheKey, repoRoot);
       return repoRoot;

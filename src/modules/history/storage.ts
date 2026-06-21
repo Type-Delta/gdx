@@ -3,7 +3,6 @@ import fs from 'fs/promises';
 import path from 'path';
 
 import { GdxContext, GdxRepositoryLocation } from '@/common/types';
-import { $ } from '@/modules/shell';
 import Logger from '@/utils/logger';
 
 import {
@@ -26,6 +25,7 @@ import {
    HistoryWorktreeIdentity,
    HistoryWorktreeRegistration,
 } from './types';
+import { revParseCached } from '../git';
 
 export const DEFAULT_HISTORY_MAX_ENTRIES = 100;
 
@@ -88,8 +88,13 @@ export async function resolveHistoryStoragePaths(
    git$: GdxContext['git$']
 ): Promise<HistoryStoragePaths> {
    const output = (
-      await $`${git$} rev-parse --path-format=absolute --show-toplevel --git-common-dir --git-dir`
-   ).stdout
+      await revParseCached(git$, [
+         '--path-format=absolute',
+         '--show-toplevel',
+         '--git-common-dir',
+         '--git-dir'
+      ])
+   )
       .split(/\r?\n/)
       .filter(Boolean);
    if (output.length !== 3) {
@@ -331,7 +336,7 @@ export async function recordHistoryTransaction(
       await removeTransactionFiles(paths, [...discardedRedoIds, ...prunedIds]);
       Logger.info(
          `Recorded history transaction ${manifest.id}` +
-            (manifest.command?.command ? ` observing: ${manifest.command.command}` : ''),
+         (manifest.command?.command ? ` observing: ${manifest.command.command}` : ''),
          'history'
       );
       return { manifest, timeline: nextTimeline, discardedRedoIds, prunedIds };
