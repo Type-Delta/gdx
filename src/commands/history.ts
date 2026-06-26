@@ -19,7 +19,6 @@ import {
    pruneHistory,
    readHistoryRepositoryState,
    readHistoryTimeline,
-   readHistoryTransactionManifest,
    resolveHistoryTransaction,
 } from '@/modules/history/storage';
 import {
@@ -28,11 +27,7 @@ import {
    redoHistory,
    undoHistory,
 } from '@/modules/history/transaction';
-import {
-   HistoryTimeline,
-   HistoryTransactionManifest,
-   HistoryWorktreeRegistration,
-} from '@/modules/history/types';
+import { HistoryTransactionManifest, HistoryWorktreeRegistration } from '@/modules/history/types';
 import Logger from '@/utils/logger';
 import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
@@ -46,6 +41,13 @@ interface HistoryListEntry {
    selector: string;
    state: 'applied' | 'redo';
    worktree: string;
+}
+
+interface HistoryTimelineDisplayEntry {
+   manifest: HistoryTransactionManifest;
+   index: number;
+   selector: string;
+   state: 'applied' | 'redo';
 }
 
 /**
@@ -236,20 +238,45 @@ async function collectListEntries(
 
 /** Loads one worktree timeline and attaches stable all-scope relative selectors. */
 async function entriesForWorktree(ctx: GdxContext, label: string): Promise<HistoryListEntry[]> {
+   const entries = await timelineDisplayEntries(ctx);
+   return entries.map((entry) => ({
+      manifest: entry.manifest,
+      selector: entry.selector,
+      state: entry.state,
+      worktree: label,
+   }));
+}
+
+/** Loads timeline entries and numbers only entries that can be restored. */
+async function timelineDisplayEntries(ctx: GdxContext): Promise<HistoryTimelineDisplayEntry[]> {
    const [timeline, manifests] = await Promise.all([
       readHistoryTimeline(ctx.git$, ctx.repository),
       listHistoryTransactions(ctx.git$, ctx.repository),
    ]);
    const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
+   const selectors = new Map<string, string>();
+   let undoableIndex = 0;
+
+   for (let index = timeline.entries.length - 1; index >= 0; index--) {
+      const manifest = byId.get(timeline.entries[index]);
+      if (!manifest) continue;
+      if (canRestoreHistoryTransaction(manifest)) {
+         selectors.set(manifest.id, `${undoableIndex}`);
+         undoableIndex++;
+      } else {
+         selectors.set(manifest.id, '-');
+      }
+   }
+
    return timeline.entries.flatMap((id, index) => {
       const manifest = byId.get(id);
       if (!manifest) return [];
       return [
          {
             manifest,
-            selector: `${timeline.entries.length - index - 1}`,
+            index,
+            selector: selectors.get(id) ?? '-',
             state: index < timeline.cursor ? 'applied' : 'redo',
-            worktree: label,
          },
       ];
    });
@@ -275,17 +302,13 @@ async function showCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
    const positionals = args.slice(2);
    if (positionals.length > 1) throw new Error('Usage: gdx history show [id|index]');
    const selector = positionals[0] ?? '0';
-   const manifest = await resolveHistoryTransaction(ctx.git$, selector, {
-      scope: 'all',
-      repository: ctx.repository,
-   });
-   const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
-   const index = timeline.entries.indexOf(manifest.id);
+   const selected = await resolveHistoryShowEntry(ctx, selector);
+   const manifest = selected.manifest;
 
    quickPrint(`${SGR.bright}History transaction${SGR.reset}`);
    quickPrint(`ID: ${manifest.id}`);
-   quickPrint(`Index: ${index >= 0 ? `${timeline.entries.length - index - 1}` : selector}`);
-   quickPrint(`State: ${index >= 0 && index < timeline.cursor ? 'applied' : 'redo'}`);
+   quickPrint(`Index: ${selected.selector}`);
+   quickPrint(`State: ${selected.state}`);
    quickPrint(`Created: ${formatDate(manifest.createdAt)}`);
    quickPrint(`Source: ${manifest.source}`);
    quickPrint(`Capability: ${manifest.capability}`);
@@ -307,6 +330,35 @@ async function showCommand(ctx: GdxContext, args: ArgsSet): Promise<number> {
    return 0;
 }
 
+/** Resolves history show selectors with numeric indexes matching the list output. */
+async function resolveHistoryShowEntry(
+   ctx: GdxContext,
+   selector: string
+): Promise<HistoryTimelineDisplayEntry> {
+   const relativeMatch = /^~?(\d+)$/.exec(selector);
+   if (relativeMatch) {
+      const index = Number(relativeMatch[1]);
+      const entries = (await timelineDisplayEntries(ctx)).slice().reverse();
+      const entry = entries.filter((candidate) => candidate.selector !== '-')[index];
+      if (!entry) throw new Error(`History selector ${selector} is outside the undoable timeline.`);
+      return entry;
+   }
+
+   const manifest = await resolveHistoryTransaction(ctx.git$, selector, {
+      scope: 'all',
+      repository: ctx.repository,
+   });
+   const entries = await timelineDisplayEntries(ctx);
+   const entry = entries.find((candidate) => candidate.manifest.id === manifest.id);
+   if (entry) return entry;
+   return {
+      manifest,
+      index: -1,
+      selector: '-',
+      state: 'redo',
+   };
+}
+
 /** Parses and executes a multi-step undo or redo. */
 async function moveCommand(
    ctx: GdxContext,
@@ -318,30 +370,14 @@ async function moveCommand(
       throw new Error(`Usage: gdx history ${direction} [count]`);
    }
    const count = positionals.length ? parsePositiveInteger(positionals[0], 'count') : 1;
-   const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
-   const ids = requestedMoveIds(timeline, direction, count);
-   if (!ids.length) {
-      quickPrint(`${SGR.yellow}Nothing to ${direction}.${SGR.reset}`);
-      return 0;
-   }
-
-   const unavailable = await findUnavailableRestoration(ctx, ids);
-   if (unavailable) {
-      const reason =
-         unavailable.undoUnavailableReason ??
-         'This transaction is audit-only and does not contain a restoration recipe.';
-      Logger.error(
-         `Cannot ${direction} ${unavailable.id}: ${reason} Inspect it with ` +
-            `gdx history show ${unavailable.id}.`,
-         'history'
-      );
-      return 1;
-   }
-
    const completed =
       direction === 'undo'
          ? await undoHistory(ctx, { count })
          : await redoHistory(ctx, { count });
+   if (!completed.length) {
+      quickPrint(`${SGR.yellow}Nothing to ${direction}.${SGR.reset}`);
+      return 0;
+   }
 
    quickPrint(
       `${SGR.green}${direction === 'undo' ? 'Undid' : 'Redid'} ${completed.length} history ` +
@@ -356,28 +392,9 @@ async function moveCommand(
    return 0;
 }
 
-/** Finds the first requested timeline entry that is explicitly not restorable. */
-async function findUnavailableRestoration(
-   ctx: GdxContext,
-   ids: string[]
-): Promise<HistoryTransactionManifest | null> {
-   for (const id of ids) {
-      const manifest = await readHistoryTransactionManifest(ctx.git$, id, ctx.repository);
-      if (!manifest) throw new Error(`History manifest is missing: ${id}`);
-      if (manifest.capability === 'audit-only' || manifest.undoUnavailableReason) return manifest;
-   }
-   return null;
-}
-
-/** Returns timeline IDs in the order a requested move will apply them. */
-function requestedMoveIds(
-   timeline: HistoryTimeline,
-   direction: 'undo' | 'redo',
-   count: number
-): string[] {
-   if (direction === 'redo')
-      return timeline.entries.slice(timeline.cursor, timeline.cursor + count);
-   return timeline.entries.slice(Math.max(0, timeline.cursor - count), timeline.cursor).reverse();
+/** Returns whether a transaction is intended to participate in undo/redo indexes. */
+function canRestoreHistoryTransaction(manifest: HistoryTransactionManifest): boolean {
+   return manifest.capability !== 'audit-only' && !manifest.undoUnavailableReason;
 }
 
 /** Prints actionable stale-state guidance for a refused restoration. */

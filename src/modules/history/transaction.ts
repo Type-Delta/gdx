@@ -253,7 +253,8 @@ async function moveHistory(
    options: MoveHistoryOptions
 ): Promise<HistoryTransactionManifest[]> {
    const completed: HistoryTransactionManifest[] = [];
-   for (let step = 0; step < normalizeCount(options.count); step++) {
+   const count = normalizeCount(options.count);
+   while (completed.length < count) {
       const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
       const index = direction === 'undo' ? timeline.cursor - 1 : timeline.cursor;
       if (index < 0 || index >= timeline.entries.length) break;
@@ -263,6 +264,14 @@ async function moveHistory(
          ctx.repository
       );
       if (!manifest) throw new Error(`History manifest is missing: ${timeline.entries[index]}`);
+      if (!canRestoreHistoryTransaction(manifest)) {
+         await setHistoryCursor(
+            ctx.git$,
+            direction === 'undo' ? index : index + 1,
+            ctx.repository
+         );
+         continue;
+      }
       await applyHistoryTransaction(ctx, manifest, direction);
       await setHistoryCursor(
          ctx.git$,
@@ -271,7 +280,26 @@ async function moveHistory(
       );
       completed.push(manifest);
    }
+   if (direction === 'redo' && completed.length > 0) await skipRedoAuditOnlyTail(ctx);
    return completed;
+}
+
+/** Advances redo past adjacent audit-only entries whose effects were never undone. */
+async function skipRedoAuditOnlyTail(ctx: GdxContext): Promise<void> {
+   while (true) {
+      const timeline = await readHistoryTimeline(ctx.git$, ctx.repository);
+      const id = timeline.entries[timeline.cursor];
+      if (!id) return;
+      const manifest = await readHistoryTransactionManifest(ctx.git$, id, ctx.repository);
+      if (!manifest) throw new Error(`History manifest is missing: ${id}`);
+      if (canRestoreHistoryTransaction(manifest)) return;
+      await setHistoryCursor(ctx.git$, timeline.cursor + 1, ctx.repository);
+   }
+}
+
+/** Returns whether a transaction has a restoration recipe the engine can apply. */
+function canRestoreHistoryTransaction(manifest: HistoryTransactionManifest): boolean {
+   return manifest.capability !== 'audit-only' && !manifest.undoUnavailableReason;
 }
 
 /** Captures HEAD, named refs, or raw index bytes according to the selected recipe. */

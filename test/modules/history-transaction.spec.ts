@@ -12,7 +12,9 @@ import { HistoryDivergenceError, redoHistory, undoHistory } from '@/modules/hist
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('best-effort history transactions', async () => {
-   const { tmpDir, $, it, resetRepo } = await createTestEnv({ suitName: 'history-transaction' });
+   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv({
+      suitName: 'history-transaction',
+   });
    const ctx = createGdxContext(tmpDir);
 
    async function reset(): Promise<void> {
@@ -62,6 +64,59 @@ describe('best-effort history transactions', async () => {
       const [manifest] = await listHistoryTransactions(ctx.git$);
       expect(manifest.capability).toBe('audit-only');
       expect(manifest.command?.exitCode).toBe(exitCode);
+   });
+
+   it('skips audit-only history quietly when init runs outside a git repository', async () => {
+      const outsideDir = path.join(tmpRootDir, 'outside-init');
+      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.mkdir(outsideDir, { recursive: true });
+      const outsideCtx = createGdxContext(outsideDir, ['init']);
+      outsideCtx.repository = undefined;
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await dispatch(outsideCtx)).toBe(0);
+      expect(buffer.logs + buffer.stderr).not.toContain('Could not record audit-only history');
+      expect(buffer.logs + buffer.stderr).not.toContain('History capture skipped');
+   });
+
+   it('skips reversible history quietly when any command runs outside a git repository', async () => {
+      const outsideDir = path.join(tmpRootDir, 'outside-add');
+      await fs.rm(outsideDir, { recursive: true, force: true });
+      await fs.mkdir(outsideDir, { recursive: true });
+      const outsideCtx = createGdxContext(outsideDir, ['add', '.']);
+      outsideCtx.repository = undefined;
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await dispatch(outsideCtx)).not.toBe(0);
+      expect(buffer.logs + buffer.stderr).not.toContain('Could not record audit-only history');
+      expect(buffer.logs + buffer.stderr).not.toContain('History capture skipped');
+   });
+
+   it('skips audit-only entries while undoing and redoing real transactions', async () => {
+      await reset();
+      const before = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+      await fs.writeFile(path.join(tmpDir, 'skip-audit.txt'), 'skip audit\n');
+      await $`${ctx.git$} add skip-audit.txt`;
+      await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'skip audit']));
+      const after = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+      await dispatch(createGdxContext(tmpDir, ['checkout', 'history-branch-that-does-not-exist']));
+
+      const manifests = await listHistoryTransactions(ctx.git$);
+      expect(manifests.map((manifest) => manifest.capability)).toEqual(['exact', 'audit-only']);
+
+      const undone = await undoHistory(ctx);
+      expect(undone.map((manifest) => manifest.command?.command)).toEqual(['commit']);
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(0);
+      expect((await $`${ctx.git$} rev-parse HEAD`).stdout.trim()).toBe(before);
+
+      const redone = await redoHistory(ctx);
+      expect(redone.map((manifest) => manifest.command?.command)).toEqual(['commit']);
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(2);
+      expect((await $`${ctx.git$} rev-parse HEAD`).stdout.trim()).toBe(after);
    });
 
    it('does not create a transaction when a commit fails without changing HEAD', async () => {

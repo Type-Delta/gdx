@@ -68,6 +68,7 @@ export async function dispatch(
 
    const config = await getConfig();
    if (!config.get<boolean>('history.enabled')) return dispatchCore(ctx, state);
+   if (!ctx.repository) return dispatchCore(ctx, state);
    const maxEntries = config.get<number>('history.maxEntries') ?? 100;
 
    if (classification.disposition === 'audit-only') {
