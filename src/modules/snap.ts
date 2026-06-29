@@ -23,6 +23,7 @@ type SnapshotEntryKind = 'file';
 interface SnapshotCanonicalMetadata {
    version: 1;
    type: SnapshotType;
+   message?: string;
    repoRoot: string;
    repoLabel: string;
    repoIdentity: string;
@@ -80,10 +81,12 @@ let fflateModulePromise: Promise<FflateModule> | null = null;
 /**
  * Creates a deterministic worktree snapshot archive for the current repository.
  * @param git$ - Git executable path or command array.
+ * @param message - Optional user label for the snapshot.
  * @returns Snapshot creation result with hash and archive path.
  */
 export async function createWorktreeSnapshot(
-   git$: string | string[]
+   git$: string | string[],
+   message?: string
 ): Promise<CreateSnapshotResult> {
    const [repoInfo, stagedPatchRaw, unstagedPatchRaw, stagedStatuses, untrackedOutput] =
       await Promise.all([
@@ -149,15 +152,19 @@ export async function createWorktreeSnapshot(
       });
    }
 
-   return await finalizeSnapshotArchive('worktree', repoInfo, entries);
+   return await finalizeSnapshotArchive('worktree', repoInfo, entries, normalizeSnapshotMessage(message));
 }
 
 /**
  * Creates a full snapshot archive containing the cleaned repository git directory.
  * @param git$ - Git executable path or command array.
+ * @param message - Optional user label for the snapshot.
  * @returns Snapshot creation result with hash and archive path.
  */
-export async function createFullSnapshot(git$: string | string[]): Promise<CreateSnapshotResult> {
+export async function createFullSnapshot(
+   git$: string | string[],
+   message?: string
+): Promise<CreateSnapshotResult> {
    const spinnerCtrl = spinner({ message: 'Collecting repository info...' });
    const repoInfo = await getSnapshotRepoInfo(git$);
    const repoRoot = repoInfo.repoRoot;
@@ -185,7 +192,7 @@ export async function createFullSnapshot(git$: string | string[]): Promise<Creat
 
       const entries = await collectDirectorySnapshotEntries(stageGitDir, 'full/git');
       spinnerCtrl.setMessage('Finalizing snapshot...');
-      return await finalizeSnapshotArchive('full', repoInfo, entries);
+      return await finalizeSnapshotArchive('full', repoInfo, entries, normalizeSnapshotMessage(message));
    } finally {
       spinnerCtrl.stop();
       fs.rmSync(stageRoot, { recursive: true, force: true });
@@ -203,9 +210,7 @@ export async function listSnapshots(git$: string | string[]): Promise<SnapshotLi
       rebuildSnapshotIndex(),
    ]);
 
-   if (!currentRepo) {
-      return entries;
-   }
+   if (!currentRepo) return [];
 
    return entries.filter((entry) => isSameRepository(entry.meta, currentRepo));
 }
@@ -363,7 +368,8 @@ export function getSnapshotRootDir(): string {
 async function finalizeSnapshotArchive(
    type: SnapshotType,
    repoInfo: SnapshotRepoInfo,
-   entries: SnapshotEntry[]
+   entries: SnapshotEntry[],
+   message?: string
 ): Promise<CreateSnapshotResult> {
    await ensureSnapshotDirectories();
 
@@ -372,6 +378,7 @@ async function finalizeSnapshotArchive(
       version: SNAP_VERSION,
       type,
       createdAt,
+      ...(message ? { message } : {}),
       repoRoot: repoInfo.repoRoot,
       repoLabel: repoInfo.repoLabel,
       repoIdentity: repoInfo.repoIdentity,
@@ -381,7 +388,7 @@ async function finalizeSnapshotArchive(
       branchName: repoInfo.branchName,
       originUrl: repoInfo.originUrl,
    };
-   const hash = buildSnapshotHash(repoInfo, type, entries);
+   const hash = buildSnapshotHash({ ...repoInfo, type, ...(message ? { message } : {}) }, type, entries);
    const archivePath = path.join(getSnapshotObjectsDirPath(), `${hash}${SNAP_FILE_EXTENSION}`);
    const existedBefore = fs.existsSync(archivePath);
 
@@ -407,6 +414,7 @@ function buildSnapshotHash(
    const canonicalMeta: SnapshotCanonicalMetadata = {
       version: SNAP_VERSION,
       type,
+      ...(repoInfo.message ? { message: repoInfo.message } : {}),
       repoRoot: repoInfo.repoRoot,
       repoLabel: repoInfo.repoLabel,
       repoIdentity: repoInfo.repoIdentity,
@@ -1085,6 +1093,11 @@ function normalizePatchText(output: string): string {
    }
 
    return output.endsWith('\n') ? output : `${output}\n`;
+}
+
+function normalizeSnapshotMessage(message: string | undefined): string | undefined {
+   const normalized = message?.trim();
+   return normalized ? normalized : undefined;
 }
 
 function parseNameStatusNullSeparated(output: string): SnapshotPathStatus[] {
