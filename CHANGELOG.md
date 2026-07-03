@@ -1,18 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## Version 0.5.0 - 2026-07-03
 
 ### Added
 
+- **`gdx history`: repository-local undo/redo journal.** Mutating commands routed through gdx are recorded as reversible transactions. `gdx history` lists them, `gdx history undo`/`redo [count]` restore them — refusing safely when the repository has since diverged instead of overwriting your state — and `gdx history show [id|index]` inspects one entry. `gdx history hook` optionally installs a repository-local observer that also records ref changes made by direct Git commands (any existing hook is preserved and chained), and external Git activity is reconciled from reflogs whenever you run a history command. Entries whose Git objects have been pruned (e.g. by `git gc`) are discarded automatically. Recording is on by default; control it with `history.enabled` and `history.maxEntries`.
+- Interactive command palette in the pager and diff viewer (`Ctrl+P` / `Ctrl+Shift+P`) with content search and command modes, plus a built-in keybind guide.
+- `gdx reword auto` generates the replacement commit message with the configured LLM.
+- Snapshot labels: `gdx snap [worktree|full] -m <message>`.
+- Configurable tab width in the pager and diff viewer.
 - `gdx rst` now routes to `gdx restore`.
 - Added GitHub CLI wrapper with better UX for `gh repo create`.
 - Added checksum-aware Windows native release artifacts for prebuilt installs.
 
 ### Changed
 
-- `bun.lock` is now committed and CI installs dependencies with the frozen lockfile for reproducible builds.
 - `gdx clear` now stores backup patches under gdx's private data directory instead of the shared temp directory. This intentionally means `clear pardon` will not discover old temp-directory backups from earlier versions.
 - Reading secure config values now masks them by default; pass `--reveal` to print the raw value.
+- `gdx stats` adapts commit timestamps and the language legend to the terminal width.
+- `gdx reword` now passes `--wait` to editors that support it, so the editor no longer returns before you finish editing.
 
 ### Fixed
 
@@ -29,6 +35,7 @@
 - Fixed sensitive data redaction in logs, including argv-like values, URL credentials, API keys, and auth headers.
 - Fixed cache writes and log writes to use safer private-file behavior.
 - Fixed worker/semaphore cleanup issues that could leak concurrency permits or strand queued work.
+- Fixed slow inline diff highlighting on very long lines in the diff viewer.
 - Fixed text formatting edge cases in terminal alignment, `strLimit`, ANSI detection, CRLF dedenting, stash range parsing, and zero-range gradients.
 
 ## Version 0.4.6 - 2026-06-08
