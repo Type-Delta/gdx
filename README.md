@@ -18,7 +18,7 @@ It wraps standard git commands with intelligent shorthands and adds powerful new
 **Why gdx?**
 
 - **👍 Convenience:** Type less, do more. `git status`? how about `gdx s`, `git reset HEAD~3`? why not `gdx res ~3`
-- **🛡️ Safety:** `gdx clear` wipes your directory but saves a backup patch. No more "oops" moments.
+- **🛡️ Safety:** `gdx clear` backs up before it wipes, and `gdx history undo` is Ctrl+Z for your repo. No more "oops" moments.
 - **✨ Enhanced Output:** Git's output is... functional. `gdx` makes it beautiful and easier for _humans_ to digest.
 - **🧠 Logic:** Handles the things Git makes hard, like dropping a range of stashes, working with worktrees, or submodules.
 - **📊 Local-First Stats:** Beautiful TrueColor graphs and stats generated from your local history.
@@ -156,14 +156,23 @@ Catch issues before they reach the remote. `gdx lint` checks for:
 
 You can configure `gdx` to run this automatically before every push.
 
-### 3. The Safety Net: `clear` vs `reset`
+### 3. The Safety Net
 
-We've all accidentally reset files we meant to keep. `gdx clear` is the solution.
+We've all accidentally nuked changes we meant to keep. `gdx` gives you ways back:
 
-- **`gdx clear`**: Creates a timestamped patch backup in a temp folder, then effectively runs `reset --hard` & `clean -fd`.
+- **`gdx clear`**: Creates a timestamped patch backup, then effectively runs `reset --hard` & `clean -fd`.
 - **`gdx clear pardon`**: "Wait, I didn't mean to do that." Applies the backup patch and restores your changes.
+- **`gdx snap`**: Creates a repository/worktree+index backup you can switch back to later.
+- **`gdx history` (Experimental)**: Ctrl+Z for Git. `gdx` keeps a repository-local journal of the commands it runs (and picks up direct `git` ref changes from reflogs, or live via `gdx history hook`) so you can step through them:
 
-You can also create a repository/worktree+index backup with `gdx snap`.
+   ```bash
+   gdx history           # List recorded transactions (newest first)
+   gdx history undo      # Undo the most recent transaction
+   gdx history redo      # ...changed your mind? bring it back
+   gdx history show 0    # Inspect a transaction in detail
+   ```
+
+   Undo and redo refuse to touch anything that has diverged since the recording — no silent overwrites. Entries respect a retention limit (`history.maxEntries`), and recording can be turned off with `history.enabled`.
 
 ### 4. Parallel Worktrees (Experimental)
 
@@ -385,6 +394,7 @@ Tools to help you feel productive without leaving the terminal.
 | `graph`           | Render a GitHub-style contribution heatmap in the terminal                                   |
 | `nocap`           | Roast your latest commit message with AI                                                     |
 | `clear`           | Wipe changes in the working directory with a backup patch                                    |
+| `history`, `his`  | Inspect, undo, and redo recorded repository transactions                                     |
 | `cache`           | Manage gdx cache                                                                             |
 | `macro`           | Create custom gdx command macros to run multiple commands with a single macro                |
 | `gh`              | GitHub CLI wrapper, provides better UX and QoL features                                      |
@@ -444,7 +454,7 @@ Since this is currently a solo "scratch your own itch" project, the roadmap is f
 - [x] **Submodule dir switching**: extension of `git submodule`, `gdx submodule switch` to jump into a submodule's directory from the parent repo (requires shell integration)
 - [x] **Snapshot**: `gdx snap` to create snapshot of current state of your working directory (including uncommitted changes, untracked files) that can be easily switched back to later (similar to a lightweight, temporary branch that doesn't clutter your branch list)
 - [ ] **Enhanced output for more commands**: Extend the "Git Output for Humans"
-- [ ] **Undo and Redo**: `gdx undo` and `gdx redo` to step backward and forward through git actions (reset, commit, stash, etc.) with safety nets.
+- [x] **Undo and Redo**: `gdx history undo` and `gdx history redo` to step backward and forward through git actions (commit, add, branch, switch, etc.) with safety nets.
 - [x] **Edit commit messages**: `gdx reword` to quickly reword the last commit message or a specific commit without needing to do an interactive rebase.
 
 ## License
