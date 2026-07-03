@@ -8,9 +8,11 @@ import { ReversibleCapturePlan } from '@/modules/history/classifier';
 import {
    createHistoryTransactionId,
    createHistoryStoragePaths,
+   listHistoryTransactions,
    readHistoryTimeline,
    readHistoryTransactionManifest,
    recordHistoryTransaction,
+   removeHistoryTransactions,
    resolveHistoryStoragePaths,
    setHistoryCursor,
 } from '@/modules/history/storage';
@@ -23,6 +25,7 @@ import {
    HistoryRefState,
    HistoryRepositoryFingerprint,
    HistorySource,
+   HistoryTransactionId,
    HistoryTransactionInput,
    HistoryTransactionManifest,
 } from '@/modules/history/types';
@@ -300,6 +303,74 @@ async function skipRedoAuditOnlyTail(ctx: GdxContext): Promise<void> {
 /** Returns whether a transaction has a restoration recipe the engine can apply. */
 function canRestoreHistoryTransaction(manifest: HistoryTransactionManifest): boolean {
    return manifest.capability !== 'audit-only' && !manifest.undoUnavailableReason;
+}
+
+/**
+ * Discards restorable timeline entries whose recorded Git objects were pruned
+ * (for example by `git gc` after reflog expiry), since neither undo nor redo
+ * can succeed for them. Inspection failures never discard anything.
+ * @param ctx - GDX execution context.
+ * @returns IDs of the discarded transactions.
+ */
+export async function discardUnreachableHistory(
+   ctx: GdxContext
+): Promise<HistoryTransactionId[]> {
+   const manifests = await listHistoryTransactions(ctx.git$, ctx.repository);
+   const oidsById = new Map<HistoryTransactionId, string[]>();
+   for (const manifest of manifests) {
+      const oids = recipeObjectIds(manifest);
+      if (oids.length) oidsById.set(manifest.id, oids);
+   }
+   if (!oidsById.size) return [];
+
+   const unique = [...new Set([...oidsById.values()].flat())];
+   const result = await runGit(
+      ctx,
+      ['cat-file', '--batch-check=%(objectname) %(objecttype)'],
+      true,
+      `${unique.join('\n')}\n`
+   );
+   if (result.exitCode !== 0) return [];
+   const missing = new Set(
+      text(result.stdout)
+         .split('\n')
+         .filter((line) => line.endsWith(' missing'))
+         .map((line) => line.slice(0, -' missing'.length))
+   );
+   if (!missing.size) return [];
+
+   const unreachable = [...oidsById]
+      .filter(([, oids]) => oids.some((oid) => missing.has(oid)))
+      .map(([id]) => id);
+   if (unreachable.length) {
+      await removeHistoryTransactions(ctx.git$, unreachable, ctx.repository);
+   }
+   return unreachable;
+}
+
+/** Lists the Git objects a restorable entry needs for both undo and redo. */
+function recipeObjectIds(manifest: HistoryTransactionManifest): string[] {
+   if (!canRestoreHistoryTransaction(manifest)) return [];
+   const recipe = manifest.recipe;
+   if (!recipe) return refChangeOids(manifest.refs);
+   if (recipe.kind === 'refs') return refChangeOids(recipe.changes);
+   if (recipe.kind === 'head-soft' || recipe.kind === 'switch') {
+      return [recipe.before, recipe.after].flatMap((state) => {
+         const oid = refOid(state.value);
+         return oid ? [oid] : [];
+      });
+   }
+   return []; // raw-index recipes use local artifacts validated at apply time.
+}
+
+/** Collects the concrete boundary OIDs of a ref-change list. */
+function refChangeOids(changes: readonly HistoryRefChange[]): string[] {
+   return changes.flatMap((change) =>
+      [change.before, change.after].flatMap((state) => {
+         const oid = refOid(state);
+         return oid ? [oid] : [];
+      })
+   );
 }
 
 /** Captures HEAD, named refs, or raw index bytes according to the selected recipe. */

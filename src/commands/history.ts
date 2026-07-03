@@ -22,6 +22,7 @@ import {
    resolveHistoryTransaction,
 } from '@/modules/history/storage';
 import {
+   discardUnreachableHistory,
    HistoryDivergence,
    HistoryDivergenceError,
    redoHistory,
@@ -38,6 +39,8 @@ const INTERNAL_HOOK_ENTRY = '__hook-entry';
 
 interface HistoryListEntry {
    manifest: HistoryTransactionManifest;
+   /** Position in the worktree timeline; display order for a single worktree. */
+   index: number;
    selector: string;
    state: 'applied' | 'redo';
    worktree: string;
@@ -121,6 +124,14 @@ async function reconcileDirectHistory(ctx: GdxContext): Promise<void> {
          ctx,
          config.get<number>('history.maxEntries', DEFAULT_HISTORY_MAX_ENTRIES)
       );
+      const discarded = await discardUnreachableHistory(ctx);
+      if (discarded.length) {
+         Logger.info(
+            `Discarded ${discarded.length} history ${discarded.length === 1 ? 'entry' : 'entries'} ` +
+               'whose Git objects were pruned.',
+            'history'
+         );
+      }
    } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       Logger.warn(
@@ -161,11 +172,14 @@ async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number):
    const limit =
       limitValue === null ? DEFAULT_LIST_LIMIT : parsePositiveInteger(limitValue, 'limit');
    const entries = await collectListEntries(ctx, allWorktrees);
+   // A single worktree lists in timeline order so rows match selector numbering;
+   // timestamps only merge entries across worktrees, where no shared order exists.
    const visible = entries
-      .sort(
-         (left, right) =>
-            right.manifest.createdAt.localeCompare(left.manifest.createdAt) ||
-            right.manifest.id.localeCompare(left.manifest.id)
+      .sort((left, right) =>
+         allWorktrees
+            ? right.manifest.createdAt.localeCompare(left.manifest.createdAt) ||
+              right.manifest.id.localeCompare(left.manifest.id)
+            : right.index - left.index
       )
       .slice(0, limit);
 
@@ -241,6 +255,7 @@ async function entriesForWorktree(ctx: GdxContext, label: string): Promise<Histo
    const entries = await timelineDisplayEntries(ctx);
    return entries.map((entry) => ({
       manifest: entry.manifest,
+      index: entry.index,
       selector: entry.selector,
       state: entry.state,
       worktree: label,

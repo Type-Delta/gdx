@@ -113,6 +113,36 @@ describe('gdx history command', async () => {
       expect(output()).toContain('Command: second command');
    });
 
+   it('lists a single worktree in timeline order even when timestamps disagree', async () => {
+      await resetHistory();
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_one', '2026-06-20T02:00:00.000Z', 'one')
+      );
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_two', '2026-06-20T02:00:00.000Z', 'two')
+      );
+      // Reflog imports can append entries carrying older or colliding timestamps.
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_three', '2026-06-20T01:00:00.000Z', 'three')
+      );
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+      const rows = stripAnsiColor(output())
+         .replace(/\r/g, '')
+         .split('\n')
+         .filter((line) => line.includes('tx_'));
+      expect(rows.map((line) => line.trimStart()[0])).toEqual(['0', '1', '2']);
+      expect(rows[0]).toContain('tx_thre');
+      expect(rows[1]).toContain('tx_two');
+      expect(rows[2]).toContain('tx_one');
+   });
+
    it('leaves audit-only entries unindexed in list and show', async () => {
       await resetHistory();
       await recordHistoryTransaction(

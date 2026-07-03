@@ -8,7 +8,12 @@ import {
    readHistoryTimeline,
    resolveHistoryStoragePaths,
 } from '@/modules/history/storage';
-import { HistoryDivergenceError, redoHistory, undoHistory } from '@/modules/history/transaction';
+import {
+   discardUnreachableHistory,
+   HistoryDivergenceError,
+   redoHistory,
+   undoHistory,
+} from '@/modules/history/transaction';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('best-effort history transactions', async () => {
@@ -201,6 +206,27 @@ describe('best-effort history transactions', async () => {
 
       await expect(redoHistory(ctx)).rejects.toThrow();
       expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(0);
+   });
+
+   it('discards only entries whose recorded objects were pruned', async () => {
+      await reset();
+      const tree = (await $`${ctx.git$} write-tree`).stdout.trim();
+      const orphan = (
+         await $({ env: { GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@example.com', GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@example.com' } })`${ctx.git$} commit-tree ${tree} -m ${'pruned'}`
+      ).stdout.trim();
+      await dispatch(createGdxContext(tmpDir, ['tag', 'pruned-object', orphan]));
+      await dispatch(createGdxContext(tmpDir, ['branch', 'still-reachable']));
+      await undoHistory(ctx, { count: 2 });
+      const paths = await resolveHistoryStoragePaths(ctx.git$);
+      await fs.rm(path.join(paths.commonGitDir, 'objects', orphan.slice(0, 2), orphan.slice(2)));
+
+      expect(await discardUnreachableHistory(ctx)).toHaveLength(1);
+      const remaining = await listHistoryTransactions(ctx.git$);
+      expect(remaining.map((manifest) => manifest.refs[0]?.name)).toEqual([
+         'refs/heads/still-reachable',
+      ]);
+      expect((await readHistoryTimeline(ctx.git$)).cursor).toBe(0);
+      expect(await discardUnreachableHistory(ctx)).toHaveLength(0);
    });
 
    it('does not create capsule refs', async () => {

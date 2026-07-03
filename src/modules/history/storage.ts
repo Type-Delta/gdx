@@ -532,6 +532,47 @@ export async function pruneHistory(
 }
 
 /**
+ * Removes specific transactions from the timeline and deletes their files.
+ * The cursor is shifted down by the number of removed applied entries so the
+ * remaining undo/redo split is preserved.
+ * @param git$ - Git executable/context from GdxContext.
+ * @param ids - Exact transaction IDs to remove.
+ * @param repository - Pre-resolved repository paths.
+ * @returns Removed IDs (in timeline order) and the updated timeline.
+ */
+export async function removeHistoryTransactions(
+   git$: GdxContext['git$'],
+   ids: readonly HistoryTransactionId[],
+   repository?: GdxRepositoryLocation
+): Promise<{ removedIds: HistoryTransactionId[]; timeline: HistoryTimeline }> {
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
+   const removeSet = new Set(ids);
+   return await withResolvedHistoryLock(paths, async () => {
+      const timeline =
+         (await readTimelineFile(paths.timelineFile, paths.id)) ??
+         createEmptyTimeline(paths.id, new Date().toISOString());
+      const removedIds = timeline.entries.filter((id) => removeSet.has(id));
+      if (!removedIds.length) return { removedIds, timeline };
+
+      const removedBeforeCursor = timeline.entries
+         .slice(0, timeline.cursor)
+         .filter((id) => removeSet.has(id)).length;
+      const nextTimeline: HistoryTimeline = {
+         ...timeline,
+         revision: timeline.revision + 1,
+         updatedAt: new Date().toISOString(),
+         entries: timeline.entries.filter((id) => !removeSet.has(id)),
+         cursor: timeline.cursor - removedBeforeCursor,
+      };
+      await atomicWriteJson(paths.timelineFile, nextTimeline);
+      await removeTransactionFiles(paths, removedIds);
+      return { removedIds, timeline: nextTimeline };
+   });
+}
+
+/**
  * Resolves an exact/unique ID or a zero-based index selector.
  * @param git$ - Git executable/context from GdxContext.
  * @param selector - Transaction ID, unique ID prefix, or index.
