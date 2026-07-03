@@ -257,3 +257,4 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Pinned `which@2.0.2` to avoid multiple versions of `which` in the bundle**
 - **Tests use custom harness: check `testHelper.ts` for details** (more info in [TEST_HARNESS.CAVEAT.md](./docs/agent/TEST_HARNESS.CAVEAT.md), read this when writing tests)
 - **Post-install diagnostics are an opt-in integration suite, not a normal Bun test.** Its source is `test/postinstall.validator.ts` (intentionally without `.spec.ts`/`.test.ts`).
+- **On Windows, test can corrupt Git for Windows' MSYS runtime machine-wide, if Defender intervenes.** Symptom: `sh.exe`/`bash.exe` fail with `fatal error - add_item ... errno 1`. (if you hit this, read more in [CORRUPTED_MSYS.CAVEAT.md](./docs/agent/CORRUPTED_MSYS.CAVEAT.md))
