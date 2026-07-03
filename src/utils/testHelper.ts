@@ -291,7 +291,11 @@ export async function createTestEnv(
       resolvedOptions.liteMode
          ? Promise.resolve(noop as ResetRepoFunction)
          : initGitRepo(_$, tmpMockProjDir, tmpDir), // Initialize a git repository
-      resolvedOptions.liteMode ? Promise.resolve() : fs.writeFile(globalConfigPath, ''), // Empty global git config
+      resolvedOptions.liteMode
+         ? Promise.resolve()
+         : // Native (non-inline) submodule commands clone fixtures from local paths,
+           // which git blocks by default since 2.38.1 (CVE-2022-39253).
+           fs.writeFile(globalConfigPath, '[protocol "file"]\n\tallow = always\n'),
    ];
 
    if (gdxConfigDir) {

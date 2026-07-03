@@ -810,12 +810,14 @@ function formatCommitTime(raw: string, compact: boolean): string {
       return `${relativePart} ${detailColor}[at ${hash}] (on ${authorDate})${SGR.reset}`;
    }
 
+   // Git's strict ISO format uses a literal Z suffix for UTC instead of +00:00.
    const matchedDate = authorDate?.match(
-      /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?([+-])(\d{2}):(\d{2})$/
+      /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|([+-])(\d{2}):(\d{2}))$/
    );
    if (!matchedDate) return '';
 
-   const [, year, month, day, offsetSign, offsetHours, offsetMinutes] = matchedDate;
+   const [, year, month, day, offsetSign = '+', offsetHours = '00', offsetMinutes = '00'] =
+      matchedDate;
    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
    const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
    const monthName = date.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
