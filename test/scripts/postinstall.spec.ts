@@ -7,15 +7,16 @@ import path from 'path';
 
 const require = createRequire(import.meta.url);
 const {
-   buildNodeShimContents,
+   buildRuntimeShimContents,
    createInstallInfo,
    downloadFile,
    getNativeBinaryName,
    getNativeBuildArgs,
-   overwriteNodeShim,
+   overwriteRuntimeShim,
+   selectFallbackRuntime,
    verifySha256,
 } = require('../../scripts/postinstall.cjs') as {
-   buildNodeShimContents: (nodeAbsPath: string, launcherAbsPath: string) => {
+   buildRuntimeShimContents: (runtimeAbsPath: string, launcherAbsPath: string) => {
       cmd: string;
       ps1: string;
       sh: string;
@@ -33,7 +34,14 @@ const {
    downloadFile: (url: string, tmpPath: string, destPath: string) => Promise<void>;
    getNativeBinaryName: (platform?: NodeJS.Platform) => string;
    getNativeBuildArgs: (finalPath: string) => string[];
-   overwriteNodeShim: (binDir: string, launcherAbsPath: string) => boolean;
+   overwriteRuntimeShim: (
+      binDir: string,
+      launcherAbsPath: string,
+      runtime: { name: string; executable: string }
+   ) => boolean;
+   selectFallbackRuntime: (
+      findExecutable?: (name: string) => string | null
+   ) => { name: string; executable: string };
    verifySha256: (filePath: string, checksumText: string, assetName: string) => void;
 };
 const { getNativeBinaryPath } = require('../../scripts/launcher.cjs') as {
@@ -43,16 +51,17 @@ const { getNativeBinaryPath } = require('../../scripts/launcher.cjs') as {
 // npm bin entries are symlinks on Unix; the symlink-clobber bug is Unix-only.
 const itUnix = process.platform === 'win32' ? it.skip : it;
 
-describe('postinstall node fallback shims', () => {
+describe('postinstall runtime fallback shims', () => {
    it('injects a protective separator before forwarded args', () => {
-      const shims = buildNodeShimContents('/path/to/node', '/path/to/launcher.cjs');
+      const shims = buildRuntimeShimContents('/path/to/bun', '/path/to/launcher.cjs');
 
-      expect(shims.cmd).toContain('set "GDX_NODE_SHIM=1"');
+      expect(shims.cmd).toContain('set "GDX_RUNTIME_SHIM=1"');
+      expect(shims.cmd).toContain('"/path/to/bun"');
       expect(shims.cmd).toContain('launcher.cjs" -- %*');
-      expect(shims.ps1).toContain('$env:GDX_NODE_SHIM = "1"');
+      expect(shims.ps1).toContain('$env:GDX_RUNTIME_SHIM = "1"');
       expect(shims.ps1).toContain('launcher.cjs" -- @args');
       expect(shims.ps1).not.toContain('$MyInvocation.Line');
-      expect(shims.sh).toContain('export GDX_NODE_SHIM=1');
+      expect(shims.sh).toContain('export GDX_RUNTIME_SHIM=1');
       expect(shims.sh).toContain('launcher.cjs" -- "$@"');
    });
 
@@ -69,17 +78,33 @@ describe('postinstall node fallback shims', () => {
          const binEntry = path.join(binDir, 'gdx');
          fs.symlinkSync(launcherPath, binEntry);
 
-         expect(overwriteNodeShim(binDir, launcherPath)).toBe(true);
+         expect(
+            overwriteRuntimeShim(binDir, launcherPath, {
+               name: 'bun',
+               executable: '/path/to/bun',
+            })
+         ).toBe(true);
 
          // The launcher the symlink pointed to must be left intact.
          expect(fs.readFileSync(launcherPath, 'utf8')).toBe(launcherSource);
 
          // The bin entry must be a fresh regular file holding the shim.
          expect(fs.lstatSync(binEntry).isSymbolicLink()).toBe(false);
-         expect(fs.readFileSync(binEntry, 'utf8')).toContain('export GDX_NODE_SHIM=1');
+         expect(fs.readFileSync(binEntry, 'utf8')).toContain('export GDX_RUNTIME_SHIM=1');
       } finally {
          fs.rmSync(tmpRoot, { recursive: true, force: true });
       }
+   });
+
+   it('prefers bun then the installing Node executable', () => {
+      expect(selectFallbackRuntime((name) => (name === 'bun' ? '/runtime/bun' : null))).toEqual({
+         name: 'bun',
+         executable: '/runtime/bun',
+      });
+      expect(selectFallbackRuntime(() => null)).toEqual({
+         name: 'node',
+         executable: process.execPath,
+      });
    });
 });
 

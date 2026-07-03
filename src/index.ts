@@ -1,15 +1,16 @@
 import { Err, yuString } from '../lib/esm/Tools';
+import path from 'path';
 
 import cmd from './commands';
 import { execGit, whichExec } from './modules/shell';
-import { quickPrint } from './utils/utilities';
+import { normalizeExitCode, quickPrint } from './utils/utilities';
 import { ArgsSet, stripGitGlobalArgs } from './modules/arguments';
 import { GdxContext } from './common/types';
 import { getShellScript } from './templates/shell';
 import global from './global';
 import Logger from './utils/logger';
 import { dispatch } from './cli/dispatch';
-import { getConfig, resolveLocalConfigPathFromGit } from './common/config';
+import { getConfig, resolveRepositoryLocationFromGit } from './common/config';
 
 const _args = process.argv.slice(2);
 
@@ -23,6 +24,11 @@ async function main(): Promise<number> {
    };
    const args = ctx.args;
    Logger.debug(`Parsed arguments: ${yuString(args.toArray())}`, 'gdx');
+
+   // Completion must be ultra-fast: avoid whichExec('git')
+   if (args[0] === '__completion') {
+      return await cmd.__completion({ ...ctx, git$: 'git' });
+   }
 
    if (args[0] === '--init') {
       const shell = args.popValue('--shell') || args.popValue('--init');
@@ -43,11 +49,6 @@ async function main(): Promise<number> {
          );
          return 1;
       }
-   }
-
-   // Completion must be ultra-fast: avoid whichExec('git')
-   if (args[0] === '__completion') {
-      return await cmd.__completion({ ...ctx, git$: 'git' });
    }
 
    const git$ = await whichExec('git');
@@ -95,7 +96,10 @@ async function main(): Promise<number> {
    }
 
    const config = await getConfig();
-   config.setLocalConfigPath(await resolveLocalConfigPathFromGit(ctx.git$));
+   ctx.repository = await resolveRepositoryLocationFromGit(ctx.git$);
+   config.setLocalConfigPath(
+      ctx.repository ? path.join(ctx.repository.gitDir, '.gdxrc.toml') : undefined
+   );
    global.threadResources.setMax(config.get<number>('maxThreadWorkers') || 1);
 
    // Dispatch to main routing logic
@@ -104,13 +108,17 @@ async function main(): Promise<number> {
 
 (async () => {
    try {
-      const exitCode = await main();
+      Logger.time('Session');
+      let exitCode = normalizeExitCode(await main());
       if (global.finalStringOutput) {
          quickPrint(global.finalStringOutput);
       }
 
+      exitCode = global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode;
+      Logger.timeEnd('Session');
+      Logger.debug(`Exiting with code ${exitCode}`);
       Logger.flushLogs();
-      process.exit(global.exitCodeOverride >= 0 ? global.exitCodeOverride : exitCode);
+      process.exit(exitCode);
    } catch (err) {
       Logger.error(yuString(err, { color: true }));
       Logger.flushLogs();

@@ -18,6 +18,7 @@ import { structure as rewordStructure } from './reword';
 import { structure as tagStructure } from './tag';
 import { structure as snapStructure } from './snap';
 import { structure as ghStructure } from './gh';
+import { structure as historyStructure } from './history';
 
 /**
  * command structure for command extensions that doesn't a dedicated source file
@@ -82,4 +83,5 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    tag: tagStructure,
    snap: snapStructure,
    gh: ghStructure,
+   history: historyStructure,
 };

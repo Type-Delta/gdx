@@ -56,6 +56,20 @@ describe('gdx snap worktree', async () => {
       expect(getCombinedOutput(buffer)).toContain('Reused');
    });
 
+   it('keeps labeled snapshots as separate records', async () => {
+      await resetState();
+
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree', '-m', 'first label']))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree', '-m', 'second label']))).toBe(0);
+
+      const listed = await listSnapshots(git$);
+      expect(listed.length).toBe(2);
+      expect(listed.map((snapshot) => snapshot.meta.message).sort()).toEqual([
+         'first label',
+         'second label',
+      ]);
+   });
+
    it('captures staged, unstaged, untracked unicode files and restores them with --force', async () => {
       await resetState();
 
@@ -123,29 +137,31 @@ describe('gdx snap worktree', async () => {
       expect(fs.existsSync(path.join(tmpDir, 'ignored.tmp'))).toBe(false);
    });
 
-   it('lists snapshots through dispatch both inside and outside a repository', async () => {
+   it('lists current-repository snapshots with labels through dispatch', async () => {
       await resetState();
 
       await fs.writeFile(path.join(tmpDir, 'list.txt'), 'list\n', 'utf-8');
       await $`${git$} add list.txt`;
       await $`${git$} commit --no-verify -m ${'Add list file'}`;
 
-      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree']))).toBe(0);
-      expect(await snap(createGdxContext(tmpDir, ['snap', 'full']))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'worktree', '-m', 'wip list label']))).toBe(0);
+      expect(await snap(createGdxContext(tmpDir, ['snap', 'full', '--message=full backup label']))).toBe(0);
 
       const insideResult = await dispatch(createGdxContext(tmpDir, ['snap', 'list']));
       expect(insideResult).toBe(0);
       expect(buffer.stdout).toContain('worktree');
       expect(buffer.stdout).toContain('full');
-      expect(buffer.stdout).toContain(path.basename(tmpDir));
+      expect(buffer.stdout).toContain('Message');
+      expect(buffer.stdout).not.toContain('Repo');
+      expect(buffer.stdout).toContain('wip list label');
+      expect(buffer.stdout).toContain('full backup label');
 
       const outsideDir = path.join(tmpRootDir, 'outside-list');
       fs.mkdirSync(outsideDir, { recursive: true });
 
       const outsideResult = await dispatch(createGdxContext(outsideDir, ['snap', 'list']));
       expect(outsideResult).toBe(0);
-      expect(buffer.stdout).toContain('worktree');
-      expect(buffer.stdout).toContain('full');
+      expect(buffer.stdout).toContain('No snapshots found');
    });
 
    it('warns instead of running worktree snapshots outside a repository', async () => {

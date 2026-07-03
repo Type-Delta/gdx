@@ -39,12 +39,18 @@ export default async function snap(ctx: GdxContext): Promise<number> {
                return 0;
             }
          case 'worktree': {
+            const message = popSnapshotMessage(args, subcommand === 'worktree' ? 2 : 1);
+            if (message === null) {
+               Logger.error('Usage: gdx snap [worktree] [-m|--message <message>]', 'snap');
+               return 1;
+            }
+
             if (!(await isInsideGitRepository(ctx.git$))) {
                Logger.warn('Worktree snapshots require running inside a git repository.', 'snap');
                return 0;
             }
 
-            const result = await createWorktreeSnapshot(ctx.git$);
+            const result = await createWorktreeSnapshot(ctx.git$, message);
             printCreatedSnapshot(
                result.hash,
                result.meta.type,
@@ -54,7 +60,13 @@ export default async function snap(ctx: GdxContext): Promise<number> {
             return 0;
          }
          case 'full': {
-            const result = await createFullSnapshot(ctx.git$);
+            const message = popSnapshotMessage(args, 2);
+            if (message === null) {
+               Logger.error('Usage: gdx snap full [-m|--message <message>]', 'snap');
+               return 1;
+            }
+
+            const result = await createFullSnapshot(ctx.git$, message);
             printCreatedSnapshot(
                result.hash,
                result.meta.type,
@@ -73,12 +85,12 @@ export default async function snap(ctx: GdxContext): Promise<number> {
             const hashWidth = SNAP_SHORT_HASH_LENGTH + 2;
             const indexWidth = Math.max(4, String(snapshots.length - 1).length + 2);
             quickPrint(
-               `${SGR.bright}${strJustify('#', indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Hash', hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Type', 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Created', 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}Repo${SGR.reset}`
+               `${SGR.bright}${strJustify('#', indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Hash', hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Type', 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify('Created', 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}Message${SGR.reset}`
             );
 
             for (const [index, snapshot] of snapshots.entries()) {
                quickPrint(
-                  `${strJustify(String(index), indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.cyan}${strJustify(snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH), hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.reset}${strJustify(snapshot.meta.type, 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify(formatDateTime(snapshot.meta.createdAt), 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${snapshot.meta.repoLabel}`
+                  `${strJustify(String(index), indexWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.cyan}${strJustify(snapshot.hash.slice(0, SNAP_SHORT_HASH_LENGTH), hashWidth, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${SGR.reset}${strJustify(snapshot.meta.type, 11, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${strJustify(formatDateTime(snapshot.meta.createdAt), 23, { align: 'left', overflow: 'visible', redundancyLv: 0 })}${snapshot.meta.message || ''}`
                );
             }
             return 0;
@@ -173,6 +185,12 @@ export default async function snap(ctx: GdxContext): Promise<number> {
    }
 }
 
+function popSnapshotMessage(args: GdxContext['args'], from: number): string | undefined | null {
+   const message =
+      args.popAssertValue('--message', from) ?? args.popAssertValue('-m', from);
+   return message == null ? undefined : message;
+}
+
 function printCreatedSnapshot(
    hash: string,
    type: 'worktree' | 'full',
@@ -211,8 +229,9 @@ export const help = {
 
          ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset} stores a full backup of the repository git data in a single archive.
 
-         ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset} lists snapshots for the current repository, or every snapshot when
-         invoked outside a repository.
+         Use ${SGR.cyan}-m|--message <message>${SGR.reset} with ${SGR.cyan}worktree${SGR.reset} or ${SGR.cyan}full${SGR.reset} to label a snapshot.
+
+         ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset} lists snapshots for the current repository.
 
          ${SGR.cyan}${EXECUTABLE_NAME} snap apply <hash|~index>${SGR.reset} restores a snapshot by hash prefix or list index.
          ${SGR.cyan}${EXECUTABLE_NAME} snap pop <hash|~index>${SGR.reset} restores a snapshot and removes it after a successful apply.
@@ -238,8 +257,8 @@ export const help = {
    usage: () => {
       return strWrap(
          litedent`
-         ${SGR.cyan}${EXECUTABLE_NAME} snap [worktree]${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap [worktree] ${SGR.dim}[-m|--message <message>]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} snap full ${SGR.dim}[-m|--message <message>]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} snap apply <hash|~index> ${SGR.dim}[--force]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} snap pop <hash|~index> ${SGR.dim}[--force]${SGR.reset}
@@ -248,8 +267,8 @@ export const help = {
          ${SGR.cyan}${EXECUTABLE_NAME} snap export <hash|~index> <dest>${SGR.reset}
 
          Examples:
-            ${SGR.cyan}${EXECUTABLE_NAME} snap worktree${SGR.reset + SGR.dim} # Save current staged/unstaged/untracked state${SGR.reset}
-            ${SGR.cyan}${EXECUTABLE_NAME} snap full${SGR.reset + SGR.dim}     # Save a full git-data backup${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap worktree -m "wip parser"${SGR.reset + SGR.dim} # Save current staged/unstaged/untracked state${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} snap full -m "pre-upgrade"${SGR.reset + SGR.dim}     # Save a full git-data backup${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} snap list${SGR.reset + SGR.dim}     # Show available snapshots${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} snap apply a1b2c3d --force${SGR.reset + SGR.dim} # Restore a snapshot${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} snap apply ~ --force${SGR.reset + SGR.dim}       # Restore newest listed snapshot${SGR.reset}
@@ -268,8 +287,12 @@ export const help = {
 
 export const structure = {
    $root: {
-      worktree: {},
-      full: {},
+      worktree: {
+         $allOf: ['-m', '--message'],
+      },
+      full: {
+         $allOf: ['-m', '--message'],
+      },
       list: {},
       apply: {
          $allOf: ['--force'],

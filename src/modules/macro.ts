@@ -145,9 +145,9 @@ export async function executeMacro(
 
       quickPrint(
          SGR.dim +
-            SGR.cyan +
-            `▶ Executing: ${SGR.white + SGR.bright}gdx ${escapeCmdArgs(substituted).join(' ')}` +
-            SGR.reset
+         SGR.cyan +
+         `▶ Executing: ${SGR.white + SGR.bright}gdx ${escapeCmdArgs(substituted).join(' ')}` +
+         SGR.reset
       );
 
       // Create a context for this command
@@ -159,7 +159,7 @@ export async function executeMacro(
       // Dispatch through gdx routing (which handles custom commands, aliases, etc.)
       const exitCode = await dispatch(ctx, { inMacro: true });
       if (exitCode !== 0) {
-         Logger.error(`Macro command failed with exit code ${exitCode}`, 'macro');
+         Logger.debug(`Macro command failed with exit code ${exitCode}`, 'macro');
          return exitCode;
       }
    }

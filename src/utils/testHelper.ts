@@ -169,6 +169,11 @@ export function createGdxContext(tempDir: string, args: string[] = []): GdxConte
    return {
       git$: [gitExePath, '-C', tempDir],
       args: new ArgsSet(args),
+      repository: {
+         root: path.resolve(tempDir),
+         gitDir: path.resolve(tempDir, '.git'),
+         commonGitDir: path.resolve(tempDir, '.git'),
+      },
    } satisfies GdxContext;
 }
 

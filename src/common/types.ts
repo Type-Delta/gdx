@@ -10,6 +10,14 @@ export type NCCStyle = Parameters<typeof ncc>[0];
 export interface GdxContext {
    args: ArgsSet;
    git$: string | string[];
+   /** Repository paths already discovered during startup, when available. */
+   repository?: GdxRepositoryLocation;
+}
+
+export interface GdxRepositoryLocation {
+   root: string;
+   gitDir: string;
+   commonGitDir: string;
 }
 
 export interface SpinnerOptions {

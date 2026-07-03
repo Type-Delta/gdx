@@ -15,6 +15,10 @@ import Logger from '../utils/logger';
 import global from '@/global';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 import litedent from '@/utils/litedent';
+import { ArgsSet } from '@/modules/arguments';
+import { readHistoryTimeline, readHistoryTransactionManifest } from '@/modules/history/storage';
+import { undoHistory } from '@/modules/history/transaction';
+import { HistoryTransactionManifest } from '@/modules/history/types';
 
 export interface StashEntry {
    sha: string;
@@ -31,6 +35,30 @@ export interface StashDropOperation {
 async function dropPardon(git$: string | string[]): Promise<number> {
    try {
       const root = await getRepoRootCached(git$);
+      let hasCompatibleHistory = false;
+      let compatibleHistory: HistoryTransactionManifest | null = null;
+      try {
+         const timeline = await readHistoryTimeline(git$);
+         if (timeline.cursor > 0) {
+            const latestId = timeline.entries[timeline.cursor - 1];
+            const latest = await readHistoryTransactionManifest(git$, latestId);
+            const isCompatible =
+               latest?.source === 'gdx' &&
+               latest.command?.command === 'stash:drop' &&
+               latest.refs.some((change) => change.name === 'refs/stash');
+            hasCompatibleHistory = !!isCompatible;
+            compatibleHistory = isCompatible ? latest : null;
+         }
+      } catch (error) {
+         Logger.debug(`History stash pardon unavailable: ${Err.from(error).message}`, 'stash');
+      }
+      if (hasCompatibleHistory) {
+         const legacy = popLastStashDrop(root);
+         await undoHistory({ git$, args: new ArgsSet(['history', 'undo']) });
+         await rebuildStashReflog(git$, compatibleHistory!, legacy);
+         quickPrint(SGR.green + 'Restored the latest stash drop from GDX history.' + SGR.reset);
+         return 0;
+      }
       const op = popLastStashDrop(root);
 
       if (!op) {
@@ -51,6 +79,42 @@ async function dropPardon(git$: string | string[]): Promise<number> {
       // Fallback or error
       Logger.error('Error pardoning stash: ' + e, 'stash');
       return 1;
+   }
+}
+
+/** Rebuilds the stash reflog sequence after strict ref restoration. */
+async function rebuildStashReflog(
+   git$: string | string[],
+   manifest: HistoryTransactionManifest,
+   legacy: StashDropOperation | null
+): Promise<void> {
+   const change = manifest.refs.find((entry) => entry.name === 'refs/stash');
+   if (!change) return;
+   if (change.after.kind === 'missing') {
+      await $inherit`${git$} update-ref -d refs/stash`;
+   } else if (change.after.kind === 'oid') {
+      await $inherit`${git$} update-ref refs/stash ${change.after.oid}`;
+   }
+
+   if (legacy?.entries.length) {
+      for (const entry of legacy.entries) {
+         await restoreStash(git$, entry.sha, entry.message);
+      }
+      return;
+   }
+
+   if (change.before.kind === 'oid') {
+      const expected = change.after.kind === 'oid' ? change.after.oid : '';
+      const args = [
+         'update-ref',
+         '--create-reflog',
+         '-m',
+         'restored by gdx history',
+         'refs/stash',
+         change.before.oid,
+      ];
+      if (expected) args.push(expected);
+      await $inherit`${git$} ${args}`;
    }
 }
 

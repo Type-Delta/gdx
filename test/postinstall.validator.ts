@@ -100,8 +100,8 @@ function checkRequiredArtifacts(
       (relativePath) => !fs.existsSync(path.join(options.packageRoot, relativePath))
    );
    const diagnosticArtifacts = [
-      'dist/diagnostics/post-install.validator.js',
-      'bin/diagnostics/post-install.validator.js',
+      'dist/diagnostics/postinstall.validator.js',
+      'bin/diagnostics/postinstall.validator.js',
    ];
    if (
       !diagnosticArtifacts.some((relativePath) =>
@@ -113,15 +113,15 @@ function checkRequiredArtifacts(
 
    return missing.length === 0
       ? {
-           name: 'Required artifacts',
-           status: 'pass',
-           detail: `${requiredArtifacts.length + 1} packaged artifacts are present.`,
-        }
+         name: 'Required artifacts',
+         status: 'pass',
+         detail: `${requiredArtifacts.length + 1} packaged artifacts are present.`,
+      }
       : {
-           name: 'Required artifacts',
-           status: 'fail',
-           detail: `Missing: ${missing.join(', ')}`,
-        };
+         name: 'Required artifacts',
+         status: 'fail',
+         detail: `Missing: ${missing.join(', ')}`,
+      };
 }
 
 /**
@@ -160,15 +160,15 @@ function checkInstallMetadata(options: PostInstallDiagnosticOptions): PostInstal
       }
       return mismatches.length === 0
          ? {
-              name: 'Install metadata',
-              status: 'pass',
-              detail: 'Version, platform, and architecture match this installation.',
-           }
+            name: 'Install metadata',
+            status: 'pass',
+            detail: 'Version, platform, and architecture match this installation.',
+         }
          : {
-              name: 'Install metadata',
-              status: 'fail',
-              detail: `Mismatched ${mismatches.join('; ')}.`,
-           };
+            name: 'Install metadata',
+            status: 'fail',
+            detail: `Mismatched ${mismatches.join('; ')}.`,
+         };
    } catch (error) {
       return {
          name: 'Install metadata',
@@ -194,12 +194,12 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
    }
 
    if (options.isNative) {
-      if (info.mode === 'node') {
+      if (info.mode === 'node' || info.mode === 'runtime') {
          return {
             name: 'Command shim',
             status: 'fail',
             detail:
-               'Install metadata selects Node fallback, but a stale native binary was launched.',
+               'Install metadata selects a JavaScript runtime fallback, but a stale native binary was launched.',
          };
       }
       const binaryPath = typeof info.binaryPath === 'string' ? info.binaryPath : process.execPath;
@@ -214,13 +214,15 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
    }
 
    const shimInstalled = info.useGlobalShim === true || info.useLocalShim === true;
-   const shimActive = process.env.GDX_NODE_SHIM === '1';
+   const shimActive =
+      process.env.GDX_RUNTIME_SHIM === '1' || process.env.GDX_NODE_SHIM === '1';
+   const runtime = typeof info.runtime === 'string' ? info.runtime : 'node';
    if (!shimInstalled) {
       return {
          name: 'Command shim',
          status: 'warn',
          detail:
-            'Postinstall did not record a rewritten Node shim (common with non-npm installers).',
+            'Postinstall did not record a rewritten runtime shim (common with non-npm installers).',
       };
    }
 
@@ -228,8 +230,8 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
       name: 'Command shim',
       status: shimActive ? 'pass' : 'fail',
       detail: shimActive
-         ? 'The postinstall Node shim is installed and active for this invocation.'
-         : 'A rewritten Node shim was recorded, but this invocation bypassed it.',
+         ? `The postinstall ${runtime} shim is installed and active for this invocation.`
+         : `A rewritten ${runtime} shim was recorded, but this invocation bypassed it.`,
    };
 }
 

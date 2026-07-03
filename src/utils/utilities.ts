@@ -28,6 +28,19 @@ export function quickPrint(msg: string = '', end: string = '\n'): void {
 }
 
 /**
+ * Converts an arbitrary command result into an integer process exit code.
+ * @param value - Result returned by a command implementation.
+ * @param fallback - Integer used when the result is absent or invalid.
+ * @returns The original integer result, or the fallback.
+ */
+export function normalizeExitCode(value: unknown, fallback = 1): number {
+   if (!Number.isInteger(fallback)) {
+      throw new TypeError('Exit-code fallback must be an integer.');
+   }
+   return typeof value === 'number' && Number.isInteger(value) ? value : fallback;
+}
+
+/**
  * Checks if a file exists and is executable.
  * @param filePath - The path to the file to check.
  * @returns A promise that resolves to `true` if the file exists and is executable, `false` otherwise.

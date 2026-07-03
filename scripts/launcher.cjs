@@ -11,7 +11,10 @@ const NATIVE_DIR = path.join(__dirname, '../bin/native');
 const isWin = process.platform === 'win32';
 const binaryName = isWin ? 'gdx.exe' : 'gdx';
 
-if (process.env.GDX_NODE_SHIM === '1' && process.argv[2] === '--') {
+if (
+   (process.env.GDX_RUNTIME_SHIM === '1' || process.env.GDX_NODE_SHIM === '1') &&
+   process.argv[2] === '--'
+) {
    process.argv.splice(2, 1);
 }
 

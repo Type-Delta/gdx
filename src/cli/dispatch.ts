@@ -3,7 +3,7 @@ import { Err } from '@lib/Tools';
 import cmd from '@/commands';
 import { GDX_COMMANDS, SGR } from '@/consts';
 import { $, execGit, printCommandExecution } from '@/modules/shell';
-import { compareVersions, progressiveMatch, quickPrint } from '@/utils/utilities';
+import { compareVersions, normalizeExitCode, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
 import Logger from '@/utils/logger';
@@ -29,6 +29,10 @@ import {
    viewInteractiveShowBlob,
 } from '@/modules/show-navigation';
 import { hasCommandHelp } from '@/commands/help';
+import { classifyHistoryAction, HistoryActionClassification } from '@/modules/history/classifier';
+import { runRoutedHistoryTransaction } from '@/modules/history/transaction';
+import { recordHistoryTransaction } from '@/modules/history/storage';
+import { HistoryRepositoryFingerprint } from '@/modules/history/types';
 
 /**
  * State passed through dispatch calls to track execution context.
@@ -53,6 +57,86 @@ export async function dispatch(
    ctx: GdxContext,
    state: DispatchState = { inMacro: false }
 ): Promise<number> {
+   const fastClassification = classifyHistoryAction(ctx.args.slice(0));
+   const classification =
+      fastClassification.disposition === 'unknown'
+         ? await classifyUnknownHistoryAction(ctx, fastClassification)
+         : fastClassification;
+   if (classification.disposition === 'no-history') {
+      return dispatchCore(ctx, state);
+   }
+
+   const config = await getConfig();
+   if (!config.get<boolean>('history.enabled')) return dispatchCore(ctx, state);
+   if (!ctx.repository) return dispatchCore(ctx, state);
+   const maxEntries = config.get<number>('history.maxEntries') ?? 100;
+
+   if (classification.disposition === 'audit-only') {
+      const exitCode = await dispatchCore(ctx, state);
+      await recordAuditOnlyTransaction(ctx, classification, exitCode, maxEntries);
+      return exitCode;
+   }
+
+   return runRoutedHistoryTransaction(
+      ctx,
+      {
+         action: classification.action ?? classification.route ?? 'git',
+         argv: classification.originalArgv,
+         capture: classification.capture ?? undefined,
+         maxEntries,
+      },
+      () => dispatchCore(ctx, state)
+   );
+}
+
+/** Performs the slower alias/unsupported classification only after fast routing misses. */
+async function classifyUnknownHistoryAction(
+   ctx: GdxContext,
+   original: HistoryActionClassification
+): Promise<HistoryActionClassification> {
+   const command = ctx.args[0];
+   if (!command) return { ...original, disposition: 'no-history' };
+   try {
+      const alias = (
+         await $({ reject: false })`${ctx.git$} config --get alias.${command}`
+      ).stdout.trim();
+      if (alias && !alias.startsWith('!')) {
+         const expanded = classifyHistoryAction([
+            ...alias.split(/\s+/).filter(Boolean),
+            ...ctx.args.slice(1),
+         ]);
+         if (expanded.disposition !== 'unknown') {
+            return {
+               ...expanded,
+               originalArgv: original.originalArgv,
+               originalCommand: original.originalCommand,
+            };
+         }
+      }
+   } catch {
+      // Unknown aliases remain conservative audit-only entries.
+   }
+   return {
+      ...original,
+      disposition: 'audit-only',
+      action: `unsupported:${command}`,
+      capture: null,
+   };
+}
+
+/** Executes the existing command router after the pure history classifier has selected a plan. */
+async function dispatchCore(
+   ctx: GdxContext,
+   state: DispatchState
+): Promise<number> {
+   return normalizeExitCode(await dispatchCoreUnchecked(ctx, state));
+}
+
+/** Executes the command router before normalizing its result to an integer exit code. */
+async function dispatchCoreUnchecked(
+   ctx: GdxContext,
+   state: DispatchState
+): Promise<unknown> {
    const args = ctx.args;
    const originalArgs = args.slice(0);
 
@@ -421,8 +505,7 @@ export async function dispatch(
             }
 
             if (args[1] === 'drop') {
-               const git$ = Array.isArray(ctx.git$) ? ctx.git$[0] : ctx.git$;
-               return await cmd.stash.drop(git$, args);
+               return await cmd.stash.drop(ctx.git$, args);
             }
             break;
          }
@@ -457,6 +540,8 @@ export async function dispatch(
             return cmd.reword(ctx);
          case 'snap':
             return cmd.snap(ctx);
+         case 'history':
+            return cmd.history(ctx);
          default:
             if (candidates && candidates.length > 1) {
                Logger.warn(
@@ -472,4 +557,54 @@ export async function dispatch(
    }
 
    return execGit(ctx.git$, args, redirectTo, redirectMode);
+}
+
+/** Records command/result-only audit metadata without inspecting repository state. */
+async function recordAuditOnlyTransaction(
+   ctx: GdxContext,
+   classification: HistoryActionClassification,
+   exitCode: number,
+   maxEntries: number
+): Promise<void> {
+   const empty = emptyHistoryFingerprint();
+   try {
+      await recordHistoryTransaction(
+         ctx.git$,
+         {
+            source: 'gdx',
+            capability: 'audit-only',
+            command: {
+               command: classification.action ?? classification.route ?? 'git',
+               argv: classification.originalArgv,
+               cwd: ctx.repository?.root ?? process.cwd(),
+               startedAt: new Date().toISOString(),
+               finishedAt: new Date().toISOString(),
+               exitCode,
+            },
+            refs: [],
+            fingerprints: { before: empty, after: empty },
+            undoUnavailableReason:
+               'This action can have remote, global, external, or otherwise non-reversible effects.',
+         },
+         { maxEntries, repository: ctx.repository }
+      );
+   } catch (error) {
+      Logger.warn(
+         `Could not record audit-only history: ${error instanceof Error ? error.message : String(error)}`,
+         'history'
+      );
+   }
+}
+
+/** Creates a neutral fingerprint for audit-only records that inspect no state domains. */
+function emptyHistoryFingerprint(): HistoryRepositoryFingerprint {
+   const value = { algorithm: 'sha256' as const, value: '' };
+   return {
+      refs: value,
+      head: value,
+      index: value,
+      paths: value,
+      control: value,
+      combined: value,
+   };
 }

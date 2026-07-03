@@ -159,25 +159,25 @@ function writeFileExecutable(filePath, content) {
    setExecutable(filePath);
 }
 
-function buildNodeShimContents(nodeAbsPath, launcherAbsPath) {
+function buildRuntimeShimContents(runtimeAbsPath, launcherAbsPath) {
    return {
       cmd: [
          '@echo off',
-         'set "GDX_NODE_SHIM=1"',
-         `"${nodeAbsPath}" "${launcherAbsPath}" -- %*`,
+         'set "GDX_RUNTIME_SHIM=1"',
+         `"${runtimeAbsPath}" "${launcherAbsPath}" -- %*`,
          'exit /b %ERRORLEVEL%',
          ''
       ].join('\r\n'),
       ps1: [
-         '$env:GDX_NODE_SHIM = "1"',
-         `& "${nodeAbsPath}" "${launcherAbsPath}" -- @args`,
+         '$env:GDX_RUNTIME_SHIM = "1"',
+         `& "${runtimeAbsPath}" "${launcherAbsPath}" -- @args`,
          'exit $LASTEXITCODE',
          ''
       ].join('\r\n'),
       sh: [
          '#!/usr/bin/env sh',
-         'export GDX_NODE_SHIM=1',
-         `exec "${nodeAbsPath}" "${launcherAbsPath}" -- "$@"`,
+         'export GDX_RUNTIME_SHIM=1',
+         `exec "${runtimeAbsPath}" "${launcherAbsPath}" -- "$@"`,
          ''
       ].join('\n'),
    };
@@ -187,11 +187,10 @@ function getLocalNodeModulesBinDir() {
    return path.resolve(PACKAGE_DIR, '..', '.bin');
 }
 
-function overwriteNodeShim(binDir, launcherAbsPath) {
+function overwriteRuntimeShim(binDir, launcherAbsPath, runtime) {
    if (!binDir || !fs.existsSync(binDir)) return false;
 
-   const nodeAbsPath = process.execPath;
-   const shims = buildNodeShimContents(nodeAbsPath, launcherAbsPath);
+   const shims = buildRuntimeShimContents(runtime.executable, launcherAbsPath);
 
    if (process.platform === 'win32') {
       writeFileExecutable(path.join(binDir, 'gdx.cmd'), shims.cmd);
@@ -225,7 +224,7 @@ function overwriteGlobalShim(nativeAbsPath) {
 
    if (!(process.env.npm_config_user_agent || '').includes('npm/')) {
       log('Non-npm global install detected; skipping global shim overwrite.');
-      log('This may result in overhead introduced by the Node.js launch script.');
+      log('This may result in overhead introduced by the JavaScript launch script.');
       return false;
    }
 
@@ -265,14 +264,46 @@ function overwriteGlobalShim(nativeAbsPath) {
    return true;
 }
 
-function installNodeFallbackShims() {
+function findRuntimeExecutable(name, platform = process.platform) {
+   const locator = platform === 'win32' ? 'where.exe' : 'which';
+   const located = spawnSync(locator, [name], {
+      encoding: 'utf8',
+      windowsHide: true,
+   });
+   if (located.error || located.status !== 0) return null;
+
+   for (const executable of String(located.stdout || '').split(/\r?\n/).filter(Boolean)) {
+      const needsShell = platform === 'win32' && /\.(?:cmd|bat)$/i.test(executable);
+      const probe = spawnSync(
+         executable,
+         ['-e', "require('path');process.stdout.write('gdx-runtime')"],
+         {
+            encoding: 'utf8',
+            shell: needsShell,
+            windowsHide: true,
+         }
+      );
+      if (!probe.error && probe.status === 0 && probe.stdout === 'gdx-runtime') return executable;
+   }
+   return null;
+}
+
+function selectFallbackRuntime(findExecutable = findRuntimeExecutable) {
+   for (const name of ['bun']) { // FIXME: waiting to runtimes with latency lower than Bun's
+      const executable = findExecutable(name);
+      if (executable) return { name, executable };
+   }
+   return { name: 'node', executable: process.execPath };
+}
+
+function installRuntimeFallbackShims(runtime) {
    const launcherAbsPath = path.join(__dirname, 'launcher.cjs');
    const localBin = getLocalNodeModulesBinDir();
    const globalBin = getNpmGlobalBinDir();
 
    return {
-      local: overwriteNodeShim(localBin, launcherAbsPath),
-      global: overwriteNodeShim(globalBin, launcherAbsPath),
+      local: overwriteRuntimeShim(localBin, launcherAbsPath, runtime),
+      global: overwriteRuntimeShim(globalBin, launcherAbsPath, runtime),
    };
 }
 
@@ -339,7 +370,6 @@ function tryBuildNative() {
    }
 
    const platform = process.platform;
-   const arch = process.arch;
    const binaryName = getNativeBinaryName(platform);
    const finalPath = path.join(NATIVE_DIR, binaryName);
 
@@ -373,10 +403,13 @@ async function main() {
       } else if (isTruthy(process.env.GDX_BUILD_NATIVE)) {
          tryBuildNative();
       } else {
-         log('No native install requested (default). Using Node.js fallback.');
-         const shimInstall = installNodeFallbackShims();
+         const runtime = selectFallbackRuntime();
+         log(`No native install requested (default). Using ${runtime.name} fallback.`);
+         const shimInstall = installRuntimeFallbackShims(runtime);
          writeInstallInfo({
-            mode: 'node',
+            mode: 'runtime',
+            runtime: runtime.name,
+            runtimePath: runtime.executable,
             platform: process.platform,
             arch: process.arch,
             version: getPackageVersion(),
@@ -398,14 +431,16 @@ if (require.main === module) {
 }
 
 module.exports = {
-   buildNodeShimContents,
+   buildRuntimeShimContents,
    createInstallInfo,
    downloadFile,
    getNativeBinaryName,
    getNativeBuildArgs,
    getLocalNodeModulesBinDir,
-   installNodeFallbackShims,
-   overwriteNodeShim,
+   findRuntimeExecutable,
+   installRuntimeFallbackShims,
+   overwriteRuntimeShim,
    readSha256FromText,
+   selectFallbackRuntime,
    verifySha256,
 };
