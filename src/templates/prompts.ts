@@ -40,7 +40,7 @@ export function commitMsgGenerator(changesSummary: string, userDescription?: str
    - IMPORTANT! Total commit message length MUST NOT EXCEED 170 WORDS, keep it concise
    - Do not use Markdown or any other formatting in the output
    - Do not use bullet points outside of the recap section
-   - DO NOT PREFIX SECTIONS with labels like "Description:" or "Recap:"
+   - DO NOT PREFIX SECTIONS with labels.
    </rules>
 
    ${userDescriptionBlock}
