@@ -46,6 +46,11 @@ export interface HistoryRecordOptions {
    maxEntries?: number;
    /** Pre-resolved startup paths avoid audit-only Git/working-tree inspection. */
    repository?: GdxRepositoryLocation;
+   /**
+    * Inserts a delayed observation among applied entries according to its event time.
+    * Existing entries retain their relative order; intended only for observer imports.
+    */
+   insertByEventTime?: boolean;
 }
 
 /** Options for resolving relative timeline selectors. */
@@ -315,7 +320,23 @@ export async function recordHistoryTransaction(
 
       const discardedRedoIds = timeline.entries.slice(timeline.cursor);
       const retainedApplied = timeline.entries.slice(0, timeline.cursor);
-      const appended = [...retainedApplied, id];
+      let insertionIndex = retainedApplied.length;
+      if (options.insertByEventTime) {
+         const retainedManifests = await Promise.all(
+            retainedApplied.map((entryId) =>
+               readJsonFile<HistoryTransactionManifest>(transactionFile(paths, entryId))
+            )
+         );
+         const newerIndex = retainedManifests.findIndex(
+            (entry) => entry !== null && entry.createdAt.localeCompare(now) > 0
+         );
+         if (newerIndex >= 0) insertionIndex = newerIndex;
+      }
+      const appended = [
+         ...retainedApplied.slice(0, insertionIndex),
+         id,
+         ...retainedApplied.slice(insertionIndex),
+      ];
       const pruneCount = Math.max(0, appended.length - maxEntries);
       const prunedIds = appended.slice(0, pruneCount);
       const entries = appended.slice(pruneCount);

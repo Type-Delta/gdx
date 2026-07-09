@@ -590,7 +590,13 @@ export async function importHistoryObserverSpool(
                   ? 'The direct observer did not receive enough state to restore this action.'
                   : undefined,
          },
-         { maxEntries, repository: ctx.repository }
+         {
+            maxEntries,
+            repository: ctx.repository,
+            // Reflog and hook records may be discovered after newer routed commands.
+            // Place the delayed event at its causal point without re-sorting the timeline.
+            insertByEventTime: true,
+         }
       );
       imported.push(result.manifest);
       await fs.rm(file, { force: true });

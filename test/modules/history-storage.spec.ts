@@ -242,6 +242,27 @@ describe('history storage', async () => {
       expect(await readHistoryTransactionManifest(git$, 'tx_three')).toBeNull();
    });
 
+   it('inserts delayed observations by event time without reordering existing history', async () => {
+      await resetHistory();
+      await recordHistoryTransaction(
+         git$,
+         { ...transaction('tx_first'), createdAt: '2026-07-09T01:00:00.000Z' }
+      );
+      await recordHistoryTransaction(
+         git$,
+         { ...transaction('tx_second'), createdAt: '2026-07-09T02:00:00.000Z' }
+      );
+
+      const result = await recordHistoryTransaction(
+         git$,
+         { ...transaction('tx_observed'), createdAt: '2026-07-09T01:30:00.000Z' },
+         { insertByEventTime: true }
+      );
+
+      expect(result.timeline.entries).toEqual(['tx_first', 'tx_observed', 'tx_second']);
+      expect(result.timeline.cursor).toBe(3);
+   });
+
    it('serializes concurrent writers without losing transactions', async () => {
       await resetHistory();
       const ids = Array.from({ length: 12 }, (_, index) => `tx_parallel_${index}`);
