@@ -119,7 +119,7 @@ async function classifyUnknownHistoryAction(
    return {
       ...original,
       disposition: 'audit-only',
-      action: `unsupported:${command}`,
+      action: command,
       capture: null,
    };
 }

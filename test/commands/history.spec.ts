@@ -50,7 +50,12 @@ describe('gdx history command', async () => {
    }
 
    /** Builds a minimal valid manifest input for command rendering tests. */
-   function transaction(id: string, createdAt: string, command = id): HistoryTransactionInput {
+   function transaction(
+      id: string,
+      createdAt: string,
+      command = id,
+      argv: string[] = [command]
+   ): HistoryTransactionInput {
       return {
          id,
          createdAt,
@@ -58,7 +63,7 @@ describe('gdx history command', async () => {
          capability: 'exact',
          command: {
             command,
-            argv: [command],
+            argv,
             cwd: tmpDir,
             startedAt: createdAt,
             finishedAt: createdAt,
@@ -111,6 +116,28 @@ describe('gdx history command', async () => {
       expect(output()).toContain('ID: tx_second');
       expect(output()).toContain('Index: 1');
       expect(output()).toContain('Command: second command');
+   });
+
+   it('lists command arguments in the Command column with a bounded width', async () => {
+      await resetHistory();
+      const longArgument = `message-${'x'.repeat(140)}`;
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_args', '2026-06-20T01:00:00.000Z', 'commit', [
+            'commit',
+            '--no-verify',
+            '-m',
+            longArgument,
+         ])
+      );
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+      const rendered = stripAnsiColor(output());
+      expect(rendered).toContain('commit --no-verify -m message-');
+      expect(rendered).not.toContain(longArgument);
    });
 
    it('lists a single worktree in timeline order even when timestamps disagree', async () => {

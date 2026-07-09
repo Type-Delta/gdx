@@ -4,12 +4,15 @@ import path from 'path';
 
 import { GdxContext, GdxRepositoryLocation } from '@/common/types';
 import Logger from '@/utils/logger';
+import { redactSensitiveText } from '@/utils/redact';
 
+import { redactHistoryArgv } from './classifier';
 import {
    HISTORY_CAPABILITIES,
    HISTORY_SCHEMA_VERSION,
    HISTORY_SOURCES,
    HISTORY_STORAGE_VERSION,
+   HistoryCommandMetadata,
    HistoryObserverMetadata,
    HistoryObserverSpoolEntry,
    HistoryObserverSpoolInput,
@@ -304,6 +307,7 @@ export async function recordHistoryTransaction(
       assertSafeId(id, 'transaction');
       const manifest: HistoryTransactionManifest = {
          ...input,
+         command: sanitizeHistoryCommandMetadata(input.command),
          schemaVersion: HISTORY_SCHEMA_VERSION,
          id,
          worktreeId: paths.id,
@@ -363,6 +367,24 @@ export async function recordHistoryTransaction(
       return { manifest, timeline: nextTimeline, discardedRedoIds, prunedIds };
    });
 }
+
+/**
+ * Redacts sensitive command provenance before the manifest is persisted.
+ * @param command - Caller-supplied command metadata.
+ * @returns Sanitized command metadata, or undefined when absent.
+ */
+function sanitizeHistoryCommandMetadata(
+   command: HistoryCommandMetadata | undefined
+): HistoryCommandMetadata | undefined {
+   if (!command) return undefined;
+   const argv = redactHistoryArgv(command.argv).map(redactSensitiveText);
+   return {
+      ...command,
+      command: redactSensitiveText(command.command),
+      argv,
+   };
+}
+
 
 /** Alias for recordHistoryTransaction. */
 export const appendHistoryTransaction = recordHistoryTransaction;

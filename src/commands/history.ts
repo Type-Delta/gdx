@@ -1,4 +1,4 @@
-import { strWrap } from '@lib/Tools';
+import { strLimit, strWrap } from '@lib/Tools';
 
 import { getConfig } from '@/common/config';
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
@@ -493,7 +493,11 @@ function parsePositiveInteger(value: string, label: string): number {
 
 /** Creates a compact command label for list output. */
 function formatCommand(manifest: HistoryTransactionManifest): string {
-   if (manifest.command?.command) return manifest.command.command;
+   if (manifest.command) {
+      const argvCommand = manifest.command.argv.join(' ').trim();
+      const command = manifest.command.command;
+      return strLimit(argvCommand || command, 100, 'end', -1);
+   }
    if (manifest.undoUnavailableReason) return manifest.undoUnavailableReason;
    return manifest.refs.length
       ? `${manifest.refs.length} ref change${manifest.refs.length === 1 ? '' : 's'}`

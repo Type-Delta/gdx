@@ -91,6 +91,41 @@ describe('history storage', async () => {
       ).toBe(false);
    });
 
+   it('redacts sensitive command metadata before saving', async () => {
+      await resetHistory();
+
+      await recordHistoryTransaction(git$, {
+         ...transaction('tx_secret'),
+         command: {
+            command: 'push',
+            argv: [
+               'push',
+               '--token',
+               'super-secret-token',
+               'https://alice:secret@example.com/repo.git',
+               'api_key=plain-secret',
+            ],
+            cwd: tmpDir,
+            startedAt: '2026-06-20T01:00:00.000Z',
+            finishedAt: '2026-06-20T01:00:01.000Z',
+            exitCode: 0,
+         },
+      });
+
+      const manifest = await readHistoryTransactionManifest(git$, 'tx_secret');
+      expect(manifest?.command?.command).toBe('push');
+      expect(manifest?.command?.argv).toEqual([
+         'push',
+         '--token',
+         '[REDACTED]',
+         'https://[REDACTED]@example.com/repo.git',
+         'api_key=[REDACTED]',
+      ]);
+      expect(JSON.stringify(manifest)).not.toContain('super-secret-token');
+      expect(JSON.stringify(manifest)).not.toContain('plain-secret');
+      expect(JSON.stringify(manifest)).not.toContain('alice:secret');
+   });
+
    it('initializes versioned state and a per-worktree timeline', async () => {
       await resetHistory();
 
