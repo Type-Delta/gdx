@@ -37,7 +37,8 @@ const {
    overwriteRuntimeShim: (
       binDir: string,
       launcherAbsPath: string,
-      runtime: { name: string; executable: string }
+      runtime: { name: string; executable: string },
+      platform?: NodeJS.Platform
    ) => boolean;
    selectFallbackRuntime: (
       findExecutable?: (name: string) => string | null
@@ -91,6 +92,40 @@ describe('postinstall runtime fallback shims', () => {
          // The bin entry must be a fresh regular file holding the shim.
          expect(fs.lstatSync(binEntry).isSymbolicLink()).toBe(false);
          expect(fs.readFileSync(binEntry, 'utf8')).toContain('export GDX_RUNTIME_SHIM=1');
+      } finally {
+         fs.rmSync(tmpRoot, { recursive: true, force: true });
+      }
+   });
+
+   it('writes an extensionless shim for Git Bash on Windows', () => {
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gdx-postinstall-win-shim-'));
+      try {
+         const binDir = path.join(tmpRoot, 'bin');
+         const launcherPath = path.join(tmpRoot, 'launcher.cjs');
+         fs.mkdirSync(binDir);
+         fs.writeFileSync(launcherPath, '#!/usr/bin/env node\n', 'utf8');
+
+         expect(
+            overwriteRuntimeShim(
+               binDir,
+               launcherPath,
+               {
+                  name: 'bun',
+                  executable: 'C:\\Users\\runneradmin\\.bun\\bin\\bun.exe',
+               },
+               'win32'
+            )
+         ).toBe(true);
+
+         expect(fs.readFileSync(path.join(binDir, 'gdx'), 'utf8')).toContain(
+            'export GDX_RUNTIME_SHIM=1'
+         );
+         expect(fs.readFileSync(path.join(binDir, 'gdx.cmd'), 'utf8')).toContain(
+            'set "GDX_RUNTIME_SHIM=1"'
+         );
+         expect(fs.readFileSync(path.join(binDir, 'gdx.ps1'), 'utf8')).toContain(
+            '$env:GDX_RUNTIME_SHIM = "1"'
+         );
       } finally {
          fs.rmSync(tmpRoot, { recursive: true, force: true });
       }

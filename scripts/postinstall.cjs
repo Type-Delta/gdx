@@ -187,12 +187,13 @@ function getLocalNodeModulesBinDir() {
    return path.resolve(PACKAGE_DIR, '..', '.bin');
 }
 
-function overwriteRuntimeShim(binDir, launcherAbsPath, runtime) {
+function overwriteRuntimeShim(binDir, launcherAbsPath, runtime, platform = process.platform) {
    if (!binDir || !fs.existsSync(binDir)) return false;
 
    const shims = buildRuntimeShimContents(runtime.executable, launcherAbsPath);
 
-   if (process.platform === 'win32') {
+   if (platform === 'win32') {
+      writeFileExecutable(path.join(binDir, 'gdx'), shims.sh);
       writeFileExecutable(path.join(binDir, 'gdx.cmd'), shims.cmd);
       writeFileExecutable(path.join(binDir, 'gdx.ps1'), shims.ps1);
       return true;
