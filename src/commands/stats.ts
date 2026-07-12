@@ -554,39 +554,56 @@ function buildContributorIdentityKey(authorName: string, authorEmail: string): s
 }
 
 /**
- * Formats a displayed username as a terminal hyperlink when remote metadata allows it.
+ * Formats a contributor display name as a terminal hyperlink to the remote forge's user search.
  *
  * @param displayName - Name text to display.
  * @param remoteInfo - Parsed remote link metadata.
  * @returns Hyperlinked display name when possible; otherwise plain text.
  */
 function formatUsernameWithProfileLink(displayName: string, remoteInfo: RemoteLinkInfo): string {
-   const profileUsername = sanitizeDisplayUsername(displayName);
-   const profileUrl = buildUserProfileUrl(profileUsername, remoteInfo);
-   if (!profileUrl) return displayName;
-   return hyperlink(displayName, profileUrl, false);
+   const searchTerm = sanitizeDisplayUsername(displayName);
+   const searchUrl = buildUserSearchUrl(searchTerm, remoteInfo);
+   if (!searchUrl) return displayName;
+   return hyperlink(displayName, searchUrl, false);
 }
 
 /**
  * Normalizes display text into a clean username token.
  *
  * @param value - Raw display value.
- * @returns Username token suitable for profile URL paths.
+ * @returns Clean text suitable for a user search query.
  */
 function sanitizeDisplayUsername(value: string): string {
    return value.trim().replace(/"/g, '').replace(/'s$/i, '');
 }
 
 /**
- * Builds a user profile URL for supported forge providers.
+ * Builds a user-search URL for the detected forge provider. Commit author names
+ * are display metadata and do not reliably match account usernames, so linking to
+ * a search result is safer than constructing a profile path directly.
  *
- * @param username - Candidate username.
+ * @param searchTerm - Contributor display name to search for.
  * @param remoteInfo - Parsed remote metadata.
- * @returns Fully-qualified profile URL or null.
+ * @returns Fully-qualified user-search URL or null.
  */
-function buildUserProfileUrl(username: string, remoteInfo: RemoteLinkInfo): string | null {
-   if (!username || !remoteInfo.host || !remoteInfo.provider) return null;
-   return `https://${remoteInfo.host}/${username}`;
+function buildUserSearchUrl(searchTerm: string, remoteInfo: RemoteLinkInfo): string | null {
+   if (!searchTerm || !remoteInfo.host || !remoteInfo.provider) return null;
+
+   const hostUrl = `https://${remoteInfo.host}`;
+   const query = new URLSearchParams({
+      q: searchTerm,
+   }).toString();
+
+   switch (remoteInfo.provider) {
+      case 'github':
+         return `${hostUrl}/search?${query}&type=users`;
+      case 'gitlab':
+         return `${hostUrl}/search?${new URLSearchParams({ search: searchTerm, scope: 'users' }).toString()}`;
+      case 'gitea':
+         return `${hostUrl}/explore/users?${query}`;
+      default:
+         return null;
+   }
 }
 
 export const help = {

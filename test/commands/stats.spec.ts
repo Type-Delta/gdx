@@ -190,7 +190,7 @@ describe('gdx stats', async () => {
       expect(projectLine).toContain('(1 submodules)');
    });
 
-   it('should render hyperlinks for project and usernames when supported', async () => {
+   it('should render project and contributor-search hyperlinks when supported', async () => {
       await seedLanguageCatalog();
       const originalHyperlinkSupport = CheckCache.supportsHyperlink;
       CheckCache.supportsHyperlink = true;
@@ -203,7 +203,27 @@ describe('gdx stats', async () => {
          expect(result).toBe(0);
 
          expect(buffer.stdout).toContain('\x1b]8;;https://github.com/octo-org/demo-repo\x07');
-         expect(buffer.stdout).toContain('\x1b]8;;https://github.com/Test%20User\x07');
+         expect(buffer.stdout).toContain('\x1b]8;;https://github.com/search?q=Test+User&type=users\x07');
+      } finally {
+         CheckCache.supportsHyperlink = originalHyperlinkSupport;
+      }
+   });
+
+   it('should use the configured GitLab and Gitea remotes for contributor searches', async () => {
+      await seedLanguageCatalog();
+      const originalHyperlinkSupport = CheckCache.supportsHyperlink;
+      CheckCache.supportsHyperlink = true;
+
+      try {
+         await $`${git$} remote set-url origin ${'https://gitlab.com/example/demo-repo.git'}`;
+         resetCache();
+         await stats(ctx);
+         expect(buffer.stdout).toContain('\x1b]8;;https://gitlab.com/search?search=Test+User&scope=users\x07');
+
+         await $`${git$} remote set-url origin ${'https://try.gitea.io/example/demo-repo.git'}`;
+         resetCache();
+         await stats(ctx);
+         expect(buffer.stdout).toContain('\x1b]8;;https://try.gitea.io/explore/users?q=Test+User\x07');
       } finally {
          CheckCache.supportsHyperlink = originalHyperlinkSupport;
       }
