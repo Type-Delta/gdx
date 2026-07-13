@@ -15,7 +15,7 @@ describe('Form', () => {
 
    it('rejects when run without questions', async () => {
       const form = new Form();
-      expect(form.run()).rejects.toThrow('no questions');
+      await expect(form.run()).rejects.toThrow('no questions');
    });
 
    it('rejects when run outside an interactive terminal', async () => {
@@ -25,7 +25,7 @@ describe('Form', () => {
       Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: false });
       try {
          const form = new Form().textbox('name', 'Name');
-         expect(form.run()).rejects.toThrow('interactive terminal');
+         await expect(form.run()).rejects.toThrow('interactive terminal');
       } finally {
          if (stdinDescriptor) Object.defineProperty(process.stdin, 'isTTY', stdinDescriptor);
          if (stdoutDescriptor) Object.defineProperty(process.stdout, 'isTTY', stdoutDescriptor);

@@ -205,7 +205,7 @@ describe('gdx commit auto', async () => {
 });
 
 describe('gdx commit auto - inherit mode', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, it, resetRepo, tracker } = await createTestEnv({
       suitName: 'commit-auto-inherit'
    });
    const ctx = createGdxContext(tmpDir, ['commit', 'auto']);
@@ -334,7 +334,7 @@ describe('gdx commit auto - inherit mode', async () => {
       expect(guidelineKeys.length).toBe(1);
    }, { timeout: 20000 });
 
-   it('should fallback to comprehensive when history is insufficient', async () => {
+   it('should warn about less accurate guidelines when history is short', async () => {
       await useInheritMode();
       // The repo starts with 1 initial commit from createTestEnv
       // This is < 5, so it should warn and continue (not fallback to comprehensive)
@@ -361,6 +361,27 @@ describe('gdx commit auto - inherit mode', async () => {
       // Verify commit was made even with fallback
       const log = (await $`${git$} log -1 --pretty=%B`).stdout;
       expect(log).toContain('Mock response from LLM');
+   });
+   it('should fallback to comprehensive when learned guidelines are empty', async () => {
+      await useInheritMode();
+      await resetRepo();
+      resetCache();
+      tracker.llmMockGenerateResponse = '   ';
+
+      try {
+         await fs.writeFile(path.join(tmpDir, 'fallback.txt'), 'content');
+         await $`${git$} add fallback.txt`;
+         await setTestGitConfig(tmpDir, 'core.editor', 'bun run dummy-editor --');
+
+         const result = await commit.auto(createGdxContext(tmpDir, ['commit', 'auto']));
+
+         expect(result).toBe(0);
+         expect(buffer.logs).toContain('Falling back to comprehensive');
+         const log = (await $`${git$} log -1 --pretty=%B`).stdout;
+         expect(log.trim()).not.toBe('Initial commit');
+      } finally {
+         tracker.llmMockGenerateResponse = 'Mock response from LLM';
+      }
    });
 });
 
