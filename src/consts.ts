@@ -135,15 +135,40 @@ export const STATS_EST = {
    AVG_LINES_PER_FILE: 500,
 };
 
-export const SENSITIVE_CONTENTS_REGEXES = [
-   /api[\w_-]?key[\w_-]?\s*=\s*['"].+['"]/i,
-   /access[\w_-]?token[\w_-]?\s*=\s*['"].+['"]/i,
-   /private[\w_-]?key[\w_-]?\s*=\s*['"].+['"]/i,
-   /sk-ant-[\d\w]{32,}/,
-   /sk-[\d\w]{32,}/,
-   /sk-or-[\d\w]{32,}/,
-   /-----\s*BEGIN PRIVATE KEY\s*-----/i,
+/** Describes how a sensitive-content match should be replaced. */
+export interface SensitiveContentPattern {
+   /** Pattern used to find sensitive-looking content. */
+   regex: RegExp;
+   /** Replacement template. Omit it to replace the complete match. */
+   replacement?: string;
+}
+
+/**
+ * Patterns used by both commit-content redaction and the lint command.
+ *
+ * The named-value pattern intentionally accepts only complete scalar values.
+ * This prevents object values and code expressions such as `apiKey: { ... }`
+ * and `apiKey: envRefSchema.default(...)` from being treated as secrets.
+ */
+export const SENSITIVE_CONTENT_PATTERNS: SensitiveContentPattern[] = [
+   {
+      regex: /\b((?:api[_-]?key|access[_-]?token|private[_-]?key|authorization|http\.extraheader)\s*[=:]\s*)(?:(["'])(?:(?!\2)[^\\\r\n]|\\.)+\2|([^\s"'{}[\](),;]+))(?=$|[\s,;])/i,
+      replacement: '$1$2[REDACTED]$2',
+   },
+   {
+      regex: /(https?:\/\/)([^:\s/@]+):([^@\s]+)@/i,
+      replacement: '$1[REDACTED]@',
+   },
+   {
+      regex: /\bsk-(?:(?:ant|or)-)?[A-Za-z0-9_-]{24,}\b/,
+   },
+   {
+      regex: /-----\s*BEGIN PRIVATE KEY\s*-----/i,
+   },
 ];
+
+/** Sensitive-content regexes retained for callers that only need detection. */
+export const SENSITIVE_CONTENTS_REGEXES = SENSITIVE_CONTENT_PATTERNS.map(({ regex }) => regex);
 
 export const DIFF_HEADER_LINE_REGEX = /^diff --(git|cc|combined)\b/;
 export const DIFF_HEADER_TEXT_REGEX = /^diff --(git|cc|combined)\b/m;

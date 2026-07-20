@@ -43,4 +43,34 @@ describe('redactSensitiveContent', () => {
       expect(result.text).not.toContain('user:pass');
       expect(result.text).not.toContain('BearerToken');
    });
+
+   it('should redact complete scalar values after named sensitive keys', () => {
+      const result = redactSensitiveContent(
+         `apiKey: 'quoted-"secret'\naccess_token=unquoted-secret\nauthorization: BearerToken`
+      );
+
+      expect(result.redactionCount).toBe(3);
+      expect(result.text).toBe(
+         `apiKey: '[REDACTED]'\naccess_token=[REDACTED]\nauthorization: [REDACTED]`
+      );
+   });
+
+   it('should count overlapping secret shapes only once', () => {
+      const result = redactSensitiveContent('apiKey="sk-12345678901234567890123456789012"');
+
+      expect(result.redactionCount).toBe(1);
+      expect(result.text).toBe('apiKey="[REDACTED]"');
+   });
+
+   it('should ignore object and expression values after sensitive-looking keys', () => {
+      const input = [
+         `apiKey: envRefSchema.default({ env: 'LLM_API_KEY' }),`,
+         `model: { apiKey: { env: 'LLM_API_KEY' }, model: { env: 'LLM_MODEL' } },`,
+      ].join('\n');
+
+      const result = redactSensitiveContent(input);
+
+      expect(result.redactionCount).toBe(0);
+      expect(result.text).toBe(input);
+   });
 });

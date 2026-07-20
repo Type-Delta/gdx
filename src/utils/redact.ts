@@ -1,28 +1,6 @@
-import { SENSITIVE_CONTENTS_REGEXES } from '@/consts';
+import { SENSITIVE_CONTENT_PATTERNS } from '@/consts';
 
 const REDACTION_TOKEN = '[REDACTED_SENSITIVE_CONTENT]';
-
-type RedactionReplacement = string | ((...args: string[]) => string);
-
-interface RedactionPattern {
-   regex: RegExp;
-   replacement: RedactionReplacement;
-}
-
-const ADDITIONAL_SENSITIVE_PATTERNS: RedactionPattern[] = [
-   {
-      regex: /(https?:\/\/)([^:\s/@]+):([^@\s]+)@/gi,
-      replacement: '$1[REDACTED]@',
-   },
-   {
-      regex: /\b(sk-(?:ant-|or-)?[A-Za-z0-9_-]{24,})\b/g,
-      replacement: REDACTION_TOKEN,
-   },
-   {
-      regex: /\b((?:api[_-]?key|access[_-]?token|private[_-]?key|authorization|http\.extraheader)\s*[=:]\s*)(["']?)[^\s"']+/gi,
-      replacement: '$1$2[REDACTED]',
-   },
-];
 
 /**
  * Creates a global copy of a regular expression while preserving its other flags.
@@ -39,21 +17,12 @@ export function redactSensitiveContent(text: string): { text: string; redactionC
    let redactedText = text;
    let redactionCount = 0;
 
-   for (const regex of SENSITIVE_CONTENTS_REGEXES) {
-      const globalRegex = toGlobalRegex(regex);
-      redactedText = redactedText.replace(globalRegex, () => {
-         redactionCount++;
-         return REDACTION_TOKEN;
-      });
-   }
-
-   for (const pattern of ADDITIONAL_SENSITIVE_PATTERNS) {
+   for (const pattern of SENSITIVE_CONTENT_PATTERNS) {
       const globalRegex = toGlobalRegex(pattern.regex);
       redactedText = redactedText.replace(globalRegex, (...args: string[]) => {
          redactionCount++;
-         if (typeof pattern.replacement === 'function') {
-            return pattern.replacement(...args);
-         }
+         if (!pattern.replacement) return REDACTION_TOKEN;
+
          return pattern.replacement.replace(/\$(\d+)/g, (_, groupIndex: string) => {
             return args[Number(groupIndex)] || '';
          });
