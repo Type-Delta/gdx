@@ -58,7 +58,7 @@ import { CommandHelpObj, CommandStructure, GdxContext, CommandArgThunk } from '.
 import clear from './clear';
 import litedent from '@/utils/litedent';
 
-interface ParallelMetadata {
+export interface ParallelMetadata {
    alias: string;
    branch: string;
    safeBranch: string;
@@ -68,6 +68,9 @@ interface ParallelMetadata {
    baseCommit: string;
    forkBranch?: string;
    forkBranchTracked?: boolean;
+   purpose?: 'merge-target';
+   targetBranch?: string;
+   mergeArgs?: string[];
    createdAt: string;
    updatedAt?: string;
    joinCursor?: string;
@@ -205,7 +208,7 @@ function testParallelAlias(alias: string): boolean {
 /**
  * Gets metadata from a parallel worktree
  */
-function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
+export function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
    const metaPath = path.join(worktreePath, '.git-parallel.json');
 
    try {
@@ -221,6 +224,80 @@ function getParallelMetadata(worktreePath: string): ParallelMetadata | null {
 function writeParallelMetadata(worktreePath: string, meta: ParallelMetadata): void {
    const metaPath = path.join(worktreePath, '.git-parallel.json');
    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+}
+
+export interface RegisteredParallelWorktreeOptions {
+   alias: string;
+   branch: string;
+   baseCommit?: string;
+   purpose?: ParallelMetadata['purpose'];
+   targetBranch?: string;
+   mergeArgs?: string[];
+}
+
+export interface RegisteredParallelWorktree {
+   alias: string;
+   path: string;
+   metadata: ParallelMetadata;
+}
+
+/**
+ * Creates a registered parallel worktree without running fork init behaviors.
+ * @param git$ Git executable or scoped command array.
+ * @param options Worktree registration and checkout options.
+ * @returns The created worktree path and metadata.
+ */
+export async function createRegisteredParallelWorktree(
+   git$: string | string[],
+   options: RegisteredParallelWorktreeOptions
+): Promise<RegisteredParallelWorktree> {
+   const scope = await getParallelScope(git$);
+   const ctx = scope.parallelCtx;
+
+   if (!testParallelAlias(options.alias)) {
+      throw new Error(`Alias '${options.alias}' contains invalid characters or spaces.`);
+   }
+
+   const targetPath = path.join(ctx.parallelRoot, options.alias);
+   if (fs.existsSync(targetPath) && fs.readdirSync(targetPath).length > 0) {
+      throw new Error(`Worktree alias '${options.alias}' already exists for this branch.`);
+   }
+
+   const excludePath = path.join(ctx.repoRoot, '.git', 'info', 'exclude');
+   try {
+      const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+      if (!excludeContent.includes('.git-parallel.json')) {
+         fs.appendFileSync(excludePath, '\n.git-parallel.json\n');
+      }
+   } catch {
+      fs.writeFileSync(excludePath, '.git-parallel.json\n');
+   }
+
+   fs.mkdirSync(ctx.parallelRoot, { recursive: true });
+
+   const baseCommit =
+      options.baseCommit || (await getRevParseCached(scope.gitExec, ctx.repoRoot, 'HEAD')).trim();
+
+   await $inherit`${scope.scopeGit$} worktree add ${targetPath} ${options.branch}`;
+
+   const metadata: ParallelMetadata = {
+      alias: options.alias,
+      branch: ctx.branchName,
+      safeBranch: ctx.safeBranchName,
+      project: ctx.projectName,
+      safeProject: ctx.safeProjectName,
+      originPath: ctx.repoRoot,
+      baseCommit,
+      forkBranch: options.branch,
+      forkBranchTracked: true,
+      purpose: options.purpose,
+      targetBranch: options.targetBranch,
+      mergeArgs: options.mergeArgs,
+      createdAt: new Date().toISOString(),
+   };
+
+   writeParallelMetadata(targetPath, metadata);
+   return { alias: options.alias, path: targetPath, metadata };
 }
 
 function resetParallelJoinState(meta: ParallelMetadata, baseCommit: string): void {
@@ -488,21 +565,36 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
 }
 
 /**
- * Removes a parallel worktree
+ * Removes a registered parallel worktree by alias.
+ * @param git$ Git executable or scoped command array.
+ * @param alias Registered parallel worktree alias.
+ * @param options Optional removal behavior.
+ * @param options.chdirToOrigin Change the process CWD to the origin path before removal.
  */
-async function removeWorktree(git$: string | string[], alias: string): Promise<number> {
+export async function removeParallelWorktree(
+   git$: string | string[],
+   alias: string,
+   options: { chdirToOrigin?: boolean } = {}
+): Promise<number> {
    const ctx = await getParallelContext(git$);
    if (!ctx) return 1;
 
    Logger.debug(`Removing worktree '${alias}'...`, 'parallel');
    const targetPath = path.join(ctx.parallelRoot, alias);
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
+   if (options.chdirToOrigin && fs.existsSync(ctx.originPath)) {
+      process.chdir(ctx.originPath);
+   }
+   const operationGit$ =
+      options.chdirToOrigin && fs.existsSync(ctx.originPath)
+         ? [gitExec, '-C', ctx.originPath]
+         : git$;
    const spinnerCtrl = spinner({
       message: `Preparing worktree for removal...`,
    });
 
-   await invalidateWorktreeListCache(git$);
-   const worktreeEntry = await getWorktreeEntry(git$, targetPath);
+   await invalidateWorktreeListCache(operationGit$);
+   const worktreeEntry = await getWorktreeEntry(operationGit$, targetPath);
    if (!worktreeEntry && !fs.existsSync(targetPath)) {
       spinnerCtrl.stop();
       Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}'.`, 'parallel');
@@ -525,8 +617,8 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
          'parallel'
       );
 
-      await pruneWorktrees(git$);
-      const afterPrune = await getWorktreeEntry(git$, targetPath);
+      await pruneWorktrees(operationGit$);
+      const afterPrune = await getWorktreeEntry(operationGit$, targetPath);
       if (!afterPrune) {
          spinnerCtrl.stop();
          quickPrint(`${SGR.cyan}Removed worktree metadata:${SGR.reset} ${alias}`);
@@ -547,18 +639,34 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
    }
    Logger.debug(`Worktree path '${targetPath}' is accessible.`, 'parallel');
 
-   const activeOps = await getWorktreeOperations(git$, targetPath);
+   const meta = getParallelMetadata(targetPath);
+   const activeOps = await getWorktreeOperations(operationGit$, targetPath);
    Logger.debug(
       `Active operations for worktree '${alias}': ${activeOps.length > 0 ? activeOps.join(', ') : 'none'}`,
       'parallel'
    );
    if (activeOps.length > 0) {
-      spinnerCtrl.stop();
-      Logger.error(
-         `Worktree '${alias}' has in-progress operations (${activeOps.join(', ')}). Complete or abort them before removing.`,
-         'parallel'
-      );
-      return 1;
+      if (meta?.purpose === 'merge-target' && activeOps.length === 1 && activeOps[0] === 'merge') {
+         spinnerCtrl.options.message = `Aborting merge in '${alias}'...`;
+         try {
+            await $`${gitExec} -C ${targetPath} merge --abort`;
+         } catch (err) {
+            spinnerCtrl.stop();
+            Logger.error(
+               `Failed to abort merge in worktree '${alias}'. Resolve or abort it manually before removing.`,
+               'parallel'
+            );
+            Logger.debug(yuString(err, { color: true }), 'parallel');
+            return 1;
+         }
+      } else {
+         spinnerCtrl.stop();
+         Logger.error(
+            `Worktree '${alias}' has in-progress operations (${activeOps.join(', ')}). Complete or abort them before removing.`,
+            'parallel'
+         );
+         return 1;
+      }
    }
 
    const statusOutput = (
@@ -573,7 +681,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       return 1;
    }
 
-   const submodules = await getSubmodules(git$, targetPath);
+   const submodules = await getSubmodules(operationGit$, targetPath);
    Logger.debug(
       `Submodules in worktree '${alias}': ${submodules.length > 0 ? submodules.map((s) => s.path).join(', ') : 'none'}`,
       'parallel'
@@ -581,7 +689,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    // deinit submodules
    if (submodules.length > 0) {
-      const dirtySubmodules = await getDirtySubmodules(git$, targetPath, submodules);
+      const dirtySubmodules = await getDirtySubmodules(operationGit$, targetPath, submodules);
       if (dirtySubmodules.length > 0) {
          const detail = dirtySubmodules.join(', ');
          spinnerCtrl.stop();
@@ -599,14 +707,14 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
             `Executing deinit for submodules with ${gitExec} -C ${targetPath}...`,
             'parallel'
          );
-         await deinitSubmodules(git$, targetPath);
+         await deinitSubmodules(operationGit$, targetPath);
       } catch (err) {
          spinnerCtrl.stop();
          const fallbackStatus = (
             await $`${gitExec} -C ${targetPath} status --porcelain=v1 --untracked-files=normal`
          ).stdout.trim();
          if (fallbackStatus.length === 0) {
-            await pruneWorktrees(git$);
+            await pruneWorktrees(operationGit$);
          }
 
          Logger.error(
@@ -642,7 +750,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
 
    try {
       Logger.debug(`Executing git worktree remove for '${alias}'...`, 'parallel');
-      const result = await $`${git$} worktree remove ${targetPath}`;
+      const result = await $`${operationGit$} worktree remove ${targetPath}`;
       spinnerCtrl.stop();
 
       quickPrint(result.stdout.trim());
@@ -695,7 +803,7 @@ async function removeWorktree(git$: string | string[], alias: string): Promise<n
       if (response.toLowerCase() === 'y' || response.toLowerCase() === 'yes') {
          try {
             fs.rmSync(targetPath, { recursive: true, force: true });
-            await pruneWorktrees(git$);
+            await pruneWorktrees(operationGit$);
             quickPrint(`${SGR.cyan}Force removed worktree directory:${SGR.reset} ${alias}`);
             return 0;
          } catch {
@@ -997,7 +1105,7 @@ async function cmdRemove(git$: string | string[], args: ArgsSet): Promise<number
       return 1;
    }
 
-   return await removeWorktree(git$, targetAlias);
+   return await removeParallelWorktree(git$, targetAlias);
 }
 
 async function cmdRemoveRecursive(git$: string | string[], ctx: ParallelContext): Promise<number> {
@@ -1021,7 +1129,7 @@ async function cmdRemoveRecursive(git$: string | string[], ctx: ParallelContext)
       const meta = getParallelMetadata(forkPath);
       const forkAlias = meta?.alias || wt.name;
 
-      const result = await removeWorktree(git$, forkAlias);
+      const result = await removeParallelWorktree(git$, forkAlias);
       if (result !== 0) return result;
    }
 
@@ -2516,7 +2624,7 @@ async function joinWorktree(
       (appliedCommits.length > 0 || appliedSubmoduleCommits.length > 0)
    ) {
       Logger.debug(`Removing fork worktree '${forkAlias}' after join...`, 'parallel');
-      const removeResult = await removeWorktree(git$, forkAlias);
+      const removeResult = await removeParallelWorktree(git$, forkAlias);
       if (removeResult !== 0) {
          Logger.warn(
             `Failed to remove fork '${forkAlias}' after joining. Please remove it manually later.`

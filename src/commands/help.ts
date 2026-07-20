@@ -32,12 +32,14 @@ import { help as tagHelp } from './tag';
 import { help as snapHelp } from './snap';
 import { help as ghHelp } from './gh';
 import { help as historyHelp } from './history';
+import { help as mergeHelp } from './merge';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 const EXTENSION_HELP_MAP: Record<string, CommandHelpObj> = {
    tag: tagHelp,
    stash: stashHelp,
    commit: commitHelp,
+   merge: mergeHelp,
    submodule: submoduleHelp,
    status: statusHelp,
 };

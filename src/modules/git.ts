@@ -18,6 +18,7 @@ import { GdxContext, Result } from '@/common/types';
 
 export interface WorktreeEntry {
    path: string;
+   branch: string | null;
    locked: boolean;
    lockReason: string | null;
    prunable: boolean;
@@ -1688,6 +1689,7 @@ export async function getWorktreeList(git$: GdxContext['git$']): Promise<Worktre
             if (current) entries.push(current);
             current = {
                path: line.slice('worktree '.length).trim(),
+               branch: null,
                locked: false,
                lockReason: null,
                prunable: false,
@@ -1697,7 +1699,9 @@ export async function getWorktreeList(git$: GdxContext['git$']): Promise<Worktre
 
          if (!current) continue;
 
-         if (line.startsWith('locked')) {
+         if (line.startsWith('branch ')) {
+            current.branch = line.slice('branch '.length).trim() || null;
+         } else if (line.startsWith('locked')) {
             current.locked = true;
             const reason = line.slice('locked'.length).trim();
             current.lockReason = reason.length > 0 ? reason : null;

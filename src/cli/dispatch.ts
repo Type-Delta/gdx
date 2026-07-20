@@ -255,7 +255,8 @@ async function dispatchCoreUnchecked(
             break;
          case 'mg': // alias for 'merge'
             args[0] = 'merge';
-            break;
+         case 'merge':
+            return await cmd.merge(ctx);
          case 'pl': // alias for 'pull'
          case 'pu':
             args[0] = 'pull';
