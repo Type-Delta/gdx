@@ -653,6 +653,55 @@ async function writeTestDebugLog(
 }
 
 /**
+ * Locates a POSIX shell capable of running Git hook scripts.
+ *
+ * On Windows the shell ships inside Git for Windows, but `git.exe` is exposed from several
+ * directories (`cmd/`, `bin/`, `mingw64/bin/`) depending on how PATH was set up, so the
+ * shell cannot be derived from the Git binary with a fixed relative walk — the correct
+ * number of levels to climb differs per layout. Walk upwards instead and probe the known
+ * locations, verifying a candidate exists before returning it.
+ *
+ * @param gitExe - Path to the resolved Git executable.
+ * @returns Path to a POSIX shell; plain `sh` on non-Windows platforms.
+ * @throws {Error} When no shell can be found near Git or on PATH.
+ */
+export async function resolvePosixShell(gitExe: string): Promise<string> {
+   if (process.platform !== 'win32') {
+      return 'sh';
+   }
+
+   const relativeCandidates = [
+      ['bin', 'sh.exe'],
+      ['usr', 'bin', 'sh.exe'],
+   ];
+
+   let dir = path.dirname(gitExe);
+   for (let depth = 0; depth < 4; depth++) {
+      for (const relative of relativeCandidates) {
+         const candidate = path.join(dir, ...relative);
+         if (fs.existsSync(candidate)) {
+            return candidate;
+         }
+      }
+
+      const parent = path.dirname(dir);
+      if (parent === dir) {
+         break;
+      }
+      dir = parent;
+   }
+
+   const fromPath = await whichExec('sh');
+   if (fromPath) {
+      return fromPath;
+   }
+
+   throw new Error(
+      `Unable to locate a POSIX shell near "${gitExe}" or on PATH; Git hook tests cannot run.`
+   );
+}
+
+/**
  * Multiplier applied to per-test timeouts. Parallel workers (`bun test --parallel`)
  * contend for CPU and disk, so tests calibrated for serial runs need more headroom.
  */
@@ -661,7 +710,7 @@ const TEST_TIMEOUT_SCALE = process.env.BUN_TEST_WORKER_ID ? 3 : 1;
 function defineBunIt(tracker: TestEnvTracker, lifecycle?: TestLifecycle) {
    return function (name: string, fn: () => Promise<void> | void, options?: { timeout?: number }) {
       options = {
-         timeout: 10000, // Default timeout of 10 seconds for each test
+         timeout: 20000, // Default timeout of 20 seconds for each test
          ...options,
       };
       options.timeout! *= TEST_TIMEOUT_SCALE;

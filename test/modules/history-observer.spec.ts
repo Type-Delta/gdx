@@ -15,16 +15,13 @@ import {
    readHistoryTimeline,
    resolveHistoryStoragePaths,
 } from '@/modules/history/storage';
-import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { createGdxContext, createTestEnv, resolvePosixShell } from '@/utils/testHelper';
 
 describe('history reference-transaction observer', async () => {
    const { tmpDir, $, it, resetRepo } = await createTestEnv({ suitName: 'history-observer' });
    const ctx = createGdxContext(tmpDir);
    const gitCommand = Array.isArray(ctx.git$) ? ctx.git$ : [ctx.git$];
-   const shell =
-      process.platform === 'win32'
-         ? path.resolve(path.dirname(gitCommand[0]), '..', 'bin', 'sh.exe')
-         : 'sh';
+   const shell = await resolvePosixShell(gitCommand[0]);
 
    async function reset(): Promise<void> {
       await resetRepo('full');

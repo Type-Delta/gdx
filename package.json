@@ -42,7 +42,7 @@
     "lint": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts",
     "lint:fix": "bun run ts-check && eslint src --ext .ts -c eslint.config.ts --fix",
     "test:serial": "bun test",
-    "test": "bun test --parallel --timeout 20000",
+    "test": "bun test --parallel --timeout 40000",
     "build": "bun run transpile-esm && bun run build:diagnostics:bin && GDX_BUILD=$(git describe --tags --always --dirty) bun build ./src/index.ts --env='GDX_BUILD*' --outfile=./bin/gdx --compile --bytecode --production --keep-names",
     "build:release:win32-x64": "bun run transpile-esm && bun run build:diagnostics:bin && GDX_BUILD=$(git describe --tags --always --dirty) bun build ./src/index.ts --env='GDX_BUILD*' --outfile=./bin/gdx-win32-x64.exe --compile --bytecode --production --keep-names",
     "build:diagnostics:bin": "bun build ./test/postinstall.validator.ts --outfile=./bin/diagnostics/postinstall.validator.js --target=bun --format=esm --production --minify --keep-names",

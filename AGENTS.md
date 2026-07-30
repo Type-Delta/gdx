@@ -258,3 +258,20 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Tests use custom harness: check `testHelper.ts` for details** (more info in [TEST_HARNESS.CAVEAT.md](./docs/agent/TEST_HARNESS.CAVEAT.md), read this when writing tests)
 - **Post-install diagnostics are an opt-in integration suite, not a normal Bun test.** Its source is `test/postinstall.validator.ts` (intentionally without `.spec.ts`/`.test.ts`).
 - **On Windows, test can corrupt Git for Windows' MSYS runtime machine-wide, if Defender intervenes.** Symptom: `sh.exe`/`bash.exe` fail with `fatal error - add_item ... errno 1`. (if you hit this, read more in [CORRUPTED_MSYS.CAVEAT.md](./docs/agent/CORRUPTED_MSYS.CAVEAT.md))
+- **Never derive sibling tool paths from the resolved `git.exe` with a fixed relative walk.**
+  Git for Windows exposes `git.exe` from at least three directories — `Git\cmd\git.exe`,
+  `Git\bin\git.exe`, and `Git\mingw64\bin\git.exe` — and which one `whichExec('git')` picks
+  depends on **the PATH of the shell that launched the suite**, not on the machine:
+   - From PowerShell/CMD, PATH normally carries `C:\Program Files\Git\cmd`, so Git resolves
+     to `Git\cmd\git.exe`.
+   - From Git Bash, MSYS rewrites PATH and puts `/mingw64/bin` (= `Git\mingw64\bin`, which
+     also contains `git.exe`) near the front, so Git resolves to `Git\mingw64\bin\git.EXE`.
+     The uppercase extension is the `which` package appending a PATHEXT entry verbatim.
+
+  A walk like `path.resolve(path.dirname(gitExe), '..', 'bin', 'sh.exe')` is only correct
+  for the `cmd\` layout; from `mingw64\bin\` it silently yields a non-existent
+  `Git\mingw64\bin\sh.exe`, surfacing as a cryptic
+  `'...sh.exe' is not recognized as an internal or external command`. The symptom is a suite
+  that passes from one terminal and fails from another, on the same commit. Use
+  `resolvePosixShell()` from `testHelper.ts`, which climbs ancestors probing for a shell
+  that actually exists and falls back to PATH.
