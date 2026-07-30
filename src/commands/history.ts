@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { strLimit, strWrap } from '@lib/Tools';
 
 import { getConfig } from '@/common/config';
@@ -30,7 +32,6 @@ import {
 } from '@/modules/history/transaction';
 import { HistoryTransactionManifest, HistoryWorktreeRegistration } from '@/modules/history/types';
 import Logger from '@/utils/logger';
-import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 
 const DEFAULT_LIST_LIMIT = 20;

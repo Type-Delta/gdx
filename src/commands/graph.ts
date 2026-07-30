@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { $ } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { MathKit, ncc, strWrap } from '@lib/Tools';
@@ -12,7 +14,6 @@ import { GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '../consts';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { getGitConfigCached } from '@/modules/git';
-import litedent from '@/utils/litedent';
 
 const LABEL_WIDTH = 6; // "Sun " + 2 spaces
 const COL_WIDTH = 2; // "■ "

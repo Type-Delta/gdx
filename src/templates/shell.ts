@@ -1,5 +1,6 @@
+import litedent from 'litedent';
+
 import { GDX_SIGNAL_CODE } from '@/consts';
-import litedent from '@/utils/litedent';
 
 export const generateBashScript = (cmd: string = 'gdx'): string => {
    return litedent`

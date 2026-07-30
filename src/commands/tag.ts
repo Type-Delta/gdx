@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { Err, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
@@ -8,7 +10,6 @@ import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import { quickPrint } from '@/utils/utilities';
 import global from '@/global';
-import litedent from '@/utils/litedent';
 
 /**
  * Resolves the object type of a ref.

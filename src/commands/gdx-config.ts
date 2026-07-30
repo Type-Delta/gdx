@@ -1,10 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import litedent from 'litedent';
+
 import { Err, strClamp, strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { getConfig, resolveLocalConfigPathFromGit } from '../common/config';
 import { CONFIG_DESCRIPTIONS, DEFAULT_CONFIG } from '../common/config/schema';
-import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '../utils/utilities';
 import Logger from '../utils/logger';
 import { EXECUTABLE_NAME, SECURE_CONF_KEYS, GDX_VPALETTE, SGR } from '@/consts';

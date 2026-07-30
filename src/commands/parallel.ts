@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import * as fs from '@/modules/fs';
 import path from 'path';
 import { ExecaError } from 'execa';
@@ -56,7 +58,6 @@ import { runWorktreeInit } from '@/modules/worktree-init';
 import { ArgsSet } from '@/modules/arguments';
 import { CommandHelpObj, CommandStructure, GdxContext, CommandArgThunk } from '../common/types';
 import clear from './clear';
-import litedent from '@/utils/litedent';
 
 export interface ParallelMetadata {
    alias: string;

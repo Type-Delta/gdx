@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import path from 'path';
 
 import { hyperlink, strWrap } from '@lib/Tools';
@@ -24,7 +25,6 @@ import { asUnixPath } from '@/utils/path';
 import { progressiveMatch } from '@/utils/utilities';
 import { ArgsSet } from '@/modules/arguments';
 import global from '@/global';
-import litedent from '@/utils/litedent';
 
 export async function switchSubmodule(ctx: GdxContext): Promise<number> {
    const args = ctx.args;

@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import * as fs from '@/modules/fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -31,7 +33,6 @@ import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
 import { assertInGitWorktree, getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
 import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
-import litedent from '@/utils/litedent';
 import { redactSensitiveContent } from '@/utils/redact';
 
 /**

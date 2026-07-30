@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import path from 'path';
 
 import { CheckCache, Err, strWrap } from '@lib/Tools';
@@ -10,7 +11,6 @@ import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
 import { getGitConfigRegexp, getRepoRootCached } from '@/modules/git';
-import litedent from '@/utils/litedent';
 
 /**
  * Represents a git submodule with its path information

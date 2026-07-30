@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import path from 'path';
 import { parse as parseToml } from 'smol-toml';
 
@@ -10,7 +11,6 @@ import { execCommand, isTTY, $prompt, spinner, $, $inherit, printCommandExecutio
 import { getRepoRootCached } from '@/modules/git';
 import { existsSync, readFile } from '@/modules/fs';
 import { quickPrint } from '@/utils/utilities';
-import litedent from '@/utils/litedent';
 import global from '@/global';
 import { Form } from '@/modules/form';
 

@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import * as fs from '@/modules/fs';
 import crypto from 'crypto';
 import nodeFs from 'fs';
@@ -14,7 +16,6 @@ import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import global from '@/global';
 import { getRepoRootCached, revParseCached } from '@/modules/git';
-import litedent from '@/utils/litedent';
 
 interface ClearBackupIndexEntry {
    path: string;

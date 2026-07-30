@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { strJustify, strWrap } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
@@ -16,7 +18,6 @@ import {
    popSnapshot,
 } from '@/modules/snap';
 import Logger from '@/utils/logger';
-import litedent from '@/utils/litedent';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 
 const SUBCOMMANDS = ['worktree', 'full', 'list', 'apply', 'pop', 'drop', 'import', 'export'];

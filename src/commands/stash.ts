@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { Err, strWrap } from '@lib/Tools';
 
 import path from 'path';
@@ -14,7 +16,6 @@ import { getConfig } from '@/common/config';
 import Logger from '../utils/logger';
 import global from '@/global';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
-import litedent from '@/utils/litedent';
 import { ArgsSet } from '@/modules/arguments';
 import { readHistoryTimeline, readHistoryTransactionManifest } from '@/modules/history/storage';
 import { undoHistory } from '@/modules/history/transaction';

@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
 import {
    readMacrosFromFile,
@@ -14,7 +16,6 @@ import * as fs from '@/modules/fs';
 import { EXECUTABLE_NAME, GDX_VPALETTE, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
-import litedent from '@/utils/litedent';
 
 /**
  * Main macro command dispatcher.

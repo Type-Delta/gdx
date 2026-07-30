@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import path from 'path';
 
 import { Err, jsTime, strJustify, strLimit, strWrap, yuString } from '@lib/Tools';
@@ -12,7 +13,6 @@ import * as fs from '@/modules/fs';
 import Logger from '@/utils/logger';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 import { CacheStructure, ZCacheStructure } from '@/common/schema';
-import litedent from '@/utils/litedent';
 import { assertSchema } from '@/modules/typebox';
 
 export default async function cache(ctx: GdxContext): Promise<number> {

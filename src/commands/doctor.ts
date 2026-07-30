@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -14,7 +15,6 @@ import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
 import { getCache } from '@/common/cache';
-import litedent from '@/utils/litedent';
 import { GDX_HISTORY_GUARD_ENV } from '@/modules/shell';
 
 interface PostInstallDiagnosticResult {

@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { strWrap, yuString } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '@/common/types';
@@ -10,7 +12,6 @@ import { GDX_VPALETTE, EXECUTABLE_NAME, SGR } from '@/consts';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { getGitConfigCached } from '@/modules/git';
-import litedent from '@/utils/litedent';
 import { redactSensitiveContent } from '@/utils/redact';
 
 export default async function nocap(ctx: GdxContext): Promise<number> {

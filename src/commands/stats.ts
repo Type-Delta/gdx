@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import * as path from 'path';
 
 import {
@@ -41,7 +42,6 @@ import {
    inferLanguageFromPath,
    type LanguageCatalog,
 } from '@/modules/languages';
-import litedent from '@/utils/litedent';
 import { toShortBytes } from '@/utils/data';
 
 interface ParsedNumStat {

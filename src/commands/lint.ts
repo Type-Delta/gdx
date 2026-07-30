@@ -1,3 +1,5 @@
+import litedent from 'litedent';
+
 import { strWrap, toShortNum } from '@lib/Tools';
 
 import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
@@ -9,7 +11,6 @@ import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, GDX_VPALETTE, SGR } from '
 import Logger from '../utils/logger';
 import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
-import litedent from '@/utils/litedent';
 
 export default async function lint(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();

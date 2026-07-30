@@ -1,3 +1,4 @@
+import litedent from 'litedent';
 import path from 'path';
 
 import { Err, strWrap, yuString } from '@lib/Tools';
@@ -26,7 +27,6 @@ import Logger from '@/utils/logger';
 import { EXECUTABLE_NAME, GDX_VPALETTE, TEMP_DIR, SGR } from '@/consts';
 import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
-import litedent from '@/utils/litedent';
 import { renderCommitMessageDiffLines } from '@/modules/diff-viewer';
 import { buildCommitDiffSummary } from '@/modules/diff-summary';
 import { generateAutoCommitMessage } from '@/commands/commit';

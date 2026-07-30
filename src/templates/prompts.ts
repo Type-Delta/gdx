@@ -1,4 +1,4 @@
-import litedent from '@/utils/litedent';
+import litedent from 'litedent';
 
 /**
  * Builds the comprehensive commit-message generation prompt.
