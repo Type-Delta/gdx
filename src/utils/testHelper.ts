@@ -610,12 +610,17 @@ async function clearTestEnvs() {
 }
 
 /**
- * Finds the git executable path and caches it.
+ * Finds the git executable path and caches it for the current test process.
+ *
+ * This deliberately bypasses the persistent which-cache. It runs before `createTestEnv()`
+ * redirects `@/consts`, so a cached lookup here would read the developer's real global
+ * cache and pin the whole suite to whatever Git a previous run — possibly from a different
+ * shell, with a different PATH — happened to resolve.
  */
 async function findGitExecutable(): Promise<string> {
    if (gitExePath) return gitExePath;
 
-   const gitPath = await whichExec('git');
+   const gitPath = await whichExec('git', { noCache: true });
    if (!gitPath) {
       throw new Error('Git executable not found in PATH.');
    }

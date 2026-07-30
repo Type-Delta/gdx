@@ -185,9 +185,19 @@ export async function $prompt(question: string): Promise<string> {
  * This is a wrapper around the `which` library that adds caching functionality.
  *
  * @param cmd - The command or executable name to find.
+ * @param options - Set `noCache` to force a fresh PATH lookup, skipping both the cache read
+ * and write. Use it when the answer must reflect the current process environment rather
+ * than whatever a previous run resolved.
  * @returns A promise that resolves to the full path of the executable, or `null` if not found.
  */
-export async function whichExec(cmd: string): Promise<string | null> {
+export async function whichExec(
+   cmd: string,
+   options?: { noCache?: boolean }
+): Promise<string | null> {
+   if (options?.noCache) {
+      return await _whichLib(cmd, { nothrow: true });
+   }
+
    return await getWhichExecCached(cmd, async () => _whichLib(cmd, { nothrow: true }));
 }
 
