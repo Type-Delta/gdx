@@ -523,11 +523,21 @@ async function rewriteCommitMessage(options: {
       );
    } else {
       const oldShaToNewShaMap = await rewriteOlderCommit(git$, targetSha, headSha, messageFile);
-      rewriteSummaryLines.push(`Rewrote ${Object.keys(oldShaToNewShaMap).length} commits:`);
-      for (const [oldSha, newSha] of Object.entries(oldShaToNewShaMap)) {
+      const mappedShasEntries = Object.entries(oldShaToNewShaMap);
+      const mappedShasLength = Object.keys(oldShaToNewShaMap).length;
+
+      if (mappedShasLength === 1) {
          rewriteSummaryLines.push(
-            `  ${oldSha.slice(0, 7)} -> ${newSha.slice(0, 7)}${oldSha === headSha ? ' (new HEAD)' : ''}${oldSha === targetSha ? ' [target]' : ''}`
+            `Rewrote ${headSha.slice(0, 7)} (HEAD) to ${mappedShasEntries[0][1].slice(0, 7)} (new HEAD)`
          );
+      }
+      else {
+         rewriteSummaryLines.push(`Rewrote ${mappedShasLength} commits:`);
+         for (const [oldSha, newSha] of mappedShasEntries) {
+            rewriteSummaryLines.push(
+               `  ${oldSha.slice(0, 7)} -> ${newSha.slice(0, 7)}${oldSha === headSha ? ' (new HEAD)' : ''}${oldSha === targetSha ? ' [target]' : ''}`
+            );
+         }
       }
    }
 
