@@ -9,6 +9,7 @@ import {
    readHistoryTimeline,
    recordHistoryTransaction,
    resolveHistoryStoragePaths,
+   setHistoryCursor,
 } from '@/modules/history/storage';
 import {
    HistoryFingerprint,
@@ -217,6 +218,49 @@ describe('gdx history command', async () => {
       expect(output()).toContain('ID: tx_audit');
       expect(output()).toContain('Index: -');
       expect(output()).toContain('Remote action retained for audit.');
+   });
+
+   it('labels audit entries as recorded and abandoned redo entries as diverged', async () => {
+      await resetHistory();
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_first', '2026-06-20T01:00:00.000Z', 'first command')
+      );
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_reverted', '2026-06-20T02:00:00.000Z', 'reverted command')
+      );
+      const auditOnly = transaction('tx_audit', '2026-06-20T03:00:00.000Z', 'fetch');
+      auditOnly.capability = 'audit-only';
+      auditOnly.undoUnavailableReason = 'Observed Git activity is retained for audit.';
+      await recordHistoryTransaction(ctx.git$, auditOnly);
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_reverted_tail', '2026-06-20T04:00:00.000Z', 'tail command')
+      );
+      const timeline = await readHistoryTimeline(ctx.git$);
+      await setHistoryCursor(ctx.git$, timeline.cursor - 2);
+      await recordHistoryTransaction(
+         ctx.git$,
+         transaction('tx_replacement', '2026-06-20T05:00:00.000Z', 'replacement command')
+      );
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+      const rendered = stripAnsiColor(output());
+      expect(rendered).toContain('applied');
+      expect(rendered).toContain('recorded');
+      expect(rendered).toContain('diverged');
+      expect(rendered).toContain('tx_audi');
+      expect(rendered).toContain('tx_reve');
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+      buffer.logs = '';
+      expect(await history(createGdxContext(tmpDir, ['history', 'show', 'tx_reverted_tail']))).toBe(0);
+      expect(output()).toContain('State: diverged');
    });
 
    it('rejects malformed undo and redo counts before attempting restoration', async () => {

@@ -253,8 +253,8 @@ describe('history storage', async () => {
       expect(appended.discardedRedoIds).toEqual(['tx_second', 'tx_third']);
       expect(appended.timeline.entries).toEqual(['tx_first', 'tx_replacement']);
       expect(appended.timeline.cursor).toBe(2);
-      expect(await readHistoryTransactionManifest(git$, 'tx_second')).toBeNull();
-      expect(await readHistoryTransactionManifest(git$, 'tx_third')).toBeNull();
+      expect(await readHistoryTransactionManifest(git$, 'tx_second')).not.toBeNull();
+      expect(await readHistoryTransactionManifest(git$, 'tx_third')).not.toBeNull();
    });
 
    it('prunes bounded history and removes discarded redo files', async () => {
@@ -275,6 +275,18 @@ describe('history storage', async () => {
       expect(discarded.discardedIds).toEqual(['tx_three']);
       expect(discarded.timeline).toMatchObject({ entries: ['tx_two'], cursor: 1 });
       expect(await readHistoryTransactionManifest(git$, 'tx_three')).toBeNull();
+   });
+
+   it('retains diverged entries only while they fit within the history limit', async () => {
+      await resetHistory();
+      await recordHistoryTransaction(git$, transaction('tx_one'), { maxEntries: 2 });
+      await recordHistoryTransaction(git$, transaction('tx_two'), { maxEntries: 2 });
+      await setHistoryCursor(git$, 1);
+      await recordHistoryTransaction(git$, transaction('tx_replacement'), { maxEntries: 2 });
+
+      expect(await readHistoryTransactionManifest(git$, 'tx_two')).toBeNull();
+      expect(await readHistoryTransactionManifest(git$, 'tx_one')).not.toBeNull();
+      expect(await readHistoryTransactionManifest(git$, 'tx_replacement')).not.toBeNull();
    });
 
    it('inserts delayed observations by event time without reordering existing history', async () => {

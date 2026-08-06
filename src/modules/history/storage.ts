@@ -358,7 +358,22 @@ export async function recordHistoryTransaction(
       const existingState = await readRepositoryStateFile(paths.stateFile);
       const state = registerWorktree(existingState ?? createEmptyRepositoryState(now), paths, now);
       await atomicWriteJson(paths.stateFile, state);
-      await removeTransactionFiles(paths, [...discardedRedoIds, ...prunedIds]);
+      // Keep abandoned redo entries as audit evidence. They are no longer in the
+      // active timeline, so they cannot be redone, but history list can surface
+      // them as diverged entries. The configured limit still bounds all retained
+      // manifests, with diverged entries evicted first.
+      const retainedManifests = await listAllHistoryTransactions(git$, options.repository);
+      const activeIds = new Set(entries);
+      const prunedIdSet = new Set(prunedIds);
+      const divergentIds = retainedManifests
+         .filter((entry) => !activeIds.has(entry.id) && !prunedIdSet.has(entry.id))
+         .sort(
+            (left, right) =>
+               left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+         )
+         .map((entry) => entry.id);
+      const excess = Math.max(0, entries.length + divergentIds.length - maxEntries);
+      await removeTransactionFiles(paths, [...prunedIds, ...divergentIds.slice(0, excess)]);
       Logger.info(
          `Recorded history transaction ${manifest.id}` +
          (manifest.command?.command ? ` observing: ${manifest.command.command}` : ''),
@@ -451,6 +466,35 @@ export async function listHistoryTransactions(
       timeline.entries.map((id) => readHistoryTransactionManifest(git$, id, repository))
    );
    return manifests.filter((manifest): manifest is HistoryTransactionManifest => manifest !== null);
+}
+
+/**
+ * Lists every persisted transaction for the current worktree, including entries
+ * that diverged after their redo tail was abandoned.
+ * @param git$ - Git executable/context from GdxContext.
+ * @param repository - Optional already-resolved repository location.
+ * @returns Existing transaction manifests ordered by creation time.
+ */
+export async function listAllHistoryTransactions(
+   git$: GdxContext['git$'],
+   repository?: GdxRepositoryLocation
+): Promise<HistoryTransactionManifest[]> {
+   const paths = repository
+      ? createHistoryStoragePaths(repository)
+      : await resolveHistoryStoragePaths(git$);
+   const files = await fs.readdir(paths.transactionsDir, { withFileTypes: true }).catch(() => []);
+   const manifests = await Promise.all(
+      files
+         .filter((file) => file.isFile() && file.name.endsWith('.json'))
+         .map((file) => readJsonFile<HistoryTransactionManifest>(path.join(paths.transactionsDir, file.name)))
+   );
+   return manifests
+      .filter((manifest): manifest is HistoryTransactionManifest => manifest !== null)
+      .filter((manifest) => manifest.worktreeId === paths.id)
+      .sort(
+         (left, right) =>
+            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+      );
 }
 
 /**

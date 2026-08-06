@@ -478,7 +478,10 @@ export async function reconcileHistoryReflogs(
          const transaction = createObservedTransaction({
             createdAt: new Date(parsed.timestampMs).toISOString(),
             source: 'reflog',
-            capability: 'inferred',
+            // A reflog records a ref movement, not the operation that caused it.
+            // Reversing an isolated movement (for example one created by fetch
+            // or push) is not a meaningful undo of that operation.
+            capability: 'audit-only',
             refs,
             cwd: paths.root,
             message: parsed.message,
@@ -534,7 +537,9 @@ export async function importHistoryObserverSpool(
             {
                createdAt: stat.mtime.toISOString(),
                source: 'git-hook',
-               capability: classifyHookCapability(refs),
+               // The hook sees only ref updates, not the full command or a
+               // verified inverse recipe. Preserve this as audit evidence.
+               capability: 'audit-only',
                refs,
                cwd: paths.root,
                message: null,
@@ -587,7 +592,7 @@ export async function importHistoryObserverSpool(
             fingerprints: { before, after },
             undoUnavailableReason:
                record.capability === 'audit-only'
-                  ? 'The direct observer did not receive enough state to restore this action.'
+                  ? 'Observed Git activity is retained for audit and cannot be restored.'
                   : undefined,
          },
          {
@@ -681,20 +686,6 @@ function parseHookRefValue(value: string): HistoryRefState | undefined {
       return { kind: 'symbolic', target, oid: null };
    }
    return undefined;
-}
-
-/** Determines the honest capability of a direct hook ref batch. */
-function classifyHookCapability(refs: HistoryRefChange[]): HistoryObservedCapability {
-   const isUnambiguouslyRefOnly = refs.every((change) => {
-      if (change.name.startsWith('refs/tags/') || change.name.startsWith('refs/remotes/')) {
-         return true;
-      }
-      if (change.name.startsWith('refs/heads/')) {
-         return change.before.kind === 'missing' || change.after.kind === 'missing';
-      }
-      return false;
-   });
-   return isUnambiguouslyRefOnly ? 'exact' : 'conditional';
 }
 
 /** Builds a stable persisted observer transaction. */

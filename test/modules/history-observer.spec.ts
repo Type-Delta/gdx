@@ -134,7 +134,8 @@ describe('history reference-transaction observer', async () => {
       const manifests = await listHistoryTransactions(ctx.git$);
       expect(manifests).toHaveLength(1);
       expect(manifests[0].source).toBe('reflog');
-      expect(manifests[0].capability).toBe('inferred');
+      expect(manifests[0].capability).toBe('audit-only');
+      expect(manifests[0].undoUnavailableReason).toContain('retained for audit');
       expect(manifests[0].paths).toBeUndefined();
       expect(manifests[0].index).toBeUndefined();
    });

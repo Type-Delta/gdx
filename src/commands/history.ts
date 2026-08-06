@@ -17,7 +17,7 @@ import {
 } from '@/modules/history/observer';
 import {
    DEFAULT_HISTORY_MAX_ENTRIES,
-   listHistoryTransactions,
+   listAllHistoryTransactions,
    pruneHistory,
    readHistoryRepositoryState,
    readHistoryTimeline,
@@ -32,6 +32,7 @@ import {
 } from '@/modules/history/transaction';
 import { HistoryTransactionManifest, HistoryWorktreeRegistration } from '@/modules/history/types';
 import Logger from '@/utils/logger';
+import { spinner } from '@/modules/shell';
 import { progressiveMatch, quickPrint } from '@/utils/utilities';
 
 const DEFAULT_LIST_LIMIT = 20;
@@ -43,16 +44,21 @@ interface HistoryListEntry {
    /** Position in the worktree timeline; display order for a single worktree. */
    index: number;
    selector: string;
-   state: 'applied' | 'redo';
+   state: HistoryDisplayState;
    worktree: string;
+   isCursor: boolean;
 }
 
 interface HistoryTimelineDisplayEntry {
    manifest: HistoryTransactionManifest;
    index: number;
    selector: string;
-   state: 'applied' | 'redo';
+   state: HistoryDisplayState;
+   isCursor: boolean;
 }
+
+/** User-facing state of a recorded history item. */
+type HistoryDisplayState = 'applied' | 'recorded' | 'reverted' | 'diverged';
 
 /**
  * Lists and restores repository-local transaction history and manages its observer hook.
@@ -65,6 +71,8 @@ export default async function history(ctx: GdxContext): Promise<number> {
 
    if (input === INTERNAL_HOOK_ENTRY) return await handleHookEntry(args);
 
+   const listSpin = isListInvocation(input) ? spinner({ message: 'Loading history...' }) : null;
+
    try {
       await reconcileDirectHistory(ctx);
 
@@ -75,7 +83,7 @@ export default async function history(ctx: GdxContext): Promise<number> {
 
       switch (matchResult.match) {
          case 'list':
-            return await listCommand(ctx, args, isImplicitList ? 1 : 2);
+            return await listCommand(ctx, args, isImplicitList ? 1 : 2, listSpin);
          case 'show':
             return await showCommand(ctx, args);
          case 'undo':
@@ -109,7 +117,14 @@ export default async function history(ctx: GdxContext): Promise<number> {
          Logger.error(error instanceof Error ? error.message : String(error), 'history');
       }
       return 1;
+   } finally {
+      listSpin?.stop();
    }
+}
+
+/** Returns whether the input will resolve to the list command and should show loading feedback. */
+function isListInvocation(input: string): boolean {
+   return input === '' || input.startsWith('-') || 'list'.startsWith(input);
 }
 
 /**
@@ -161,7 +176,12 @@ async function handleHookEntry(args: ArgsSet): Promise<number> {
 }
 
 /** Runs the list/default command after parsing list-only options. */
-async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number): Promise<number> {
+async function listCommand(
+   ctx: GdxContext,
+   args: ArgsSet,
+   optionStart: number,
+   spin: ReturnType<typeof spinner> | null
+): Promise<number> {
    const hasLimit = args.hasOption('--limit', optionStart);
    const limitValue = hasLimit ? args.popAssertValue('--limit', optionStart) : null;
    const allWorktrees = args.popOption('--all-worktrees', optionStart) !== null;
@@ -172,7 +192,12 @@ async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number):
 
    const limit =
       limitValue === null ? DEFAULT_LIST_LIMIT : parsePositiveInteger(limitValue, 'limit');
-   const entries = await collectListEntries(ctx, allWorktrees);
+   let entries: HistoryListEntry[];
+   try {
+      entries = await collectListEntries(ctx, allWorktrees);
+   } finally {
+      spin?.stop();
+   }
    // A single worktree lists in timeline order so rows match selector numbering;
    // timestamps only merge entries across worktrees, where no shared order exists.
    const visible = entries
@@ -180,7 +205,10 @@ async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number):
          allWorktrees
             ? right.manifest.createdAt.localeCompare(left.manifest.createdAt) ||
               right.manifest.id.localeCompare(left.manifest.id)
-            : right.index - left.index
+            : left.index < 0 && right.index < 0
+               ? right.manifest.createdAt.localeCompare(left.manifest.createdAt) ||
+                 right.manifest.id.localeCompare(left.manifest.id)
+               : right.index - left.index
       )
       .slice(0, limit);
 
@@ -195,14 +223,14 @@ async function listCommand(ctx: GdxContext, args: ArgsSet, optionStart: number):
       const command = formatCommand(entry.manifest);
       const row = [
          `${SGR.cyan}${entry.selector}${SGR.reset}`,
-         entry.state,
+         formatHistoryState(entry.state),
          formatDate(entry.manifest.createdAt),
          entry.manifest.source,
          entry.manifest.id.slice(0, 7),
          command ? `${SGR.dim}${command}${SGR.reset}` : '',
       ];
       if (allWorktrees) row.push(`${SGR.dim}${entry.worktree}${SGR.reset}`);
-      return row;
+      return entry.isCursor ? row.map((cell) => `${SGR.bright}${cell}${SGR.reset}`) : row;
    });
    quickPrint(
       formatTable([header.map((label) => `${SGR.bright}${label}${SGR.reset}`), ...rows], {
@@ -260,14 +288,15 @@ async function entriesForWorktree(ctx: GdxContext, label: string): Promise<Histo
       selector: entry.selector,
       state: entry.state,
       worktree: label,
+      isCursor: entry.isCursor,
    }));
 }
 
-/** Loads timeline entries and numbers only entries that can be restored. */
+/** Loads active and diverged entries, numbering only transactions that can be restored. */
 async function timelineDisplayEntries(ctx: GdxContext): Promise<HistoryTimelineDisplayEntry[]> {
    const [timeline, manifests] = await Promise.all([
       readHistoryTimeline(ctx.git$, ctx.repository),
-      listHistoryTransactions(ctx.git$, ctx.repository),
+      listAllHistoryTransactions(ctx.git$, ctx.repository),
    ]);
    const byId = new Map(manifests.map((manifest) => [manifest.id, manifest]));
    const selectors = new Map<string, string>();
@@ -284,7 +313,7 @@ async function timelineDisplayEntries(ctx: GdxContext): Promise<HistoryTimelineD
       }
    }
 
-   return timeline.entries.flatMap((id, index) => {
+   const activeEntries: HistoryTimelineDisplayEntry[] = timeline.entries.flatMap((id, index) => {
       const manifest = byId.get(id);
       if (!manifest) return [];
       return [
@@ -292,10 +321,39 @@ async function timelineDisplayEntries(ctx: GdxContext): Promise<HistoryTimelineD
             manifest,
             index,
             selector: selectors.get(id) ?? '-',
-            state: index < timeline.cursor ? 'applied' : 'redo',
+            state: (!canRestoreHistoryTransaction(manifest)
+               ? 'recorded'
+               : index < timeline.cursor
+                  ? 'applied'
+                  : 'reverted') as HistoryDisplayState,
+            isCursor: timeline.cursor > 0 && index === timeline.cursor - 1,
          },
       ];
    });
+   const activeIds = new Set(timeline.entries);
+   const divergedEntries = manifests
+      .filter((manifest) => !activeIds.has(manifest.id))
+      .map((manifest) => ({
+         manifest,
+         index: -1,
+         selector: '-',
+         state: canRestoreHistoryTransaction(manifest) ? ('diverged' as const) : ('recorded' as const),
+         isCursor: false,
+      }));
+   return [...activeEntries, ...divergedEntries];
+}
+
+/** Applies the color convention for a user-facing history state. */
+function formatHistoryState(state: HistoryDisplayState): string {
+   const color =
+      state === 'applied'
+         ? SGR.green
+         : state === 'recorded'
+            ? SGR.dim
+            : state === 'reverted'
+               ? SGR.red
+               : `${SGR.dim}${SGR.red}`;
+   return `${color}${state}${SGR.reset}`;
 }
 
 /** Builds a repository-aware context for a registered linked worktree. */
@@ -360,10 +418,22 @@ async function resolveHistoryShowEntry(
       return entry;
    }
 
-   const manifest = await resolveHistoryTransaction(ctx.git$, selector, {
-      scope: 'all',
-      repository: ctx.repository,
-   });
+   let manifest: HistoryTransactionManifest;
+   try {
+      manifest = await resolveHistoryTransaction(ctx.git$, selector, {
+         scope: 'all',
+         repository: ctx.repository,
+      });
+   } catch (error) {
+      const matches = (await listAllHistoryTransactions(ctx.git$, ctx.repository)).filter(
+         (candidate) => candidate.id === selector || candidate.id.startsWith(selector)
+      );
+      if (matches.length === 1) {
+         manifest = matches[0];
+      } else {
+         throw error;
+      }
+   }
    const entries = await timelineDisplayEntries(ctx);
    const entry = entries.find((candidate) => candidate.manifest.id === manifest.id);
    if (entry) return entry;
@@ -371,7 +441,8 @@ async function resolveHistoryShowEntry(
       manifest,
       index: -1,
       selector: '-',
-      state: 'redo',
+      state: canRestoreHistoryTransaction(manifest) ? 'diverged' : 'recorded',
+      isCursor: false,
    };
 }
 
