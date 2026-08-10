@@ -32,3 +32,19 @@ describe('dispatch separator forwarding', async () => {
       expect(exitCode).toBe(0);
    });
 });
+
+describe('worktree dispatch', async () => {
+   const { tmpDir, it } = await createTestEnv({ suitName: 'dispatch-worktree' });
+
+   it('progressively matches the worktree command and its subcommand', async () => {
+      const exitCode = await dispatch(createGdxContext(tmpDir, ['wor', 'li']));
+
+      expect(exitCode).toBe(0);
+   });
+
+   it('supports wt as an alias for worktree', async () => {
+      const exitCode = await dispatch(createGdxContext(tmpDir, ['wt', 'ls']));
+
+      expect(exitCode).toBe(0);
+   });
+});

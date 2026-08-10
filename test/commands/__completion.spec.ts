@@ -104,6 +104,20 @@ describe('gdx __completion', async () => {
       delete process.env.GDX_CMP_IDX;
    });
 
+   it('suggests worktree aliases through wt', async () => {
+      buffer.stdout = '';
+      process.env.GDX_CMP_IDX = '1';
+
+      const ctx = createGdxContext(tmpDir, ['__completion', 'wt', '']);
+      const exitCode = await completion(ctx);
+
+      expect(exitCode).toBe(0);
+      expect(buffer.stdout).toContain('ls');
+      expect(buffer.stdout).toContain('rm');
+
+      delete process.env.GDX_CMP_IDX;
+   });
+
    it('returns empty output for unknown command (git fallback)', async () => {
       process.env.GDX_CMP_IDX = '1';
 

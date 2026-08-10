@@ -22,6 +22,7 @@ const COMMAND_ALIASES: Record<string, string> = {
    rb: 'rebase',
    lg: 'log',
    sta: 'stash',
+   wt: 'worktree',
 };
 
 function parseIndex(totalArgs: number): number {

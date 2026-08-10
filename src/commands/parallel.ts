@@ -3452,7 +3452,9 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
    }
 
    const inputCommand = args[1].toLowerCase();
-   const { match: subCommand, candidates } = progressiveMatch(inputCommand, [
+   const normalizedCommand =
+      inputCommand === 'rm' ? 'remove' : inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subCommand, candidates } = progressiveMatch(normalizedCommand, [
       'fork',
       'list',
       'open',
@@ -3585,12 +3587,14 @@ export const structure = {
    $root: {
       fork: ['--move', '--mirror', '--no-init', '-b', '-B'],
       list: {},
+      ls: {},
       open: parallelOpenStructure,
       switch: parallelSwitchStructure,
       sync: parallelSyncStructure,
       pick: parallelPickStructure,
       join: parallelJoinStructure,
       remove: parallelRemoveStructure,
+      rm: parallelRemoveStructure,
       help: {},
    },
 } as const satisfies CommandStructure;

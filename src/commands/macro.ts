@@ -23,7 +23,8 @@ import global from '@/global';
 async function macro(ctx: GdxContext): Promise<number> {
    const { args } = ctx;
    const inputCommand = args[1]?.toLowerCase();
-   const { match: subCmd, candidates } = progressiveMatch(inputCommand, [
+   const normalizedCommand = inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subCmd, candidates } = progressiveMatch(normalizedCommand, [
       'set',
       'list',
       'drop',
@@ -327,6 +328,7 @@ export const structure = {
    $root: {
       set: {},
       list: {},
+      ls: {},
       drop: {},
       sync: {},
    },

@@ -17,7 +17,8 @@ import { assertSchema } from '@/modules/typebox';
 
 export default async function cache(ctx: GdxContext): Promise<number> {
    const inputCommand = ctx.args[1]?.toLowerCase();
-   const { match: subcommand, candidates } = progressiveMatch(inputCommand, [
+   const normalizedCommand = inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subcommand, candidates } = progressiveMatch(normalizedCommand, [
       'list',
       'prune',
       'reset',
@@ -398,5 +399,5 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['list', 'prune', 'reset', 'delete', 'enable', 'disable'],
+   $root: ['list', 'ls', 'prune', 'reset', 'delete', 'enable', 'disable'],
 } as const satisfies CommandStructure;

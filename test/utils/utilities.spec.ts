@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { normalizeExitCode } from '@/utils/utilities';
+import { normalizeExitCode, progressiveMatch } from '@/utils/utilities';
 
 describe('normalizeExitCode', () => {
    it('preserves integer command results', () => {
@@ -20,5 +20,12 @@ describe('normalizeExitCode', () => {
       expect(() => normalizeExitCode(undefined, Number.NaN)).toThrow(
          'Exit-code fallback must be an integer.'
       );
+   });
+});
+
+describe('progressiveMatch', () => {
+   it('preserves literal inputs that are not candidate prefixes', () => {
+      expect(progressiveMatch('rm', ['reset', 'revert']).match).toBeNull();
+      expect(progressiveMatch('ls', ['lock', 'log']).match).toBeNull();
    });
 });

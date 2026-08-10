@@ -64,7 +64,7 @@ describe('gdx parallel', async () => {
 
    it('should list empty worktrees initially', async () => {
       resetCache();
-      const listCtx = createGdxContext(tmpDir, ['parallel', 'list', '-s']);
+      const listCtx = createGdxContext(tmpDir, ['parallel', 'ls', '-s']);
       const result = await parallel(listCtx);
 
       expect(result).toBe(0);

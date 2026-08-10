@@ -30,7 +30,8 @@ const SUBCOMMANDS = ['worktree', 'full', 'list', 'apply', 'pop', 'drop', 'import
 export default async function snap(ctx: GdxContext): Promise<number> {
    const args = ctx.args.slice(0);
    const inputCommand = args[1]?.toLowerCase() || '';
-   const { match: subcommand, candidates } = progressiveMatch(inputCommand, SUBCOMMANDS);
+   const normalizedCommand = inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subcommand, candidates } = progressiveMatch(normalizedCommand, SUBCOMMANDS);
 
    try {
       switch (subcommand) {
@@ -295,6 +296,7 @@ export const structure = {
          $allOf: ['-m', '--message'],
       },
       list: {},
+      ls: {},
       apply: {
          $allOf: ['--force'],
       },

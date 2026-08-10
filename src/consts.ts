@@ -232,6 +232,7 @@ export const GDX_COMMANDS = [
    'remote',
    'show',
    'config',
+   'worktree',
    // gdx custom commands
    'parallel',
    'nocap',
@@ -263,6 +264,7 @@ export const GDX_SHORTHANDS = [
    'rb', // rebase
    'lg', // log
    'sta', // stash
+   'wt', // worktree
 ] as const;
 
 export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass', '--no-enhance'] as const;

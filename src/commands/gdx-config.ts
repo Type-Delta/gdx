@@ -235,7 +235,8 @@ export default async function gdxConfig(ctx: GdxContext): Promise<number> {
    const normalizedArgs = ctx.args.slice(0);
    popLocalOption(normalizedArgs);
    const inputCommand = normalizedArgs[1]?.toLowerCase();
-   const { match: subcommand } = progressiveMatch(inputCommand, ['list', 'path']);
+   const normalizedCommand = inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subcommand } = progressiveMatch(normalizedCommand, ['list', 'path']);
    const hasUnset = ctx.args.hasOption('--unset', 1) || ctx.args.hasOption('-u', 1);
 
    if (hasUnset) {
@@ -323,7 +324,7 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['list', 'path', '--unset', '-u', '--local', '-l'],
+   $root: ['list', 'ls', 'path', '--unset', '-u', '--local', '-l'],
 } as const satisfies CommandStructure;
 
 function popLocalOption(args: ArgsSet): boolean {

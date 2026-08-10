@@ -482,7 +482,8 @@ async function dispatchCoreUnchecked(
                'create',
                'store',
             ];
-            const subCmdMatch = progressiveMatch(args[1] || '', subCommands, true);
+            const inputSubCommand = args[1] === 'ls' ? 'list' : args[1] || '';
+            const subCmdMatch = progressiveMatch(inputSubCommand, subCommands, true);
 
             if (subCmdMatch.match) args[1] = subCmdMatch.match;
             else {
@@ -508,6 +509,16 @@ async function dispatchCoreUnchecked(
             if (args[1] === 'drop') {
                return await cmd.stash.drop(ctx.git$, args);
             }
+            break;
+         }
+         case 'wt': // alias for 'worktree'
+            args[0] = 'worktree';
+         case 'worktree': {
+            const subCommands = ['add', 'list', 'lock', 'move', 'prune', 'remove', 'repair', 'unlock'];
+            const inputSubCommand =
+               args[1] === 'rm' ? 'remove' : args[1] === 'ls' ? 'list' : args[1] || '';
+            const subCmdMatch = progressiveMatch(inputSubCommand, subCommands, true);
+            if (subCmdMatch.match) args[1] = subCmdMatch.match;
             break;
          }
          case 'graph':

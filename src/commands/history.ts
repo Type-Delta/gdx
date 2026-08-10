@@ -68,18 +68,19 @@ type HistoryDisplayState = 'applied' | 'recorded' | 'reverted' | 'diverged';
 export default async function history(ctx: GdxContext): Promise<number> {
    const args = ctx.args.slice(0);
    const input = args[1]?.toLowerCase() ?? '';
+   const normalizedInput = input === 'ls' ? 'list' : input;
 
    if (input === INTERNAL_HOOK_ENTRY) return await handleHookEntry(args);
 
-   const listSpin = isListInvocation(input) ? spinner({ message: 'Loading history...' }) : null;
+   const listSpin = isListInvocation(normalizedInput) ? spinner({ message: 'Loading history...' }) : null;
 
    try {
       await reconcileDirectHistory(ctx);
 
-      const isImplicitList = input === '' || input.startsWith('-');
+      const isImplicitList = normalizedInput === '' || normalizedInput.startsWith('-');
       const matchResult = isImplicitList
          ? { match: 'list', candidates: null }
-         : progressiveMatch(input, PUBLIC_SUBCOMMANDS);
+         : progressiveMatch(normalizedInput, PUBLIC_SUBCOMMANDS);
 
       switch (matchResult.match) {
          case 'list':
@@ -634,6 +635,9 @@ export const structure = {
    $root: {
       $allOf: ['--limit=', '--all-worktrees'],
       list: {
+         $allOf: ['--limit=', '--all-worktrees'],
+      },
+      ls: {
          $allOf: ['--limit=', '--all-worktrees'],
       },
       show: {},

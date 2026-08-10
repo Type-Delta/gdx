@@ -334,5 +334,5 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['pardon'],
+   $root: ['list', 'ls', 'pardon'],
 } as const satisfies CommandStructure;

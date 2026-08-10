@@ -62,6 +62,20 @@ export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
          $anyOf: ['--json'],
       },
    },
+   worktree: {
+      $root: {
+         add: {},
+         list: {},
+         ls: {},
+         lock: {},
+         move: {},
+         prune: {},
+         remove: {},
+         rm: {},
+         repair: {},
+         unlock: {},
+      },
+   },
 };
 
 export const STRUCTURE_MAP: Record<string, CommandStructure> = {

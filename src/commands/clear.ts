@@ -38,7 +38,8 @@ export default async function clear(ctx: GdxContext): Promise<number> {
    const { git$, args } = ctx;
 
    const inputCommand = args[1]?.toLowerCase();
-   const { match: subCommand } = progressiveMatch(inputCommand, ['list', 'pardon']);
+   const normalizedCommand = inputCommand === 'ls' ? 'list' : inputCommand;
+   const { match: subCommand } = progressiveMatch(normalizedCommand, ['list', 'pardon']);
 
    const [branchName, repoRoot] = await Promise.all([
       revParseCached(git$, ['--abbrev-ref', 'HEAD']).then((branch) =>
@@ -271,7 +272,7 @@ export const help = {
 } as const satisfies CommandHelpObj;
 
 export const structure = {
-   $root: ['list', 'pardon'],
+   $root: ['list', 'ls', 'pardon'],
 } as const satisfies CommandStructure;
 
 function getDynamicTempDir(): string {
