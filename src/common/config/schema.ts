@@ -20,6 +20,7 @@ export const GdxConfigSchema = t.Object({
             t.Union([t.Literal('off'), t.Literal('error'), t.Literal('warning')])
          ),
          maxFileSizeKb: t.Optional(t.Integer({ minimum: 1 })),
+         useLocalWordlist: t.Optional(t.Boolean()),
       })
    ),
    stash: t.Optional(
@@ -66,9 +67,7 @@ export const GdxConfigSchema = t.Object({
                maxHunkSize: t.Optional(t.Integer({ minimum: 1 })),
             })
          ),
-         exitBehavior: t.Optional(
-            t.Union([t.Literal('clearScreen'), t.Literal('nextLine')])
-         ),
+         exitBehavior: t.Optional(t.Union([t.Literal('clearScreen'), t.Literal('nextLine')])),
       })
    ),
    defaultEditor: t.String(),
@@ -112,6 +111,7 @@ export const DEFAULT_CONFIG: GdxConfig = {
    lint: {
       onPushBehavior: 'off',
       maxFileSizeKb: 1024, // 1MB
+      useLocalWordlist: true,
    },
    stash: {
       undoLimit: 10,
@@ -169,6 +169,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'llm.showThinking': 'GDX_LLM_SHOW_THINKING',
    'lint.onPushBehavior': 'GDX_LINT_ON_PUSH_BEHAVIOR',
    'lint.maxFileSizeKb': 'GDX_LINT_MAX_FILE_SIZE_KB',
+   'lint.useLocalWordlist': 'GDX_LINT_USE_LOCAL_WORDLIST',
    'stash.undoLimit': 'GDX_STASH_UNDO_LIMIT',
    'history.enabled': 'GDX_HISTORY_ENABLED',
    'history.maxEntries': 'GDX_HISTORY_MAX_ENTRIES',
@@ -204,6 +205,8 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    lint: 'Configuration for post-commit linting',
    'lint.onPushBehavior': 'Lint behavior before push (off, error, warning)',
    'lint.maxFileSizeKb': 'Maximum allowed file size in KiB',
+   'lint.useLocalWordlist':
+      "Extend the spell checker with the repo's own wordlists (.vscode/settings.json, cspell config)",
    'stash.undoLimit': 'Max number of stash drops to keep in history',
    history: 'Repository-local transactional undo and redo journal',
    'history.enabled': 'Record supported commands routed through or invoked by GDX',
@@ -242,5 +245,6 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
       '[Experimental] Select submodule implementation mode (off: git-only, internal: gdx internal flow, all: reserved for broader internal usage)',
    useInlineGitConfig:
       '[Experimental] Select git config implementation mode (off: use git executable, internal: read/write git config files directly)',
-   maxThreadWorkers: 'Maximum number of worker threads for process spawning and high resource intensive tasks (default: 8)',
+   maxThreadWorkers:
+      'Maximum number of worker threads for process spawning and high resource intensive tasks (default: 8)',
 };

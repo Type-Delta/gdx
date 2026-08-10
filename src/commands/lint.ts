@@ -6,7 +6,7 @@ import { CommandHelpObj, CommandStructure, GdxContext } from '../common/types';
 import { createAbortableExec, spinner } from '../modules/shell';
 import { quickPrint } from '../utils/utilities';
 import { getConfig } from '../common/config';
-import { assertInGitWorktree, getTrackedUpstreamRef } from '@/modules/git';
+import { assertInGitWorktree, getRepoRootCached, getTrackedUpstreamRef } from '@/modules/git';
 import { EXECUTABLE_NAME, SENSITIVE_CONTENTS_REGEXES, GDX_VPALETTE, SGR } from '@/consts';
 import Logger from '../utils/logger';
 import global from '@/global';
@@ -22,11 +22,12 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    const spinnerCtrl = spinner({
       message: 'Initializing library...',
    });
-   const { spellCheckDocument, prettyFormatIssues, getBundledDictionaryNames } =
+   const { spellCheckDocument, prettyFormatIssues, getBundledDictionaryNames, loadLocalWordlist } =
       await import('@/modules/spellcheck');
 
    const config = await getConfig();
    const maxFileSizeKb = config.get<number>('lint.maxFileSizeKb') || 1024;
+   const useLocalWordlist = config.get<boolean>('lint.useLocalWordlist') ?? true;
 
    spinnerCtrl.options.message = 'Scanning commits...';
    const upstream = (await getTrackedUpstreamRef(git$)) || '';
@@ -44,19 +45,32 @@ export default async function lint(ctx: GdxContext): Promise<number> {
    let errors = 0;
    let warnings = 0;
 
-   // Run git commands in parallel
-   const [logOutput, diffOutput, filesOutput] = await Promise.all([
+   // Run git commands (and the project wordlist lookup) in parallel
+   const [logOutput, diffOutput, filesOutput, localWordlist] = await Promise.all([
       $`${git$} log --pretty=format:"%s\n%b$$\$___SEP___\$$$" ${range}`
          .then((r) => r.stdout)
          .catch(() => ''),
       $`${git$} diff ${range}`.then((r) => r.stdout).catch(() => ''),
       $`${git$} diff --name-only ${range}`.then((r) => r.stdout).catch(() => ''),
+      useLocalWordlist
+         ? getRepoRootCached(git$)
+              .then(loadLocalWordlist)
+              .catch(() => null)
+         : null,
    ]);
 
    // 1. Commit Message Spelling
    if (logOutput) {
       spinnerCtrl.options.message = 'Checking commit message spelling...';
       const bundledDictionaries = await getBundledDictionaryNames();
+      // `sources` is diagnostic only, everything else is passed straight to cspell.
+      const spellSettings = {
+         words: localWordlist?.words,
+         ignoreWords: localWordlist?.ignoreWords,
+         flagWords: localWordlist?.flagWords,
+         dictionaryDefinitions: localWordlist?.dictionaryDefinitions,
+         dictionaries: [...bundledDictionaries, ...(localWordlist?.dictionaries ?? [])],
+      };
       // eslint-disable-next-line no-useless-escape
       const commits = logOutput.split('$$\$___SEP___\$$$').filter((c) => c.trim());
 
@@ -70,9 +84,7 @@ export default async function lint(ctx: GdxContext): Promise<number> {
                noConfigSearch: true,
                unknownWords: 'report-common-typos',
             },
-            {
-               dictionaries: bundledDictionaries,
-            }
+            spellSettings
          );
          if (result.issues.length === 0) continue;
 
@@ -212,7 +224,10 @@ export const help = {
          Runs a set of linting checks on your outgoing commits (or the last commit if no upstream is configured).
 
          ${SGR.bright + _2PointGradient('CHECKS PERFORMED', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         - Spelling: Checks for typos in commit messages using cspell.
+         - Spelling: Checks for typos in commit messages using cspell. Project terms already
+           listed in ${SGR.cyan}.vscode/settings.json${SGR.reset} (\`cSpell.words\`) or in a cspell config file
+           (\`cspell.json\`, \`.cspell.config.yaml\`, the \`cspell\` field of \`package.json\`, ...)
+           are accepted automatically.
          - Sensitive Content: Scans for API keys, tokens, and private keys.
          - Conflict Markers: Checks for leftover merge conflict markers.
          - File Size: Warns if files exceed the configured size limit (default 1MB).
@@ -222,6 +237,7 @@ export const help = {
          [lint]
          onPushBehavior = "off" | "error" | "warning"  # Default: "off"
          maxFileSizeKb = 1024                          # Default: 1024 KB
+         useLocalWordlist = true                       # Default: true
          `,
          Math.min(100, global.terminalWidth - 4),
          {

@@ -9,19 +9,23 @@ import { getConfig } from '@/common/config';
 
 describe('gdx lint', async () => {
    const { tmpDir, $, buffer, it } = await createTestEnv({
-      suitName: 'lint'
+      suitName: 'lint',
    });
    const ctx = createGdxContext(tmpDir, ['lint']);
    const { git$ } = ctx;
 
-   it('should pass on clean commit', async () => {
-      // Initial commit
-      await $`${git$} commit --allow-empty --no-verify -m ${'feat: initial commit'}`;
+   it(
+      'should pass on clean commit',
+      async () => {
+         // Initial commit
+         await $`${git$} commit --allow-empty --no-verify -m ${'feat: initial commit'}`;
 
-      const result = await lint(ctx);
-      expect(result).toBe(0);
-      expect(buffer.stdout).toContain('No problems found');
-   }, { timeout: 20000 });
+         const result = await lint(ctx);
+         expect(result).toBe(0);
+         expect(buffer.stdout).toContain('No problems found');
+      },
+      { timeout: 20000 }
+   );
 
    it('should detect spelling errors', async () => {
       // "commmit" is a typo
@@ -32,6 +36,33 @@ describe('gdx lint', async () => {
       expect(buffer.stdout).toContain('LWARN');
       expect(buffer.stdout).toContain('Spelling');
       expect(buffer.stdout).toContain('commmit');
+   });
+
+   it('should accept words listed in .vscode/settings.json', async () => {
+      await fs.mkdir(path.join(tmpDir, '.vscode'), { recursive: true });
+      await fs.writeFile(
+         path.join(tmpDir, '.vscode', 'settings.json'),
+         // Trailing comma and comment on purpose: settings.json is JSONC.
+         '{\n   // project terms\n   "cSpell.words": ["Catppuccin", "medoid"],\n}\n'
+      );
+
+      await $`${git$} commit --allow-empty --no-verify -m ${'feat: tune Catppuccin medoid palette'}`;
+
+      const result = await lint(ctx);
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('No problems found');
+      expect(buffer.stdout).not.toContain('Spelling');
+   });
+
+   it('should still flag typos that the local wordlist does not cover', async () => {
+      await $`${git$} commit --allow-empty --no-verify -m ${'feat: Catppuccin theme has a commmit typo'}`;
+
+      const result = await lint(ctx);
+      expect(result).toBe(0);
+      expect(buffer.stdout).toContain('Spelling');
+      expect(buffer.stdout).toContain('commmit');
+      // Only the typo is reported; the wordlisted term shows up as context, not as an issue.
+      expect(buffer.stdout).toContain('Found 1 spelling issue');
    });
 
    it('should detect sensitive content', async () => {
