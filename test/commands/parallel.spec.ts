@@ -439,6 +439,38 @@ describe('gdx parallel', async () => {
       expect(buffer.stderr).toContain('contains invalid characters');
    });
 
+   it('should rename a fork and reject an existing target name', async () => {
+      const sourceAlias = 'rename-source';
+      const renamedAlias = 'rename-destination';
+      const existingAlias = 'rename-existing';
+      expect(await parallel(createGdxContext(tmpDir, ['parallel', 'fork', sourceAlias]))).toBe(0);
+      expect(await parallel(createGdxContext(tmpDir, ['parallel', 'fork', existingAlias]))).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const sourcePath = getParallelForkPath(tmpRootDir, tmpDir, sourceAlias, branchName);
+      const renamedPath = getParallelForkPath(tmpRootDir, tmpDir, renamedAlias, branchName);
+
+      buffer.stdout = '';
+      expect(
+         await parallel(createGdxContext(tmpDir, ['parallel', 'rename', sourceAlias, renamedAlias]))
+      ).toBe(0);
+      expect(buffer.stdout).toContain(`Renamed fork '${sourceAlias}' to '${renamedAlias}'`);
+      expect(fs.existsSync(sourcePath)).toBe(false);
+      expect(fs.existsSync(renamedPath)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(path.join(renamedPath, '.git-parallel.json'), 'utf-8')).alias).toBe(
+         renamedAlias
+      );
+
+      expect(
+         await parallel(createGdxContext(tmpDir, ['parallel', 'rename', renamedAlias, existingAlias]))
+      ).toBe(1);
+      expect(buffer.stderr).toContain(`Worktree alias '${existingAlias}' already exists`);
+      expect(fs.existsSync(renamedPath)).toBe(true);
+
+      expect(await parallel(createGdxContext(tmpDir, ['parallel', 'remove', renamedAlias]))).toBe(0);
+      expect(await parallel(createGdxContext(tmpDir, ['parallel', 'remove', existingAlias]))).toBe(0);
+   });
+
    it('should remove a worktree', async () => {
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-1']);
       const result = await parallel(removeCtx);

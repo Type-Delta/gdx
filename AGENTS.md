@@ -227,6 +227,7 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Shell scripts:** Shell initialization scripts in `src/templates/shell.ts`
 - **Completion:** Command completion structure in `src/commands/__completion.structure.ts`
 - **Patch Packages:** This project uses Bun's patching system, you can find information about the currently patched packages in [patches.md](./docs/patches.md).
+- If you modify/create any command/subcommand, make sure to update the completion structure and help messages for that command/subcommand.
 - Test in this project can be very slow, ALWAYS set execution timeout >= 8 minutes.
 
 ### Caveats
@@ -268,19 +269,19 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
      also contains `git.exe`) near the front, so Git resolves to `Git\mingw64\bin\git.EXE`.
      The uppercase extension is the `which` package appending a PATHEXT entry verbatim.
 
-  Cached executable lookups are pinned to a fingerprint of `PATH`/`PATHEXT`
-  (`getWhichExecCached`), because checking that the cached file still exists is not enough —
-  every candidate `git.exe` stays on disk, so a stale entry would otherwise be returned
-  forever. Do not "optimize" that check back to existence-only.
+   Cached executable lookups are pinned to a fingerprint of `PATH`/`PATHEXT`
+   (`getWhichExecCached`), because checking that the cached file still exists is not enough —
+   every candidate `git.exe` stays on disk, so a stale entry would otherwise be returned
+   forever. Do not "optimize" that check back to existence-only.
 
-  Note also that `createTestEnv()` resolves Git **before** it mocks `@/consts`, so a cached
-  lookup there would read the developer's real global cache rather than the current run's
-  PATH. That call therefore passes `{ noCache: true }` deliberately.
+   Note also that `createTestEnv()` resolves Git **before** it mocks `@/consts`, so a cached
+   lookup there would read the developer's real global cache rather than the current run's
+   PATH. That call therefore passes `{ noCache: true }` deliberately.
 
-  A walk like `path.resolve(path.dirname(gitExe), '..', 'bin', 'sh.exe')` is only correct
-  for the `cmd\` layout; from `mingw64\bin\` it silently yields a non-existent
-  `Git\mingw64\bin\sh.exe`, surfacing as a cryptic
-  `'...sh.exe' is not recognized as an internal or external command`. The symptom is a suite
-  that passes from one terminal and fails from another, on the same commit. Use
-  `resolvePosixShell()` from `testHelper.ts`, which climbs ancestors probing for a shell
-  that actually exists and falls back to PATH.
+   A walk like `path.resolve(path.dirname(gitExe), '..', 'bin', 'sh.exe')` is only correct
+   for the `cmd\` layout; from `mingw64\bin\` it silently yields a non-existent
+   `Git\mingw64\bin\sh.exe`, surfacing as a cryptic
+   `'...sh.exe' is not recognized as an internal or external command`. The symptom is a suite
+   that passes from one terminal and fails from another, on the same commit. Use
+   `resolvePosixShell()` from `testHelper.ts`, which climbs ancestors probing for a shell
+   that actually exists and falls back to PATH.

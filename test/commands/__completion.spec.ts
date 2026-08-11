@@ -131,7 +131,7 @@ describe('gdx __completion', async () => {
       delete process.env.GDX_CMP_IDX;
    });
 
-   it('suggests fork aliases for parallel switch and join', async () => {
+   it('suggests fork aliases for parallel switch, join, and rename', async () => {
       buffer.stdout = '';
       const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
       const forkOne = path.join(worktreeRoot, 'feature-one');
@@ -177,6 +177,15 @@ describe('gdx __completion', async () => {
       const joinCtx = createGdxContext(tmpDir, ['__completion', 'parallel', 'join', '--keep', '']);
       const joinExit = await completion(joinCtx);
       expect(joinExit).toBe(0);
+      expect(buffer.stdout).toContain('feature-one');
+      expect(buffer.stdout).toContain('feature-two');
+      expect(buffer.stdout).not.toContain('origin');
+
+      buffer.stdout = '';
+      process.env.GDX_CMP_IDX = '2';
+      const renameCtx = createGdxContext(tmpDir, ['__completion', 'parallel', 'rename', '']);
+      const renameExit = await completion(renameCtx);
+      expect(renameExit).toBe(0);
       expect(buffer.stdout).toContain('feature-one');
       expect(buffer.stdout).toContain('feature-two');
       expect(buffer.stdout).not.toContain('origin');

@@ -196,6 +196,11 @@ const parallelRemoveStructure: CommandArgThunk = async ({ git$ }) => {
    };
 };
 
+const parallelRenameStructure: CommandArgThunk = async ({ git$ }) => {
+   const aliases = await listParallelAliases(git$);
+   return createOptionChildren(aliases);
+};
+
 /**
  * Tests if an alias is valid for use as a worktree name
  */
@@ -1041,6 +1046,80 @@ async function cmdFork(git$: string | string[], args: ArgsSet): Promise<number> 
       noInitList,
    });
 
+   return 0;
+}
+
+/**
+ * Rename a registered parallel worktree.
+ * @param git$ Git executable or scoped command array.
+ * @param args Command arguments containing the current and new aliases.
+ * @returns Zero when the worktree was renamed successfully.
+ */
+async function cmdRename(git$: string | string[], args: ArgsSet): Promise<number> {
+   let scope: Awaited<ReturnType<typeof getParallelScope>>;
+   try {
+      scope = await getParallelScope(git$);
+   } catch (err) {
+      Logger.error(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   if (args.length !== 2) {
+      Logger.error('Usage: gdx parallel rename <alias> <new-alias>.', 'parallel');
+      return 1;
+   }
+
+   const [alias, newAlias] = args;
+   if (!testParallelAlias(alias) || !testParallelAlias(newAlias)) {
+      Logger.error('Aliases contain invalid characters or spaces.', 'parallel');
+      return 1;
+   }
+
+   if (alias === newAlias) {
+      Logger.error(`Fork '${alias}' already has that name.`, 'parallel');
+      return 1;
+   }
+
+   const ctx = scope.parallelCtx;
+   const sourcePath = path.join(ctx.parallelRoot, alias);
+   const destinationPath = path.join(ctx.parallelRoot, newAlias);
+
+   if (!fs.existsSync(sourcePath) || !getParallelMetadata(sourcePath)) {
+      Logger.error(`Worktree '${alias}' not found for branch '${ctx.branchName}'.`, 'parallel');
+      return 1;
+   }
+
+   if (fs.existsSync(destinationPath)) {
+      Logger.error(`Worktree alias '${newAlias}' already exists for this branch.`, 'parallel');
+      return 1;
+   }
+
+   if (path.resolve(ctx.repoRoot) === path.resolve(sourcePath)) {
+      Logger.error('Cannot rename the worktree you are currently in. Switch to origin first.', 'parallel');
+      return 1;
+   }
+
+   try {
+      await invalidateWorktreeListCache(scope.scopeGit$);
+      await $inherit`${scope.scopeGit$} worktree move ${sourcePath} ${destinationPath}`;
+   } catch (err) {
+      Logger.error(`Failed to rename fork '${alias}'.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   const metadata = getParallelMetadata(destinationPath);
+   if (!metadata) {
+      Logger.error(`Fork '${alias}' was moved but its metadata is missing.`, 'parallel');
+      return 1;
+   }
+
+   metadata.alias = newAlias;
+   metadata.updatedAt = new Date().toISOString();
+   writeParallelMetadata(destinationPath, metadata);
+   parallelContextCache = null;
+   await invalidateWorktreeListCache(scope.scopeGit$);
+   quickPrint(`${SGR.cyan}Renamed fork '${alias}' to '${newAlias}'.${SGR.reset}`);
    return 0;
 }
 
@@ -3462,6 +3541,7 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
       'sync',
       'pick',
       'join',
+      'rename',
       'remove',
       'help',
    ]);
@@ -3490,6 +3570,8 @@ export default async function parallel(ctx: GdxContext): Promise<number> {
          return await cmdPick(git$, remaining);
       case 'join':
          return await cmdJoin(git$, remaining);
+      case 'rename':
+         return await cmdRename(git$, remaining);
       case 'help':
          showUsage();
          return 0;
@@ -3528,6 +3610,7 @@ export const help = {
          - ${SGR.cyan}join -r|--recursive [--keep]${SGR.reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${SGR.cyan}--all${SGR.reset}\`.
          - ${SGR.cyan}sync [<alias>] [--hard|-h]${SGR.reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${SGR.cyan}--hard${SGR.reset}\` clears fork-local changes before syncing.
          - ${SGR.cyan}pick <alias|origin> <commit> [commit...]${SGR.reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
+         - ${SGR.cyan}rename <alias> <new-alias>${SGR.reset}: Renames a fork. The new alias must not already exist for this branch.
          - ${SGR.cyan}list${SGR.reset}: Lists forks for the current branch with status, base commit, divergence and recent commits. Use ${SGR.cyan}--short${SGR.reset} for compact output.
          - ${SGR.cyan}remove <alias>${SGR.reset}: Removes the forked worktree and cleans up the directory.
          - ${SGR.cyan}remove -r|--recursive${SGR.reset}: Removes every fork for the current branch.
@@ -3543,7 +3626,7 @@ export const help = {
          }
       );
    },
-   short: 'Manage temporary forked worktrees: create, list, join, open and remove.',
+   short: 'Manage temporary forked worktrees: create, rename, list, join, open and remove.',
    usage: () => {
       return strWrap(
          litedent`
@@ -3553,6 +3636,7 @@ export const help = {
          ${SGR.cyan}${EXECUTABLE_NAME} parallel switch ${SGR.dim}<alias|origin> [-c|--copy]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} parallel sync ${SGR.dim}[<alias>] [--hard|-h]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} parallel pick ${SGR.dim}<alias|origin> <commit> [commit...]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} parallel rename ${SGR.dim}<alias> <new-alias>${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} parallel join ${SGR.dim}<alias> [--keep|--all|-i|--interactive]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} parallel join ${SGR.dim}-r|--recursive [--keep]${SGR.reset}
          ${SGR.cyan}${EXECUTABLE_NAME} parallel remove ${SGR.dim}<alias>${SGR.reset}
@@ -3569,6 +3653,7 @@ export const help = {
             ${SGR.cyan}${EXECUTABLE_NAME} parallel list --short ${SGR.reset + SGR.dim}# Compact output with recent commits${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${SGR.reset + SGR.dim}# Reset a fork to the latest origin state${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${SGR.reset + SGR.dim}# Cherry-pick from origin into current worktree${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel rename feature-x feature-y ${SGR.reset + SGR.dim}# Rename a fork${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${SGR.reset + SGR.dim}# Merge fork back into origin${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${SGR.reset + SGR.dim}# Preview and pick commits${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel join -r ${SGR.reset + SGR.dim}# Merge all forks back into origin${SGR.reset}
@@ -3593,6 +3678,7 @@ export const structure = {
       sync: parallelSyncStructure,
       pick: parallelPickStructure,
       join: parallelJoinStructure,
+      rename: parallelRenameStructure,
       remove: parallelRemoveStructure,
       rm: parallelRemoveStructure,
       help: {},
