@@ -16,6 +16,9 @@ export type HistoryWorktreeId = string;
 /** Supported persisted transaction provenance values. */
 export const HISTORY_SOURCES = ['gdx', 'git-hook', 'reflog'] as const;
 
+/** Private ref namespace used to keep replay trees reachable while a manifest exists. */
+export const HISTORY_SNAPSHOT_REF_PREFIX = 'refs/gdx/history/snapshots/' as const;
+
 /** How a transaction entered the durable journal. */
 export type HistorySource = (typeof HISTORY_SOURCES)[number];
 
@@ -137,6 +140,26 @@ export interface HistoryIndexChange {
    redo?: HistoryIndexRecipe;
 }
 
+/** A complete tracked repository boundary used by history for replay-style operations. */
+export interface HistorySnapshotState {
+   head: HistoryHeadState;
+   index: HistoryArtifactReference | null;
+   /** Tree object representing the staged/index entries (ignores stat-cache churn). */
+   indexTree: string;
+   /** Normalized semantic index fingerprint, excluding filesystem stat-cache fields. */
+   indexSemanticFingerprint: string;
+   indexChecksum: string;
+   /** Tree object representing tracked worktree content at this boundary. */
+   worktreeTree: string;
+}
+
+/** Snapshot transition and the direct refs changed by the operation. */
+export interface HistorySnapshotChange {
+   before: HistorySnapshotState;
+   after: HistorySnapshotState;
+   refs: HistoryRefChange[];
+}
+
 /** Kind of filesystem entry captured by history. */
 export type HistoryPathEntryKind = 'absent' | 'file' | 'directory' | 'symlink' | 'gitlink';
 
@@ -226,6 +249,7 @@ export type HistoryInverseRecipe =
    | { kind: 'head-soft'; before: HistoryHeadState; after: HistoryHeadState }
    | { kind: 'switch'; before: HistoryHeadState; after: HistoryHeadState }
    | { kind: 'refs'; changes: HistoryRefChange[] }
+   | { kind: 'snapshot'; before: HistorySnapshotState; after: HistorySnapshotState; refs: HistoryRefChange[] }
    | {
         kind: 'raw-index';
         before: HistoryArtifactReference | null;

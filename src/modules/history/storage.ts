@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
+import { execa } from 'execa';
 
 import { GdxContext, GdxRepositoryLocation } from '@/common/types';
 import Logger from '@/utils/logger';
@@ -11,6 +12,7 @@ import {
    HISTORY_CAPABILITIES,
    HISTORY_SCHEMA_VERSION,
    HISTORY_SOURCES,
+   HISTORY_SNAPSHOT_REF_PREFIX,
    HISTORY_STORAGE_VERSION,
    HistoryCommandMetadata,
    HistoryObserverMetadata,
@@ -373,7 +375,12 @@ export async function recordHistoryTransaction(
          )
          .map((entry) => entry.id);
       const excess = Math.max(0, entries.length + divergentIds.length - maxEntries);
-      await removeTransactionFiles(paths, [...prunedIds, ...divergentIds.slice(0, excess)]);
+      await removeTransactionFiles(git$, paths, [...prunedIds, ...divergentIds.slice(0, excess)]).catch(
+         (error) => Logger.warn(
+            `Deferred obsolete history cleanup: ${error instanceof Error ? error.message : String(error)}`,
+            'history'
+         )
+      );
       Logger.info(
          `Recorded history transaction ${manifest.id}` +
          (manifest.command?.command ? ` observing: ${manifest.command.command}` : ''),
@@ -574,8 +581,8 @@ export async function discardHistoryRedoTail(git$: GdxContext['git$']): Promise<
          updatedAt: new Date().toISOString(),
          entries: timeline.entries.slice(0, timeline.cursor),
       };
+      await removeTransactionFiles(git$, paths, discardedIds);
       await atomicWriteJson(paths.timelineFile, nextTimeline);
-      await removeTransactionFiles(paths, discardedIds);
       return { discardedIds, timeline: nextTimeline };
    });
 }
@@ -612,8 +619,8 @@ export async function pruneHistory(
          entries: timeline.entries.slice(count),
          cursor: Math.max(0, timeline.cursor - count),
       };
+      await removeTransactionFiles(git$, paths, prunedIds);
       await atomicWriteJson(paths.timelineFile, nextTimeline);
-      await removeTransactionFiles(paths, prunedIds);
       return { prunedIds, timeline: nextTimeline };
    });
 }
@@ -653,8 +660,8 @@ export async function removeHistoryTransactions(
          entries: timeline.entries.filter((id) => !removeSet.has(id)),
          cursor: timeline.cursor - removedBeforeCursor,
       };
+      await removeTransactionFiles(git$, paths, removedIds);
       await atomicWriteJson(paths.timelineFile, nextTimeline);
-      await removeTransactionFiles(paths, removedIds);
       return { removedIds, timeline: nextTimeline };
    });
 }
@@ -1215,10 +1222,49 @@ function transactionFile(paths: HistoryStoragePaths, id: string): string {
    return path.join(paths.transactionsDir, `${id}.json`);
 }
 
-/** Removes obsolete manifests and their optional local artifacts. */
-async function removeTransactionFiles(paths: HistoryStoragePaths, ids: readonly string[]): Promise<void> {
+/** Removes obsolete manifests, local artifacts, and their private snapshot anchors. */
+async function removeTransactionFiles(
+   git$: GdxContext['git$'],
+   paths: HistoryStoragePaths,
+   ids: readonly string[]
+): Promise<void> {
+   const uniqueIds = [...new Set(ids)];
+   if (!uniqueIds.length) return;
+   const snapshotAnchorRefs = await Promise.all(
+      uniqueIds.map(async (id) => {
+         const manifest = await readJsonFile<HistoryTransactionManifest>(transactionFile(paths, id));
+         const base = [
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/before`,
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/after`,
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/index-before`,
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/index-after`,
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/head-before`,
+            `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/head-after`,
+         ];
+         const recipe = manifest?.recipe;
+         if (!recipe || recipe.kind !== 'snapshot') return base;
+         const refs = Array.isArray(recipe.refs) ? recipe.refs : [];
+         return [
+            ...base,
+            ...refs.flatMap((_, index) => [
+               `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/ref-before-${index}`,
+               `${HISTORY_SNAPSHOT_REF_PREFIX}${id}/ref-after-${index}`,
+            ]),
+         ];
+      })
+   );
+   const commands = snapshotAnchorRefs.flat().map((ref) => `delete ${ref}`).join('\n');
+   const command = Array.isArray(git$) ? git$ : [git$];
+   const cleanup = await execa(command[0], [...command.slice(1), 'update-ref', '--stdin'], {
+      env: { GDX_HISTORY_GUARD: '1' },
+      input: `${commands}\n`,
+      reject: false,
+   });
+   if (cleanup.exitCode !== 0) {
+      throw new Error(`Failed to remove history snapshot anchors: ${cleanup.stderr}`);
+   }
    await Promise.all(
-      [...new Set(ids)].map(async (id) => {
+      uniqueIds.map(async (id) => {
          assertSafeId(id, 'transaction');
          await fs.rm(transactionFile(paths, id), { force: true });
          await fs.rm(path.join(paths.historyDir, 'artifacts', id), {
@@ -1264,6 +1310,7 @@ function assertTransactionManifest(manifest: HistoryTransactionManifest, worktre
       (manifest.index !== undefined && !isHistoryIndexChange(manifest.index)) ||
       (manifest.paths !== undefined && !manifest.paths.every(isHistoryPathChange)) ||
       (manifest.control !== undefined && !isHistoryControlChange(manifest.control)) ||
+      (manifest.recipe !== undefined && !isHistoryInverseRecipe(manifest.recipe)) ||
       !isHistoryFingerprints(manifest.fingerprints) ||
       (manifest.undoUnavailableReason !== undefined &&
          typeof manifest.undoUnavailableReason !== 'string')
@@ -1553,6 +1600,49 @@ function isHistoryControlChange(value: unknown): boolean {
       Array.isArray(value.artifacts) &&
       value.artifacts.every(isHistoryArtifact)
    );
+}
+
+/** Checks one complete tracked-state snapshot boundary. */
+function isHistorySnapshotState(value: unknown): boolean {
+   return (
+      isRecord(value) &&
+      isHistoryHeadState(value.head) &&
+      (value.index === null || isHistoryArtifact(value.index)) &&
+      typeof value.indexTree === 'string' &&
+      /^[0-9a-f]{40,64}$/i.test(value.indexTree) &&
+      typeof value.indexSemanticFingerprint === 'string' &&
+      /^[0-9a-f]{64}$/i.test(value.indexSemanticFingerprint) &&
+      typeof value.indexChecksum === 'string' &&
+      /^[0-9a-f]{64}$/i.test(value.indexChecksum) &&
+      typeof value.worktreeTree === 'string' &&
+      /^[0-9a-f]{40,64}$/i.test(value.worktreeTree)
+   );
+}
+
+/** Checks all supported persisted inverse recipe variants. */
+function isHistoryInverseRecipe(value: unknown): boolean {
+   if (!isRecord(value) || typeof value.kind !== 'string') return false;
+   if (value.kind === 'head-soft' || value.kind === 'switch') {
+      return isHistoryHeadState(value.before) && isHistoryHeadState(value.after);
+   }
+   if (value.kind === 'refs') return Array.isArray(value.changes) && value.changes.every(isHistoryRefChange);
+   if (value.kind === 'raw-index') {
+      return (
+         (value.before === null || isHistoryArtifact(value.before)) &&
+         (value.after === null || isHistoryArtifact(value.after)) &&
+         typeof value.beforeChecksum === 'string' &&
+         typeof value.afterChecksum === 'string'
+      );
+   }
+   if (value.kind === 'snapshot') {
+      return (
+         isHistorySnapshotState(value.before) &&
+         isHistorySnapshotState(value.after) &&
+         Array.isArray(value.refs) &&
+         value.refs.every(isHistoryRefChange)
+      );
+   }
+   return false;
 }
 
 /**

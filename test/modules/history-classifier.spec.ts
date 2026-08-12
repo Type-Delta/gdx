@@ -20,8 +20,11 @@ describe('history action classifier', () => {
       const cases = [
          [['commit', '-m', 'x'], { kind: 'head-soft' }],
          [['commit', '--amend', '--no-edit'], { kind: 'head-soft' }],
+         [['reword', '-m', 'x'], { kind: 'head-soft' }],
          [['reset', '--soft', 'HEAD^'], { kind: 'head-soft' }],
          [['add', 'a.ts'], { kind: 'raw-index', redo: true }],
+         [['rebase', 'main'], { kind: 'snapshot' }],
+         [['cherry-pick', 'deadbeef'], { kind: 'snapshot' }],
          [['switch', 'feature'], { kind: 'switch' }],
          [['branch', 'feature'], { kind: 'refs', refs: ['refs/heads/feature'] }],
          [['tag', 'v1', 'HEAD'], { kind: 'refs', refs: ['refs/tags/v1'] }],
@@ -31,6 +34,26 @@ describe('history action classifier', () => {
          const result = classifyHistoryAction(argv);
          expect(result.disposition, argv.join(' ')).toBe('reversible');
          expect(result.capture).toEqual(recipe);
+      }
+   });
+
+   it('treats message values that look like reword flags as reversible messages', () => {
+      for (const argv of [
+         ['reword', '-m', '--preview'],
+         ['reword', '--message', '--no-commit'],
+         ['reword', '-m', '-nc'],
+      ]) {
+         const result = classifyHistoryAction(argv);
+         expect(result.disposition, argv.join(' ')).toBe('reversible');
+         expect(result.capture, argv.join(' ')).toEqual({ kind: 'head-soft' });
+      }
+   });
+
+   it('keeps standalone reword preview flags out of history', () => {
+      for (const argv of [['reword', '--preview'], ['reword', '--no-commit'], ['reword', '-nc']]) {
+         const result = classifyHistoryAction(argv);
+         expect(result.disposition, argv.join(' ')).toBe('no-history');
+         expect(result.capture, argv.join(' ')).toBeNull();
       }
    });
 
@@ -46,7 +69,8 @@ describe('history action classifier', () => {
          ['branch', '-m', 'old', 'renamed'],
          ['branch', '-c', 'copied'],
          ['merge', 'feature'],
-         ['rebase', 'main'],
+         ['rebase', '--abort'],
+         ['cherry-pick', '--continue'],
          ['restore', 'a.ts'],
          ['clean', '-fd'],
          ['stash', 'pop'],

@@ -464,10 +464,11 @@ export async function reconcileHistoryReflogs(
 
          const refs = [oidRefChange(relative, parsed.oldOid, parsed.newOid)];
          const dedupeKey = transitionDedupeKey(refs);
-         const eventKey = reflogEventKey(relative, parsed);
+         const eventKey = reflogEventKey(relative, parsed, line.nextOffset);
+         const knownTransition = consumeKnownTransition(knownTransitions, dedupeKey, parsed.timestampMs);
          if (
             metadata.seenKeys.includes(eventKey) ||
-            consumeKnownTransition(knownTransitions, dedupeKey, parsed.timestampMs)
+            knownTransition
          ) {
             skippedDuplicate++;
             metadata.seenKeys.push(eventKey);
@@ -834,9 +835,8 @@ async function readManagedMetadata(file: string): Promise<ManagedHookMetadata | 
 function parseReflogLine(bytes: Buffer): ParsedReflogEntry | null {
    const text = bytes.toString('utf8').replace(/\r$/, '');
    const tab = text.indexOf('\t');
-   if (tab < 0) return null;
-   const header = text.slice(0, tab);
-   const message = text.slice(tab + 1);
+   const header = tab < 0 ? text : text.slice(0, tab);
+   const message = tab < 0 ? '' : text.slice(tab + 1);
    const match = header.match(
       /^([0-9a-f]{40}|[0-9a-f]{64}) ([0-9a-f]{40}|[0-9a-f]{64}) .+ (\d+) ([+-]\d{4})$/
    );
@@ -943,18 +943,6 @@ async function collectKnownTransitions(
       ...(await readObservedTransactions(paths.spoolDir)),
       ...(await readTransactionManifests(paths.transactionsDir)),
    ];
-   for (const file of await listRawFiles(path.join(paths.spoolDir, HOOK_SPOOL_DIR))) {
-      const [input, stat] = await Promise.all([
-         fs.readFile(file).catch(() => null),
-         fs.stat(file).catch(() => null),
-      ]);
-      if (input && stat) {
-         records.push({
-            createdAt: stat.mtime.toISOString(),
-            refs: parseReferenceTransactionInput(input),
-         });
-      }
-   }
    for (const record of records) {
       const timestampMs = Date.parse(record.createdAt);
       if (!Number.isFinite(timestampMs)) continue;
@@ -963,6 +951,23 @@ async function collectKnownTransitions(
          const entries = map.get(key) ?? [];
          entries.push({ timestampMs, remaining: 1 });
          map.set(key, entries);
+      }
+   }
+   for (const file of await listRawFiles(path.join(paths.spoolDir, HOOK_SPOOL_DIR))) {
+      const [input, stat] = await Promise.all([
+         fs.readFile(file).catch(() => null),
+         fs.stat(file).catch(() => null),
+      ]);
+      if (input && stat) {
+         const createdAt = stat.mtime.toISOString();
+         const timestampMs = Date.parse(createdAt);
+         if (!Number.isFinite(timestampMs)) continue;
+         for (const ref of parseReferenceTransactionInput(input)) {
+            const key = transitionDedupeKey([ref]);
+            const candidates = map.get(key) ?? [];
+            candidates.push({ timestampMs, remaining: 1 });
+            map.set(key, candidates);
+         }
       }
    }
    return map;
@@ -1010,8 +1015,8 @@ async function readTransactionManifests(
    for (const file of await listJsonFiles(transactionDir)) {
       const parsed = await readJsonIfPresent(file);
       if (!parsed || typeof parsed !== 'object') continue;
-      const value = parsed as { createdAt?: unknown; refs?: unknown; recipe?: unknown };
-      if (typeof value.createdAt === 'string' && Array.isArray(value.refs)) {
+      const value = parsed as { createdAt?: unknown; source?: unknown; refs?: unknown; recipe?: unknown };
+      if (value.source === 'gdx' && typeof value.createdAt === 'string' && Array.isArray(value.refs)) {
          const refs = [...(value.refs as HistoryRefChange[])];
          const recipe = value.recipe as HistoryInverseRecipe | undefined;
          if (recipe?.kind === 'head-soft') {
@@ -1025,7 +1030,17 @@ async function readTransactionManifests(
                before.oid &&
                after.oid
             ) {
-               refs.push(oidRefChange(before.target, before.oid, after.oid));
+               const branchChange = oidRefChange(before.target, before.oid, after.oid);
+               if (
+                  !refs.some(
+                     (change) =>
+                        change.name === branchChange.name &&
+                        equalRefState(change.before, branchChange.before) &&
+                        equalRefState(change.after, branchChange.after)
+                  )
+               ) {
+                  refs.push(branchChange);
+               }
             }
          }
          records.push({ createdAt: value.createdAt, refs });
@@ -1060,9 +1075,9 @@ function transitionDedupeKey(refs: HistoryRefChange[]): string {
 }
 
 /** Produces a durable identity for one raw reflog event. */
-function reflogEventKey(ref: string, entry: ParsedReflogEntry): string {
+function reflogEventKey(ref: string, entry: ParsedReflogEntry, nextOffset: number): string {
    return hashText(
-      `${ref}\0${entry.oldOid}\0${entry.newOid}\0${entry.timestampMs}\0${entry.message}`
+      `${ref}\0${entry.oldOid}\0${entry.newOid}\0${entry.timestampMs}\0${entry.message}\0${nextOffset}`
    );
 }
 

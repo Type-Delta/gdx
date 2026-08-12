@@ -8,6 +8,8 @@ import history from '@/commands/history';
 import {
    getHistoryObserverHookStatus,
    installHistoryObserverHook,
+   importHistoryObserverSpool,
+   reconcileHistoryReflogs,
    uninstallHistoryObserverHook,
 } from '@/modules/history/observer';
 import {
@@ -138,6 +140,150 @@ describe('history reference-transaction observer', async () => {
       expect(manifests[0].undoUnavailableReason).toContain('retained for audit');
       expect(manifests[0].paths).toBeUndefined();
       expect(manifests[0].index).toBeUndefined();
+   });
+
+   it('deduplicates one matching reflog movement per routed head transition', async () => {
+      await reset();
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+
+      const before = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+      const branch = (await $`${ctx.git$} branch --show-current`).stdout.trim();
+      const ref = `refs/heads/${branch}`;
+      await fs.writeFile(path.join(tmpDir, 'dedupe.txt'), 'dedupe\n');
+      await $`${ctx.git$} add dedupe.txt`;
+      expect(await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'dedupe commit']))).toBe(0);
+      const after = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+
+      // Each A->B movement below has a B->A reflog transition between it. The
+      // routed commit manifest may consume only one matching A->B transition.
+      for (let index = 0; index < 2; index++) {
+         await $`${ctx.git$} update-ref ${ref} ${before} ${after}`;
+         await $`${ctx.git$} update-ref ${ref} ${after} ${before}`;
+      }
+
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+      const manifests = await listHistoryTransactions(ctx.git$);
+      const routed = manifests.filter((manifest) => manifest.source === 'gdx');
+      const matchingReflogs = manifests.filter(
+         (manifest) =>
+            manifest.source === 'reflog' &&
+            manifest.refs.some(
+               (change) =>
+                  change.name === ref &&
+                  change.before.kind === 'oid' &&
+                  change.before.oid === before &&
+                  change.after.kind === 'oid' &&
+                  change.after.oid === after
+            )
+      );
+      expect(routed).toHaveLength(1);
+      expect(routed[0].capability).not.toBe('audit-only');
+      expect(matchingReflogs).toHaveLength(2);
+   });
+
+   it('deduplicates a hook record and blank-message reflog movement one-to-one', async () => {
+      await reset();
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+
+      const before = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+      const branch = (await $`${ctx.git$} branch --show-current`).stdout.trim();
+      const ref = `refs/heads/${branch}`;
+      await fs.writeFile(path.join(tmpDir, 'hook-dedupe.txt'), 'hook dedupe\n');
+      await $`${ctx.git$} add hook-dedupe.txt`;
+      expect(await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'hook dedupe commit']))).toBe(0);
+      const after = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+
+      const observer = await installHistoryObserverHook(ctx);
+      try {
+         await $`${ctx.git$} update-ref ${ref} ${before} ${after}`;
+         await $`${ctx.git$} update-ref ${ref} ${after} ${before}`;
+         await execa(shell, [observer.hookPath!, 'committed'], {
+            input: `${before} ${after} ${ref}\n`,
+         });
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+
+         const manifests = await listHistoryTransactions(ctx.git$);
+         const hookMatches = manifests.filter(
+            (manifest) =>
+               manifest.source === 'git-hook' &&
+               manifest.refs.some(
+                  (change) =>
+                     change.name === ref &&
+                     change.before.kind === 'oid' &&
+                     change.before.oid === before &&
+                     change.after.kind === 'oid' &&
+                     change.after.oid === after
+               )
+         );
+         const reflogMatches = manifests.filter(
+            (manifest) =>
+               manifest.source === 'reflog' &&
+               manifest.refs.some(
+                  (change) =>
+                     change.name === ref &&
+                     change.before.kind === 'oid' &&
+                     change.before.oid === before &&
+                     change.after.kind === 'oid' &&
+                     change.after.oid === after
+               )
+         );
+         expect(hookMatches).toHaveLength(1);
+         expect(reflogMatches).toHaveLength(0);
+      } finally {
+         expect((await uninstallHistoryObserverHook(ctx)).hookPath).toBe(observer.hookPath);
+      }
+   });
+
+   it('imports a later identical reflog movement after an earlier observer record is persisted', async () => {
+      await reset();
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+
+      const before = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+      const branch = (await $`${ctx.git$} branch --show-current`).stdout.trim();
+      const ref = `refs/heads/${branch}`;
+      const tree = (await $`${ctx.git$} rev-parse HEAD^{tree}`).stdout.trim();
+      const after = (
+         await $({
+            env: {
+               GIT_AUTHOR_NAME: 'observer',
+               GIT_AUTHOR_EMAIL: 'observer@example.com',
+               GIT_COMMITTER_NAME: 'observer',
+               GIT_COMMITTER_EMAIL: 'observer@example.com',
+            },
+         })`${ctx.git$} commit-tree ${tree} -p ${before} -m ${'observer A to B'}`
+      ).stdout.trim();
+
+      await $`${ctx.git$} update-ref ${ref} ${after} ${before}`;
+      const firstReconciliation = await reconcileHistoryReflogs(ctx);
+      expect(firstReconciliation.imported).toHaveLength(1);
+      const firstImport = await importHistoryObserverSpool(ctx);
+      expect(firstImport).toHaveLength(1);
+      expect(firstImport[0].source).toBe('reflog');
+
+      // Keep all three movements in the same Git timestamp window. The
+      // persisted first A->B observer manifest may consume only its own
+      // transition; it must not suppress this later, distinct A->B event.
+      await $`${ctx.git$} update-ref ${ref} ${before} ${after}`;
+      await $`${ctx.git$} update-ref ${ref} ${after} ${before}`;
+      const secondReconciliation = await reconcileHistoryReflogs(ctx);
+      expect(secondReconciliation.imported).toHaveLength(2);
+      const secondImport = await importHistoryObserverSpool(ctx);
+      expect(secondImport).toHaveLength(2);
+
+      const matching = [...firstImport, ...secondImport].filter(
+         (manifest) =>
+            manifest.source === 'reflog' &&
+            manifest.refs.some(
+               (change) =>
+                  change.name === ref &&
+                  change.before.kind === 'oid' &&
+                  change.before.oid === before &&
+                  change.after.kind === 'oid' &&
+                  change.after.oid === after
+            )
+      );
+      expect(matching).toHaveLength(2);
+      expect(new Set(matching.map((manifest) => manifest.id)).size).toBe(2);
    });
 
    it('refuses custom hooksPath without modifying it', async () => {

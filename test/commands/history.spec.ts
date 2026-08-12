@@ -5,7 +5,9 @@ import path from 'path';
 import history from '@/commands/history';
 import { dispatch } from '@/cli/dispatch';
 import { stripAnsiColor } from '@/modules/graphics';
+import { installHistoryObserverHook, uninstallHistoryObserverHook } from '@/modules/history/observer';
 import {
+   listHistoryTransactions,
    readHistoryTimeline,
    recordHistoryTransaction,
    resolveHistoryStoragePaths,
@@ -19,7 +21,7 @@ import {
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 
 describe('gdx history command', async () => {
-   const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'history-command' });
+   const { tmpDir, buffer, $, it } = await createTestEnv({ suitName: 'history-command' });
    const ctx = createGdxContext(tmpDir);
 
    /** Removes journal state without disturbing the isolated repository itself. */
@@ -311,6 +313,38 @@ describe('gdx history command', async () => {
 
       expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
       expect((await fs.stat(checkpoint)).isFile()).toBe(true);
+   });
+
+   it('keeps a routed commit reversible when observer reconciliation runs afterward', async () => {
+      await resetHistory();
+      await installHistoryObserverHook(ctx);
+      try {
+         // Establish the observer checkpoint before the routed operation so its
+         // reflog transition is necessarily reconciled by the later list.
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+         await fs.writeFile(path.join(tmpDir, 'observer-commit.txt'), 'journaled\n');
+         await $`${ctx.git$} add observer-commit.txt`;
+
+         expect(
+            await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'observer commit']))
+         ).toBe(0);
+         const beforeReconciliation = await listHistoryTransactions(ctx.git$);
+         expect(beforeReconciliation).toHaveLength(1);
+         expect(beforeReconciliation[0].source).toBe('gdx');
+         expect(beforeReconciliation[0].capability).not.toBe('audit-only');
+         expect(beforeReconciliation[0].command?.command).toBe('commit');
+
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+
+         const afterReconciliation = await listHistoryTransactions(ctx.git$);
+         expect(afterReconciliation).toHaveLength(1);
+         expect(afterReconciliation[0].source).toBe('gdx');
+         expect(afterReconciliation[0].capability).not.toBe('audit-only');
+         expect(afterReconciliation[0].command?.command).toBe('commit');
+         expect((await readHistoryTimeline(ctx.git$)).entries).toHaveLength(1);
+      } finally {
+         await uninstallHistoryObserverHook(ctx).catch(() => undefined);
+      }
    });
 
    it('skips audit-only undo entries without failing', async () => {

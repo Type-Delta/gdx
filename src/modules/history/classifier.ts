@@ -11,6 +11,7 @@ export type ReversibleCapturePlan =
    | { kind: 'switch' }
    | { kind: 'refs'; refs: readonly string[] }
    | { kind: 'raw-index'; redo: boolean }
+   | { kind: 'snapshot' }
    | { kind: 'audit' };
 
 /**
@@ -385,6 +386,19 @@ function hasOption(argv: readonly string[], ...options: string[]): boolean {
    );
 }
 
+/** Detects reword preview modes without treating message values as options. */
+function hasRewordPreviewOption(argv: readonly string[]): boolean {
+   for (let index = 1; index < argv.length; index++) {
+      const argument = argv[index];
+      if (argument === '-m' || argument === '--message') {
+         index++;
+         continue;
+      }
+      if (argument === '--preview' || argument === '--no-commit' || argument === '-nc') return true;
+   }
+   return false;
+}
+
 /**
  * Returns a normalized subcommand using priority matching where dispatch does so.
  * @param input - Subcommand token.
@@ -566,6 +580,12 @@ export function classifyHistoryAction(argv: readonly string[]): HistoryActionCla
          kind: 'head-soft',
       });
    }
+   if (route === 'reword') {
+      if (hasRewordPreviewOption(argv)) {
+         return withoutCapture(base, 'no-history', 'reword:preview');
+      }
+      return reversible(base, 'reword', { kind: 'head-soft' });
+   }
    if (route === 'branch') {
       if (isReadOnlyBranch(argv)) return withoutCapture(base, 'no-history', 'branch:list');
       if (
@@ -642,10 +662,21 @@ export function classifyHistoryAction(argv: readonly string[]): HistoryActionCla
       return withoutCapture(base, 'no-history', 'clear:list');
    }
    if (
-      ['fetch', 'rm', 'restore', 'merge', 'rebase', 'cherry-pick', 'revert', 'stash', 'clean', 'clear'].includes(route)
+      ['fetch', 'rm', 'restore', 'merge', 'revert', 'stash', 'clean', 'clear'].includes(route)
    ) {
       const dryRun = hasOption(argv, '--dry-run') || (route === 'clean' && argv.includes('-n'));
       return withoutCapture(base, dryRun ? 'no-history' : 'audit-only', route);
+   }
+
+   if (route === 'rebase' || route === 'cherry-pick') {
+      const dryRun = hasOption(argv, '--dry-run');
+      const control = hasOption(argv, '--abort', '--continue', '--skip', '--quit') ||
+         argv.some((argument) => argument === 'abort' || argument === 'continue' || argument === 'skip' || argument === 'quit');
+      return dryRun
+         ? withoutCapture(base, 'no-history', route)
+         : control
+            ? withoutCapture(base, 'audit-only', route)
+            : reversible(base, route, { kind: 'snapshot' });
    }
 
    if (route === 'remote') {
