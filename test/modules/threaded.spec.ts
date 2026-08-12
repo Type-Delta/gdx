@@ -15,7 +15,7 @@ declare const statefulCounter: {
    next(): number;
 };
 declare const pathModule: typeof import('node:path');
-declare const dedentModule: typeof import('dedent');
+declare const litedentModule: typeof import('litedent');
 
 describe('Threaded', () => {
    const workerSource = getGenericWorkerUrl()!;
@@ -90,13 +90,13 @@ describe('Threaded', () => {
       const originalCwd = process.cwd();
       const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gdx-threaded-'));
       const pool = new Threaded({ maxWorker: 1, taskTimeout: 5000, workerSource }).require(
-         'dedent',
-         'dedentModule'
+         'litedent',
+         'litedentModule'
       );
 
       process.chdir(tempDir);
       try {
-         const result = await pool.spawn(() => dedentModule.default`
+         const result = await pool.spawn(() => litedentModule.litedent`
             alpha
                beta
          `);

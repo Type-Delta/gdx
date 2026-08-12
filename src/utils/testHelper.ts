@@ -31,18 +31,6 @@ const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === '
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
 const __openInEditor = openInEditor;
 
-if (USE_NATIVE_SUBMODULE_IN_TESTS) {
-   console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
-}
-
-if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
-   console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
-}
-
-if (process.platform === 'win32') {
-   console.log(ncc('Yellow') + 'Warning: Process forking/spawning and I/O operations on Windows are unbelievably slow (>10X slower); Expect tests timeout when host is busy. Close resources intensive apps before running tests.' + ncc());
-}
-
 interface TestSystem {
    lastTestStatus: 'notrun' | 'passed' | 'failed';
    lastTestName: string;
@@ -238,7 +226,22 @@ export async function createTestEnv(
    };
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
 
-   await clearTestEnvs();
+   const clearedTestEnvs = clearTestEnvs();
+   if (clearedTestEnvs && process.platform === 'win32') {
+      if (USE_NATIVE_SUBMODULE_IN_TESTS) {
+         console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
+      }
+
+      if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
+         console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
+      }
+
+      console.log(
+         ncc('Yellow') +
+         'Warning: Process forking/spawning and I/O operations on Windows are unbelievably slow (>10X slower); Expect tests timeout when host is busy. Close resources intensive apps before running tests.' +
+         ncc()
+      );
+   }
    fs.mkdirSync(baseTestEnvDir, { recursive: true });
 
    const tmpDir = fs.mkdtempSync(
@@ -294,8 +297,8 @@ export async function createTestEnv(
       resolvedOptions.liteMode
          ? Promise.resolve()
          : // Native (non-inline) submodule commands clone fixtures from local paths,
-           // which git blocks by default since 2.38.1 (CVE-2022-39253).
-           fs.writeFile(globalConfigPath, '[protocol "file"]\n\tallow = always\n'),
+         // which git blocks by default since 2.38.1 (CVE-2022-39253).
+         fs.writeFile(globalConfigPath, '[protocol "file"]\n\tallow = always\n'),
    ];
 
    if (gdxConfigDir) {
@@ -568,8 +571,8 @@ function getTestRunKey(): string {
  *    snapshot (including markers of previous runs) is guaranteed stale, and
  *    envs created by siblings afterwards are never touched.
  */
-async function clearTestEnvs() {
-   if (testEnvCleared) return;
+function clearTestEnvs(): boolean {
+   if (testEnvCleared) return false;
 
    const baseTestEnvDir = path.join(process.cwd(), 'test/env');
    const markerName = `.gdx-test-run-${getTestRunKey()}`;
@@ -579,7 +582,7 @@ async function clearTestEnvs() {
 
    if (fs.existsSync(markerPath)) {
       testEnvCleared = true;
-      return;
+      return false;
    }
 
    let staleEntries: string[];
@@ -587,14 +590,14 @@ async function clearTestEnvs() {
       staleEntries = fs.readdirSync(baseTestEnvDir);
    } catch {
       console.error(`Failed to list test envs in: ${baseTestEnvDir}`);
-      return;
+      return false;
    }
 
    try {
       fs.writeFileSync(markerPath, `pid: ${process.pid}\n`, { flag: 'wx' });
    } catch {
       testEnvCleared = true;
-      return;
+      return false;
    }
 
    console.log(`Clearing stale test envs in: ${baseTestEnvDir}`);
@@ -607,6 +610,7 @@ async function clearTestEnvs() {
       }
    }
    testEnvCleared = true;
+   return true;
 }
 
 /**
