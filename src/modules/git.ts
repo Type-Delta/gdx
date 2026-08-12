@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import nodeFs from 'fs';
 import path from 'path';
 import { parse as parseIni, stringify as stringifyIni } from 'ini';
 
@@ -101,10 +102,8 @@ export interface CommitLogResult {
 }
 
 const GIT_HEAD_CACHE_TTL_MINUTES = 360;
-const GIT_PATH_CACHE_TTL_MINUTES = 360;
 const REV_PARSE_REPO_HASH_LENGTH = 12;
 const revParseInFlight = new Map<string, Promise<string>>();
-const revParseRepoRootCache = new Map<string, string>();
 
 type GitRevParseFeatureScope = 'workspace' | 'gitPath' | 'head' | 'upstream' | 'refs';
 
@@ -145,14 +144,23 @@ async function runRevParseRaw(
 
 async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promise<string> {
    const resolvedRepoPath = path.resolve(repoPath);
-   const cacheKey = `${gitExec}|${resolvedRepoPath}`;
-   const cached = revParseRepoRootCache.get(cacheKey);
-   if (cached) return cached;
+   const cache = await getCache();
+   const markerToken = getGitMarkerCacheToken(resolvedRepoPath);
+   const cacheKey = createCacheKey(
+      'git.revParseRepoRoot',
+      `${gitExec}|${resolvedRepoPath}|${markerToken}`
+   );
+   const cached = await cache.getOneOff<string | null>(cacheKey);
+   if (cached !== undefined) return cached ?? resolvedRepoPath;
 
    let repoRoot = resolvedRepoPath;
+   let isRepository = false;
    try {
       const resolved = await runRevParseRaw(gitExec, resolvedRepoPath, ['--show-toplevel']);
-      if (resolved) repoRoot = path.resolve(resolved);
+      if (resolved) {
+         repoRoot = path.resolve(resolved);
+         isRepository = true;
+      }
 
       const commonDir = await runRevParseRaw(gitExec, resolvedRepoPath, ['--git-common-dir']);
       if (commonDir) {
@@ -172,7 +180,7 @@ async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promi
       repoRoot = resolvedRepoPath;
    }
 
-   revParseRepoRootCache.set(cacheKey, repoRoot);
+   await cache.setOneOff(cacheKey, isRepository ? repoRoot : null);
    return repoRoot;
 }
 
@@ -180,6 +188,39 @@ function getGitScope(git$: GdxContext['git$'], worktreePath?: string): string {
    const gitKey = Array.isArray(git$) ? git$.join(' ') : git$;
    const basePath = worktreePath ? path.resolve(worktreePath) : process.cwd();
    return `${gitKey}|${basePath}`;
+}
+
+/**
+ * Invalidates cached config for a key after either config writer changes it.
+ * The cached getter is scoped by `git$`, so its writer invalidation uses that same scope.
+ * @param git$ - Git executable path or command array.
+ * @param configKey - Config key that changed.
+ */
+async function invalidateGitConfigValueCache(
+   git$: GdxContext['git$'],
+   configKey: string
+): Promise<void> {
+   const cache = await getCache();
+   const cacheKey = createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`);
+   await cache.deleteOneOff(cacheKey);
+}
+
+/**
+ * Gets a cheap identity token for the worktree's Git marker.
+ * @param worktreePath - Worktree root path.
+ * @returns Token that changes when the worktree is initialized or redirected.
+ */
+function getGitMarkerCacheToken(worktreePath: string): string {
+   const markerPath = path.join(path.resolve(worktreePath), '.git');
+   try {
+      const stat = nodeFs.statSync(markerPath);
+      if (stat.isFile()) {
+         return createShortHash(nodeFs.readFileSync(markerPath, 'utf-8').trim());
+      }
+      return createShortHash(`${stat.dev}|${stat.ino}|${stat.birthtimeMs}`);
+   } catch {
+      return createShortHash('missing');
+   }
 }
 
 function resolveGitExecAndRepoPath(
@@ -1167,6 +1208,7 @@ export async function setGitConfigValue(
       if (options?.add) args.push('--add');
       args.push(configKey, value);
       await $`${resolved.gitExec} ${args}`;
+      await invalidateGitConfigValueCache(git$, configKey);
       return;
    }
 
@@ -1196,8 +1238,7 @@ export async function setGitConfigValue(
    }
 
    await writeParsedGitConfigToFile(configFilePath, parsed);
-   const cache = await getCache();
-   await cache.delete(createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`));
+   await invalidateGitConfigValueCache(git$, configKey);
 }
 
 /**
@@ -1222,6 +1263,7 @@ export async function unsetGitConfigValue(
       else if (scope === 'system') args.push('--system');
       args.push(options?.all ? '--unset-all' : '--unset', configKey);
       await $`${resolved.gitExec} ${args}`;
+      await invalidateGitConfigValueCache(git$, configKey);
       return;
    }
 
@@ -1241,8 +1283,7 @@ export async function unsetGitConfigValue(
    }
 
    await writeParsedGitConfigToFile(configFilePath, parsed);
-   const cache = await getCache();
-   await cache.delete(createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`));
+   await invalidateGitConfigValueCache(git$, configKey);
 }
 
 /**
@@ -1415,7 +1456,7 @@ export async function getGitConfigCached(
    const cacheKey = createCacheKey('git.config', `${getGitScope(git$)}|${configKey}`);
 
    // Try to get from cache first
-   const cached = await cache.get<string>(cacheKey);
+   const cached = await cache.getOneOff<string>(cacheKey);
    if (cached !== undefined) {
       Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
       return cached;
@@ -1426,7 +1467,7 @@ export async function getGitConfigCached(
 
       // Only cache non-empty values
       if (value) {
-         await cache.set(cacheKey, value);
+         await cache.setOneOff(cacheKey, value);
          Logger.debug(`Cache store for ${cacheKey}: ${value}`, 'cache-ctrl');
       }
 
@@ -1455,7 +1496,7 @@ export async function getGitBranchesCached(
    const scope = `${getGitScope(git$)}|${remote ? 'remote' : 'local'}`;
    const cacheKey = createCacheKey('git.branches', scope);
 
-   const cached = await cache.get<string[]>(cacheKey);
+   const cached = await cache.getOneOff<string[]>(cacheKey);
    if (cached) {
       Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
       return cached;
@@ -1472,7 +1513,7 @@ export async function getGitBranchesCached(
          .split('\n')
          .filter((b) => b.length > 0);
 
-      await cache.set(cacheKey, branches);
+      await cache.setOneOff(cacheKey, branches);
       Logger.debug(`Cache store for ${cacheKey}: ${branches.length} branches`, 'cache-ctrl');
 
       return branches;
@@ -1493,7 +1534,7 @@ export async function getGitTagsCached(git$: GdxContext['git$']): Promise<string
    const cache = await getCache();
    const cacheKey = createCacheKey('git.tags', getGitScope(git$));
 
-   const cached = await cache.get<string[]>(cacheKey);
+   const cached = await cache.getOneOff<string[]>(cacheKey);
    if (cached) {
       Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
       return cached;
@@ -1506,7 +1547,7 @@ export async function getGitTagsCached(git$: GdxContext['git$']): Promise<string
          .split('\n')
          .filter((t) => t.length > 0);
 
-      await cache.set(cacheKey, tags);
+      await cache.setOneOff(cacheKey, tags);
       Logger.debug(`Cache store for ${cacheKey}: ${tags.length} tags`, 'cache-ctrl');
 
       return tags;
@@ -1531,7 +1572,7 @@ export async function getGitAuthorExistsCached(
    const cache = await getCache();
    const cacheKey = createCacheKey('git.author', `${getGitScope(git$)}|${email}`);
 
-   const cached = await cache.get<boolean>(cacheKey);
+   const cached = await cache.getOneOff<boolean>(cacheKey);
    if (cached !== undefined) {
       Logger.debug(`Cache hit for ${cacheKey}`, 'cache-ctrl');
       return cached;
@@ -1541,7 +1582,7 @@ export async function getGitAuthorExistsCached(
       const { stdout } = await $`${git$} rev-list --all --author=${email} --pretty=format:%an`;
       const exists = stdout.trim().length > 0;
 
-      await cache.set(cacheKey, exists);
+      await cache.setOneOff(cacheKey, exists);
       Logger.debug(`Cache store for ${cacheKey}: ${exists}`, 'cache-ctrl');
 
       return exists;
@@ -1616,7 +1657,7 @@ export async function getRepoRootCached(git$: GdxContext['git$'], quiet: boolean
    const scopeHash = crypto.createHash('sha1').update(`${gitKey}|${cwd}`).digest('hex');
    const cacheKey = 'git.repoRoot.' + scopeHash;
 
-   const cachedDir = await cache.get<string>(cacheKey);
+   const cachedDir = await cache.getOneOff<string>(cacheKey);
    if (
       cachedDir &&
       fs.existsSync(cachedDir) // Cache dir still exists
@@ -1629,7 +1670,7 @@ export async function getRepoRootCached(git$: GdxContext['git$'], quiet: boolean
       const repoRoot = (await revParseCached(git$, ['--show-toplevel'])).trim();
       if (!repoRoot) throw new Error('Unable to resolve repository root.');
 
-      await cache.set(cacheKey, repoRoot);
+      await cache.setOneOff(cacheKey, repoRoot);
       Logger.debug(`Cache store for ${cacheKey}: ${repoRoot}`, 'cache-ctrl');
 
       return repoRoot;
@@ -1773,10 +1814,15 @@ export async function getGitPath(
    gitPath: string
 ): Promise<string | null> {
    const cache = await getCache();
-   const scope = `${getGitScope(git$, worktreePath)}|${gitPath}`;
+   const markerToken = getGitMarkerCacheToken(worktreePath);
+   const scope = `${getGitScope(git$, worktreePath)}|${markerToken}|${gitPath}`;
    const cacheKey = createCacheKey('git.path', scope);
-   const cached = await cache.get<string | null>(cacheKey);
-   if (cached !== undefined) return cached;
+   const cached = await cache.getOneOff<string | null>(cacheKey);
+   if (cached !== undefined) {
+      if (cached === null) return null;
+      if (fs.existsSync(path.dirname(cached))) return cached;
+      await cache.deleteOneOff(cacheKey);
+   }
 
    try {
       const resolvedGit = resolveGitExecAndRepoPath(git$, worktreePath);
@@ -1785,15 +1831,15 @@ export async function getGitPath(
          gitPath,
       ]);
       if (!output) {
-         await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
+         await cache.setOneOff(cacheKey, null);
          return null;
       }
       const resolvedPath = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
-      await cache.set(cacheKey, resolvedPath, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
+      await cache.setOneOff(cacheKey, resolvedPath);
       return resolvedPath;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
-      await cache.set(cacheKey, null, { maxAgeMinutes: GIT_PATH_CACHE_TTL_MINUTES });
+      await cache.setOneOff(cacheKey, null);
       return null;
    }
 }
@@ -1851,7 +1897,7 @@ async function getRevParseScopeToken(
 }
 
 /**
- * Gets a rev-parse value cached on disk.
+ * Gets a rev-parse value with cache storage matched to its Git state scope.
  * @param gitExec - Git executable path.
  * @param repoPath - Repository path.
  * @param ref - Ref to resolve.
@@ -1871,7 +1917,16 @@ export async function getRevParseCached(
    const repoHash = createShortHash(normalizeWorktreePath(repoRoot));
    const worktreeHash = createShortHash(normalizeWorktreePath(resolvedRepoPath));
    const featureScope = getRevParseFeatureScope(refArgs);
-   const scopeToken = await getRevParseScopeToken(gitExec, resolvedRepoPath, featureScope, refArgs);
+   const isTopologyScope = featureScope === 'workspace' || featureScope === 'gitPath';
+   const stateScopeToken = await getRevParseScopeToken(
+      gitExec,
+      resolvedRepoPath,
+      featureScope,
+      refArgs
+   );
+   const scopeToken = isTopologyScope
+      ? createShortHash(`${stateScopeToken}|${getGitMarkerCacheToken(resolvedRepoPath)}`)
+      : stateScopeToken;
    const cacheKey = createRevParseCacheKey(
       repoHash,
       worktreeHash,
@@ -1880,7 +1935,10 @@ export async function getRevParseCached(
       refKey
    );
 
-   const cached = await cache.get<string>(cacheKey);
+   const cached =
+      isTopologyScope
+         ? await cache.getOneOff<string>(cacheKey)
+         : await cache.get<string>(cacheKey);
    if (cached !== undefined) return cached;
 
    const inFlightKey = cacheKey;
@@ -1890,10 +1948,22 @@ export async function getRevParseCached(
    const resolvePromise = (async () => {
       try {
          const output = await runRevParseRaw(gitExec, resolvedRepoPath, refArgs);
-         await cache.set(cacheKey, output, { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+         if (isTopologyScope) {
+            await cache.setOneOff(cacheKey, output);
+         } else {
+            await cache.set(cacheKey, output, {
+               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+            });
+         }
          return output;
       } catch {
-         await cache.set(cacheKey, '', { maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES });
+         if (isTopologyScope) {
+            await cache.setOneOff(cacheKey, '');
+         } else {
+            await cache.set(cacheKey, '', {
+               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+            });
+         }
          return '';
       }
    })();
@@ -2996,15 +3066,13 @@ export async function getSubmoduleBaseSha(
          await $`${gitExec} -C ${worktreePath} ls-tree ${baseCommit} -- ${submodulePath}`
       ).stdout.trim();
       if (!output) {
-         await cache.set(cacheKey, null);
          return null;
       }
       const match = output.match(/^160000\s+commit\s+([0-9a-f]{7,40})\s+/i);
       const result = match?.[1] ?? null;
-      await cache.set(cacheKey, result);
+      if (result) await cache.set(cacheKey, result);
       return result;
    } catch {
-      await cache.set(cacheKey, null);
       return null;
    }
 }

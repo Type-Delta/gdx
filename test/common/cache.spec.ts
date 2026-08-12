@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect } from 'bun:test';
 import path from 'path';
+import nodeFs from 'fs';
 import * as fs from '@/modules/fs';
 
 import { getCache, resetCache, CacheService } from '@/common/cache';
@@ -247,6 +248,132 @@ describe('CacheService', async () => {
       const value2 = await cache.get('test.key2');
       expect(value1).toBeUndefined();
       expect(value2).toBeUndefined();
+   });
+
+   it('should clear only one-off cache data', async () => {
+      const cache = new CacheService(path.join(tmpRootDir, 'clear-one-off.json'));
+      await cache.set('persistent.key', 'persistent');
+      await cache.setOneOff('memory.key', 'temporary');
+
+      await cache.clearOneOff();
+
+      expect(await cache.getOneOff('memory.key')).toBeUndefined();
+      expect(await cache.get<string>('persistent.key')).toBe('persistent');
+      cache.flush();
+      const reloaded = new CacheService(cache.getCachePath());
+      expect(await reloaded.get<string>('persistent.key')).toBe('persistent');
+   });
+
+   it('should merge independent instance writes', async () => {
+      const cachePath = path.join(tmpRootDir, 'concurrent-writes.json');
+      const first = new CacheService(cachePath);
+      const second = new CacheService(cachePath);
+      await Promise.all([first.get('load'), second.get('load')]);
+      await first.set('first.key', 'one');
+      await second.set('second.key', 'two');
+
+      first.flush();
+      second.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get<string>('first.key')).toBe('one');
+      expect(await reloaded.get<string>('second.key')).toBe('two');
+   });
+
+   it('should not resurrect deletions when merging an independent write', async () => {
+      const cachePath = path.join(tmpRootDir, 'concurrent-delete.json');
+      const seed = new CacheService(cachePath);
+      await seed.set('remove.me', 'old');
+      await seed.set('keep.me', 'kept');
+      seed.flush();
+
+      const deleting = new CacheService(cachePath);
+      const writing = new CacheService(cachePath);
+      await Promise.all([deleting.get('remove.me'), writing.get('remove.me')]);
+      await deleting.delete('remove.me');
+      await writing.set('new.key', 'new');
+
+      writing.flush();
+      deleting.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get('remove.me')).toBeUndefined();
+      expect(await reloaded.get<string>('keep.me')).toBe('kept');
+      expect(await reloaded.get<string>('new.key')).toBe('new');
+   });
+
+   it('should recover a stale flush lock', async () => {
+      const cachePath = path.join(tmpRootDir, 'stale-lock.json');
+      const lockPath = `${cachePath}.lock`;
+      await fs.writeFile(lockPath, 'abandoned-owner');
+      const staleTime = new Date(Date.now() - 60_000);
+      nodeFs.utimesSync(lockPath, staleTime, staleTime);
+
+      const cache = new CacheService(cachePath);
+      await cache.set('after.crash', 'written');
+      cache.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get<string>('after.crash')).toBe('written');
+      expect(fs.existsSync(lockPath)).toBe(false);
+   });
+
+   it('should merge overlapping nested keys without orphan metadata', async () => {
+      const cachePath = path.join(tmpRootDir, 'overlapping-keys.json');
+      const seed = new CacheService(cachePath);
+      await seed.set('overlap.child', 'old-child');
+      seed.flush();
+
+      const parentWriter = new CacheService(cachePath);
+      const independentWriter = new CacheService(cachePath);
+      await Promise.all([parentWriter.get('overlap.child'), independentWriter.get('overlap.child')]);
+      await parentWriter.set('overlap', 'parent-value');
+      await independentWriter.set('independent.key', 'preserved');
+
+      independentWriter.flush();
+      parentWriter.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get<string>('overlap')).toBe('parent-value');
+      expect(await reloaded.get('overlap.child')).toBeUndefined();
+      expect(await reloaded.get<string>('independent.key')).toBe('preserved');
+      expect((await reloaded.getAll()).entryMeta['overlap.child']).toBeUndefined();
+   });
+
+   it('should remove descendant metadata added on disk after this instance loaded', async () => {
+      const cachePath = path.join(tmpRootDir, 'disk-prefix-overlap.json');
+      const parentWriter = new CacheService(cachePath);
+      await parentWriter.get('load');
+
+      const descendantWriter = new CacheService(cachePath);
+      await descendantWriter.set('shared.descendant', 'descendant');
+      descendantWriter.flush();
+      await parentWriter.set('shared', 'parent');
+      parentWriter.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get<string>('shared')).toBe('parent');
+      expect(await reloaded.get('shared.descendant')).toBeUndefined();
+      expect((await reloaded.getAll()).entryMeta['shared.descendant']).toBeUndefined();
+   });
+
+   it('should remove only aged stale-lock quarantines', async () => {
+      const cachePath = path.join(tmpRootDir, 'quarantine-cleanup.json');
+      const oldQuarantine = `${cachePath}.lock.stale.old`;
+      const recentQuarantine = `${cachePath}.lock.stale.recent`;
+      await Promise.all([
+         fs.writeFile(oldQuarantine, 'old'),
+         fs.writeFile(recentQuarantine, 'recent'),
+      ]);
+      const staleTime = new Date(Date.now() - 60_000);
+      nodeFs.utimesSync(oldQuarantine, staleTime, staleTime);
+
+      const cache = new CacheService(cachePath);
+      await cache.set('trigger', 'flush');
+      cache.flush();
+
+      expect(fs.existsSync(oldQuarantine)).toBe(false);
+      expect(fs.existsSync(recentQuarantine)).toBe(true);
    });
 
    it('should handle concurrent get calls with lazy load', async () => {

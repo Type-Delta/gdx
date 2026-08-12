@@ -5,8 +5,15 @@ import path from 'path';
 import {
    addSubmodule,
    deinitSubmodules,
+   getGitAuthorExistsCached,
+   getGitBranchesCached,
+   getGitConfigCached,
    getGitConfigRegexp,
    getGitConfigValue,
+   getGitPath,
+   getGitTagsCached,
+   getRepoRootCached,
+   getSubmoduleBaseSha,
    unsetGitConfigValue,
    getMainWorktreeRoot,
    updateSubmodules,
@@ -17,6 +24,7 @@ import {
    hasCherryPickInProgress,
    setGitConfigValue,
 } from '@/modules/git';
+import { getCache, resetCache as resetCacheService } from '@/common/cache';
 import { getConfig, resetConfig } from '@/common/config';
 import { createTestEnv, createGdxContext, setTestGitConfig } from '@/utils/testHelper';
 import { asUnixPath } from '@/utils/path';
@@ -272,6 +280,177 @@ describe('git module', async () => {
       const headFromScoped = (await revParseCached(scoped, 'HEAD')).trim();
       const headFromDirect = (await revParseCached(git$, 'HEAD', tmpDir)).trim();
       expect(headFromScoped).toBe(headFromDirect);
+   });
+
+   it('should discover a repository initialized after cached discovery failures', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'late-init-repo');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+
+      expect(await revParseCached(scopedGit, '--is-inside-work-tree')).toBe('');
+      let rootLookupFailed = false;
+      try {
+         await getRepoRootCached(scopedGit, true);
+      } catch {
+         rootLookupFailed = true;
+      }
+      expect(rootLookupFailed).toBe(true);
+      expect(await getGitPath(gitExe, repoPath, 'config')).toBeNull();
+
+      await $`${gitExe} -C ${repoPath} init`;
+
+      expect(await revParseCached(scopedGit, '--is-inside-work-tree')).toBe('true');
+      expect(asUnixPath(await getRepoRootCached(scopedGit, true))).toBe(asUnixPath(repoPath));
+      expect(asUnixPath((await getGitPath(gitExe, repoPath, 'config'))!)).toBe(
+         asUnixPath(path.join(repoPath, '.git', 'config'))
+      );
+   });
+
+   it('should refresh a stale cached git path', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'reinitialized-git-path-repo');
+      const oldGitDir = path.join(tmpRootDir, 'old-git-dir');
+      const newGitDir = path.join(tmpRootDir, 'new-git-dir');
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} init --separate-git-dir ${oldGitDir} ${repoPath}`;
+
+      expect(asUnixPath((await getGitPath(gitExe, repoPath, 'config'))!)).toBe(
+         asUnixPath(path.join(oldGitDir, 'config'))
+      );
+
+      await fs.unlink(path.join(repoPath, '.git'));
+      await $`${gitExe} init --separate-git-dir ${newGitDir} ${repoPath}`;
+
+      expect(asUnixPath((await getGitPath(gitExe, repoPath, 'config'))!)).toBe(
+         asUnixPath(path.join(newGitDir, 'config'))
+      );
+   });
+
+   it('should refresh combined git-path startup queries after git dir replacement', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'combined-git-path-repo');
+      const oldGitDir = path.join(tmpRootDir, 'combined-old-git-dir');
+      const newGitDir = path.join(tmpRootDir, 'combined-new-git-dir');
+      const combinedArgs = ['--git-dir', '--git-common-dir', '--show-toplevel'];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} init --separate-git-dir ${oldGitDir} ${repoPath}`;
+
+      const before = asUnixPath(await revParseCached([gitExe, '-C', repoPath], combinedArgs));
+      expect(before).toContain(asUnixPath(oldGitDir));
+
+      await fs.unlink(path.join(repoPath, '.git'));
+      await $`${gitExe} init --separate-git-dir ${newGitDir} ${repoPath}`;
+
+      const after = asUnixPath(await revParseCached([gitExe, '-C', repoPath], combinedArgs));
+      expect(after).toContain(asUnixPath(newGitDir));
+      expect(after).not.toBe(before);
+   });
+
+   it('should refresh repository topology after a dispatch cache boundary', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const parentRepo = path.join(tmpRootDir, 'topology-parent');
+      const nestedRepo = path.join(parentRepo, 'nested');
+      const nestedGit = [gitExe, '-C', nestedRepo];
+      await fs.mkdir(nestedRepo, { recursive: true });
+      await $`${gitExe} -C ${parentRepo} init`;
+
+      expect(asUnixPath(await revParseCached(nestedGit, '--show-toplevel'))).toBe(
+         asUnixPath(parentRepo)
+      );
+      expect(asUnixPath(await getRepoRootCached(nestedGit, true))).toBe(asUnixPath(parentRepo));
+
+      await $`${gitExe} -C ${nestedRepo} init`;
+      await (await getCache()).clearOneOff();
+
+      expect(asUnixPath(await revParseCached(nestedGit, '--show-toplevel'))).toBe(
+         asUnixPath(nestedRepo)
+      );
+      expect(asUnixPath(await getRepoRootCached(nestedGit, true))).toBe(asUnixPath(nestedRepo));
+   });
+
+   it('should not persist mutable branch, tag, and author caches', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'mutable-cache-repo');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'mutable cache base'}`;
+      const persistentKeysBefore = new Set(
+         Object.keys((await (await getCache()).getAll()).entryMeta)
+      );
+
+      expect(await getGitBranchesCached(scopedGit)).not.toContain('late-branch');
+      expect(await getGitTagsCached(scopedGit)).not.toContain('late-tag');
+      expect(await getGitAuthorExistsCached(scopedGit, 'late@example.com')).toBe(false);
+      const newPersistentMutableKeys = Object.keys(
+         (await (await getCache()).getAll()).entryMeta
+      ).filter(
+         (key) =>
+            !persistentKeysBefore.has(key) &&
+            (key.startsWith('git.branches.') ||
+               key.startsWith('git.tags.') ||
+               key.startsWith('git.author.'))
+      );
+      expect(newPersistentMutableKeys).toEqual([]);
+
+      await $`${gitExe} -C ${repoPath} branch ${'late-branch'}`;
+      await $`${gitExe} -C ${repoPath} tag ${'late-tag'}`;
+      await $`${gitExe} -C ${repoPath} -c ${'user.name=Late Author'} -c ${'user.email=late@example.com'} commit --allow-empty -m ${'late author'}`;
+      resetCacheService();
+
+      expect(await getGitBranchesCached(scopedGit)).toContain('late-branch');
+      expect(await getGitTagsCached(scopedGit)).toContain('late-tag');
+      expect(await getGitAuthorExistsCached(scopedGit, 'late@example.com')).toBe(true);
+   });
+
+   it('should invalidate native config cache writes', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+
+      await withInlineGitConfigMode('off', async () => {
+         await setGitConfigValue(git$, 'test.native.cached-writer', 'before', {
+            repoPath: tmpDir,
+         });
+         expect(await getGitConfigCached(git$, 'test.native.cached-writer')).toBe('before');
+
+         await setGitConfigValue(git$, 'test.native.cached-writer', 'after', {
+            repoPath: tmpDir,
+         });
+         expect(await getGitConfigCached(git$, 'test.native.cached-writer')).toBe('after');
+
+         await unsetGitConfigValue(git$, 'test.native.cached-writer', { repoPath: tmpDir });
+         expect(await getGitConfigCached(git$, 'test.native.cached-writer')).toBe('');
+      });
+   });
+
+   it('should retry a missing submodule base object after it is fetched', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const sourceRepo = path.join(tmpRootDir, 'late-submodule-base-source');
+      const targetRepo = path.join(tmpRootDir, 'late-submodule-base-target');
+      await fs.mkdir(sourceRepo, { recursive: true });
+      await fs.mkdir(targetRepo, { recursive: true });
+      await $`${gitExe} -C ${sourceRepo} init`;
+      await $`${gitExe} -C ${targetRepo} init`;
+      await setTestGitConfig(sourceRepo, 'user.name', 'Test User');
+      await setTestGitConfig(sourceRepo, 'user.email', 'test@example.com');
+      const submoduleSha = (await $`${gitExe} -C ${tmpDir} rev-parse HEAD`).stdout.trim();
+      await $`${gitExe} -C ${sourceRepo} update-index --add --cacheinfo ${'160000'} ${submoduleSha} ${'deps/late'}`;
+      await $`${gitExe} -C ${sourceRepo} commit -m ${'add late gitlink'}`;
+      const baseCommit = (await $`${gitExe} -C ${sourceRepo} rev-parse HEAD`).stdout.trim();
+
+      expect(await getSubmoduleBaseSha(gitExe, targetRepo, baseCommit, 'deps/late')).toBeNull();
+      await $`${gitExe} -C ${targetRepo} fetch ${sourceRepo} ${baseCommit}`;
+      expect(await getSubmoduleBaseSha(gitExe, targetRepo, baseCommit, 'deps/late')).toBe(
+         submoduleSha
+      );
    });
 
    it('should invalidate cached head scope when HEAD advances', async () => {

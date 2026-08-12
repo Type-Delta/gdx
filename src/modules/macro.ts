@@ -16,31 +16,43 @@ export interface MacroMap {
 }
 
 const MACRO_CACHE_KEY = 'macro.all';
+const MACRO_FILE_CONTENT_CACHE_KEY = 'macro.fileContent';
 const MACRO_CACHE_TTL = 1440; // 24 hours in minutes
+
+/** Reads the exact macro.json content, or null when it is absent or unreadable. */
+async function readMacroFileContent(): Promise<string | null> {
+   try {
+      if (!fs.existsSync(MACRO_PATH)) return null;
+      return await fs.readFile(MACRO_PATH, 'utf-8');
+   } catch (err) {
+      Logger.warn(`Failed to read macro.json: ${Err.from(err).message}`, 'macro');
+      return null;
+   }
+}
+
+/** Parses macro.json content, returning an empty map for missing or invalid content. */
+function parseMacroFileContent(content: string | null): MacroMap {
+   if (content === null) return {};
+
+   try {
+      const parsed = JSON.parse(content);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+         Logger.warn(`Invalid macro.json format at ${MACRO_PATH}`, 'macro');
+         return {};
+      }
+      return parsed as MacroMap;
+   } catch (err) {
+      Logger.warn(`Failed to read macro.json: ${Err.from(err).message}`, 'macro');
+      return {};
+   }
+}
 
 /**
  * Reads macros from the macro.json file.
  * @returns MacroMap or empty object if file doesn't exist or is invalid.
  */
 export async function readMacrosFromFile(): Promise<MacroMap> {
-   try {
-      if (!fs.existsSync(MACRO_PATH)) {
-         return {};
-      }
-
-      const content = await fs.readFile(MACRO_PATH, 'utf-8');
-      const parsed = JSON.parse(content);
-
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-         Logger.warn(`Invalid macro.json format at ${MACRO_PATH}`, 'macro');
-         return {};
-      }
-
-      return parsed as MacroMap;
-   } catch (err) {
-      Logger.warn(`Failed to read macro.json: ${Err.from(err).message}`, 'macro');
-      return {};
-   }
+   return parseMacroFileContent(await readMacroFileContent());
 }
 
 /**
@@ -67,13 +79,17 @@ export async function writeMacrosToFile(macros: MacroMap): Promise<void> {
  * Throws if cache is disabled.
  */
 export async function syncMacrosToCache(): Promise<void> {
-   const macros = await readMacrosFromFile();
+   const content = await readMacroFileContent();
+   const macros = parseMacroFileContent(content);
    const cache = await getCache();
    if (cache.isDisabled) {
       throw new Err('Cache is disabled. Cannot sync macros to cache.', 'CACHE_DISABLED');
    }
 
-   await cache.set(MACRO_CACHE_KEY, macros, { maxAgeMinutes: MACRO_CACHE_TTL });
+   await Promise.all([
+      cache.set(MACRO_CACHE_KEY, macros, { maxAgeMinutes: MACRO_CACHE_TTL }),
+      cache.set(MACRO_FILE_CONTENT_CACHE_KEY, content, { maxAgeMinutes: MACRO_CACHE_TTL }),
+   ]);
    Logger.debug(`Synced ${Object.keys(macros).length} macros to cache`, 'macro');
 }
 
@@ -88,16 +104,25 @@ export async function getMacrosCachedOrLoad(): Promise<MacroMap> {
       return await readMacrosFromFile();
    }
 
-   const cached = await cache.get<MacroMap>(MACRO_CACHE_KEY);
+   const [content, cached, cachedContent] = await Promise.all([
+      readMacroFileContent(),
+      cache.get<MacroMap>(MACRO_CACHE_KEY),
+      cache.get<string | null>(MACRO_FILE_CONTENT_CACHE_KEY),
+   ]);
 
-   if (cached) {
+   if (cached !== undefined && cachedContent === content) {
       Logger.debug('Using cached macros', 'macro');
       return cached;
    }
 
-   // Cache miss - read from file and cache
-   const macros = await readMacrosFromFile();
-   await cache.set(MACRO_CACHE_KEY, macros, { maxAgeMinutes: MACRO_CACHE_TTL });
+   // Cache miss or macro.json changed outside gdx.
+   const macros = parseMacroFileContent(content);
+   await Promise.all([
+      cache.set(MACRO_CACHE_KEY, macros, { maxAgeMinutes: MACRO_CACHE_TTL }),
+      cache.set(MACRO_FILE_CONTENT_CACHE_KEY, content, {
+         maxAgeMinutes: MACRO_CACHE_TTL,
+      }),
+   ]);
    Logger.debug('Loaded macros from file and cached', 'macro');
 
    return macros;

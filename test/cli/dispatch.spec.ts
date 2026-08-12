@@ -2,6 +2,7 @@ import { describe, expect } from 'bun:test';
 import path from 'path';
 
 import { dispatch } from '@/cli/dispatch';
+import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
 import { execGit } from '@/modules/shell';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
@@ -46,5 +47,24 @@ describe('worktree dispatch', async () => {
       const exitCode = await dispatch(createGdxContext(tmpDir, ['wt', 'ls']));
 
       expect(exitCode).toBe(0);
+   });
+});
+
+describe('dispatch one-off cache lifetime', async () => {
+   const { tmpDir, it } = await createTestEnv({
+      suitName: 'dispatch-one-off-cache',
+      liteMode: true,
+   });
+
+   it('clears one-off cache for top-level and consecutive macro dispatches', async () => {
+      const cache = await getCache();
+      await cache.setOneOff('dispatch.test', 'top-level');
+
+      expect(await dispatch(createGdxContext(tmpDir, ['macro', 'list']))).toBe(0);
+      expect(await cache.getOneOff('dispatch.test')).toBeUndefined();
+
+      await cache.setOneOff('dispatch.test', 'first-macro-command');
+      expect(await dispatch(createGdxContext(tmpDir, ['macro', 'list']), { inMacro: true })).toBe(0);
+      expect(await cache.getOneOff('dispatch.test')).toBeUndefined();
    });
 });

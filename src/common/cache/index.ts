@@ -31,6 +31,8 @@ const DEFAULT_CACHE: CacheStructure = {
 };
 
 export const INFINITE_TTL_EXPIRES_AT = Number.MAX_SAFE_INTEGER;
+const CACHE_LOCK_STALE_MS = 30_000;
+const CACHE_LOCK_WAIT_MS = 250;
 
 export class CacheService {
    cachePath: string;
@@ -41,6 +43,9 @@ export class CacheService {
    private memoryEntryMeta: Record<string, Omit<CacheEntryMetadata, 'expiresAt'>> = {};
    private loaded = false;
    private dirty = false;
+   private cleared = false;
+   private readonly modifiedKeys = new Set<string>();
+   private readonly deletedKeys = new Set<string>();
    private loadingPromise: Promise<void> | null = null;
    private readonly logger = new Logger('cache');
 
@@ -89,6 +94,8 @@ export class CacheService {
       for (const keyPath of expiredKeys) {
          // Remove from entryMeta
          delete this.cache.entryMeta[keyPath];
+         this.modifiedKeys.delete(keyPath);
+         this.deletedKeys.add(keyPath);
 
          // Remove from nested data structure
          const keys = keyPath.split('.');
@@ -211,6 +218,9 @@ export class CacheService {
       this.cache = structuredClone(DEFAULT_CACHE);
       if (markDirty) {
          this.dirty = true;
+         this.cleared = true;
+         this.modifiedKeys.clear();
+         this.deletedKeys.clear();
       }
    }
 
@@ -313,6 +323,23 @@ export class CacheService {
 
       this.logger.debug(`Setting cache ${keyPath} with maxAgeMinutes=${cacheMaxAge}`);
 
+      let currentValue: any = this.cache.data;
+      for (const key of keys) {
+         if (!currentValue || typeof currentValue !== 'object' || !(key in currentValue)) {
+            currentValue = undefined;
+            break;
+         }
+         currentValue = currentValue[key];
+      }
+      for (let i = 1; i < keys.length; i++) {
+         this.markKeyDeleted(keys.slice(0, i).join('.'));
+      }
+      if (currentValue && typeof currentValue === 'object') {
+         for (const existingKey of Object.keys(this.cache.entryMeta)) {
+            if (existingKey.startsWith(`${keyPath}.`)) this.markKeyDeleted(existingKey);
+         }
+      }
+
       // Ensure intermediate objects exist
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
@@ -335,6 +362,8 @@ export class CacheService {
          updatedAt: now,
          expiresAt,
       };
+      this.modifiedKeys.add(keyPath);
+      this.deletedKeys.delete(keyPath);
 
       // Update file-level metadata and mark dirty
       this.cache.meta.updatedAt = now;
@@ -387,6 +416,8 @@ export class CacheService {
 
       // Remove from entryMeta
       delete this.cache.entryMeta[keyPath];
+      this.modifiedKeys.delete(keyPath);
+      this.deletedKeys.add(keyPath);
 
       // Remove from nested data structure
       const keys = keyPath.split('.');
@@ -473,6 +504,14 @@ export class CacheService {
    }
 
    /**
+    * Clears only the in-memory (one-off) cache data and metadata.
+    */
+   async clearOneOff(): Promise<void> {
+      await this.ensureLoaded();
+      this.resetMemoryCache();
+   }
+
+   /**
     * Gets the entire cache data object.
     */
    async getAll(): Promise<Readonly<CacheStructure>> {
@@ -499,19 +538,246 @@ export class CacheService {
       try {
          const dirPath = path.dirname(this.cachePath);
          fs.mkdirSync(dirPath, { recursive: true, mode: 0o700 });
-         const cacheJson = JSON.stringify(this.cache);
+         const lockPath = `${this.cachePath}.lock`;
+         const lock = this.acquireFlushLock(lockPath);
+
          const tmpPath = path.join(
             dirPath,
             `${path.basename(this.cachePath)}.tmp.${process.pid}.${Date.now()}`
          );
-         fs.writeFileSync(tmpPath, cacheJson, { encoding: 'utf-8', mode: 0o600 });
-         nodeFs.renameSync(tmpPath, this.cachePath);
-         this.dirty = false;
-         this.logger.debug(`Cache flushed to ${this.cachePath}`);
+         try {
+            const cacheToWrite = this.mergeWithDiskCache();
+            fs.writeFileSync(tmpPath, JSON.stringify(cacheToWrite), {
+               encoding: 'utf-8',
+               mode: 0o600,
+            });
+            nodeFs.renameSync(tmpPath, this.cachePath);
+            this.cache = cacheToWrite;
+            this.dirty = false;
+            this.cleared = false;
+            this.modifiedKeys.clear();
+            this.deletedKeys.clear();
+            this.logger.debug(`Cache flushed to ${this.cachePath}`);
+         } finally {
+            this.releaseFlushLock(lockPath, lock);
+         }
       } catch (e) {
          const err = new Err(e);
          this.logger.warn(`Failed to flush cache: ${err.message}`);
       }
+   }
+
+   /**
+    * Acquires the cross-process flush lock, waiting briefly for another flush to finish.
+    * @param lockPath - The exclusive lock file path.
+    * @returns The lock file descriptor.
+    */
+   private acquireFlushLock(lockPath: string): { fd: number; token: string } {
+      this.removeStaleLockQuarantines(lockPath);
+      const deadline = Date.now() + CACHE_LOCK_WAIT_MS;
+      const waitBuffer = new Int32Array(new SharedArrayBuffer(4));
+      while (true) {
+         try {
+            const fd = nodeFs.openSync(lockPath, 'wx', 0o600);
+            const lockStat = nodeFs.fstatSync(fd);
+            const token = `${process.pid}.${Date.now()}.${Math.random()}`;
+            try {
+               nodeFs.writeFileSync(fd, token, 'utf-8');
+               return { fd, token };
+            } catch (e) {
+               nodeFs.closeSync(fd);
+               try {
+                  const pathStat = nodeFs.statSync(lockPath);
+                  if (pathStat.dev === lockStat.dev && pathStat.ino === lockStat.ino) {
+                     nodeFs.unlinkSync(lockPath);
+                  }
+               } catch {
+                  // The failed lock was already removed or replaced.
+               }
+               throw e;
+            }
+         } catch (e) {
+            const err = new Err(e);
+            if (err.code !== 'EEXIST' || Date.now() >= deadline) throw e;
+            if (this.removeStaleFlushLock(lockPath)) continue;
+            Atomics.wait(waitBuffer, 0, 0, 10);
+         }
+      }
+   }
+
+   /**
+    * Removes abandoned stale-lock quarantines after the same stale threshold as locks.
+    * @param lockPath - The primary lock file path used as the quarantine prefix.
+    */
+   private removeStaleLockQuarantines(lockPath: string): void {
+      const dirPath = path.dirname(lockPath);
+      const prefix = `${path.basename(lockPath)}.stale.`;
+      try {
+         for (const fileName of nodeFs.readdirSync(dirPath)) {
+            if (!fileName.startsWith(prefix)) continue;
+            const quarantinePath = path.join(dirPath, fileName);
+            const cleanupPath = `${quarantinePath}.cleanup.${process.pid}.${Math.random()}`;
+            try {
+               const initialStat = nodeFs.statSync(quarantinePath);
+               if (Date.now() - initialStat.mtimeMs < CACHE_LOCK_STALE_MS) continue;
+               nodeFs.renameSync(quarantinePath, cleanupPath);
+               const currentStat = nodeFs.statSync(cleanupPath);
+               if (initialStat.dev === currentStat.dev && initialStat.ino === currentStat.ino) {
+                  nodeFs.unlinkSync(cleanupPath);
+               } else if (!nodeFs.existsSync(quarantinePath)) {
+                  nodeFs.renameSync(cleanupPath, quarantinePath);
+               }
+            } catch {
+               // Another process may already have reclaimed or removed it.
+            }
+         }
+      } catch {
+         // Cache flushing can continue when quarantine cleanup is unavailable.
+      }
+   }
+
+   /**
+    * Removes a stale lock only when its age and owner token remain unchanged.
+    * @param lockPath - The lock file path.
+    * @returns True when a stale lock was removed.
+    */
+   private removeStaleFlushLock(lockPath: string): boolean {
+      const quarantinePath = `${lockPath}.stale.${process.pid}.${Date.now()}.${Math.random()}`;
+      let isQuarantined = false;
+      try {
+         const initialStat = nodeFs.statSync(lockPath);
+         if (Date.now() - initialStat.mtimeMs < CACHE_LOCK_STALE_MS) return false;
+         const token = nodeFs.readFileSync(lockPath, 'utf-8');
+         nodeFs.renameSync(lockPath, quarantinePath);
+         isQuarantined = true;
+         const currentStat = nodeFs.statSync(quarantinePath);
+         if (
+            initialStat.dev !== currentStat.dev ||
+            initialStat.ino !== currentStat.ino ||
+            initialStat.mtimeMs !== currentStat.mtimeMs ||
+            initialStat.size !== currentStat.size ||
+            nodeFs.readFileSync(quarantinePath, 'utf-8') !== token
+         ) {
+            if (!nodeFs.existsSync(lockPath)) nodeFs.renameSync(quarantinePath, lockPath);
+            return false;
+         }
+         nodeFs.unlinkSync(quarantinePath);
+         return true;
+      } catch {
+         if (isQuarantined && !nodeFs.existsSync(lockPath)) {
+            try {
+               nodeFs.renameSync(quarantinePath, lockPath);
+            } catch {
+               // Preserve the quarantine rather than risk deleting a replacement lock.
+            }
+         }
+         return false;
+      }
+   }
+
+   /**
+    * Releases the flush lock without deleting a replacement owner's lock.
+    * @param lockPath - The lock file path.
+    * @param lock - The descriptor and ownership token returned during acquisition.
+    */
+   private releaseFlushLock(lockPath: string, lock: { fd: number; token: string }): void {
+      nodeFs.closeSync(lock.fd);
+      try {
+         if (nodeFs.readFileSync(lockPath, 'utf-8') === lock.token) {
+            nodeFs.unlinkSync(lockPath);
+         }
+      } catch {
+         // The lock was already reclaimed or removed.
+      }
+   }
+
+   /**
+    * Applies this instance's mutations to the latest valid cache on disk.
+    * @returns The merged cache structure to persist.
+    */
+   private mergeWithDiskCache(): CacheStructure {
+      if (this.cleared) return this.cache;
+
+      let diskCache: CacheStructure;
+      try {
+         const parsed = JSON.parse(nodeFs.readFileSync(this.cachePath, 'utf-8'));
+         assertSchema(ZCacheStructure, parsed);
+         diskCache = parsed;
+      } catch {
+         return this.cache;
+      }
+
+      for (const keyPath of this.deletedKeys) {
+         delete diskCache.entryMeta[keyPath];
+         const keys = keyPath.split('.');
+         const parents: Array<{ obj: any; key: string }> = [];
+         let current: any = diskCache.data;
+         for (const key of keys) {
+            if (!current || typeof current !== 'object' || !(key in current)) break;
+            parents.push({ obj: current, key });
+            current = current[key];
+         }
+         if (parents.length === keys.length) {
+            const leaf = parents[parents.length - 1];
+            delete leaf.obj[leaf.key];
+            for (let i = parents.length - 2; i >= 0; i--) {
+               const { obj, key } = parents[i];
+               const child = obj[key];
+               if (!child || typeof child !== 'object' || Object.keys(child).length > 0) break;
+               delete obj[key];
+            }
+         }
+      }
+
+      for (const keyPath of this.modifiedKeys) {
+         const keys = keyPath.split('.');
+         let source: any = this.cache.data;
+         let target: any = diskCache.data;
+         for (let i = 0; i < keys.length - 1; i++) {
+            if (!source || typeof source !== 'object' || !(keys[i] in source)) {
+               source = undefined;
+               break;
+            }
+            source = source[keys[i]];
+            const key = keys[i];
+            if (!(key in target) || target[key] === null || typeof target[key] !== 'object') {
+               target[key] = {};
+            }
+            target = target[key];
+         }
+         if (!source || typeof source !== 'object' || !(keys[keys.length - 1] in source)) {
+            continue;
+         }
+         for (const existingKey of Object.keys(diskCache.entryMeta)) {
+            if (
+               existingKey !== keyPath &&
+               (existingKey.startsWith(`${keyPath}.`) || keyPath.startsWith(`${existingKey}.`))
+            ) {
+               delete diskCache.entryMeta[existingKey];
+            }
+         }
+         target[keys[keys.length - 1]] = source[keys[keys.length - 1]];
+         diskCache.entryMeta[keyPath] = this.cache.entryMeta[keyPath];
+      }
+
+      diskCache.meta.version = VERSION;
+      diskCache.meta.updatedAt = Math.max(diskCache.meta.updatedAt, this.cache.meta.updatedAt);
+      diskCache.meta.lastPruneAt = Math.max(
+         diskCache.meta.lastPruneAt,
+         this.cache.meta.lastPruneAt
+      );
+      return diskCache;
+   }
+
+   /**
+    * Records a key deletion when metadata exists in this instance.
+    * @param keyPath - The dot-notation cache key to delete.
+    */
+   private markKeyDeleted(keyPath: string): void {
+      if (!this.cache.entryMeta[keyPath]) return;
+      delete this.cache.entryMeta[keyPath];
+      this.modifiedKeys.delete(keyPath);
+      this.deletedKeys.add(keyPath);
    }
 
    /**

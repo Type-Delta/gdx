@@ -1,10 +1,12 @@
 import { describe, expect } from 'bun:test';
+import { utimes } from 'fs/promises';
+import path from 'path';
 
 import { createTestEnv, createGdxContext } from '@/utils/testHelper';
 import macro from '@/commands/macro';
-import { readMacrosFromFile } from '@/modules/macro';
+import { getMacrosCachedOrLoad, readMacrosFromFile, syncMacrosToCache } from '@/modules/macro';
 import * as fs from '@/modules/fs';
-import path from 'path';
+import { MACRO_PATH } from '@/consts';
 
 describe('gdx macro', async () => {
    const { tmpDir, tmpRootDir, buffer, it } = await createTestEnv({
@@ -145,6 +147,38 @@ describe('gdx macro', async () => {
 
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('Macros synced to cache.');
+   });
+
+   it('reloads cached macros after external file edits, creation, and deletion', async () => {
+      await fs.rm(MACRO_PATH, { force: true });
+      await syncMacrosToCache();
+      expect(await getMacrosCachedOrLoad()).toEqual({});
+
+      await fs.mkdir(path.dirname(MACRO_PATH), { recursive: true });
+      await fs.writeFile(MACRO_PATH, JSON.stringify({ external: 'status' }), 'utf-8');
+      expect(await getMacrosCachedOrLoad()).toEqual({ external: 'status' });
+
+      await fs.writeFile(MACRO_PATH, JSON.stringify({ external: 'log -1' }), 'utf-8');
+      expect(await getMacrosCachedOrLoad()).toEqual({ external: 'log -1' });
+
+      await fs.rm(MACRO_PATH, { force: true });
+      expect(await getMacrosCachedOrLoad()).toEqual({});
+   });
+
+   it('reloads after an equal-size external edit with restored timestamps', async () => {
+      const original = JSON.stringify({ external: 'status' });
+      const replacement = JSON.stringify({ external: 'branch' });
+      expect(replacement.length).toBe(original.length);
+
+      await fs.mkdir(path.dirname(MACRO_PATH), { recursive: true });
+      await fs.writeFile(MACRO_PATH, original, 'utf-8');
+      await syncMacrosToCache();
+      const originalStat = await fs.stat(MACRO_PATH);
+
+      await fs.writeFile(MACRO_PATH, replacement, 'utf-8');
+      await utimes(MACRO_PATH, originalStat.atime, originalStat.mtime);
+
+      expect(await getMacrosCachedOrLoad()).toEqual({ external: 'branch' });
    });
 
    it('should error on unknown subcommand', async () => {

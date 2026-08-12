@@ -6,6 +6,7 @@ import { $, execGit, printCommandExecution } from '@/modules/shell';
 import { compareVersions, normalizeExitCode, progressiveMatch, quickPrint } from '@/utils/utilities';
 import { GdxContext } from '@/common/types';
 import { getConfig } from '@/common/config';
+import { getCache } from '@/common/cache';
 import Logger from '@/utils/logger';
 import { getMacrosCachedOrLoad } from '@/modules/macro';
 import {
@@ -57,6 +58,8 @@ export async function dispatch(
    ctx: GdxContext,
    state: DispatchState = { inMacro: false }
 ): Promise<number> {
+   await (await getCache()).clearOneOff();
+
    const fastClassification = classifyHistoryAction(ctx.args.slice(0));
    const classification =
       fastClassification.disposition === 'unknown'
