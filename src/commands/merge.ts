@@ -124,7 +124,7 @@ async function runMergeCleanup(ctx: GdxContext, args: ArgsSet): Promise<number> 
  * @param mergeArgs Git merge arguments without `--target`.
  * @returns Exit code.
  */
-async function mergeIntoTarget(
+export async function mergeIntoTarget(
    ctx: GdxContext,
    targetBranch: string,
    mergeArgs: ArgsSet

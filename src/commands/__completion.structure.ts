@@ -20,6 +20,7 @@ import { structure as snapStructure } from './snap';
 import { structure as ghStructure } from './gh';
 import { structure as historyStructure } from './history';
 import { structure as mergeStructure } from './merge';
+import { structure as syncStructure } from './sync';
 
 /**
  * command structure for command extensions that doesn't a dedicated source file
@@ -100,4 +101,5 @@ export const STRUCTURE_MAP: Record<string, CommandStructure> = {
    gh: ghStructure,
    history: historyStructure,
    merge: mergeStructure,
+   sync: syncStructure,
 };

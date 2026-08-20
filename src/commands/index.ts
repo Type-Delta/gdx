@@ -20,6 +20,7 @@ import snap from './snap';
 import gh from './gh';
 import history from './history';
 import merge from './merge';
+import sync from './sync';
 
 export default {
    __completion,
@@ -44,4 +45,5 @@ export default {
    gh,
    history,
    merge,
+   sync,
 };

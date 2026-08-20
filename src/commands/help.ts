@@ -33,6 +33,7 @@ import { help as snapHelp } from './snap';
 import { help as ghHelp } from './gh';
 import { help as historyHelp } from './history';
 import { help as mergeHelp } from './merge';
+import { help as syncHelp } from './sync';
 import { CommandHelpObj, CommandStructure } from '@/common/types';
 
 const EXTENSION_HELP_MAP: Record<string, CommandHelpObj> = {
@@ -58,6 +59,7 @@ const COMMAND_HELP_MAP: Record<string, CommandHelpObj> = {
    snap: snapHelp,
    gh: ghHelp,
    history: historyHelp,
+   sync: syncHelp,
 };
 const FIRST_COL_WIDTH = 23;
 

@@ -391,6 +391,7 @@ Tools to help you feel productive without leaving the terminal.
 | `parallel`, `par` | Manage parallel worktrees for the current branch                                             |
 | `stats`           | Show contribution statistics and metrics for the current repo                                |
 | `snap`            | Create a local snapshot of current worktree/repository                                       |
+| `sync`            | Pull first then Push after successful pull (support `--target` option)                       |
 | `graph`           | Render a GitHub-style contribution heatmap in the terminal                                   |
 | `nocap`           | Roast your latest commit message with AI                                                     |
 | `clear`           | Wipe changes in the working directory with a backup patch                                    |
@@ -403,15 +404,16 @@ _Run `gdx ghelp` to see the full list of expansions/commands._
 
 ### Command Extensions
 
-| Command                           | Expansion / Function                                                                                 |
-| :-------------------------------- | :--------------------------------------------------------------------------------------------------- |
-| `tag mv`, `tag move`              | Move a tag to a new commit (supports ref expansion)                                                  |
-| `log export`                      | Export git log to a markdown file with enhanced formatting                                           |
-| `commit auto`                     | Generate commit messages with AI based on staged changes (supports `--no-commit` and `--copy` flags) |
-| `stash drop`                      | Drop stashes with advanced options (e.g., `drop 2..6`)                                               |
-| `stash drop pardon`               | Restore the last dropped stash                                                                       |
-| `submodule switch`                | Jump into a submodule's directory from the parent repo (requires shell integration)                  |
-| `status --recursive`, `status -r` | Show status for the main repo and all submodules recursively                                         |
+| Command                            | Expansion / Function                                                                                 |
+| :--------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| `tag mv`, `tag move`               | Move a tag to a new commit (supports ref expansion)                                                  |
+| `log export`                       | Export git log to a markdown file with enhanced formatting                                           |
+| `commit auto`                      | Generate commit messages with AI based on staged changes (supports `--no-commit` and `--copy` flags) |
+| `stash drop`                       | Drop stashes with advanced options (e.g., `drop 2..6`)                                               |
+| `stash drop pardon`                | Restore the last dropped stash                                                                       |
+| `submodule switch`                 | Jump into a submodule's directory from the parent repo (requires shell integration)                  |
+| `status --recursive`, `status -r`  | Show status for the main repo and all submodules recursively                                         |
+| `merge <source> --target <branch>` | Merge a branch into the current branch without switching to it                                       |
 
 ## Development
 

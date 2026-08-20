@@ -222,6 +222,7 @@ export const GDX_COMMANDS = [
    'reset',
    'revert',
    'merge',
+   'sync',
    'init',
    'stash',
    'status',

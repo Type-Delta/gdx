@@ -1184,6 +1184,49 @@ export async function getGitConfigValue(
 }
 
 /**
+ * Describes the configured tracking branch for a local branch.
+ * @property remote - Git remote used to fetch and push the tracking branch.
+ * @property mergeRef - Configured upstream destination ref, usually refs/heads/<name>.
+ */
+export interface TrackedUpstreamDetails {
+   remote: string;
+   mergeRef: string;
+}
+
+/**
+ * Resolves a local branch's configured upstream remote and destination ref.
+ * @param git$ - Git executable path or command array.
+ * @param branch - Local branch name whose upstream should be resolved.
+ * @param repoPath - Optional repository path override.
+ * @returns Tracking details, or null when the branch has no configured upstream.
+ */
+export async function getTrackedUpstreamDetails(
+   git$: GdxContext['git$'],
+   branch: string,
+   repoPath?: string
+): Promise<TrackedUpstreamDetails | null> {
+   const branchName = branch.trim();
+   if (!branchName) return null;
+
+   const [remote, mergeConfig] = await Promise.all([
+      getGitConfigValue(git$, `branch.${branchName}.remote`, repoPath),
+      getGitConfigValue(git$, `branch.${branchName}.merge`, repoPath),
+   ]);
+   const configuredRemote = remote.trim();
+   const configuredMergeRef = mergeConfig.trim();
+   if (!configuredRemote || !configuredMergeRef) return null;
+
+   const mergeRef = configuredMergeRef.startsWith('refs/')
+      ? configuredMergeRef
+      : `refs/heads/${configuredMergeRef}`;
+
+   return {
+      remote: configuredRemote,
+      mergeRef,
+   };
+}
+
+/**
  * Sets git config key/value either inline or via git executable fallback.
  * @param git$ - Git executable path or command array.
  * @param configKey - Config key, like user.email.
