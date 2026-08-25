@@ -62,6 +62,83 @@ describe('gdx parallel', async () => {
       await fs.rm(worktreePath, { recursive: true, force: true });
    }
 
+   async function createAdvancedOriginSubmoduleFork(alias: string) {
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const submoduleRoot = path.join(tmpRootDir, `${alias}-source`);
+      const submodulePath = `deps/${alias}`;
+      fs.mkdirSync(submoduleRoot, { recursive: true });
+      await $`${gitExe} -C ${submoduleRoot} init`;
+      await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+      await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
+      fs.writeFileSync(path.join(submoduleRoot, 'base.txt'), 'base\n');
+      await $`${gitExe} -C ${submoduleRoot} add base.txt`;
+      await $`${gitExe} -C ${submoduleRoot} commit --no-verify -m ${'Initial submodule commit'}`;
+
+      await addSubmodule(git$, tmpDir, asUnixPath(submoduleRoot), submodulePath);
+      await $`${gitExe} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+      await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Add advanced submodule'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias]);
+      expect(await parallel(forkCtx)).toBe(0);
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      await updateSubmodules(git$, forkPath, { recursive: true });
+
+      fs.writeFileSync(path.join(forkPath, 'unrelated-fork.txt'), 'fork\n');
+      await $`${gitExe} -C ${forkPath} add unrelated-fork.txt`;
+      await $`${gitExe} -C ${forkPath} commit --no-verify -m ${'Unrelated fork commit'}`;
+
+      fs.writeFileSync(path.join(submoduleRoot, 'origin-advance.txt'), 'advanced\n');
+      await $`${gitExe} -C ${submoduleRoot} add origin-advance.txt`;
+      await $`${gitExe} -C ${submoduleRoot} commit --no-verify -m ${'Advance origin submodule'}`;
+      const advancedHead = (await $`${gitExe} -C ${submoduleRoot} rev-parse HEAD`).stdout.trim();
+
+      const originSubmodulePath = path.join(tmpDir, submodulePath);
+      await $`${gitExe} -C ${originSubmodulePath} fetch --quiet ${asUnixPath(submoduleRoot)} ${advancedHead}`;
+      await $`${gitExe} -C ${originSubmodulePath} checkout --quiet --detach ${advancedHead}`;
+      await $`${gitExe} -C ${tmpDir} add ${submodulePath}`;
+      await $`${gitExe} -C ${tmpDir} commit --no-verify -m ${'Advance origin gitlink'}`;
+
+      return {
+         advancedHead,
+         forkPath,
+         forkSubmodulePath: path.join(forkPath, submodulePath),
+         originSubmodulePath,
+         submodulePath,
+      };
+   }
+
+   async function createPendingJoinStash(alias: string) {
+      fs.writeFileSync(path.join(tmpDir, `${alias}.txt`), 'base\n');
+      await $`${git$} add ${`${alias}.txt`}`;
+      await $`${git$} commit --no-verify -m ${'Pending stash base'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+
+      fs.writeFileSync(path.join(forkPath, `${alias}.txt`), 'fork\n');
+      await $`${git$} -C ${forkPath} add ${`${alias}.txt`}`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Pending stash fork'}`;
+      fs.writeFileSync(path.join(forkPath, `${alias}-pending.txt`), 'pending\n');
+      await $`${git$} -C ${forkPath} add ${`${alias}-pending.txt`}`;
+
+      fs.writeFileSync(path.join(tmpDir, `${alias}.txt`), 'origin\n');
+      await $`${git$} add ${`${alias}.txt`}`;
+      await $`${git$} commit --no-verify -m ${'Pending stash origin'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--all']);
+      expect(await parallel(joinCtx)).toBe(1);
+      const metaPath = path.join(forkPath, '.git-parallel.json');
+      const metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as {
+         pendingJoinStash?: string;
+      };
+      expect(metadata.pendingJoinStash).toBeTruthy();
+
+      return { forkPath, metaPath };
+   }
+
    it('should list empty worktrees initially', async () => {
       resetCache();
       const listCtx = createGdxContext(tmpDir, ['parallel', 'ls', '-s']);
@@ -273,6 +350,7 @@ describe('gdx parallel', async () => {
       fs.writeFileSync(path.join(forkPath, 'branch-file.txt'), 'branch');
       await $`${git$} -C ${forkPath} add branch-file.txt`;
       await $`${git$} -C ${forkPath} commit --no-verify -m ${'Branch change'}`;
+      const forkHeadBeforeJoin = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
 
       await fs.rm(path.join(forkPath, '.env.local'), { force: true });
       await fs.rm(path.join(forkPath, 'notes.txt'), { force: true });
@@ -281,6 +359,9 @@ describe('gdx parallel', async () => {
       const joinResult = await parallel(joinCtx);
 
       expect(joinResult).toBe(0);
+
+      const originHeadAfterJoin = (await $`${git$} -C ${tmpDir} rev-parse HEAD`).stdout.trim();
+      expect(originHeadAfterJoin).toBe(forkHeadBeforeJoin);
 
       const joinedFile = await fs
          .stat(path.join(tmpDir, 'branch-file.txt'))
@@ -294,6 +375,193 @@ describe('gdx parallel', async () => {
          .catch(() => false);
       expect(forkStillExists).toBe(false);
    });
+
+   it('should rebase a kept fork onto the captured origin head before joining', async () => {
+      resetCache();
+      const alias = 'feature-rebase-keep';
+      await $`${git$} commit --allow-empty --no-verify -m ${'Rebase join base'}`;
+
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      fs.writeFileSync(path.join(forkPath, 'fork-rebase.txt'), 'fork\n');
+      await $`${git$} -C ${forkPath} add fork-rebase.txt`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork rebase change'}`;
+      const originalForkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+
+      fs.writeFileSync(path.join(tmpDir, 'origin-rebase.txt'), 'origin\n');
+      await $`${git$} add origin-rebase.txt`;
+      await $`${git$} commit --no-verify -m ${'Origin rebase change'}`;
+      const capturedOriginHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
+      expect(await parallel(joinCtx)).toBe(0);
+
+      const finalForkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+      const finalOriginHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+      expect(finalForkHead).toBe(finalOriginHead);
+      expect(finalForkHead).not.toBe(originalForkHead);
+      expect(finalForkHead).not.toBe(capturedOriginHead);
+      await $`${git$} -C ${forkPath} merge-base --is-ancestor ${capturedOriginHead} HEAD`;
+      expect(fs.readFileSync(path.join(tmpDir, 'fork-rebase.txt'), 'utf-8')).toBe('fork\n');
+      expect(fs.readFileSync(path.join(tmpDir, 'origin-rebase.txt'), 'utf-8')).toBe('origin\n');
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   }, { timeout: 20000 });
+
+   it('should include uncommitted fork changes with --all and remove the fork', async () => {
+      resetCache();
+      const alias = 'feature-join-all';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      try {
+         fs.writeFileSync(path.join(forkPath, 'all-committed.txt'), 'committed\n');
+         await $`${git$} -C ${forkPath} add all-committed.txt`;
+         await $`${git$} -C ${forkPath} commit --no-verify -m ${'Committed all change'}`;
+         fs.writeFileSync(path.join(forkPath, 'all-committed.txt'), 'committed\nunstaged\n');
+         fs.writeFileSync(path.join(forkPath, 'all-uncommitted.txt'), 'uncommitted\n');
+         await $`${git$} -C ${forkPath} add all-uncommitted.txt`;
+         fs.writeFileSync(path.join(forkPath, 'all-untracked.txt'), 'untracked\n');
+         const originalForkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+         fs.writeFileSync(path.join(tmpDir, 'all-origin.txt'), 'origin\n');
+         await $`${git$} add all-origin.txt`;
+         await $`${git$} commit --no-verify -m ${'Origin all change'}`;
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--all']);
+         expect(await parallel(joinCtx)).toBe(0);
+
+         expect(fs.readFileSync(path.join(tmpDir, 'all-committed.txt'), 'utf-8')).toBe(
+            'committed\nunstaged\n'
+         );
+         expect(fs.readFileSync(path.join(tmpDir, 'all-uncommitted.txt'), 'utf-8')).toBe('uncommitted\n');
+         expect(fs.readFileSync(path.join(tmpDir, 'all-untracked.txt'), 'utf-8')).toBe('untracked\n');
+         expect(fs.readFileSync(path.join(tmpDir, 'all-origin.txt'), 'utf-8')).toBe('origin\n');
+         expect((await $`${git$} rev-parse HEAD`).stdout.trim()).not.toBe(originalForkHead);
+         expect((await $`${git$} status --porcelain=v1 -- all-uncommitted.txt`).stdout.trim()).toMatch(
+            /^A\s+all-uncommitted\.txt$/
+         );
+         expect((await $`${git$} status --porcelain=v1 -- all-committed.txt`).stdout.trim()).toMatch(
+            /^M\s+all-committed\.txt$/
+         );
+         expect((await $`${git$} status --porcelain=v1 -- all-untracked.txt`).stdout.trim()).toBe(
+            '?? all-untracked.txt'
+         );
+         expect(fs.existsSync(forkPath)).toBe(false);
+      } finally {
+         if (fs.existsSync(forkPath)) await forceRemoveWorktreePath(forkPath);
+         await $`${git$} -C ${tmpDir} reset --hard HEAD`;
+      }
+   }, { timeout: 20000 });
+
+   it('should rebase a tracked local branch and keep its head equal to origin', async () => {
+      resetCache();
+      const alias = 'feature-branch-rebase';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '-b', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      fs.writeFileSync(path.join(forkPath, 'tracked-rebase.txt'), 'fork\n');
+      await $`${git$} -C ${forkPath} add tracked-rebase.txt`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Tracked fork change'}`;
+
+      fs.writeFileSync(path.join(tmpDir, 'tracked-origin.txt'), 'origin\n');
+      await $`${git$} add tracked-origin.txt`;
+      await $`${git$} commit --no-verify -m ${'Tracked origin change'}`;
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
+      expect(await parallel(joinCtx)).toBe(0);
+
+      const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+      const forkBranch = (await $`${git$} -C ${forkPath} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+      const branchRef = (await $`${git$} rev-parse refs/heads/${alias}`).stdout.trim();
+      expect(forkBranch).toBe(alias);
+      expect(branchRef).toBe(forkHead);
+      expect(forkHead).toBe(originHead);
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+      expect(await parallel(removeCtx)).toBe(0);
+   }, { timeout: 20000 });
+
+   it('should join an unrelated fork after origin advances its submodule and remove it', async () => {
+      resetCache();
+      const alias = 'feature-submodule-origin-advance';
+      let forkPath = '';
+      try {
+         const setup = await createAdvancedOriginSubmoduleFork(alias);
+         ({ forkPath } = setup);
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+         expect(await parallel(joinCtx)).toBe(0);
+
+         expect(fs.existsSync(forkPath)).toBe(false);
+         const originSubmoduleHead = (
+            await $`${git$} -C ${setup.originSubmodulePath} rev-parse HEAD`
+         ).stdout.trim();
+         const originGitlink = (
+            await $`${git$} ls-tree HEAD -- ${setup.submodulePath}`
+         ).stdout.trim();
+         expect(originSubmoduleHead).toBe(setup.advancedHead);
+         expect(originGitlink).toContain(`${originSubmoduleHead}\t${setup.submodulePath}`);
+      } finally {
+         if (forkPath && fs.existsSync(forkPath)) {
+            await forceRemoveWorktreePath(forkPath);
+         }
+         await resetRepo('worktree');
+      }
+   }, { timeout: 30000 });
+
+   it('should keep a clean fork aligned when origin advances its submodule', async () => {
+      resetCache();
+      const alias = 'feature-submodule-origin-advance-keep';
+      let forkPath = '';
+      try {
+         const setup = await createAdvancedOriginSubmoduleFork(alias);
+         ({ forkPath } = setup);
+         await $`${git$} -C ${setup.originSubmodulePath} checkout -b ${'preserve-origin-submodule-branch'}`;
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--keep']);
+         expect(await parallel(joinCtx)).toBe(0);
+
+         expect(fs.existsSync(forkPath)).toBe(true);
+         const forkHead = (await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+         const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+         const forkStatus = (
+            await $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`
+         ).stdout.trim();
+         const originSubmoduleHead = (
+            await $`${git$} -C ${setup.originSubmodulePath} rev-parse HEAD`
+         ).stdout.trim();
+         const originSubmoduleBranch = (
+            await $`${git$} -C ${setup.originSubmodulePath} rev-parse --abbrev-ref HEAD`
+         ).stdout.trim();
+         const forkSubmoduleHead = (
+            await $`${git$} -C ${setup.forkSubmodulePath} rev-parse HEAD`
+         ).stdout.trim();
+         const originGitlink = (
+            await $`${git$} ls-tree HEAD -- ${setup.submodulePath}`
+         ).stdout.trim();
+
+         expect(forkHead).toBe(originHead);
+         expect(forkStatus).toBe('');
+         expect(originSubmoduleHead).toBe(setup.advancedHead);
+         expect(originSubmoduleBranch).toBe('preserve-origin-submodule-branch');
+         expect(forkSubmoduleHead).toBe(originSubmoduleHead);
+         expect(originGitlink).toContain(`${originSubmoduleHead}\t${setup.submodulePath}`);
+      } finally {
+         if (forkPath && fs.existsSync(forkPath)) {
+            await forceRemoveWorktreePath(forkPath);
+         }
+         await resetRepo('worktree');
+      }
+   }, { timeout: 30000 });
 
    it('should list active worktrees', async () => {
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
@@ -801,6 +1069,135 @@ describe('gdx parallel', async () => {
       { timeout: 20000 }
    );
 
+   it('should synchronize every kept fork after a recursive join', async () => {
+      resetCache();
+      const aliases = ['feature-keep-one', 'feature-keep-two'];
+      for (const alias of aliases) {
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+         expect(await parallel(forkCtx)).toBe(0);
+      }
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPaths = aliases.map((alias) =>
+         getParallelForkPath(tmpRootDir, tmpDir, alias, branchName)
+      );
+      for (let index = 0; index < forkPaths.length; index++) {
+         const fileName = `recursive-keep-${index}.txt`;
+         fs.writeFileSync(path.join(forkPaths[index], fileName), `${index}\n`);
+         await $`${git$} -C ${forkPaths[index]} add ${fileName}`;
+         await $`${git$} -C ${forkPaths[index]} commit --no-verify -m ${`Recursive keep ${index}`}`;
+      }
+
+      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', '-r', '--keep']);
+      expect(await parallel(joinCtx)).toBe(0);
+
+      const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+      for (const forkPath of forkPaths) {
+         expect((await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim()).toBe(originHead);
+      }
+
+      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', '-r']);
+      expect(await parallel(removeCtx)).toBe(0);
+   }, { timeout: 30000 });
+
+   it('should transfer later submodule commits to earlier forks during recursive keep', async () => {
+      resetCache();
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const submoduleRoot = path.join(tmpRootDir, 'recursive-keep-submodule-source');
+      const nestedRoot = path.join(tmpRootDir, 'recursive-keep-nested-source');
+      const submodulePath = 'deps/recursive-keep-submodule';
+      const nestedPath = 'nested/child';
+      const aliases = ['recursive-keep-a', 'recursive-keep-b', 'recursive-keep-z-no-init'];
+      let forkPaths: string[] = [];
+      try {
+         fs.mkdirSync(submoduleRoot, { recursive: true });
+         await $`${gitExec} -C ${submoduleRoot} init`;
+         await setTestGitConfig(submoduleRoot, 'user.name', 'Test User');
+         await setTestGitConfig(submoduleRoot, 'user.email', 'test@example.com');
+         fs.writeFileSync(path.join(submoduleRoot, 'base.txt'), 'base\n');
+         await $`${gitExec} -C ${submoduleRoot} add base.txt`;
+         await $`${gitExec} -C ${submoduleRoot} commit --no-verify -m ${'Recursive submodule base'}`;
+
+         fs.mkdirSync(nestedRoot, { recursive: true });
+         await $`${gitExec} -C ${nestedRoot} init`;
+         await setTestGitConfig(nestedRoot, 'user.name', 'Test User');
+         await setTestGitConfig(nestedRoot, 'user.email', 'test@example.com');
+         fs.writeFileSync(path.join(nestedRoot, 'nested-base.txt'), 'base\n');
+         await $`${gitExec} -C ${nestedRoot} add nested-base.txt`;
+         await $`${gitExec} -C ${nestedRoot} commit --no-verify -m ${'Nested submodule base'}`;
+         await addSubmodule(gitExec, submoduleRoot, asUnixPath(nestedRoot), nestedPath);
+         await $`${gitExec} -C ${submoduleRoot} add .gitmodules ${nestedPath}`;
+         await $`${gitExec} -C ${submoduleRoot} commit --no-verify -m ${'Add nested submodule'}`;
+
+         await addSubmodule(git$, tmpDir, asUnixPath(submoduleRoot), submodulePath);
+         await $`${gitExec} -C ${tmpDir} add .gitmodules ${submodulePath}`;
+         await $`${gitExec} -C ${tmpDir} commit --no-verify -m ${'Add recursive keep submodule'}`;
+
+         for (const [index, alias] of aliases.entries()) {
+            const forkCtx = createGdxContext(tmpDir, [
+               'parallel',
+               'fork',
+               alias,
+               ...(index === aliases.length - 1 ? ['--no-init'] : []),
+            ]);
+            expect(await parallel(forkCtx)).toBe(0);
+         }
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         forkPaths = aliases.map((alias) =>
+            getParallelForkPath(tmpRootDir, tmpDir, alias, branchName)
+         );
+
+         fs.writeFileSync(path.join(forkPaths[0], 'earlier-fork.txt'), 'earlier\n');
+         await $`${git$} -C ${forkPaths[0]} add earlier-fork.txt`;
+         await $`${git$} -C ${forkPaths[0]} commit --no-verify -m ${'Earlier kept fork'}`;
+
+         const laterSubmodulePath = path.join(forkPaths[1], submodulePath);
+         await setTestGitConfig(laterSubmodulePath, 'user.name', 'Test User');
+         await setTestGitConfig(laterSubmodulePath, 'user.email', 'test@example.com');
+         const laterNestedPath = path.join(laterSubmodulePath, nestedPath);
+         await setTestGitConfig(laterNestedPath, 'user.name', 'Test User');
+         await setTestGitConfig(laterNestedPath, 'user.email', 'test@example.com');
+         fs.writeFileSync(path.join(laterNestedPath, 'later.txt'), 'later\n');
+         await $`${gitExec} -C ${laterNestedPath} add later.txt`;
+         await $`${gitExec} -C ${laterNestedPath} commit --no-verify -m ${'Later nested commit'}`;
+         const laterNestedHead = (
+            await $`${gitExec} -C ${laterNestedPath} rev-parse HEAD`
+         ).stdout.trim();
+         await $`${gitExec} -C ${laterSubmodulePath} add ${nestedPath}`;
+         await $`${gitExec} -C ${laterSubmodulePath} commit --no-verify -m ${'Advance nested submodule'}`;
+         const laterSubmoduleHead = (
+            await $`${gitExec} -C ${laterSubmodulePath} rev-parse HEAD`
+         ).stdout.trim();
+         await $`${git$} -C ${forkPaths[1]} add ${submodulePath}`;
+         await $`${git$} -C ${forkPaths[1]} commit --no-verify -m ${'Advance recursive submodule'}`;
+
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', '-r', '--keep']);
+         expect(await parallel(joinCtx)).toBe(0);
+         const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+         for (const forkPath of forkPaths) {
+            expect((await $`${git$} -C ${forkPath} rev-parse HEAD`).stdout.trim()).toBe(originHead);
+         }
+         for (const forkPath of forkPaths.slice(0, 2)) {
+            expect(
+               (await $`${gitExec} -C ${path.join(forkPath, submodulePath)} rev-parse HEAD`).stdout.trim()
+            ).toBe(laterSubmoduleHead);
+            expect(
+               (
+                  await $`${gitExec} -C ${path.join(forkPath, submodulePath, nestedPath)} rev-parse HEAD`
+               ).stdout.trim()
+            ).toBe(laterNestedHead);
+         }
+         expect(fs.existsSync(path.join(forkPaths[2], submodulePath, '.git'))).toBe(false);
+      } finally {
+         for (const forkPath of forkPaths) {
+            if (fs.existsSync(forkPath)) await forceRemoveWorktreePath(forkPath);
+         }
+         await fs.rm(submoduleRoot, { recursive: true, force: true });
+         await fs.rm(nestedRoot, { recursive: true, force: true });
+         await resetRepo('full');
+      }
+   }, { timeout: 45000 });
+
    it('should reject recursive join with alias', async () => {
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-1']);
       expect(await parallel(forkCtx)).toBe(0);
@@ -1043,11 +1440,13 @@ describe('gdx parallel', async () => {
             expect(isSubmoduleRemovalBlockedError(buffer.stderr)).toBe(true);
             await forceRemoveWorktreePath(forkPath);
          }
+         await $`${gitExe} -C ${tmpDir} -c protocol.file.allow=always submodule update --init --force -- ${submodulePath}`;
+         await $`${gitExe} -C ${originSubmodulePath} clean -fd`;
       },
       { timeout: 20000 }
    );
 
-   it('should keep join cursor at first skipped commit when later commits cherry-pick cleanly', async () => {
+   it('should drop already-applied fork changes while joining the remaining commits', async () => {
       resetCache();
       const alias = 'feature-join-cursor';
 
@@ -1070,7 +1469,6 @@ describe('gdx parallel', async () => {
       fs.writeFileSync(path.join(forkPath, 'cursor-shared.txt'), 'shared\n');
       await $`${forkGit$} add cursor-shared.txt`;
       await $`${forkGit$} commit --no-verify -m ${'Cursor B shared'}`;
-      const commitB = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
 
       fs.writeFileSync(path.join(tmpDir, 'cursor-shared.txt'), 'shared\n');
       await $`${git$} add cursor-shared.txt`;
@@ -1085,15 +1483,17 @@ describe('gdx parallel', async () => {
 
       const metaPath = path.join(forkPath, '.git-parallel.json');
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { joinCursor?: string };
-      expect(meta.joinCursor).toBe(commitB);
+      expect(meta.joinCursor).toBeUndefined();
+
+      const finalForkHead = (await $`${forkGit$} rev-parse HEAD`).stdout.trim();
+      const finalOriginHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+      expect(finalForkHead).toBe(finalOriginHead);
 
       buffer.stdout = '';
       const listCtx = createGdxContext(tmpDir, ['parallel', 'list']);
       expect(await parallel(listCtx)).toBe(0);
       const output = stripAnsiColor(buffer.stdout.replace(/\r/g, ''));
       expect(output).not.toContain('Cursor B shared');
-      expect(output).toContain('Cursor D');
-      expect(output).not.toContain('Cursor A');
 
       const originSubjects = (await $`${git$} log --format=%s`).stdout;
       expect(originSubjects).toContain('Cursor A');
@@ -1104,35 +1504,179 @@ describe('gdx parallel', async () => {
       expect(await parallel(removeCtx)).toBe(0);
    }, { timeout: 20000 });
 
-   it('should stop on cherry-pick conflicts and print manual steps', async () => {
+   it('should leave a rebase conflict in the fork and keep origin unchanged', async () => {
+      const previousTTY = env.isTTY;
       env.isTTY = false;
-      await $`${git$} commit --allow-empty -m ${'Base commit'}`;
+      let forkPath = '';
+      try {
+         await $`${git$} commit --allow-empty -m ${'Base commit'}`;
 
-      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', 'feature-conflict']);
-      expect(await parallel(forkCtx)).toBe(0);
+         fs.writeFileSync(path.join(tmpDir, 'conflict.txt'), 'base\n');
+         await $`${git$} add conflict.txt`;
+         await $`${git$} commit --no-verify -m ${'Conflict base'}`;
 
-      const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
-      const forkPath = path.join(worktreeRoot, 'feature-conflict');
+         const alias = 'feature-rebase-conflict';
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+         expect(await parallel(forkCtx)).toBe(0);
 
-      fs.writeFileSync(path.join(tmpDir, 'conflict.txt'), 'origin-change');
-      await $`${git$} -C ${tmpDir} add conflict.txt`;
-      await $`${git$} -C ${tmpDir} commit -m ${'Origin change'}`;
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
 
-      fs.writeFileSync(path.join(forkPath, 'conflict.txt'), 'fork-change');
-      await $`${git$} -C ${forkPath} add conflict.txt`;
-      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork change'}`;
+         fs.writeFileSync(path.join(forkPath, 'conflict.txt'), 'fork-change\n');
+         await $`${git$} -C ${forkPath} add conflict.txt`;
+         await $`${git$} -C ${forkPath} commit --no-verify -m ${'Fork change'}`;
 
-      const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', 'feature-conflict']);
-      const joinResult = await parallel(joinCtx);
+         fs.writeFileSync(path.join(tmpDir, 'conflict.txt'), 'origin-change\n');
+         await $`${git$} add conflict.txt`;
+         await $`${git$} commit --no-verify -m ${'Origin change'}`;
+         const originHeadBeforeJoin = (await $`${git$} rev-parse HEAD`).stdout.trim();
 
-      expect(joinResult).toBe(1);
-      expect(buffer.stdout).toContain('cherry-pick --continue');
+         const joinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+         const joinResult = await parallel(joinCtx);
 
-      const cherryPickHead = await $`${git$} -C ${tmpDir} rev-parse -q --verify CHERRY_PICK_HEAD`;
-      expect(cherryPickHead.exitCode).toBe(0);
-      await $`${git$} -C ${tmpDir} cherry-pick --abort`;
-      env.isTTY = true;
-   });
+         expect(joinResult).toBe(1);
+         expect(fs.existsSync(forkPath)).toBe(true);
+         const originHeadAfterJoin = (await $`${git$} -C ${tmpDir} rev-parse HEAD`).stdout.trim();
+         expect(originHeadAfterJoin).toBe(originHeadBeforeJoin);
+
+         let rebaseHead = '';
+         try {
+            rebaseHead = (await $`${git$} -C ${forkPath} rev-parse -q --verify REBASE_HEAD`).stdout.trim();
+         } catch {
+            // The assertion below reports a missing rebase state clearly.
+         }
+         expect(rebaseHead).not.toBe('');
+         const instructions = stripAnsiColor(`${buffer.stdout}\n${buffer.stderr}`).toLowerCase();
+         expect(instructions).toContain('rebase --continue');
+         expect(instructions).toContain('rebase --abort');
+      } finally {
+         if (forkPath && fs.existsSync(forkPath)) {
+            try {
+               await $`${git$} -C ${forkPath} rebase --abort`;
+            } catch {
+               // Best effort cleanup if the implementation already aborted the rebase.
+            }
+            await forceRemoveWorktreePath(forkPath);
+         }
+         try {
+            await $`${git$} -C ${tmpDir} rebase --abort`;
+         } catch {
+            // Compatibility cleanup for the pre-rebase implementation.
+         }
+         try {
+            await $`${git$} -C ${tmpDir} cherry-pick --abort`;
+         } catch {
+            // Compatibility cleanup for the pre-rebase implementation.
+         }
+         env.isTTY = previousTTY;
+      }
+   }, { timeout: 20000 });
+
+   it('should finish a conflicted --all join with its saved changes on retry', async () => {
+      resetCache();
+      const alias = 'feature-rebase-all-conflict';
+      let forkPath = '';
+      try {
+         fs.writeFileSync(path.join(tmpDir, 'all-conflict.txt'), 'base\n');
+         await $`${git$} add all-conflict.txt`;
+         await $`${git$} commit --no-verify -m ${'All conflict base'}`;
+
+         const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+         expect(await parallel(forkCtx)).toBe(0);
+         const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+         forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+
+         fs.writeFileSync(path.join(forkPath, 'all-conflict.txt'), 'fork\n');
+         await $`${git$} -C ${forkPath} add all-conflict.txt`;
+         await $`${git$} -C ${forkPath} commit --no-verify -m ${'All conflict fork'}`;
+         fs.writeFileSync(path.join(forkPath, 'all-pending.txt'), 'pending\n');
+         await $`${git$} -C ${forkPath} add all-pending.txt`;
+
+         fs.writeFileSync(path.join(tmpDir, 'all-conflict.txt'), 'origin\n');
+         await $`${git$} add all-conflict.txt`;
+         await $`${git$} commit --no-verify -m ${'All conflict origin'}`;
+         const originHead = (await $`${git$} rev-parse HEAD`).stdout.trim();
+
+         const firstJoinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias, '--all']);
+         expect(await parallel(firstJoinCtx)).toBe(1);
+         expect((await $`${git$} rev-parse HEAD`).stdout.trim()).toBe(originHead);
+
+         const metaPath = path.join(forkPath, '.git-parallel.json');
+         const pendingMeta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as {
+            pendingJoinStash?: string;
+         };
+         expect(pendingMeta.pendingJoinStash).toBeTruthy();
+
+         fs.writeFileSync(path.join(forkPath, 'all-conflict.txt'), 'resolved\n');
+         await $`${git$} -C ${forkPath} add all-conflict.txt`;
+         await $`${git$} -c core.editor=${'true'} -C ${forkPath} rebase --continue`;
+
+         const retryJoinCtx = createGdxContext(tmpDir, ['parallel', 'join', alias]);
+         expect(await parallel(retryJoinCtx)).toBe(0);
+         expect(fs.existsSync(forkPath)).toBe(false);
+         expect(fs.readFileSync(path.join(tmpDir, 'all-pending.txt'), 'utf-8')).toBe('pending\n');
+         expect((await $`${git$} status --porcelain=v1 -- all-pending.txt`).stdout.trim()).toMatch(
+            /^A\s+all-pending\.txt$/
+         );
+      } finally {
+         if (forkPath && fs.existsSync(forkPath)) {
+            try {
+               await $`${git$} -C ${forkPath} rebase --abort`;
+            } catch {
+               // Best effort cleanup.
+            }
+            await forceRemoveWorktreePath(forkPath);
+         }
+         await $`${git$} -C ${tmpDir} reset --hard HEAD`;
+      }
+   }, { timeout: 30000 });
+
+   it('should refuse sync and removal while a conflicted --all recovery stash is pending', async () => {
+      resetCache();
+      const alias = 'feature-pending-recovery-guard';
+      let forkPath = '';
+      try {
+         ({ forkPath } = await createPendingJoinStash(alias));
+
+         buffer.stderr = '';
+         const syncCtx = createGdxContext(tmpDir, ['parallel', 'sync', alias]);
+         expect(await parallel(syncCtx)).toBe(1);
+         expect(stripAnsiColor(buffer.stderr).toLowerCase()).toContain('pending');
+
+         const pendingMeta = JSON.parse(
+            fs.readFileSync(path.join(forkPath, '.git-parallel.json'), 'utf-8')
+         ) as { pendingJoinStash?: string };
+         expect(pendingMeta.pendingJoinStash).toBeTruthy();
+
+         buffer.stderr = '';
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+         expect(await parallel(removeCtx)).toBe(1);
+         expect(stripAnsiColor(buffer.stderr).toLowerCase()).toContain('pending');
+         expect(fs.existsSync(forkPath)).toBe(true);
+
+         await $`${git$} -C ${forkPath} rebase --abort`;
+         buffer.stdout = '';
+         buffer.stderr = '';
+         const restoreCtx = createGdxContext(tmpDir, ['parallel', 'sync', alias]);
+         expect(await parallel(restoreCtx)).toBe(1);
+         expect(stripAnsiColor(buffer.stdout).toLowerCase()).toContain('restored');
+         const restoredMeta = JSON.parse(
+            fs.readFileSync(path.join(forkPath, '.git-parallel.json'), 'utf-8')
+         ) as { pendingJoinStash?: string };
+         expect(restoredMeta.pendingJoinStash).toBeUndefined();
+         expect(fs.existsSync(path.join(forkPath, `${alias}-pending.txt`))).toBe(true);
+      } finally {
+         if (forkPath && fs.existsSync(forkPath)) {
+            try {
+               await $`${git$} -C ${forkPath} rebase --abort`;
+            } catch {
+               // Best effort cleanup.
+            }
+            await forceRemoveWorktreePath(forkPath);
+         }
+         await $`${git$} -C ${tmpDir} reset --hard HEAD`;
+      }
+   }, { timeout: 30000 });
 
    it(
       'should list commits grouped by submodule',
@@ -1376,7 +1920,7 @@ describe('gdx parallel', async () => {
    );
 
    it(
-      'should cherry-pick submodule commits on join',
+      'should join submodule commits and update the origin gitlink',
       async () => {
          resetCache();
          const gitExe = Array.isArray(git$) ? git$[0] : git$;
@@ -1434,6 +1978,14 @@ describe('gdx parallel', async () => {
                await $`${gitExe} -C ${originSubmodulePath} log -1 --format=%s`
             ).stdout.trim();
             expect(submoduleLog).toBe('Submodule join change');
+
+            const originSubmoduleHead = (
+               await $`${gitExe} -C ${originSubmodulePath} rev-parse HEAD`
+            ).stdout.trim();
+            const originGitlink = (
+               await $`${gitExe} -C ${tmpDir} ls-tree HEAD -- ${submodulePath}`
+            ).stdout.trim();
+            expect(originGitlink).toContain(`${originSubmoduleHead}\t${submodulePath}`);
 
             const originLog = (await $`${gitExe} -C ${tmpDir} log --format=%s`).stdout.trim();
             expect(originLog).toContain('Bump submodule for join');
@@ -1530,7 +2082,7 @@ describe('gdx parallel', async () => {
       { timeout: 20000 }
    );
 
-   it('should skip empty cherry-picks during join', async () => {
+   it('should treat duplicate fork changes as a clean join', async () => {
       resetCache();
       const alias = 'feature-empty';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
@@ -1566,14 +2118,16 @@ describe('gdx parallel', async () => {
          .stat(forkPath)
          .then(() => true)
          .catch(() => false);
-      expect(forkExists).toBe(true);
+      expect(forkExists).toBe(false);
 
-      const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
-      expect(await parallel(removeCtx)).toBe(0);
+      if (forkExists) {
+         const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
+         expect(await parallel(removeCtx)).toBe(0);
+      }
    });
 
    it(
-      'should not attempt to join commits already in origin',
+      'should leave an up-to-date fork unchanged when joining',
       async () => {
          resetCache();
          const alias = 'feature-join-skip';
@@ -1612,7 +2166,7 @@ describe('gdx parallel', async () => {
          const joinResult = await parallel(joinCtx);
 
          expect(joinResult).toBe(0);
-         expect(buffer.stdout).toContain('No new commits to cherry-pick');
+         expect(buffer.stdout.toLowerCase()).toContain('already up to date');
          expect(buffer.stdout).not.toContain('Join skip commit');
 
          const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
@@ -1695,7 +2249,7 @@ describe('gdx parallel', async () => {
       { timeout: 20000 }
    );
 
-   it('should treat empty cherry-pick as non-conflict', async () => {
+   it('should remove a duplicate-only fork without leaving status changes', async () => {
       resetCache();
       const alias = 'feature-empty-status';
       const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
@@ -1729,16 +2283,8 @@ describe('gdx parallel', async () => {
       env.isTTY = true;
 
       expect(joinResult).toBe(0);
-      expect(buffer.stdout).not.toContain('cherry-pick --continue');
-
-      let cherryPickExitCode = 0;
-      try {
-         await $`${git$} -C ${tmpDir} rev-parse -q --verify CHERRY_PICK_HEAD`;
-      } catch (err) {
-         const typedErr = err as { exitCode?: number } | null;
-         cherryPickExitCode = typedErr?.exitCode ?? 1;
-      }
-      expect(cherryPickExitCode).not.toBe(0);
+      expect(fs.readFileSync(path.join(tmpDir, 'duplicate-status.txt'), 'utf-8')).toBe('duplicate');
+      expect(fs.existsSync(forkPath)).toBe(false);
    });
    it('routes top-level -C to parallel pick without changing cwd', async () => {
       const { dispatch } = await import('@/cli/dispatch');
@@ -1820,7 +2366,9 @@ describe('gdx parallel', async () => {
       };
 
       expect(await dispatch(ctx)).toBe(0);
-      expect(stripAnsiColor(buffer.stdout)).toContain(`Fork '${alias}' merged into origin`);
+      expect(stripAnsiColor(buffer.stdout)).toContain(
+         `Rebased fork '${alias}' and fast-forwarded origin.`
+      );
       expect(fs.readFileSync(path.join(tmpDir, 'dispatch-join.txt'), 'utf-8')).toBe(
          'dispatch-join'
       );
@@ -1828,4 +2376,22 @@ describe('gdx parallel', async () => {
       const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', alias]);
       expect(await parallel(removeCtx)).toBe(0);
    });
+
+   it('joins and removes the current fork when no alias is given', async () => {
+      resetCache();
+      const alias = 'join-current-fork';
+      const forkCtx = createGdxContext(tmpDir, ['parallel', 'fork', alias, '--no-init']);
+      expect(await parallel(forkCtx)).toBe(0);
+
+      const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
+      const forkPath = getParallelForkPath(tmpRootDir, tmpDir, alias, branchName);
+      fs.writeFileSync(path.join(forkPath, 'join-current.txt'), 'joined\n');
+      await $`${git$} -C ${forkPath} add join-current.txt`;
+      await $`${git$} -C ${forkPath} commit --no-verify -m ${'Join current fork'}`;
+
+      const joinCtx = createGdxContext(forkPath, ['parallel', 'join']);
+      expect(await parallel(joinCtx)).toBe(0);
+      expect(fs.existsSync(forkPath)).toBe(false);
+      expect(fs.readFileSync(path.join(tmpDir, 'join-current.txt'), 'utf-8')).toBe('joined\n');
+   }, { timeout: 20000 });
 });

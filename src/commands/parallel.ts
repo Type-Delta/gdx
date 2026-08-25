@@ -44,10 +44,8 @@ import {
    invalidateWorktreeListCache,
    getRepoRootCached,
    pruneWorktrees,
-   stageResolvedConflicts,
    isEmptyCherryPickError,
    isCherryPickEmpty,
-   getUnmergedPaths,
    getSubmoduleBaseSha,
    getCommitRangeLog,
    forceColorArgs,
@@ -76,6 +74,8 @@ export interface ParallelMetadata {
    updatedAt?: string;
    joinCursor?: string;
    submoduleCursors?: Record<string, string>;
+   pendingJoinStash?: string;
+   pendingJoinDrops?: string[];
 }
 
 interface ParallelContext {
@@ -111,6 +111,7 @@ interface InteractiveDecisionContext {
    forkAlias: string;
    isSubmodule: boolean;
    submodulePath?: string;
+   previewBase?: string;
 }
 
 const PARALLEL_CONTEXT_TTL_MS = 1000;
@@ -311,6 +312,8 @@ function resetParallelJoinState(meta: ParallelMetadata, baseCommit: string): voi
    meta.updatedAt = new Date().toISOString();
    meta.joinCursor = undefined;
    meta.submoduleCursors = undefined;
+   meta.pendingJoinStash = undefined;
+   meta.pendingJoinDrops = undefined;
 }
 
 async function getCurrentSubmodulePath(
@@ -409,56 +412,24 @@ async function ensureCleanWorktreeOrClear(
    return clearResult === 0;
 }
 
+/**
+ * Updates initialized submodules and optionally initializes missing ones.
+ * @param gitExec Git executable path.
+ * @param repoPath Worktree path.
+ * @param hard Whether to force checkout.
+ * @param init Whether to initialize missing submodules.
+ */
 async function refreshParallelSubmodules(
    gitExec: string,
    repoPath: string,
-   hard: boolean
+   hard: boolean,
+   init = true
 ): Promise<void> {
    const updateArgs = ['-c', 'protocol.file.allow=always', '-C', repoPath, 'submodule', 'update'];
    if (hard) updateArgs.push('--force');
-   updateArgs.push('--init', '--recursive');
+   if (init) updateArgs.push('--init');
+   updateArgs.push('--recursive');
    await $`${gitExec} ${updateArgs}`;
-}
-
-function updateJoinCursorContiguously(
-   meta: ParallelMetadata,
-   forkPath: string,
-   commit: string,
-   rangeStart: string,
-   blocked: boolean
-): boolean {
-   if (blocked) return blocked;
-   meta.joinCursor = commit || rangeStart;
-   writeParallelMetadata(forkPath, meta);
-   return false;
-}
-
-function blockJoinCursorAtCommit(
-   meta: ParallelMetadata,
-   forkPath: string,
-   commit: string,
-   blocked: boolean
-): boolean {
-   if (!blocked) {
-      meta.joinCursor = commit;
-      writeParallelMetadata(forkPath, meta);
-   }
-   return true;
-}
-
-function blockSubmoduleCursorAtCommit(
-   meta: ParallelMetadata,
-   forkPath: string,
-   submodulePath: string,
-   commit: string,
-   blocked: boolean
-): boolean {
-   if (!blocked) {
-      meta.submoduleCursors ??= {};
-      meta.submoduleCursors[submodulePath] = commit;
-      writeParallelMetadata(forkPath, meta);
-   }
-   return true;
 }
 
 async function getCherryPickIdentityArgs(
@@ -646,6 +617,14 @@ export async function removeParallelWorktree(
    Logger.debug(`Worktree path '${targetPath}' is accessible.`, 'parallel');
 
    const meta = getParallelMetadata(targetPath);
+   if (meta?.pendingJoinStash || meta?.pendingJoinDrops?.length) {
+      spinnerCtrl.stop();
+      Logger.error(
+         `Worktree '${alias}' has pending recovery state from an interrupted join. Finish the join or run sync --hard before removing it.`,
+         'parallel'
+      );
+      return 1;
+   }
    const activeOps = await getWorktreeOperations(operationGit$, targetPath);
    Logger.debug(
       `Active operations for worktree '${alias}': ${activeOps.length > 0 ? activeOps.join(', ') : 'none'}`,
@@ -1418,53 +1397,86 @@ async function cmdList(git$: string | string[], args: ArgsSet): Promise<number> 
    return 0;
 }
 
+/**
+ * Drops the join stash only when it is still the top stash entry.
+ * @param gitExec Git executable path.
+ * @param repoPath Repository path.
+ * @param stashOid Exact stash object ID created by join.
+ * @returns Whether the stash was safely dropped.
+ */
+async function dropJoinStash(
+   gitExec: string,
+   repoPath: string,
+   stashOid: string
+): Promise<boolean> {
+   const currentStash = (
+      await $`${gitExec} -C ${repoPath} rev-parse -q --verify refs/stash`
+   ).stdout.trim();
+   if (currentStash !== stashOid) return false;
+
+   await $`${gitExec} -C ${repoPath} stash drop ${'stash@{0}'}`;
+   return true;
+}
+
+/**
+ * Restores --all changes to a fork after joining cannot proceed.
+ * @param git$ Git executable or command array.
+ * @param forkPath Fork worktree path.
+ * @param forkAlias Fork alias.
+ * @param stashRef Exact stash reference or object ID.
+ */
 async function restoreJoinStash(
    git$: string | string[],
    forkPath: string,
    forkAlias: string,
    stashRef: string
-): Promise<void> {
+): Promise<boolean> {
    try {
-      await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      await $`${gitExec} -C ${forkPath} stash apply --index ${stashRef}`;
+      try {
+         const dropped = await dropJoinStash(gitExec, forkPath, stashRef);
+         if (!dropped) {
+            Logger.warn(
+               `Restored fork changes, but kept stash ${stashRef} because it is no longer the newest stash.`,
+               'parallel'
+            );
+         }
+      } catch (err) {
+         Logger.warn(`Could not remove stash ${stashRef} after restoring fork changes.`, 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+      }
       quickPrint(
-         `${SGR.yellow}Stashed changes restored to fork '${forkAlias}' due to cherry-pick failure.${SGR.reset}`
+         `${SGR.yellow}Stashed changes restored to fork '${forkAlias}' because join did not complete.${SGR.reset}`
       );
+      return true;
    } catch (err) {
       quickPrint(
          `${SGR.yellow}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${SGR.reset}`
       );
       Logger.debug(yuString(err, { color: true }), 'parallel');
+      return false;
    }
 }
 
-async function printCherryPickSteps(
-   originPath: string,
+/**
+ * Restores and clears a pending join stash after a pre-fast-forward failure.
+ * @param git$ Git executable or command array.
+ * @param meta Fork metadata.
+ * @param forkPath Fork worktree path.
+ * @param forkAlias Fork alias.
+ * @param stashOid Exact stash object ID.
+ */
+async function restorePendingJoinStash(
+   git$: string | string[],
+   meta: ParallelMetadata,
+   forkPath: string,
    forkAlias: string,
-   commit: string,
-   stashRef: string | null,
-   unmergedPaths: string[]
+   stashOid: string
 ): Promise<void> {
-   quickPrint(
-      `${SGR.yellow}Cherry-pick stopped at commit ${commit}. To resolve conflicts run:${SGR.reset}`
-   );
-   quickPrint(`${SGR.cyan}${`  git -C "${originPath}" cherry-pick ${commit}`}${SGR.reset}`);
-   if (unmergedPaths.length > 0) {
-      const quotedPaths = unmergedPaths.map((filePath) =>
-         filePath.includes(' ') ? `"${filePath}"` : filePath
-      );
-      const joinedPaths = quotedPaths.join(' ');
-      quickPrint(`${SGR.cyan}${`  git -C "${originPath}" add -- ${joinedPaths}`}${SGR.reset}`);
-   } else {
-      quickPrint(`${SGR.cyan}${`  git -C "${originPath}" add -A`}${SGR.reset}`);
-   }
-   quickPrint(`${SGR.cyan}${`  git -C "${originPath}" cherry-pick --continue`}${SGR.reset}`);
-   quickPrint(`${SGR.cyan}${`  ${EXECUTABLE_NAME} parallel join ${forkAlias}`}${SGR.reset}`);
-
-   if (stashRef) {
-      quickPrint(
-         `${SGR.dim}Stashed changes from fork '${forkAlias}' can be applied after join.${SGR.reset}`
-      );
-   }
+   if (!(await restoreJoinStash(git$, forkPath, forkAlias, stashOid))) return;
+   meta.pendingJoinStash = undefined;
+   writeParallelMetadata(forkPath, meta);
 }
 
 function normalizePagerResult(result?: PagerActionResult | void): PagerActionResult {
@@ -1504,6 +1516,7 @@ async function getCherryPickPreview(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
+   baseTreeish?: string;
    spinner?: SpinnerController;
 }): Promise<{
    diff: string;
@@ -1513,8 +1526,9 @@ async function getCherryPickPreview(options: {
    warning?: string;
    appliedPatch?: boolean;
    conflictInfo?: ConflictInfo;
+   resultTree?: string;
 }> {
-   const { gitExec, originRepoPath, forkRepoPath, commit, spinner } = options;
+   const { gitExec, originRepoPath, forkRepoPath, commit, baseTreeish = 'HEAD', spinner } = options;
 
    if (spinner) spinner.options.message = 'Emulating cherry-pick...';
    const patch = (await $`${gitExec} -C ${forkRepoPath} show --format= --no-color ${commit}`)
@@ -1537,17 +1551,30 @@ async function getCherryPickPreview(options: {
    const env = { ...process.env, GIT_INDEX_FILE: tempIndex };
 
    try {
-      await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+      await $({ env })`${gitExec} -C ${originRepoPath} read-tree ${baseTreeish}`;
       let appliedPatch = false;
       let applyConflictInfo: ConflictInfo | undefined;
       let checkResult: { applies: boolean; conflictInfo?: ConflictInfo } | undefined;
       let patchConflictInfo: ConflictInfo | undefined;
       try {
-         await $({
-            env,
-            input: patch,
-         })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
-         appliedPatch = true;
+         const parent = (await $`${gitExec} -C ${forkRepoPath} rev-parse ${commit}^`).stdout.trim();
+         await $({ env })`${gitExec} -C ${originRepoPath} read-tree -m ${parent} ${baseTreeish} ${commit}`;
+         const treeMergeConflicts = await getIndexConflictInfo(gitExec, originRepoPath, env);
+         appliedPatch = !treeMergeConflicts?.files.length;
+         if (!appliedPatch) {
+            await $({ env })`${gitExec} -C ${originRepoPath} read-tree ${baseTreeish}`;
+         }
+      } catch {
+         await $({ env })`${gitExec} -C ${originRepoPath} read-tree ${baseTreeish}`;
+      }
+      try {
+         if (!appliedPatch) {
+            await $({
+               env,
+               input: patch,
+            })`${gitExec} -C ${originRepoPath} apply --cached --3way --whitespace=nowarn`;
+            appliedPatch = true;
+         }
       } catch (err) {
          applyConflictInfo = parseApplyConflictInfo(err);
       }
@@ -1570,7 +1597,7 @@ async function getCherryPickPreview(options: {
             }
          } else {
             try {
-               await $({ env })`${gitExec} -C ${originRepoPath} read-tree HEAD`;
+               await $({ env })`${gitExec} -C ${originRepoPath} read-tree ${baseTreeish}`;
                await $({
                   env,
                   input: patch,
@@ -1614,6 +1641,7 @@ async function getCherryPickPreview(options: {
             originRepoPath,
             forkRepoPath,
             commit,
+            baseTreeish,
          });
          if (mergeTreeConflicts && !conflictInfo) {
             if (patchConflictInfo?.files?.length) {
@@ -1636,6 +1664,7 @@ async function getCherryPickPreview(options: {
             originRepoPath,
             forkRepoPath,
             commit,
+            baseTreeish,
          });
       }
 
@@ -1649,7 +1678,7 @@ async function getCherryPickPreview(options: {
             await $`${gitExec} -C ${forkRepoPath} show --stat --format= --no-color ${commit}`
          ).stdout;
          const warning = hasConflicts
-            ? 'Patch does not apply cleanly to origin HEAD. Preview shows the original commit diff.'
+            ? 'Patch does not apply cleanly to the selected changes. Preview shows the original commit diff.'
             : undefined;
          return {
             diff,
@@ -1662,11 +1691,15 @@ async function getCherryPickPreview(options: {
          };
       }
 
-      const diff = (await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --no-color`)
-         .stdout;
-      const stat = (
-         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached --stat --no-color`
+      const diff = (
+         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached ${baseTreeish} --no-color`
       ).stdout;
+      const stat = (
+         await $({ env })`${gitExec} -C ${originRepoPath} diff --cached ${baseTreeish} --stat --no-color`
+      ).stdout;
+      const resultTree = (
+         await $({ env })`${gitExec} -C ${originRepoPath} write-tree`
+      ).stdout.trim();
       return {
          diff,
          stat,
@@ -1674,6 +1707,7 @@ async function getCherryPickPreview(options: {
          hasConflicts,
          appliedPatch,
          conflictInfo,
+         resultTree,
       };
    } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
@@ -1685,15 +1719,14 @@ async function hasMergeTreeConflicts(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
+   baseTreeish: string;
 }): Promise<boolean> {
-   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   const { gitExec, originRepoPath, forkRepoPath, commit, baseTreeish } = options;
    try {
       const parent = (await getRevParseCached(gitExec, forkRepoPath, `${commit}^`)).trim();
       if (!parent) return false;
-      const originHead = (await getRevParseCached(gitExec, originRepoPath, 'HEAD')).trim();
-      if (!originHead) return false;
       const output = (
-         await $`${gitExec} -C ${originRepoPath} merge-tree ${parent} ${originHead} ${commit}`
+         await $`${gitExec} -C ${originRepoPath} merge-tree ${parent} ${baseTreeish} ${commit}`
       ).stdout;
       return /^(<{7}|	<{7})/m.test(output);
    } catch {
@@ -1706,14 +1739,12 @@ async function hasOverlapConflicts(options: {
    originRepoPath: string;
    forkRepoPath: string;
    commit: string;
+   baseTreeish: string;
 }): Promise<boolean> {
-   const { gitExec, originRepoPath, forkRepoPath, commit } = options;
+   const { gitExec, originRepoPath, forkRepoPath, commit, baseTreeish } = options;
    try {
       const parent = (await getRevParseCached(gitExec, forkRepoPath, `${commit}^`)).trim();
       if (!parent) return false;
-      const originHead = (await getRevParseCached(gitExec, originRepoPath, 'HEAD')).trim();
-      if (!originHead) return false;
-
       const forkFilesOutput = (
          await $`${gitExec} -C ${forkRepoPath} show --name-only --format= ${commit}`
       ).stdout.trim();
@@ -1726,7 +1757,7 @@ async function hasOverlapConflicts(options: {
       );
 
       const originFilesOutput = (
-         await $`${gitExec} -C ${originRepoPath} diff --name-only ${parent} ${originHead}`
+         await $`${gitExec} -C ${originRepoPath} diff --name-only ${parent} ${baseTreeish}`
       ).stdout.trim();
       if (!originFilesOutput) return false;
       const originFiles = originFilesOutput
@@ -2025,7 +2056,7 @@ function buildCommitPreamble(options: {
    if (isEmpty) {
       lines.push('');
       lines.push(
-         `  Note: ${SGR.blue}No changes against origin. This commit will be skipped unless applied.${SGR.normal + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
+         `  Note: ${SGR.blue}No changes against the selected state. You can keep or drop this commit.${SGR.normal + fgRgb(CATPPUCCIN_VPALETTE.overlay0)}`
       );
    }
 
@@ -2093,8 +2124,16 @@ function formatConflictSummary(conflictInfo?: ConflictInfo): string[] {
 
 async function interactiveCherryPickDecision(
    options: InteractiveDecisionContext
-): Promise<PagerActionResult> {
-   const { gitExec, originRepoPath, forkRepoPath, commit, isSubmodule, submodulePath } = options;
+): Promise<{ decision: PagerActionResult; resultTree?: string }> {
+   const {
+      gitExec,
+      originRepoPath,
+      forkRepoPath,
+      commit,
+      isSubmodule,
+      submodulePath,
+      previewBase,
+   } = options;
 
    const spinnerCtrl = spinner({ message: 'Preparing cherry-pick preview...' });
    const commitInfo = await getCommitInfo(gitExec, forkRepoPath, commit);
@@ -2103,6 +2142,7 @@ async function interactiveCherryPickDecision(
       originRepoPath,
       forkRepoPath,
       commit,
+      baseTreeish: previewBase,
       spinner: spinnerCtrl,
    });
    spinnerCtrl.stop();
@@ -2116,16 +2156,17 @@ async function interactiveCherryPickDecision(
       submodulePath,
       conflictInfo: preview.conflictInfo,
    });
-   const actions: PagerAction[] = preview.isEmpty
-      ? [
-         { key: 's', label: 'skip', action: 'skip', description: 'Skip this change', primary: true },
-         { key: 'u', label: 'undo', action: 'undo', description: 'Undo the last applied change' },
-      ]
-      : [
-         { key: 'a', label: 'apply', action: 'apply', description: 'Apply this change', primary: true },
-         { key: 's', label: 'skip', action: 'skip', description: 'Skip this change', primary: true },
-         { key: 'u', label: 'undo', action: 'undo', description: 'Undo the last applied change' },
-      ];
+   const actions: PagerAction[] = [
+      { key: 'a', label: 'apply', action: 'apply', description: 'Keep this commit', primary: true },
+      {
+         key: 's',
+         label: 'skip',
+         action: 'skip',
+         description: 'Permanently drop this commit',
+         primary: true,
+      },
+      { key: 'u', label: 'undo', action: 'undo', description: 'Undo the last decision' },
+   ];
 
    const statusText = getInteractiveStatusText({
       isEmpty: preview.isEmpty,
@@ -2136,28 +2177,7 @@ async function interactiveCherryPickDecision(
    const content =
       diffText.length > 0 ? [...preambleLines, '', diffText].join('\n') : preambleLines.join('\n');
    const result = await viewDiff(content, { statusText, actions });
-   return normalizePagerResult(result);
-}
-
-async function undoLastCherryPick(git$: string | string[], repoPath: string): Promise<boolean> {
-   const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   const parentHead = (
-      await getRevParseCached(gitExec, repoPath, ['-q', '--verify', 'HEAD~1'])
-   ).trim();
-   if (!parentHead) {
-      Logger.error('No commit available to undo.', 'parallel');
-      return false;
-   }
-
-   try {
-      await $`${gitExec} -C ${repoPath} reset --hard HEAD~1`;
-      quickPrint(`${SGR.cyan}Undid last cherry-picked commit in ${repoPath}.${SGR.reset}`);
-      return true;
-   } catch (err) {
-      Logger.error('Failed to undo last cherry-picked commit.', 'parallel');
-      Logger.debug(yuString(err, { color: true }), 'parallel');
-      return false;
-   }
+   return { decision: normalizePagerResult(result), resultTree: preview.resultTree };
 }
 
 async function isUsableJoinCursor(
@@ -2179,19 +2199,289 @@ async function isUsableJoinCursor(
    }
 }
 
+/**
+ * Collects interactive join choices before the fork history is rewritten.
+ * @param git$ Git executable or command array.
+ * @param gitExec Git executable path.
+ * @param originPath Origin worktree path.
+ * @param forkPath Fork worktree path.
+ * @param forkAlias Fork alias.
+ * @param originHead Captured origin HEAD.
+ * @returns Commits to drop, or null when the user aborts.
+ */
+async function collectInteractiveJoinDrops(
+   git$: string | string[],
+   gitExec: string,
+   originPath: string,
+   forkPath: string,
+   forkAlias: string,
+   originHead: string
+): Promise<string[] | null> {
+   const forkHead = (await $`${gitExec} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+   const output = (
+      await $`${gitExec} -C ${forkPath} rev-list --reverse ${originHead}..${forkHead}`
+   ).stdout.trim();
+   const commits = output
+      ? output
+         .split('\n')
+         .map((commit) => commit.trim())
+         .filter((commit) => commit.length > 0)
+      : [];
+   const droppedIndices = new Set<number>();
+   const decisions: Array<{ index: number; previousBase: string }> = [];
+   let previewBase = originHead;
+
+   let index = 0;
+   while (index < commits.length) {
+      const commit = commits[index];
+      if (!commit) {
+         index++;
+         continue;
+      }
+
+      const preview = await interactiveCherryPickDecision({
+         git$,
+         gitExec,
+         originRepoPath: originPath,
+         forkRepoPath: forkPath,
+         commit,
+         forkAlias,
+         isSubmodule: false,
+         previewBase,
+      });
+      const { decision } = preview;
+
+      if (decision.action === 'abort') return null;
+      if (decision.action === 'undo') {
+         const previousDecision = decisions.pop();
+         if (!previousDecision) {
+            quickPrint(`${SGR.yellow}No decision to undo yet.${SGR.reset}`);
+            continue;
+         }
+         droppedIndices.delete(previousDecision.index);
+         previewBase = previousDecision.previousBase;
+         index = previousDecision.index;
+         continue;
+      }
+      decisions.push({ index, previousBase: previewBase });
+      if (decision.action === 'skip') {
+         droppedIndices.add(index);
+      } else {
+         droppedIndices.delete(index);
+         previewBase = preview.resultTree || previewBase;
+      }
+      index++;
+   }
+
+   return commits.filter((_, index) => droppedIndices.has(index));
+}
+
+/**
+ * Removes interactive skips by rebasing descendants around each skipped commit.
+ * @param gitExec Git executable path.
+ * @param forkPath Fork worktree path.
+ * @param commits Commits selected for removal in oldest-first order.
+ * @param meta Fork metadata used to persist interrupted drop operations.
+ */
+async function dropInteractiveJoinCommits(
+   gitExec: string,
+   forkPath: string,
+   commits: string[],
+   meta: ParallelMetadata
+): Promise<void> {
+   const pending = meta.pendingJoinDrops?.length
+      ? [...meta.pendingJoinDrops]
+      : [...commits].reverse();
+   meta.pendingJoinDrops = pending;
+   writeParallelMetadata(forkPath, meta);
+
+   while (pending.length > 0) {
+      const commit = pending[0];
+      if (!commit) break;
+      let isPending = true;
+      try {
+         await $`${gitExec} -C ${forkPath} merge-base --is-ancestor ${commit} HEAD`;
+      } catch {
+         isPending = false;
+      }
+      if (isPending) {
+         const parent = (await $`${gitExec} -C ${forkPath} rev-parse ${commit}^`).stdout.trim();
+         await $`${gitExec} -C ${forkPath} rebase --onto ${parent} ${commit}`;
+      }
+      pending.shift();
+      meta.pendingJoinDrops = pending.length > 0 ? [...pending] : undefined;
+      writeParallelMetadata(forkPath, meta);
+   }
+}
+
+/**
+ * Prints recovery commands for a rebase left in the fork worktree.
+ * @param forkPath Fork worktree path.
+ * @param forkAlias Fork alias.
+ * @param stashOid Exact stash object ID, when --all stashed local changes.
+ */
+function printRebaseRecoverySteps(
+   forkPath: string,
+   forkAlias: string,
+   stashOid: string | null
+): void {
+   const isInsideFork = path.resolve(process.cwd()) === path.resolve(forkPath);
+   const retryJoin = `${EXECUTABLE_NAME} parallel join${isInsideFork ? '' : ` ${forkAlias}`}`;
+   const recoverySync = `${EXECUTABLE_NAME} parallel sync${isInsideFork ? '' : ` ${forkAlias}`}`;
+   quickPrint(`${SGR.yellow}Rebase stopped in fork '${forkAlias}'. Origin was not changed.${SGR.reset}`);
+   quickPrint(`${SGR.yellow}Resolve conflicts in the fork, then run:${SGR.reset}`);
+   quickPrint(`${SGR.cyan}${`  git -C "${forkPath}" add -A`}${SGR.reset}`);
+   quickPrint(`${SGR.cyan}${`  git -C "${forkPath}" rebase --continue`}${SGR.reset}`);
+   quickPrint(`${SGR.cyan}${`  ${retryJoin}`}${SGR.reset}`);
+   quickPrint(`${SGR.dim}To abandon the rebase: git -C "${forkPath}" rebase --abort${SGR.reset}`);
+   if (stashOid) {
+      quickPrint(
+         `${SGR.dim}Saved --all changes: ${stashOid}. They will be applied when join is retried.${SGR.reset}`
+      );
+      quickPrint(
+         `${SGR.dim}After aborting, restore them with: ${recoverySync}${SGR.reset}`
+      );
+   }
+}
+
+/**
+ * Fetches only the submodule commits referenced by the rebased fork tree.
+ * @param gitExec Git executable path.
+ * @param forkPath Fork worktree path.
+ * @param originPath Origin worktree path.
+ * @param originHead Captured origin HEAD.
+ * @param forkHead Rebased fork HEAD.
+ * @returns Fetched commit count and exact checkouts for initialized origin submodules.
+ */
+async function fetchJoinedSubmoduleCommits(
+   gitExec: string,
+   forkPath: string,
+   originPath: string,
+   originHead: string,
+   forkHead: string
+): Promise<{
+   fetched: number;
+   checkouts: Array<{ path: string; sourcePath: string; commit: string }>;
+}> {
+   const submodules = await getSubmodules(gitExec, forkPath);
+   let fetched = 0;
+   const checkouts: Array<{ path: string; sourcePath: string; commit: string }> = [];
+
+   for (const submodule of submodules) {
+      const gitlink = (
+         await $`${gitExec} -C ${forkPath} ls-tree ${forkHead} -- ${submodule.path}`
+      ).stdout.trim();
+      const match = gitlink.match(/^160000\s+commit\s+([0-9a-f]{40})\s+/i);
+      const commit = match?.[1];
+      if (!commit) continue;
+
+      const forkSubPath = path.resolve(forkPath, submodule.path);
+      const originSubPath = path.resolve(originPath, submodule.path);
+      if (!fs.existsSync(forkSubPath) || !fs.existsSync(originSubPath)) continue;
+      if (!fs.existsSync(path.join(forkSubPath, '.git'))) continue;
+      if (!fs.existsSync(path.join(originSubPath, '.git'))) continue;
+
+      const currentHead = (
+         await $`${gitExec} -C ${originSubPath} rev-parse HEAD`.catch(() => ({ stdout: '' }))
+      ).stdout.trim();
+      if (currentHead === commit) continue;
+
+      const capturedGitlink = (
+         await $`${gitExec} -C ${originPath} ls-tree ${originHead} -- ${submodule.path}`
+      ).stdout.trim();
+      const capturedCommit = capturedGitlink.match(/^160000\s+commit\s+([0-9a-f]{40})\s+/i)?.[1];
+      const submoduleStatus = (
+         await $`${gitExec} -C ${originSubPath} status --porcelain=v1 --untracked-files=normal`
+      ).stdout.trim();
+      if (currentHead !== capturedCommit || submoduleStatus.length > 0) continue;
+
+      try {
+         await $`${gitExec} -C ${originSubPath} cat-file -e ${commit}^{commit}`;
+      } catch {
+         await $`${gitExec} -c protocol.file.allow=always -c fetch.recurseSubmodules=false -C ${originSubPath} fetch ${forkSubPath} ${commit}`;
+         fetched++;
+      }
+      checkouts.push({ path: originSubPath, sourcePath: forkSubPath, commit });
+   }
+
+   return { fetched, checkouts };
+}
+
+/**
+ * Recursively synchronizes initialized submodules to the gitlinks in a tree.
+ * @param gitExec Git executable path.
+ * @param forkPath Fork worktree path.
+ * @param sourcePaths Worktrees that may contain the required submodule objects.
+ * @param forkHead Rebased fork HEAD.
+ */
+async function syncRebasedForkSubmodules(
+   gitExec: string,
+   forkPath: string,
+   sourcePaths: string | string[],
+   forkHead: string
+): Promise<void> {
+   const sources = Array.isArray(sourcePaths) ? sourcePaths : [sourcePaths];
+   const submodules = await getSubmodules(gitExec, forkPath);
+   for (const submodule of submodules) {
+      const gitlink = (
+         await $`${gitExec} -C ${forkPath} ls-tree ${forkHead} -- ${submodule.path}`
+      ).stdout.trim();
+      const commit = gitlink.match(/^160000\s+commit\s+([0-9a-f]{40})\s+/i)?.[1];
+      if (!commit) continue;
+
+      const forkSubPath = path.resolve(forkPath, submodule.path);
+      if (!fs.existsSync(path.join(forkSubPath, '.git'))) continue;
+      const currentHead = (
+         await $`${gitExec} -C ${forkSubPath} rev-parse HEAD`.catch(() => ({ stdout: '' }))
+      ).stdout.trim();
+      const sourceSubPaths = sources
+         .map((sourcePath) => path.resolve(sourcePath, submodule.path))
+         .filter(
+            (sourceSubPath) =>
+               sourceSubPath !== forkSubPath && fs.existsSync(path.join(sourceSubPath, '.git'))
+         );
+      if (currentHead !== commit) {
+         try {
+            await $`${gitExec} -C ${forkSubPath} cat-file -e ${commit}^{commit}`;
+         } catch {
+            let fetched = false;
+            for (const sourceSubPath of sourceSubPaths) {
+               try {
+                  await $`${gitExec} -C ${sourceSubPath} cat-file -e ${commit}^{commit}`;
+               } catch {
+                  continue;
+               }
+               await $`${gitExec} -c protocol.file.allow=always -c fetch.recurseSubmodules=false -C ${forkSubPath} fetch ${sourceSubPath} ${commit}`;
+               fetched = true;
+               break;
+            }
+            if (!fetched) {
+               await $`${gitExec} -c protocol.file.allow=always -c fetch.recurseSubmodules=false -C ${forkSubPath} fetch origin ${commit}`;
+            }
+         }
+         await $`${gitExec} -C ${forkSubPath} checkout --quiet --detach ${commit}`;
+      }
+      await syncRebasedForkSubmodules(gitExec, forkSubPath, sourceSubPaths, commit);
+   }
+}
+
+/**
+ * Rebases a fork onto a captured origin commit, then fast-forwards origin.
+ */
 async function joinWorktree(
    git$: string | string[],
    forkPath: string,
    forkAlias: string,
    options: { keep: boolean; bringAll: boolean; interactive: boolean }
 ): Promise<number> {
-   Logger.debug(`Joining worktree '${forkAlias}'...`, 'parallel');
+   Logger.debug(`Joining worktree '${forkAlias}' by rebase...`, 'parallel');
 
    const { keep, bringAll, interactive } = options;
    const interactiveEnabled = interactive && isTTY();
    if (interactive && !interactiveEnabled) {
       Logger.warn('Interactive join requires a TTY. Proceeding without --interactive.', 'parallel');
    }
+
    const meta = getParallelMetadata(forkPath);
    if (!meta) {
       Logger.error(
@@ -2220,44 +2510,52 @@ async function joinWorktree(
                .map((line) => line.trim())
                .filter((line) => line.length > 0)
             : [];
-         if (remotes.length > 0) {
-            for (const remote of remotes) {
-               try {
-                  const remoteOutput = (
-                     await $`${git$} -C ${forkPath} ls-remote --heads ${remote} ${forkBranchRef}`
-                  ).stdout.trim();
-                  if (remoteOutput.length > 0) {
-                     Logger.error(
-                        `Fork branch '${forkBranchRef}' exists on remote '${remote}'. Use standard git commands to merge it.`,
-                        'parallel'
-                     );
-                     return 1;
-                  }
-               } catch {
-                  // ignore remote lookup failures
+         for (const remote of remotes) {
+            try {
+               const remoteOutput = (
+                  await $`${git$} -C ${forkPath} ls-remote --heads ${remote} ${forkBranchRef}`
+               ).stdout.trim();
+               if (remoteOutput.length > 0) {
+                  Logger.error(
+                     `Fork branch '${forkBranchRef}' exists on remote '${remote}'. Use standard git commands to merge it.`,
+                     'parallel'
+                  );
+                  return 1;
                }
+            } catch {
+               // Ignore remote lookup failures.
             }
          }
       }
    }
 
-   const spinnerCtrl = spinner({ message: `Checking worktree status` });
+   const spinnerCtrl = spinner({ message: 'Checking worktree status' });
    const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   const [forkStatusResult, originStatusResult, forkHeadResult] = await Promise.all([
+   const [forkStatusResult, originStatusResult, originHeadResult] = await Promise.all([
       $`${git$} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`,
       $`${git$} -C ${originPath} status --porcelain=v1 --untracked-files=normal`,
-      getRevParseCached(gitExec, forkPath, 'HEAD'),
+      $`${gitExec} -C ${originPath} rev-parse HEAD`,
    ]);
+   const forkDirty = forkStatusResult.stdout.trim().length > 0;
+   const originStatus = originStatusResult.stdout.trim();
+   const originDirty = originStatus.length > 0;
+   const originHead = originHeadResult.stdout.trim();
+   const pendingStashOid = meta.pendingJoinStash?.trim() || null;
 
-   // Check fork status
-   const forkStatus = forkStatusResult.stdout.trim();
-   const forkDirty = forkStatus.length > 0;
-   Logger.debug(
-      `Fork worktree '${forkAlias}' dirty status: ${forkDirty ? 'dirty' : 'clean'}`,
-      'parallel'
-   );
-
-   if (forkDirty && !bringAll && !keep) {
+   if (!originHead) {
+      spinnerCtrl.stop();
+      Logger.error('Unable to resolve origin HEAD for join.', 'parallel');
+      return 1;
+   }
+   if (originDirty && ((forkDirty && bringAll) || pendingStashOid)) {
+      spinnerCtrl.stop();
+      Logger.error(
+         'Origin worktree has pending changes. Commit or stash them before joining with --all.',
+         'parallel'
+      );
+      return 1;
+   }
+   if (forkDirty && !bringAll) {
       spinnerCtrl.stop();
       Logger.error(
          `Fork '${forkAlias}' has uncommitted changes. Re-run with --all to include them or clean the worktree first.`,
@@ -2265,21 +2563,7 @@ async function joinWorktree(
       );
       return 1;
    }
-
-   // Check origin status
-   const originStatus = originStatusResult.stdout.trim();
-   if (originStatus.length > 0 && bringAll && forkDirty) {
-      spinnerCtrl.stop();
-      Logger.error(
-         'Origin worktree has pending changes. Commit or stash them before joining.',
-         'parallel'
-      );
-      return 1;
-   }
-
-   const baseCommit = meta.baseCommit?.trim();
-   const joinCursor = meta.joinCursor?.trim();
-   if (!baseCommit) {
+   if (!meta.baseCommit?.trim()) {
       spinnerCtrl.stop();
       Logger.error(
          'Fork metadata is missing base commit information. Unable to perform an automatic join.',
@@ -2288,449 +2572,225 @@ async function joinWorktree(
       return 1;
    }
 
-   const shouldUseCursor = await isUsableJoinCursor(gitExec, forkPath, baseCommit, joinCursor);
-   const mainRangeStart = shouldUseCursor ? joinCursor! : baseCommit;
-   const originHead = (await getRevParseCached(gitExec, originPath, 'HEAD')).trim();
-
-   let stashRef: string | null = null;
-   if (forkDirty && bringAll) {
-      const stashMessage = `git-parallel-join:${forkAlias}`;
-      Logger.debug(
-         `Stashing uncommitted changes from fork '${forkAlias}' before joining...`,
+   let stashOid = pendingStashOid;
+   if (stashOid && forkDirty) {
+      spinnerCtrl.stop();
+      Logger.error(
+         `Fork '${forkAlias}' has new pending changes while a saved --all join is waiting. Clean the fork before retrying.`,
          'parallel'
       );
-      spinnerCtrl.options.message = `Stashing uncommitted changes`;
+      return 1;
+   }
+   if (forkDirty) {
+      spinnerCtrl.options.message = 'Stashing uncommitted changes';
       try {
-         await $`${git$} -C ${forkPath} stash push --include-untracked -m ${stashMessage}`;
-         stashRef = 'stash@{0}';
-      } catch {
+         const previousStashOid = (
+            await $`${gitExec} -C ${forkPath} rev-parse -q --verify refs/stash`.catch(() => ({
+               stdout: '',
+            }))
+         ).stdout.trim();
+         await $`${git$} -C ${forkPath} stash push --include-untracked -m ${`git-parallel-join:${forkAlias}`}`;
+         stashOid = (
+            await $`${gitExec} -C ${forkPath} rev-parse -q --verify refs/stash`
+         ).stdout.trim();
+         if (!stashOid || stashOid === previousStashOid) {
+            throw new Error('Git could not stash every pending change.');
+         }
+         meta.pendingJoinStash = stashOid;
+         writeParallelMetadata(forkPath, meta);
+      } catch (err) {
+         spinnerCtrl.stop();
          Logger.error('Failed to stash uncommitted changes before joining.', 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
          return 1;
       }
    }
 
-   // Get commit list from fork
-   const forkHead = forkHeadResult.trim();
-   let commitList: string[];
-   Logger.debug(
-      `Enumerating commits from fork '${forkAlias}' since ${shouldUseCursor ? 'join cursor' : 'base commit'} ${mainRangeStart}...`,
-      'parallel'
-   );
-   spinnerCtrl.options.message = `Enumerating commits to join`;
+   spinnerCtrl.stop();
+   let droppedCommits: string[] = [];
+   if (interactiveEnabled && !meta.pendingJoinDrops?.length) {
+      try {
+         const selectedDrops = await collectInteractiveJoinDrops(
+            git$,
+            gitExec,
+            originPath,
+            forkPath,
+            forkAlias,
+            originHead
+         );
+         if (selectedDrops === null) {
+            if (stashOid) {
+               await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+            }
+            return 1;
+         }
+         droppedCommits = selectedDrops;
+      } catch (err) {
+         if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+         Logger.error('Unable to prepare the interactive join.', 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         return 1;
+      }
+   }
+
    try {
-      const revListArgs = [
-         '-C',
-         forkPath,
-         'rev-list',
-         '--reverse',
-         `${mainRangeStart}..${forkHead}`,
-      ];
-      if (originHead) {
-         revListArgs.push('--not', originHead);
+      if (droppedCommits.length > 0 || meta.pendingJoinDrops?.length) {
+         const dropCount = meta.pendingJoinDrops?.length || droppedCommits.length;
+         Logger.debug(`Dropping ${dropCount} interactive join commit(s).`, 'parallel');
+         await dropInteractiveJoinCommits(gitExec, forkPath, droppedCommits, meta);
       }
-      const output = (await $`${gitExec} ${revListArgs}`).stdout.trim();
-      commitList = output
-         ? output
-            .split('\n')
-            .map((c) => c.trim())
-            .filter((c) => c)
-         : [];
+      const result = await $`${gitExec} -C ${forkPath} rebase ${originHead}`;
+      printGitResult(result);
    } catch (err) {
-      if (stashRef) {
-         await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
-      }
-      Logger.error('Unable to enumerate commits to join.', 'parallel');
+      printGitResult(getGitErrorOutput(err));
+      printRebaseRecoverySteps(forkPath, forkAlias, stashOid);
       Logger.debug(yuString(err, { color: true }), 'parallel');
       return 1;
    }
 
-   const appliedCommits: string[] = [];
-   const appliedIndices: number[] = [];
-   const appliedSubmoduleCommits: string[] = [];
-   let joinCursorBlocked = false;
-   let hasBlockedPendingCommits = false;
-
-   spinnerCtrl.stop();
-   Logger.debug(`Found ${commitList.length} commit(s) to cherry-pick into origin.`, 'parallel');
-
-   let index = 0;
-   while (index < commitList.length) {
-      const commit = commitList[index];
-      if (!commit) {
-         index++;
-         continue;
-      }
-      try {
-         let applied = false;
-         let skipped = false;
-         if (interactiveEnabled) {
-            const interactiveResult = await interactiveCherryPickDecision({
-               git$,
-               gitExec,
-               originRepoPath: originPath,
-               forkRepoPath: forkPath,
-               commit,
-               forkAlias,
-               isSubmodule: false,
-            });
-            if (interactiveResult.action === 'abort') {
-               if (stashRef) {
-                  await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-               }
-               return 1;
-            }
-            if (interactiveResult.action === 'undo') {
-               if (appliedIndices.length === 0) {
-                  quickPrint(`${SGR.yellow}No commit to undo yet.${SGR.reset}`);
-                  continue;
-               }
-               const lastAppliedIndex = appliedIndices.pop();
-               if (lastAppliedIndex === undefined) {
-                  continue;
-               }
-               const undoResult = await undoLastCherryPick(git$, originPath);
-               if (!undoResult) {
-                  if (stashRef) {
-                     await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-                  }
-                  return 1;
-               }
-               if (appliedCommits.length > 0) {
-                  appliedCommits.pop();
-               }
-               const newCursor =
-                  lastAppliedIndex > 0 ? commitList[lastAppliedIndex - 1] : mainRangeStart;
-               meta.joinCursor = newCursor;
-               writeParallelMetadata(forkPath, meta);
-               joinCursorBlocked = false;
-               index = Math.max(lastAppliedIndex, 0);
-               continue;
-            }
-            if (interactiveResult.action === 'skip') {
-               skipped = true;
-            } else if (interactiveResult.action === 'apply') {
-               applied = true;
-            }
-         } else {
-            applied = true;
-         }
-
-         if (applied) {
-            const appliedResult = await applyCherryPick(git$, {
-               originRepoPath: originPath,
-               commit,
-               contextLabel: 'origin worktree',
-               forkAlias,
-               stashRef,
-               sourceRepoPath: forkPath,
-            });
-            if (appliedResult === 'applied') {
-               appliedCommits.push(commit);
-               appliedIndices.push(index);
-            }
-            if (appliedResult === 'skipped' || appliedResult === 'empty') {
-               joinCursorBlocked = blockJoinCursorAtCommit(
-                  meta,
-                  forkPath,
-                  commit,
-                  joinCursorBlocked
-               );
-               hasBlockedPendingCommits = true;
-            } else {
-               joinCursorBlocked = updateJoinCursorContiguously(
-                  meta,
-                  forkPath,
-                  commit,
-                  mainRangeStart,
-                  joinCursorBlocked
-               );
-            }
-         } else if (skipped) {
-            joinCursorBlocked = blockJoinCursorAtCommit(meta, forkPath, commit, joinCursorBlocked);
-            hasBlockedPendingCommits = true;
-         }
-      } catch {
-         if (stashRef) {
-            await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-         }
-         return 1;
-      }
-      index++;
+   const rebasedForkHead = (await $`${gitExec} -C ${forkPath} rev-parse HEAD`).stdout.trim();
+   if (!rebasedForkHead) {
+      if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      Logger.error(`Unable to resolve the rebased HEAD for '${forkAlias}'.`, 'parallel');
+      return 1;
+   }
+   try {
+      await syncRebasedForkSubmodules(gitExec, forkPath, originPath, rebasedForkHead);
+   } catch (err) {
+      Logger.error(`Rebased '${forkAlias}', but failed to synchronize its submodules.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
    }
 
-   const submodules = await getSubmodules(git$, forkPath);
-   for (let i = 0; i < submodules.length; i++) {
-      const submodule = submodules[i];
-      spinnerCtrl.start();
-      spinnerCtrl.options.message = `Enumerating submodule commits ${i + 1} of ${submodules.length}`;
-      const forkSubPath = path.resolve(forkPath, submodule.path);
-      const originSubPath = path.resolve(originPath, submodule.path);
-      const forkGitMarker = path.join(forkSubPath, '.git');
-      const originGitMarker = path.join(originSubPath, '.git');
-      if (!fs.existsSync(forkSubPath) || !fs.existsSync(originSubPath)) continue;
-      if (!fs.existsSync(forkGitMarker) || !fs.existsSync(originGitMarker)) continue;
+   const forkHead = rebasedForkHead;
 
-      const baseSha = await getSubmoduleBaseSha(gitExec, forkPath, baseCommit, submodule.path);
-      if (!baseSha) continue;
-
-      const subCursor = meta.submoduleCursors?.[submodule.path]?.trim();
-      const useSubCursor = await isUsableJoinCursor(gitExec, forkSubPath, baseSha, subCursor);
-      const subRangeStart = useSubCursor ? subCursor! : baseSha;
-
-      let subCommitList: string[];
-      try {
-         const subHead = (await getRevParseCached(gitExec, forkSubPath, 'HEAD')).trim();
-         const originSubHead = (await getRevParseCached(gitExec, originSubPath, 'HEAD')).trim();
-         const originSubHeadInFork = originSubHead
-            ? (
-               await getRevParseCached(gitExec, forkSubPath, [
-                  '-q',
-                  '--verify',
-                  `${originSubHead}^{commit}`,
-               ])
-            ).trim()
-            : '';
-         const subRevListArgs = [
-            '-C',
-            forkSubPath,
-            'rev-list',
-            '--reverse',
-            `${subRangeStart}..${subHead}`,
-         ];
-         if (originSubHeadInFork) {
-            subRevListArgs.push('--not', originSubHeadInFork);
-         }
-         subCommitList = await $`${gitExec} ${subRevListArgs}`.then((res) =>
-            res.stdout
-               .trim()
-               .split('\n')
-               .map((c) => c.trim())
-               .filter((c) => !!c)
-         );
-      } catch (err) {
-         spinnerCtrl.stop();
-         Logger.error(`Unable to enumerate submodule commits for '${submodule.path}'.`, 'parallel');
-         Logger.debug(yuString(err, { color: true }), 'parallel');
-         if (stashRef) {
-            await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-         }
-         return 1;
-      }
-
-      spinnerCtrl.stop();
-      if (subCommitList.length === 0) continue;
-
-      Logger.debug(
-         `Found ${subCommitList.length} commit(s) to cherry-pick for submodule '${submodule.path}'.`,
-         'parallel'
-      );
-      const subAppliedIndices: number[] = [];
-      let subCursorBlocked = false;
-      let subIndex = 0;
-      while (subIndex < subCommitList.length) {
-         const commit = subCommitList[subIndex];
-         if (!commit) {
-            subIndex++;
-            continue;
-         }
-         try {
-            try {
-               await $`${gitExec} -c protocol.file.allow=always -C ${originSubPath} fetch ${forkSubPath} ${commit}`;
-            } catch (fetchErr) {
-               Logger.error(
-                  `Failed to fetch submodule commit ${commit} from '${submodule.path}'.`,
-                  'parallel'
-               );
-               Logger.debug(yuString(fetchErr, { color: true }), 'parallel');
-               if (stashRef) {
-                  await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-               }
-               return 1;
-            }
-
-            let applied = false;
-            let skipped = false;
-            if (interactiveEnabled) {
-               const interactiveResult = await interactiveCherryPickDecision({
-                  git$,
-                  gitExec,
-                  originRepoPath: originSubPath,
-                  forkRepoPath: forkSubPath,
-                  commit,
-                  forkAlias,
-                  isSubmodule: true,
-                  submodulePath: submodule.path,
-               });
-               if (interactiveResult.action === 'abort') {
-                  if (stashRef) {
-                     await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-                  }
-                  return 1;
-               }
-               if (interactiveResult.action === 'undo') {
-                  if (subAppliedIndices.length === 0) {
-                     quickPrint(`${SGR.yellow}No commit to undo yet.${SGR.reset}`);
-                     continue;
-                  }
-                  const lastAppliedIndex = subAppliedIndices.pop();
-                  if (lastAppliedIndex === undefined) {
-                     continue;
-                  }
-                  const undoResult = await undoLastCherryPick(git$, originSubPath);
-                  if (!undoResult) {
-                     if (stashRef) {
-                        await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-                     }
-                     return 1;
-                  }
-                  if (appliedSubmoduleCommits.length > 0) {
-                     appliedSubmoduleCommits.pop();
-                  }
-                  const newCursor =
-                     lastAppliedIndex > 0 ? subCommitList[lastAppliedIndex - 1] : subRangeStart;
-                  meta.submoduleCursors ??= {};
-                  meta.submoduleCursors[submodule.path] = newCursor;
-                  writeParallelMetadata(forkPath, meta);
-                  subCursorBlocked = false;
-                  subIndex = Math.max(lastAppliedIndex, 0);
-                  continue;
-               }
-               if (interactiveResult.action === 'skip') {
-                  skipped = true;
-               } else if (interactiveResult.action === 'apply') {
-                  applied = true;
-               }
-            } else {
-               applied = true;
-            }
-
-            if (applied) {
-               const appliedResult = await applyCherryPick(git$, {
-                  originRepoPath: originSubPath,
-                  commit,
-                  contextLabel: `submodule ${submodule.path}`,
-                  forkAlias,
-                  stashRef,
-                  sourceRepoPath: forkSubPath,
-               });
-               if (appliedResult === 'applied') {
-                  appliedSubmoduleCommits.push(commit);
-                  subAppliedIndices.push(subIndex);
-               }
-               if (appliedResult === 'skipped' || appliedResult === 'empty') {
-                  subCursorBlocked = blockSubmoduleCursorAtCommit(
-                     meta,
-                     forkPath,
-                     submodule.path,
-                     commit,
-                     subCursorBlocked
-                  );
-                  hasBlockedPendingCommits = true;
-               } else if (!subCursorBlocked) {
-                  meta.submoduleCursors ??= {};
-                  meta.submoduleCursors[submodule.path] = commit || subRangeStart;
-                  writeParallelMetadata(forkPath, meta);
-               }
-            } else if (skipped) {
-               subCursorBlocked = blockSubmoduleCursorAtCommit(
-                  meta,
-                  forkPath,
-                  submodule.path,
-                  commit,
-                  subCursorBlocked
-               );
-               hasBlockedPendingCommits = true;
-            }
-         } catch {
-            if (stashRef) {
-               await restoreJoinStash(git$, forkPath, forkAlias, stashRef);
-            }
-            return 1;
-         }
-         subIndex++;
-      }
+   try {
+      await $`${gitExec} -C ${forkPath} merge-base --is-ancestor ${originHead} ${forkHead}`;
+   } catch (err) {
+      if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      Logger.error(`Rebased fork '${forkAlias}' cannot fast-forward origin.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
    }
 
-   if (stashRef) {
-      Logger.debug(
-         `Applying stashed uncommitted changes from fork '${forkAlias}' to origin...`,
-         'parallel'
+   let preparedSubmodules: Awaited<ReturnType<typeof fetchJoinedSubmoduleCommits>>;
+   try {
+      preparedSubmodules = await fetchJoinedSubmoduleCommits(
+         gitExec,
+         forkPath,
+         originPath,
+         originHead,
+         forkHead
       );
-      try {
-         // Get the full stash reference from the fork
-         const stashList = (await $`${git$} -C ${forkPath} stash list`).stdout.trim();
-         const stashLines = stashList.split('\n');
-         const targetStash = stashLines[0]?.split(':')[0] || stashRef;
-
-         await $`${git$} -C ${originPath} stash apply --index ${targetStash}`;
-         await $`${git$} -C ${forkPath} stash drop ${targetStash}`;
-      } catch (err) {
-         Logger.error(`Failed to apply uncommitted changes to the origin worktree.`, 'parallel');
-         Logger.debug(yuString(err, { color: true }), 'parallel');
-
-         try {
-            await $`${git$} -C ${forkPath} stash pop ${stashRef}`;
-            quickPrint(
-               `${SGR.yellow}Stashed changes restored to fork '${forkAlias}' for safety.${SGR.reset}`
-            );
-         } catch (err) {
-            quickPrint(
-               `${SGR.yellow}Please restore stash '${stashRef}' manually from fork '${forkAlias}'. Automatic pop failed.${SGR.reset}`
-            );
-            Logger.debug(yuString(err, { color: true }), 'parallel');
-         }
-         return 1;
-      }
+   } catch (err) {
+      if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      Logger.error(`Failed to prepare submodules for joining '${forkAlias}'.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
    }
 
-   if (appliedCommits.length > 0 || appliedSubmoduleCommits.length > 0) {
-      quickPrint(
-         `${SGR.cyan}Cherry-picked ${appliedCommits.length} commit(s) into origin.${SGR.reset}`
-      );
-      if (appliedSubmoduleCommits.length > 0) {
-         quickPrint(
-            `${SGR.cyan}Cherry-picked ${appliedSubmoduleCommits.length} submodule commit(s) into origin.${SGR.reset}`
-         );
-      }
-   } else {
-      quickPrint(
-         `${SGR.cyan}No new commits to cherry-pick. Origin was already up to date.${SGR.reset}`
-      );
-   }
-
+   const [originHeadBeforeFastForward, originStatusBeforeFastForward] = await Promise.all([
+      $`${gitExec} -C ${originPath} rev-parse HEAD`.then((result) => result.stdout.trim()),
+      $`${gitExec} -C ${originPath} status --porcelain=v1 --untracked-files=normal`.then((result) =>
+         result.stdout.trim()
+      ),
+   ]);
    if (
-      !keep &&
-      !hasBlockedPendingCommits &&
-      (appliedCommits.length > 0 || appliedSubmoduleCommits.length > 0)
+      originHeadBeforeFastForward !== originHead ||
+      originStatusBeforeFastForward !== originStatus
    ) {
-      Logger.debug(`Removing fork worktree '${forkAlias}' after join...`, 'parallel');
-      const removeResult = await removeParallelWorktree(git$, forkAlias);
-      if (removeResult !== 0) {
-         Logger.warn(
-            `Failed to remove fork '${forkAlias}' after joining. Please remove it manually later.`
-         );
-         return 1;
-      }
-      quickPrint(`${SGR.cyan}Fork '${forkAlias}' merged and removed successfully.${SGR.reset}`);
-   } else {
-      if (!hasBlockedPendingCommits) {
-         try {
-            const newBase = (await getRevParseCached(gitExec, originPath, 'HEAD')).trim();
-            if (newBase) {
-               resetParallelJoinState(meta, newBase);
-            }
-         } catch {
-            // Ignore metadata update errors
-         }
-      } else {
-         meta.updatedAt = new Date().toISOString();
-      }
-      writeParallelMetadata(forkPath, meta);
-      quickPrint(
-         `${SGR.cyan}Fork '${forkAlias}' merged into origin. Worktree kept at:${SGR.reset} ${forkPath}`
+      if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      Logger.error(
+         `Origin changed while '${forkAlias}' was rebased. Origin was not updated; re-run join.`,
+         'parallel'
       );
+      return 1;
    }
 
+   try {
+      const result = await $`${gitExec} -C ${originPath} merge --ff-only ${forkHead}`;
+      printGitResult(result);
+   } catch (err) {
+      if (stashOid) await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      printGitResult(getGitErrorOutput(err));
+      Logger.error(`Failed to fast-forward origin from '${forkAlias}'.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   try {
+      for (const checkout of preparedSubmodules.checkouts) {
+         await $`${gitExec} -C ${checkout.path} checkout --quiet --detach ${checkout.commit}`;
+         await syncRebasedForkSubmodules(
+            gitExec,
+            checkout.path,
+            checkout.sourcePath,
+            checkout.commit
+         );
+      }
+   } catch (err) {
+      Logger.error(`Joined '${forkAlias}', but failed to update origin submodules.`, 'parallel');
+      Logger.debug(yuString(err, { color: true }), 'parallel');
+      return 1;
+   }
+
+   if (stashOid) {
+      try {
+         await $`${gitExec} -C ${originPath} stash apply --index ${stashOid}`;
+      } catch (err) {
+         Logger.error('Joined committed changes, but failed to apply --all changes to origin.', 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         return 1;
+      }
+      try {
+         const dropped = await dropJoinStash(gitExec, forkPath, stashOid);
+         if (!dropped) {
+            Logger.warn(
+               `Applied --all changes, but kept stash ${stashOid} because it is no longer the newest stash.`,
+               'parallel'
+            );
+         }
+      } catch (err) {
+         Logger.warn(`Applied --all changes, but could not remove stash ${stashOid}.`, 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+      }
+      meta.pendingJoinStash = undefined;
+      writeParallelMetadata(forkPath, meta);
+   }
+
+   const [finalOriginHead, finalForkHead, finalForkStatus] = await Promise.all([
+      revParseCached(gitExec, originPath, 'HEAD'),
+      revParseCached(gitExec, forkPath, 'HEAD'),
+      $`${gitExec} -C ${forkPath} status --porcelain=v1 --untracked-files=normal`.then((result) =>
+         result.stdout.trim()
+      ),
+   ]);
+   if (finalForkHead !== finalOriginHead || finalForkStatus.length > 0) {
+      Logger.error(`Fork '${forkAlias}' was not fully synchronized after join.`, 'parallel');
+      return 1;
+   }
+
+   resetParallelJoinState(meta, finalOriginHead);
+   writeParallelMetadata(forkPath, meta);
+   if (preparedSubmodules.fetched > 0) {
+      quickPrint(`${SGR.cyan}Fetched ${preparedSubmodules.fetched} joined submodule commit(s).${SGR.reset}`);
+   }
+   quickPrint(
+      `${SGR.cyan}${finalOriginHead === originHead ? 'Fork was already up to date.' : `Rebased fork '${forkAlias}' and fast-forwarded origin.`}${SGR.reset}`
+   );
+
+   if (keep) {
+      quickPrint(`${SGR.cyan}Fork '${forkAlias}' kept at:${SGR.reset} ${forkPath}`);
+      return 0;
+   }
+
+   Logger.debug(`Removing fork worktree '${forkAlias}' after join...`, 'parallel');
+   const removeResult = await removeParallelWorktree(git$, forkAlias, { chdirToOrigin: true });
+   if (removeResult !== 0) {
+      Logger.warn(`Failed to remove fork '${forkAlias}' after joining. Please remove it manually later.`);
+      return 1;
+   }
+   quickPrint(`${SGR.cyan}Fork '${forkAlias}' joined and removed successfully.${SGR.reset}`);
    return 0;
 }
 
@@ -2755,6 +2815,7 @@ async function cmdJoinRecursive(
    }
 
    let hasAnyWt = false;
+   const keptWorktrees: Array<{ path: string; meta: ParallelMetadata }> = [];
    for (const wt of worktrees) {
       const forkPath = path.join(ctx.parallelRoot, wt.name);
       const meta = getParallelMetadata(forkPath);
@@ -2768,10 +2829,45 @@ async function cmdJoinRecursive(
          interactive: false,
       });
       if (result !== 0) return result;
+      if (keep) keptWorktrees.push({ path: forkPath, meta });
    }
 
    if (!hasAnyWt) {
       quickPrint(`${SGR.yellow}No forked worktrees found for this branch.${SGR.reset}`);
+   }
+
+   if (keep && keptWorktrees.length > 0) {
+      const gitExec = Array.isArray(git$) ? git$[0] : git$;
+      const finalOriginHead = (
+         await $`${gitExec} -C ${ctx.originPath} rev-parse HEAD`
+      ).stdout.trim();
+      const submoduleSourcePaths = [ctx.originPath, ...keptWorktrees.map((kept) => kept.path)];
+      for (const kept of keptWorktrees) {
+         try {
+            const currentMeta = getParallelMetadata(kept.path);
+            if (!currentMeta) {
+               throw new Error(`Missing metadata for kept fork '${kept.meta.alias}'.`);
+            }
+            const keptHead = (
+               await $`${gitExec} -C ${kept.path} rev-parse HEAD`
+            ).stdout.trim();
+            if (keptHead !== finalOriginHead) {
+               await $`${gitExec} -C ${kept.path} merge --ff-only ${finalOriginHead}`;
+            }
+            await syncRebasedForkSubmodules(
+               gitExec,
+               kept.path,
+               submoduleSourcePaths,
+               finalOriginHead
+            );
+            resetParallelJoinState(currentMeta, finalOriginHead);
+            writeParallelMetadata(kept.path, currentMeta);
+         } catch (err) {
+            Logger.error(`Joined all forks, but failed to synchronize '${kept.meta.alias}'.`, 'parallel');
+            Logger.debug(yuString(err, { color: true }), 'parallel');
+            return 1;
+         }
+      }
    }
 
    return 0;
@@ -2970,6 +3066,45 @@ async function cmdSync(git$: string | string[], args: ArgsSet): Promise<number> 
       return 1;
    }
 
+   const hasPendingRecovery = Boolean(meta.pendingJoinStash || meta.pendingJoinDrops?.length);
+   const recoveryOperations = hasPendingRecovery
+      ? await getWorktreeOperations(scope.gitExec, forkPath)
+      : [];
+   const hasActiveRebase = recoveryOperations.includes('rebase');
+   if (hasActiveRebase && !hard) {
+      Logger.error(
+         `Fork '${forkAlias}' has a pending rebase. Continue it to finish joining, or abort it before sync restores saved changes.`,
+         'parallel'
+      );
+      return 1;
+   }
+   if (hasActiveRebase) {
+      try {
+         await $`${scope.gitExec} -C ${forkPath} rebase --abort`;
+      } catch (err) {
+         Logger.error(`Failed to abort the pending rebase in '${forkAlias}'.`, 'parallel');
+         Logger.debug(yuString(err, { color: true }), 'parallel');
+         return 1;
+      }
+   }
+   if (meta.pendingJoinDrops?.length) {
+      meta.pendingJoinDrops = undefined;
+      writeParallelMetadata(forkPath, meta);
+      Logger.warn(`Abandoned pending interactive join choices for '${forkAlias}'.`, 'parallel');
+   }
+   if (meta.pendingJoinStash) {
+      const stashOid = meta.pendingJoinStash;
+      await restorePendingJoinStash(git$, meta, forkPath, forkAlias, stashOid);
+      if (meta.pendingJoinStash) return 1;
+      if (!hard) {
+         Logger.error(
+            `Saved --all changes were restored to '${forkAlias}'. Review them before synchronizing.`,
+            'parallel'
+         );
+         return 1;
+      }
+   }
+
    const cleanTarget = await ensureCleanWorktreeOrClear(scope.gitExec, forkPath, hard);
    if (!cleanTarget) {
       Logger.error(
@@ -3152,136 +3287,6 @@ async function cmdPick(git$: string | string[], args: ArgsSet): Promise<number> 
  * @param ctx Context for the cherry-pick operation
  * @returns Promise<boolean> Whether the commit was applied
  */
-async function applyCherryPick(
-   git$: string | string[],
-   ctx: {
-      originRepoPath: string;
-      commit: string;
-      contextLabel: string;
-      forkAlias: string;
-      stashRef: string | null;
-      sourceRepoPath?: string;
-   }
-): Promise<'applied' | 'skipped' | 'empty'> {
-   const { originRepoPath, commit, contextLabel, forkAlias, stashRef, sourceRepoPath } = ctx;
-   Logger.debug(`Cherry-picking commit ${commit} into ${contextLabel}...`, 'parallel');
-   const colorArgs = forceColorArgs();
-   const gitExec = Array.isArray(git$) ? git$[0] : git$;
-   const identityArgs = sourceRepoPath
-      ? await getCherryPickIdentityArgs(gitExec, originRepoPath, sourceRepoPath, commit)
-      : [];
-   try {
-      const result =
-         await $`${gitExec} ${identityArgs} ${colorArgs} -C ${originRepoPath} cherry-pick ${commit}`;
-      printGitResult(result);
-      return 'applied';
-   } catch (err) {
-      const shouldSkip = await skipEmptyCherryPick(git$, originRepoPath, err, contextLabel);
-      if (shouldSkip) return 'empty';
-
-      printGitResult(getGitErrorOutput(err));
-
-      const hasInProgress = await hasCherryPickInProgress(git$, originRepoPath);
-      if (!hasInProgress) {
-         Logger.error(`Cherry-pick failed while applying commit ${commit}.`, 'parallel');
-         Logger.debug(yuString(err, { color: true }), 'parallel');
-         throw err;
-      }
-
-      if (!isTTY()) {
-         const unmergedPaths = await getUnmergedPaths(git$, originRepoPath);
-         await printCherryPickSteps(originRepoPath, forkAlias, commit, stashRef, unmergedPaths);
-         Logger.debug(yuString(err, { color: true }), 'parallel');
-         throw err;
-      }
-
-      quickPrint(
-         `${SGR.yellow}Cherry-pick paused due to conflicts while applying commit ${commit}.${SGR.reset}`
-      );
-      quickPrint(
-         `${SGR.dim}Resolve conflicts in ${contextLabel}, then choose to continue or abort.${SGR.reset}`
-      );
-
-      while (true) {
-         const response = (
-            await $prompt('Type c to continue, a to abort, s to skip (c|a|s): ')
-         ).toLowerCase();
-
-         switch (response) {
-            case 's':
-            case 'skip':
-               try {
-                  await $`${gitExec} ${identityArgs} ${colorArgs} -C ${originRepoPath} cherry-pick --skip`;
-                  Logger.debug(`Skipped commit ${commit} for ${contextLabel}.`, 'parallel');
-                  return 'skipped';
-               } catch (skipErr) {
-                  const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
-                  if (!stillInProgress) return 'skipped';
-
-                  printGitResult(getGitErrorOutput(skipErr));
-                  Logger.error(`Failed to skip commit ${commit} for ${contextLabel}.`, 'parallel');
-                  Logger.debug(yuString(skipErr, { color: true }), 'parallel');
-                  continue;
-               }
-            case 'c':
-            case 'continue':
-            case 'y':
-            case 'yes':
-               try {
-                  await stageResolvedConflicts(git$, originRepoPath);
-                  const result =
-                     await $`${gitExec} ${identityArgs} ${colorArgs} -C ${originRepoPath} cherry-pick --continue`;
-                  printGitResult(result);
-                  return 'applied';
-               } catch (continueErr) {
-                  const shouldSkip = await skipEmptyCherryPick(
-                     git$,
-                     originRepoPath,
-                     continueErr,
-                     contextLabel
-                  );
-                  if (shouldSkip) return 'empty';
-
-                  printGitResult(getGitErrorOutput(continueErr));
-
-                  const stillInProgress = await hasCherryPickInProgress(git$, originRepoPath);
-                  if (stillInProgress) {
-                     quickPrint(
-                        `${SGR.yellow}Cherry-pick still has conflicts. Resolve them and try again.${SGR.reset}`
-                     );
-                     Logger.debug(yuString(continueErr, { color: true }), 'parallel');
-                     continue;
-                  }
-
-                  Logger.error(
-                     'Cherry-pick no longer in progress. You may need to resolve the state manually before retrying.',
-                     'parallel'
-                  );
-                  Logger.debug(yuString(continueErr, { color: true }), 'parallel');
-                  throw continueErr;
-               }
-            case 'a':
-            case 'abort':
-            case 'n':
-            case 'no':
-               try {
-                  const result =
-                     await $`${gitExec} ${identityArgs} ${colorArgs} -C ${originRepoPath} cherry-pick --abort`;
-                  printGitResult(result);
-               } catch (abortErr) {
-                  printGitResult(getGitErrorOutput(abortErr));
-                  Logger.error('Failed to abort cherry-pick.', 'parallel');
-                  Logger.debug(yuString(abortErr, { color: true }), 'parallel');
-                  throw abortErr;
-               }
-
-               Logger.error(`Cherry-pick aborted while applying commit ${commit}.`, 'parallel');
-               throw err;
-         }
-      }
-   }
-}
-
 async function skipEmptyCherryPick(
    git$: string | string[],
    originPath: string,
@@ -3606,8 +3611,8 @@ export const help = {
 
          ${SGR.bright + _2PointGradient('SUBCOMMANDS AND BEHAVIOR', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - ${SGR.cyan}fork <alias>${SGR.reset}: Creates a detached worktree in a safe temporary namespace. Use \`${SGR.cyan}-b${SGR.reset}\` or \`${SGR.cyan}-B${SGR.reset}\` to create a non-detached worktree that tracks a local branch. If pending changes exist and you run with \`${SGR.cyan}--move${SGR.reset}\` or \`${SGR.cyan}--mirror${SGR.reset}\`, changes will be moved/applied to the fork. Init behaviors (submodules, env file copy, packages) are controlled by config and \`${SGR.cyan}--no-init${SGR.reset}\`.
-         - ${SGR.cyan}join [<alias>] [--keep|--all|-i|--interactive]${SGR.reset}: Cherry-picks commits from the fork back into the origin worktree. \`${SGR.cyan}--keep${SGR.reset}\` retains the fork and updates its base; \`${SGR.cyan}--all${SGR.reset}\` also includes uncommitted changes. \`${SGR.cyan}--interactive${SGR.reset}\` previews and lets you choose each commit before applying.
-         - ${SGR.cyan}join -r|--recursive [--keep]${SGR.reset}: Joins every fork for the current branch back into origin. Recursive join does not allow \`${SGR.cyan}--all${SGR.reset}\`.
+         - ${SGR.cyan}join [<alias>] [--keep|--all|-i|--interactive]${SGR.reset}: Rebases the fork onto a captured origin HEAD, then fast-forwards origin. Rebase conflicts stay in the fork. \`${SGR.cyan}--keep${SGR.reset}\` retains the fork at the joined HEAD; \`${SGR.cyan}--all${SGR.reset}\` also applies its uncommitted changes to origin. \`${SGR.cyan}--interactive${SGR.reset}\` previews commits and permanently drops those you skip before rebasing.
+         - ${SGR.cyan}join -r|--recursive [--keep]${SGR.reset}: Rebases and joins every fork for the current branch in order. Recursive join does not allow \`${SGR.cyan}--all${SGR.reset}\`.
          - ${SGR.cyan}sync [<alias>] [--hard|-h]${SGR.reset}: Synchronizes a fork with origin. Detached forks move to origin HEAD; branch-tracked forks merge origin into the fork and prefer origin changes on conflicts. \`${SGR.cyan}--hard${SGR.reset}\` clears fork-local changes before syncing.
          - ${SGR.cyan}pick <alias|origin> <commit> [commit...]${SGR.reset}: Cherry-picks commits from another worktree into the current worktree. When run inside a submodule, it targets the same submodule path in the source worktree.
          - ${SGR.cyan}rename <alias> <new-alias>${SGR.reset}: Renames a fork. The new alias must not already exist for this branch.
@@ -3616,7 +3621,7 @@ export const help = {
          - ${SGR.cyan}remove -r|--recursive${SGR.reset}: Removes every fork for the current branch.
 
          ${SGR.bright + _2PointGradient('SAFETY AND NOTES', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         Joining cherry-picks commits into origin; conflicts will prompt for resolve/continue in a TTY or print manual steps in non-interactive shells. Removing a fork will also delete the worktree directory when forced.
+         Joining rewrites the fork first and only updates origin with a fast-forward after the rebase succeeds. If origin moves during the rebase, join stops without updating it. Removing a fork will also delete the worktree directory when forced.
          `,
          Math.min(100, global.terminalWidth - 4),
          {
@@ -3654,9 +3659,9 @@ export const help = {
             ${SGR.cyan}${EXECUTABLE_NAME} parallel sync feature-x --hard ${SGR.reset + SGR.dim}# Reset a fork to the latest origin state${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel pick origin deadbeef ${SGR.reset + SGR.dim}# Cherry-pick from origin into current worktree${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel rename feature-x feature-y ${SGR.reset + SGR.dim}# Rename a fork${SGR.reset}
-            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${SGR.reset + SGR.dim}# Merge fork back into origin${SGR.reset}
-            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${SGR.reset + SGR.dim}# Preview and pick commits${SGR.reset}
-            ${SGR.cyan}${EXECUTABLE_NAME} parallel join -r ${SGR.reset + SGR.dim}# Merge all forks back into origin${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x --all ${SGR.reset + SGR.dim}# Rebase fork and include pending changes${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join feature-x -i ${SGR.reset + SGR.dim}# Preview and select commits to retain${SGR.reset}
+            ${SGR.cyan}${EXECUTABLE_NAME} parallel join -r ${SGR.reset + SGR.dim}# Rebase and join all forks${SGR.reset}
             ${SGR.cyan}${EXECUTABLE_NAME} parallel remove -r ${SGR.reset + SGR.dim}# Remove all forks for this branch${SGR.reset}`,
          Math.min(100, global.terminalWidth - 4),
          {
