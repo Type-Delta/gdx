@@ -313,6 +313,7 @@ function findRuntimeExecutable(name, platform = process.platform) {
    const located = spawnSync(locator, [name], {
       encoding: 'utf8',
       windowsHide: true,
+      env: process.env,
    });
    if (located.error || located.status !== 0) return null;
 
@@ -321,12 +322,24 @@ function findRuntimeExecutable(name, platform = process.platform) {
       const probe = needsShell
          ? spawnSync(
             process.env.ComSpec || 'cmd.exe',
-            ['/d', '/s', '/c', `""${executable}" -e "process.stdout.write(process.execPath)""`],
-            { encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true }
+            [
+               '/d',
+               '/s',
+               '/c',
+               `""${path.basename(executable)}" -e "process.stdout.write(process.execPath)""`,
+            ],
+            {
+               encoding: 'utf8',
+               windowsHide: true,
+               windowsVerbatimArguments: true,
+               cwd: path.dirname(executable),
+               env: process.env,
+            }
          )
          : spawnSync(executable, ['-e', 'process.stdout.write(process.execPath)'], {
             encoding: 'utf8',
             windowsHide: true,
+            env: process.env,
          });
       const runtimeExecutable = String(probe.stdout || '').trim();
       if (!probe.error && probe.status === 0 && fs.existsSync(runtimeExecutable)) {

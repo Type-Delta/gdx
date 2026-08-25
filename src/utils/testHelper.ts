@@ -29,6 +29,7 @@ let originalStdoutWrite: typeof process.stdout.write | null = null;
 let originalStderrWrite: typeof process.stderr.write | null = null;
 const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === 'off';
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
+const BASE_TEST_ENV_DIR = path.resolve(import.meta.dir, '../../test/env');
 const __openInEditor = openInEditor;
 
 interface TestSystem {
@@ -224,8 +225,6 @@ export async function createTestEnv(
          ...options.overwrites,
       },
    };
-   const baseTestEnvDir = path.join(process.cwd(), 'test/env');
-
    const clearedTestEnvs = clearTestEnvs();
    if (clearedTestEnvs && process.platform === 'win32') {
       if (USE_NATIVE_SUBMODULE_IN_TESTS) {
@@ -242,10 +241,10 @@ export async function createTestEnv(
          ncc()
       );
    }
-   fs.mkdirSync(baseTestEnvDir, { recursive: true });
+   fs.mkdirSync(BASE_TEST_ENV_DIR, { recursive: true });
 
    const tmpDir = fs.mkdtempSync(
-      baseTestEnvDir + (resolvedOptions.suitName ? `/${resolvedOptions.suitName}-` : '/')
+      BASE_TEST_ENV_DIR + (resolvedOptions.suitName ? `/${resolvedOptions.suitName}-` : '/')
    );
    const tmpDirName = path.basename(tmpDir);
 
@@ -574,11 +573,10 @@ function getTestRunKey(): string {
 function clearTestEnvs(): boolean {
    if (testEnvCleared) return false;
 
-   const baseTestEnvDir = path.join(process.cwd(), 'test/env');
    const markerName = `.gdx-test-run-${getTestRunKey()}`;
-   const markerPath = path.join(baseTestEnvDir, markerName);
+   const markerPath = path.join(BASE_TEST_ENV_DIR, markerName);
 
-   fs.mkdirSync(baseTestEnvDir, { recursive: true });
+   fs.mkdirSync(BASE_TEST_ENV_DIR, { recursive: true });
 
    if (fs.existsSync(markerPath)) {
       testEnvCleared = true;
@@ -587,9 +585,9 @@ function clearTestEnvs(): boolean {
 
    let staleEntries: string[];
    try {
-      staleEntries = fs.readdirSync(baseTestEnvDir);
+      staleEntries = fs.readdirSync(BASE_TEST_ENV_DIR);
    } catch {
-      console.error(`Failed to list test envs in: ${baseTestEnvDir}`);
+      console.error(`Failed to list test envs in: ${BASE_TEST_ENV_DIR}`);
       return false;
    }
 
@@ -600,11 +598,11 @@ function clearTestEnvs(): boolean {
       return false;
    }
 
-   console.log(`Clearing stale test envs in: ${baseTestEnvDir}`);
+   console.log(`Clearing stale test envs in: ${BASE_TEST_ENV_DIR}`);
    for (const entry of staleEntries) {
       if (entry === markerName) continue;
       try {
-         fs.rmSync(path.join(baseTestEnvDir, entry), { recursive: true, force: true });
+         fs.rmSync(path.join(BASE_TEST_ENV_DIR, entry), { recursive: true, force: true });
       } catch {
          console.error(`Failed to remove stale test env: ${entry}`);
       }
