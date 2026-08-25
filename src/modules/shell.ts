@@ -1,5 +1,6 @@
 import _whichLib from 'which';
 import { execa, ExecaMethod, Options, ExecaError } from 'execa';
+import { constants as osConstants } from 'os';
 import type { MinimalVerboseObject } from '@node/execa/types/verbose';
 
 import { CheckCache, Err, MathKit, ex_length, ncc, yuString } from '@lib/Tools';
@@ -152,6 +153,14 @@ export const $inherit = limitExeca(execa({
    stdin: 'inherit',
    stdout: 'inherit',
    stderr: 'inherit',
+   verbose: execaCustomLogger,
+}));
+
+const $forward = limitExeca(execa({
+   stdin: 'inherit',
+   stdout: 'inherit',
+   stderr: 'inherit',
+   reject: false,
    verbose: execaCustomLogger,
 }));
 
@@ -495,6 +504,7 @@ export function tokenizeCommand(cmd: string): string[] {
  * @param displayName Human-readable executable name for diagnostics
  * @param redirectTo Optional file path to redirect stdout
  * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
+ * @param withHistoryGuard Whether to mark the child as an internal GDX subprocess
  * @returns Exit code of the command
  */
 export async function execCommand(
@@ -502,45 +512,36 @@ export async function execCommand(
    args: string[],
    displayName: string,
    redirectTo: string | null = null,
-   redirectMode: string = '>'
+   redirectMode: string = '>',
+   withHistoryGuard: boolean = true
 ): Promise<number> {
    let exitCode: number | undefined = 0;
    try {
       if (redirectTo) {
          const redirect$ = limitExeca(execa({
-            env: GDX_HISTORY_GUARD_ENV,
+            ...(withHistoryGuard ? { env: GDX_HISTORY_GUARD_ENV } : {}),
             stdin: 'inherit',
             stdout: {
                file: redirectTo,
                append: redirectMode === '>>',
             },
             stderr: 'inherit',
+            reject: false,
          }));
-         const { exitCode: eCode } = await redirect$`${executable} ${args}`;
-         exitCode = eCode;
+         const { exitCode: eCode, signal, failed } = await redirect$`${executable} ${args}`;
+         if (signal) return propagateChildSignal(displayName, signal);
+         exitCode = eCode ?? (failed ? 1 : undefined);
       } else {
-         const { exitCode: eCode } = await $inherit`${executable} ${args}`;
-         exitCode = eCode;
+         const inherit$ = withHistoryGuard ? $inherit : $forward;
+         const { exitCode: eCode, signal, failed } = await inherit$`${executable} ${args}`;
+         if (signal) return propagateChildSignal(displayName, signal);
+         exitCode = eCode ?? (failed ? 1 : undefined);
       }
    } catch (_err) {
       const err = Err.from(_err);
       const commandExitCode = (_err as ExecaError).exitCode;
       const signal = (_err as ExecaError).signal;
-      if (signal) {
-         (err as { code?: string | number }).code = signal;
-      }
-      if (
-         err.code === 'SIGINT' ||
-         err.code === 'SIGTERM' ||
-         err.code === 'SIGABRT' ||
-         err.code === 'SIGKILL'
-      ) {
-         Logger.debug(
-            `${displayName} command was killed by signal: ${err.code}. Treating as failure with exit code 1.`
-         );
-         Logger.verbose('Full error details: ' + yuString(err, { color: true }));
-         return 1; // process was killed, return 1 to indicate failure
-      }
+      if (signal) return propagateChildSignal(displayName, signal);
 
       if (err.code === 'ENOENT') {
          Logger.error(
@@ -563,14 +564,28 @@ export async function execCommand(
          return 1; // SIGPIPE, return 1 to indicate failure
       }
 
+      if (typeof commandExitCode === 'number') return commandExitCode;
+
       if (err.name === ExecaError.name && err.message.startsWith('Command failed'))
-         return commandExitCode ?? exitCode ?? 1; // git command failed, return exit code
+         return exitCode ?? 1; // git command failed, return exit code
 
       Logger.error('Command failed.\n' + yuString(err, { color: true }));
       return 1;
    }
 
    return exitCode ?? 0;
+}
+
+/** Re-emits a child termination signal so callers observe the same process result. */
+function propagateChildSignal(displayName: string, signal: NodeJS.Signals): number {
+   const exitCode = 128 + (osConstants.signals[signal] ?? 0);
+   Logger.debug(`${displayName} command was killed by signal: ${signal}. Propagating the signal.`);
+   try {
+      process.kill(process.pid, signal);
+   } catch {
+      return exitCode;
+   }
+   return exitCode;
 }
 
 /**
@@ -581,15 +596,17 @@ export async function execCommand(
  * @param args Arguments to pass to git
  * @param redirectTo Optional file path to redirect stdout
  * @param redirectMode Redirection mode: '>' (overwrite) or '>>' (append)
+ * @param withHistoryGuard Whether to mark the child as an internal GDX subprocess
  * @returns Exit code of the git command
  */
 export async function execGit(
    git$: string | string[],
    args: string[],
    redirectTo: string | null = null,
-   redirectMode: string = '>'
+   redirectMode: string = '>',
+   withHistoryGuard: boolean = true
 ): Promise<number> {
-   return execCommand(git$, args, 'Git', redirectTo, redirectMode);
+   return execCommand(git$, args, 'Git', redirectTo, redirectMode, withHistoryGuard);
 }
 
 /**

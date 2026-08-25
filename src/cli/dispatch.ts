@@ -75,8 +75,9 @@ export async function dispatch(
    const maxEntries = config.get<number>('history.maxEntries') ?? 100;
 
    if (classification.disposition === 'audit-only') {
+      const startedAt = new Date().toISOString();
       const exitCode = await dispatchCore(ctx, state);
-      await recordAuditOnlyTransaction(ctx, classification, exitCode, maxEntries);
+      await recordAuditOnlyTransaction(ctx, classification, exitCode, maxEntries, startedAt);
       return exitCode;
    }
 
@@ -573,7 +574,7 @@ async function dispatchCoreUnchecked(
       printCommandExecution('git', args);
    }
 
-   return execGit(ctx.git$, args, redirectTo, redirectMode);
+   return execGit(ctx.git$, args, redirectTo, redirectMode, false);
 }
 
 /** Records command/result-only audit metadata without inspecting repository state. */
@@ -581,7 +582,8 @@ async function recordAuditOnlyTransaction(
    ctx: GdxContext,
    classification: HistoryActionClassification,
    exitCode: number,
-   maxEntries: number
+   maxEntries: number,
+   startedAt: string
 ): Promise<void> {
    const empty = emptyHistoryFingerprint();
    try {
@@ -594,7 +596,7 @@ async function recordAuditOnlyTransaction(
                command: classification.action ?? classification.route ?? 'git',
                argv: classification.originalArgv,
                cwd: ctx.repository?.root ?? process.cwd(),
-               startedAt: new Date().toISOString(),
+               startedAt,
                finishedAt: new Date().toISOString(),
                exitCode,
             },

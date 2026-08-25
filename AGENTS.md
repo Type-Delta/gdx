@@ -260,28 +260,17 @@ If `ArgsSet` can not provide the necessary functionality for your use case, it i
 - **Post-install diagnostics are an opt-in integration suite, not a normal Bun test.** Its source is `test/postinstall.validator.ts` (intentionally without `.spec.ts`/`.test.ts`).
 - **On Windows, test can corrupt Git for Windows' MSYS runtime machine-wide, if Defender intervenes.** Symptom: `sh.exe`/`bash.exe` fail with `fatal error - add_item ... errno 1`. (if you hit this, read more in [CORRUPTED_MSYS.CAVEAT.md](./docs/agent/CORRUPTED_MSYS.CAVEAT.md))
 - **Never derive sibling tool paths from the resolved `git.exe` with a fixed relative walk.**
-  Git for Windows exposes `git.exe` from at least three directories — `Git\cmd\git.exe`,
-  `Git\bin\git.exe`, and `Git\mingw64\bin\git.exe` — and which one `whichExec('git')` picks
-  depends on **the PATH of the shell that launched the suite**, not on the machine:
-   - From PowerShell/CMD, PATH normally carries `C:\Program Files\Git\cmd`, so Git resolves
-     to `Git\cmd\git.exe`.
-   - From Git Bash, MSYS rewrites PATH and puts `/mingw64/bin` (= `Git\mingw64\bin`, which
-     also contains `git.exe`) near the front, so Git resolves to `Git\mingw64\bin\git.EXE`.
-     The uppercase extension is the `which` package appending a PATHEXT entry verbatim.
-
-   Cached executable lookups are pinned to a fingerprint of `PATH`/`PATHEXT`
-   (`getWhichExecCached`), because checking that the cached file still exists is not enough —
-   every candidate `git.exe` stays on disk, so a stale entry would otherwise be returned
-   forever. Do not "optimize" that check back to existence-only.
-
-   Note also that `createTestEnv()` resolves Git **before** it mocks `@/consts`, so a cached
-   lookup there would read the developer's real global cache rather than the current run's
-   PATH. That call therefore passes `{ noCache: true }` deliberately.
-
-   A walk like `path.resolve(path.dirname(gitExe), '..', 'bin', 'sh.exe')` is only correct
-   for the `cmd\` layout; from `mingw64\bin\` it silently yields a non-existent
-   `Git\mingw64\bin\sh.exe`, surfacing as a cryptic
-   `'...sh.exe' is not recognized as an internal or external command`. The symptom is a suite
-   that passes from one terminal and fails from another, on the same commit. Use
-   `resolvePosixShell()` from `testHelper.ts`, which climbs ancestors probing for a shell
-   that actually exists and falls back to PATH.
+  (more info in [GIT_EXECUTABLE.CAVEAT.md](./docs/agent/GIT_EXECUTABLE.CAVEAT.md))
+- **PowerShell script shims do not preserve native process semantics.** A `.ps1` shim can
+  drop pipeline input, change redirected LF bytes to CRLF, and consume empty arguments.
+  Native Windows installs must expose `gdx.exe` directly. Runtime fallback uses `gdx.cmd`,
+  which cannot preserve an explicit empty argument from PowerShell. PowerShell also sends
+  `.cmd` arguments through cmd.exe parsing, so `%VAR%` expands and metacharacters such as
+  `&`, `|`, `<`, `>`, `^`, and `"` can change argv or execute shell syntax. Only the native
+  `gdx.exe` entrypoint is byte-for-byte transparent for both streams and argv on Windows.
+- **Runtime discovery must resolve the real executable behind an npm shim.** A generated
+  `gdx.cmd` that calls `bun.cmd` adds a second batch boundary. This can leave piped Git
+  commands waiting for EOF. Probe the runtime with `process.execPath`, then store that path.
+  Generated shims prefer the stored path, but if it disappears after a runtime update they
+  repeat the probe through the same runtime command on the current `PATH` and launch the new
+  real executable directly. `gdx doctor` reports when that slower fallback was used.

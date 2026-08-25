@@ -7,5 +7,7 @@ export default {
    logLevel: 'warn' as LogLevel,
    terminalWidth: process.stdout.columns || 100,
    indexArgs: true as boolean,
+   runtimeShimActive: false,
+   runtimeShimPathFallback: false,
    threadResources: new Semaphore(4) // temporary default, will be overritten by dispatch later
 };

@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { constants: osConstants } = require('os');
 
 const DIST_DIR = path.join(__dirname, '../dist');
 const NATIVE_DIR = path.join(__dirname, '../bin/native');
@@ -25,23 +26,47 @@ function getNativeBinaryPath() {
 function runLauncher() {
    const binaryPath = getNativeBinaryPath();
 
-   // Check if native binary exists
    if (fs.existsSync(binaryPath)) {
       const child = spawn(binaryPath, process.argv.slice(2), {
          stdio: 'inherit'
       });
+      const signalHandlers = new Map();
 
-      child.on('close', (code) => {
-         process.exit(code);
+      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+         const handler = () => {
+            if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+         };
+         signalHandlers.set(signal, handler);
+         process.on(signal, handler);
+      }
+
+      const removeSignalHandlers = () => {
+         for (const [signal, handler] of signalHandlers) {
+            process.off(signal, handler);
+         }
+      };
+
+      child.once('close', (code, signal) => {
+         removeSignalHandlers();
+         if (signal) {
+            const fallbackCode = 128 + (osConstants.signals[signal] || 0);
+            try {
+               process.kill(process.pid, signal);
+               setImmediate(() => process.exit(fallbackCode));
+            } catch {
+               process.exit(fallbackCode);
+            }
+            return;
+         }
+         process.exit(code ?? 1);
       });
 
-      child.on('error', (err) => {
+      child.once('error', (err) => {
+         removeSignalHandlers();
          console.error('Failed to start native binary:', err);
          process.exit(1);
       });
    } else {
-      // Fallback to Node.js runtime (dist/index.js)
-      // Since dist/index.js is ESM, we use dynamic import
       const jsEntry = path.join(DIST_DIR, 'index.js');
       import(require('url').pathToFileURL(jsEntry)).catch(err => {
          console.error('Failed to load JS fallback:', err);

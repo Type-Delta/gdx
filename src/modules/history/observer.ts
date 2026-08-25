@@ -119,6 +119,23 @@ interface KnownTransition {
    remaining: number;
 }
 
+interface KnownManifestTransition {
+   createdAt: string;
+   refs: HistoryRefChange[];
+   command?: {
+      command: string;
+      startedAt: string;
+      finishedAt: string;
+   };
+}
+
+interface RoutedHookTransition {
+   dedupeKey: string | null;
+   startedAtMs: number;
+   finishedAtMs: number;
+   remaining: number;
+}
+
 /**
  * Verifies that the configured Git executable is new enough to implement the
  * reference-transaction hook. This check performs no repository mutation.
@@ -559,8 +576,36 @@ export async function importHistoryObserverSpool(
          left.record.id.localeCompare(right.record.id)
    );
 
+   const routedTransitions = (await readTransactionManifests(paths.transactionsDir)).flatMap(
+      (manifest): RoutedHookTransition[] => {
+         if (!manifest.command) return [];
+         if (
+            manifest.refs.length === 0 &&
+            manifest.command.command !== 'checkout' &&
+            manifest.command.command !== 'switch'
+         ) {
+            return [];
+         }
+         const startedAtMs = Date.parse(manifest.command.startedAt);
+         const finishedAtMs = Date.parse(manifest.command.finishedAt);
+         if (!Number.isFinite(startedAtMs) || !Number.isFinite(finishedAtMs)) return [];
+         return [
+            {
+               dedupeKey: manifest.refs.length ? transitionDedupeKey(manifest.refs) : null,
+               startedAtMs,
+               finishedAtMs,
+               remaining: manifest.refs.length ? 1 : Number.POSITIVE_INFINITY,
+            },
+         ];
+      }
+   );
+
    const imported: HistoryTransactionManifest[] = [];
    for (const { file, record } of pending) {
+      if (record.source === 'git-hook' && consumeRoutedHookTransition(routedTransitions, record)) {
+         await fs.rm(file, { force: true });
+         continue;
+      }
       const existing = await readHistoryTransactionManifest(
          ctx.git$,
          record.id,
@@ -608,6 +653,27 @@ export async function importHistoryObserverSpool(
       await fs.rm(file, { force: true });
    }
    return imported;
+}
+
+/** Consumes one complete hook batch already represented by a routed transaction. */
+function consumeRoutedHookTransition(
+   routed: RoutedHookTransition[],
+   record: HistoryObservedRefTransaction
+): boolean {
+   if (record.refs.length === 0) return false;
+   const timestampMs = Date.parse(record.createdAt);
+   if (!Number.isFinite(timestampMs)) return false;
+   const dedupeKey = transitionDedupeKey(record.refs);
+   const candidate = routed.find(
+      (entry) =>
+         entry.remaining > 0 &&
+         (entry.dedupeKey === dedupeKey || entry.dedupeKey === null) &&
+         timestampMs >= entry.startedAtMs &&
+         timestampMs <= entry.finishedAtMs
+   );
+   if (!candidate) return false;
+   candidate.remaining--;
+   return true;
 }
 
 /** Builds strict ref-only divergence fingerprints for an observed batch. */
@@ -1010,12 +1076,18 @@ async function readObservedTransactions(
 /** Reads the minimum common shape from already-journaled manifests. */
 async function readTransactionManifests(
    transactionDir: string
-): Promise<Array<Pick<HistoryObservedRefTransaction, 'createdAt' | 'refs'>>> {
-   const records: Array<Pick<HistoryObservedRefTransaction, 'createdAt' | 'refs'>> = [];
+): Promise<KnownManifestTransition[]> {
+   const records: KnownManifestTransition[] = [];
    for (const file of await listJsonFiles(transactionDir)) {
       const parsed = await readJsonIfPresent(file);
       if (!parsed || typeof parsed !== 'object') continue;
-      const value = parsed as { createdAt?: unknown; source?: unknown; refs?: unknown; recipe?: unknown };
+      const value = parsed as {
+         createdAt?: unknown;
+         source?: unknown;
+         refs?: unknown;
+         recipe?: unknown;
+         command?: unknown;
+      };
       if (value.source === 'gdx' && typeof value.createdAt === 'string' && Array.isArray(value.refs)) {
          const refs = [...(value.refs as HistoryRefChange[])];
          const recipe = value.recipe as HistoryInverseRecipe | undefined;
@@ -1043,7 +1115,26 @@ async function readTransactionManifests(
                }
             }
          }
-         records.push({ createdAt: value.createdAt, refs });
+         const command = value.command as {
+            command?: unknown;
+            startedAt?: unknown;
+            finishedAt?: unknown;
+         } | undefined;
+         records.push({
+            createdAt: value.createdAt,
+            refs,
+            command:
+               command &&
+               typeof command.command === 'string' &&
+               typeof command.startedAt === 'string' &&
+               typeof command.finishedAt === 'string'
+                  ? {
+                     command: command.command,
+                     startedAt: command.startedAt,
+                     finishedAt: command.finishedAt,
+                  }
+                  : undefined,
+         });
       }
    }
    return records;

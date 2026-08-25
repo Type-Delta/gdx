@@ -615,11 +615,11 @@ function parseGitGlobalOption(args: string[], index: number): ParsedGitGlobalOpt
       }
 
       if (token.startsWith(option + '=')) {
-         return { consumed: 1, gitArgs: [option, token.slice(option.length + 1)] };
+         return { consumed: 1, gitArgs: [token] };
       }
 
-      if (!option.startsWith('--') && token.startsWith(option) && token.length > option.length) {
-         return { consumed: 1, gitArgs: [option, token.slice(option.length)] };
+      if (option === '-C' && token.startsWith(option) && token.length > option.length) {
+         return { consumed: 1, gitArgs: [token] };
       }
    }
 

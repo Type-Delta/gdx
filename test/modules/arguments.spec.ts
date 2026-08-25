@@ -211,14 +211,19 @@ describe('stripGitGlobalArgs', () => {
       expect(result.cursorInGitGlobal).toBe(false);
    });
 
-   it('supports equals and compact short value forms', () => {
+   it('preserves equals and compact short forms for Git to validate', () => {
       const equalsResult = stripGitGlobalArgs(['--git-dir=.git', 'status']);
       expect(equalsResult.args).toEqual(['status']);
-      expect(equalsResult.gitArgs).toEqual(['--git-dir', '.git']);
+      expect(equalsResult.gitArgs).toEqual(['--git-dir=.git']);
 
-      const shortResult = stripGitGlobalArgs(['-Crepo', 'status']);
-      expect(shortResult.args).toEqual(['status']);
-      expect(shortResult.gitArgs).toEqual(['-C', 'repo']);
+      const compactPathResult = stripGitGlobalArgs(['-Crepo', 'status']);
+      expect(compactPathResult.args).toEqual(['status']);
+      expect(compactPathResult.gitArgs).toEqual(['-Crepo']);
+
+      // Git rejects compact -c. Keep it in command argv so Git reports that error unchanged.
+      const compactConfigResult = stripGitGlobalArgs(['-cfoo.bar=baz', 'status']);
+      expect(compactConfigResult.args).toEqual(['-cfoo.bar=baz', 'status']);
+      expect(compactConfigResult.gitArgs).toEqual([]);
    });
 
    it('stops scanning at first non-option command token', () => {

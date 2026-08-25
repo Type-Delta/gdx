@@ -13,6 +13,12 @@ import { dispatch } from './cli/dispatch';
 import { getConfig, resolveRepositoryLocationFromGit } from './common/config';
 
 const _args = process.argv.slice(2);
+global.runtimeShimActive =
+   process.env.GDX_RUNTIME_SHIM === '1' || process.env.GDX_NODE_SHIM === '1';
+global.runtimeShimPathFallback = process.env.GDX_RUNTIME_PATH_FALLBACK === '1';
+delete process.env.GDX_RUNTIME_SHIM;
+delete process.env.GDX_NODE_SHIM;
+delete process.env.GDX_RUNTIME_PATH_FALLBACK;
 
 Logger.debug(`Raw arguments: ${yuString(process.argv)}`, 'gdx');
 
@@ -68,7 +74,7 @@ async function main(): Promise<number> {
 
    if (args[0] === '--bypass') {
       // Bypass gdx and execute git directly
-      return execGit(git$, args.slice(1));
+      return execGit(ctx.git$, args.slice(1), null, '>', false);
    }
 
    // Handle global --loglevel option
@@ -86,9 +92,9 @@ async function main(): Promise<number> {
    }
 
    if (
-      args.includes('--ghelp') ||
-      args.includes('-gh') ||
-      args.includes('--gdx-help') ||
+      args.hasOption('--ghelp') ||
+      args.hasOption('-gh') ||
+      args.hasOption('--gdx-help') ||
       args.length === 0
    ) {
       cmd.help();

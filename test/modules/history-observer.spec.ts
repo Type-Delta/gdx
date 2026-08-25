@@ -96,7 +96,7 @@ describe('history reference-transaction observer', async () => {
       expect(await fs.readFile(path.join(spool, files[0]), 'utf8')).toBe(input);
    });
 
-   it('imports one direct atomic ref batch and keeps routed Git out of the spool', async () => {
+   it('imports a direct ref batch and deduplicates a routed hook batch', async () => {
       await reset();
       await installHistoryObserverHook(ctx);
 
@@ -120,7 +120,112 @@ describe('history reference-transaction observer', async () => {
       expect(await dispatch(createGdxContext(tmpDir, ['branch', 'routed-once']))).toBe(0);
       expect(
          await fs.readdir(path.join(paths.spoolDir, 'reference-transaction-spool'))
+      ).toHaveLength(1);
+
+      expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+      expect((await readHistoryTimeline(ctx.git$)).entries).toHaveLength(2);
+      expect(
+         await fs.readdir(path.join(paths.spoolDir, 'reference-transaction-spool'))
       ).toHaveLength(0);
+   });
+
+   it('deduplicates routed hook batches one-to-one without partial-batch matches', async () => {
+      await reset();
+      const observer = await installHistoryObserverHook(ctx);
+      try {
+         expect(await dispatch(createGdxContext(tmpDir, ['branch', 'routed-batch']))).toBe(0);
+         const paths = await resolveHistoryStoragePaths(ctx.git$);
+         const spool = path.join(paths.spoolDir, 'reference-transaction-spool');
+         const [originalName] = await fs.readdir(spool);
+         const original = path.join(spool, originalName);
+         const [input, stat] = await Promise.all([fs.readFile(original), fs.stat(original)]);
+
+         const duplicate = path.join(spool, 'duplicate.raw');
+         await fs.copyFile(original, duplicate);
+         await fs.utimes(duplicate, stat.atime, stat.mtime);
+
+         const head = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
+         const partial = path.join(spool, 'partial.raw');
+         await fs.writeFile(
+            partial,
+            Buffer.concat([
+               input,
+               Buffer.from(`${'0'.repeat(head.length)} ${head} refs/heads/partial-batch\n`),
+            ])
+         );
+         await fs.utimes(partial, stat.atime, stat.mtime);
+
+         expect(await importHistoryObserverSpool(ctx)).toHaveLength(2);
+         const manifests = await listHistoryTransactions(ctx.git$);
+         expect(manifests.filter((manifest) => manifest.source === 'gdx')).toHaveLength(1);
+         expect(manifests.filter((manifest) => manifest.source === 'git-hook')).toHaveLength(2);
+         expect(
+            manifests.some(
+               (manifest) => manifest.source === 'git-hook' && manifest.refs.length === 2
+            )
+         ).toBeTrue();
+         expect(await fs.readdir(spool)).toEqual([]);
+      } finally {
+         await uninstallHistoryObserverHook(ctx).catch(() => undefined);
+      }
+   });
+
+   it('deduplicates the HEAD-only hook batch from routed checkout', async () => {
+      await reset();
+      const observer = await installHistoryObserverHook(ctx);
+      try {
+         expect(await dispatch(createGdxContext(tmpDir, ['branch', 'observer-checkout']))).toBe(0);
+         expect(await dispatch(createGdxContext(tmpDir, ['checkout', 'observer-checkout']))).toBe(0);
+
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+         const manifests = await listHistoryTransactions(ctx.git$);
+         expect(
+            manifests.filter((manifest) => manifest.command?.command === 'checkout')
+         ).toHaveLength(1);
+         expect(manifests.filter((manifest) => manifest.source === 'git-hook')).toHaveLength(0);
+      } finally {
+         await uninstallHistoryObserverHook(ctx).catch(() => undefined);
+      }
+   });
+
+   it('deduplicates every hook batch from routed branch-creating checkout', async () => {
+      await reset();
+      const observer = await installHistoryObserverHook(ctx);
+      try {
+         expect(
+            await dispatch(
+               createGdxContext(tmpDir, ['checkout', '-b', 'observer-created-checkout'])
+            )
+         ).toBe(0);
+
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+         const manifests = await listHistoryTransactions(ctx.git$);
+         expect(
+            manifests.filter((manifest) => manifest.command?.command === 'checkout')
+         ).toHaveLength(1);
+         expect(manifests.filter((manifest) => manifest.source === 'git-hook')).toHaveLength(0);
+      } finally {
+         await uninstallHistoryObserverHook(ctx).catch(() => undefined);
+      }
+   });
+
+   it('deduplicates every hook batch from routed branch-creating switch', async () => {
+      await reset();
+      const observer = await installHistoryObserverHook(ctx);
+      try {
+         expect(
+            await dispatch(createGdxContext(tmpDir, ['switch', '-c', 'observer-created-switch']))
+         ).toBe(0);
+
+         expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
+         const manifests = await listHistoryTransactions(ctx.git$);
+         expect(
+            manifests.filter((manifest) => manifest.command?.command === 'switch')
+         ).toHaveLength(1);
+         expect(manifests.filter((manifest) => manifest.source === 'git-hook')).toHaveLength(0);
+      } finally {
+         await uninstallHistoryObserverHook(ctx).catch(() => undefined);
+      }
    });
 
    it('reconciles newer reflog entries only when history is directly invoked', async () => {

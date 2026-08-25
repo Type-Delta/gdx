@@ -28,6 +28,8 @@ interface PostInstallDiagnosticsModule {
       packageRoot: string;
       installInfo: Record<string, unknown> | null;
       isNative: boolean;
+      shimActive: boolean;
+      shimPathFallback: boolean;
    }) => Promise<PostInstallDiagnosticResult[]>;
 }
 
@@ -88,7 +90,7 @@ export default async function doctor(): Promise<number> {
    }
 
    const configuredRuntime =
-      process.env.GDX_RUNTIME_SHIM === '1' && typeof installInfo?.runtime === 'string'
+      global.runtimeShimActive && typeof installInfo?.runtime === 'string'
          ? installInfo.runtime
          : null;
    const isNub = !isNative && configuredRuntime === 'nub';
@@ -251,7 +253,13 @@ async function runPostInstallDiagnostics(
    try {
       const artifactUrl = pathToFileURL(artifactPath).href;
       const module = (await import(artifactUrl)) as PostInstallDiagnosticsModule;
-      return await module.runPostInstallDiagnostics({ packageRoot, installInfo, isNative });
+      return await module.runPostInstallDiagnostics({
+         packageRoot,
+         installInfo,
+         isNative,
+         shimActive: global.runtimeShimActive,
+         shimPathFallback: global.runtimeShimPathFallback,
+      });
    } catch (e) {
       const err = Err.from(e);
       return [

@@ -11,6 +11,8 @@ export interface PostInstallDiagnosticOptions {
    packageRoot: string;
    installInfo: Record<string, unknown> | null;
    isNative: boolean;
+   shimActive: boolean;
+   shimPathFallback: boolean;
 }
 
 export interface PostInstallDiagnosticResult {
@@ -214,9 +216,10 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
    }
 
    const shimInstalled = info.useGlobalShim === true || info.useLocalShim === true;
-   const shimActive =
-      process.env.GDX_RUNTIME_SHIM === '1' || process.env.GDX_NODE_SHIM === '1';
    const runtime = typeof info.runtime === 'string' ? info.runtime : 'node';
+   const limitations = Array.isArray(info.shimLimitations)
+      ? info.shimLimitations.filter((value): value is string => typeof value === 'string')
+      : [];
    if (!shimInstalled) {
       return {
          name: 'Command shim',
@@ -228,9 +231,13 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
 
    return {
       name: 'Command shim',
-      status: shimActive ? 'pass' : 'fail',
-      detail: shimActive
-         ? `The postinstall ${runtime} shim is installed and active for this invocation.`
+      status: options.shimActive
+         ? (limitations.length || options.shimPathFallback ? 'warn' : 'pass')
+         : 'fail',
+      detail: options.shimActive
+         ? options.shimPathFallback
+            ? `The recorded ${runtime} path no longer exists, so each launch resolves it through PATH. Reinstall gdx to refresh the shim and remove this startup overhead.`
+            : `The postinstall ${runtime} shim is active. Known limitations: ${limitations.join(', ') || 'none'}.`
          : `A rewritten ${runtime} shim was recorded, but this invocation bypassed it.`,
    };
 }

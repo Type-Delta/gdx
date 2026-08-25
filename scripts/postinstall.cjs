@@ -159,25 +159,51 @@ function writeFileExecutable(filePath, content) {
    setExecutable(filePath);
 }
 
-function buildRuntimeShimContents(runtimeAbsPath, launcherAbsPath) {
+/** Removes a replaceable entrypoint without failing the surrounding install. */
+function removeEntrypoint(filePath) {
+   try {
+      fs.rmSync(filePath, { force: true });
+      return true;
+   } catch {
+      return false;
+   }
+}
+
+/**
+ * Builds runtime shims that prefer the installed path and rediscover moved runtimes on PATH.
+ * @param {string} runtimeAbsPath - Runtime executable found during installation.
+ * @param {string} launcherAbsPath - Package launcher path.
+ * @param {'bun' | 'node'} runtimeName - Runtime command to rediscover on PATH.
+ * @returns {{ cmd: string, sh: string }} Windows and POSIX shim contents.
+ */
+function buildRuntimeShimContents(runtimeAbsPath, launcherAbsPath, runtimeName) {
    return {
       cmd: [
          '@echo off',
          'set "GDX_RUNTIME_SHIM=1"',
+         `if not exist "${runtimeAbsPath}" goto gdx_path_runtime`,
          `"${runtimeAbsPath}" "${launcherAbsPath}" -- %*`,
          'exit /b %ERRORLEVEL%',
-         ''
-      ].join('\r\n'),
-      ps1: [
-         '$env:GDX_RUNTIME_SHIM = "1"',
-         `& "${runtimeAbsPath}" "${launcherAbsPath}" -- @args`,
-         'exit $LASTEXITCODE',
+         ':gdx_path_runtime',
+         'set "GDX_RUNTIME_PATH_FALLBACK=1"',
+         'setlocal',
+         'set "GDX_RUNTIME_PATH="',
+         `for /f "delims=" %%G in ('${runtimeName} -e "process.stdout.write(process.execPath)"') do set "GDX_RUNTIME_PATH=%%G"`,
+         'if not defined GDX_RUNTIME_PATH exit /b 1',
+         `endlocal & "%GDX_RUNTIME_PATH%" "${launcherAbsPath}" -- %*`,
+         'exit /b %ERRORLEVEL%',
          ''
       ].join('\r\n'),
       sh: [
          '#!/usr/bin/env sh',
          'export GDX_RUNTIME_SHIM=1',
-         `exec "${runtimeAbsPath}" "${launcherAbsPath}" -- "$@"`,
+         `if [ -x "${runtimeAbsPath}" ]; then`,
+         `  exec "${runtimeAbsPath}" "${launcherAbsPath}" -- "$@"`,
+         'fi',
+         'export GDX_RUNTIME_PATH_FALLBACK=1',
+         `runtime_path="$(${runtimeName} -e 'process.stdout.write(process.execPath)')" || exit $?`,
+         '[ -n "$runtime_path" ] || exit 1',
+         `exec "$runtime_path" "${launcherAbsPath}" -- "$@"`,
          ''
       ].join('\n'),
    };
@@ -190,16 +216,51 @@ function getLocalNodeModulesBinDir() {
 function overwriteRuntimeShim(binDir, launcherAbsPath, runtime, platform = process.platform) {
    if (!binDir || !fs.existsSync(binDir)) return false;
 
-   const shims = buildRuntimeShimContents(runtime.executable, launcherAbsPath);
+   const shims = buildRuntimeShimContents(runtime.executable, launcherAbsPath, runtime.name);
 
    if (platform === 'win32') {
+      if (!removeEntrypoint(path.join(binDir, 'gdx.exe'))) return false;
+      fs.rmSync(path.join(binDir, 'gdx.ps1'), { force: true });
       writeFileExecutable(path.join(binDir, 'gdx'), shims.sh);
       writeFileExecutable(path.join(binDir, 'gdx.cmd'), shims.cmd);
-      writeFileExecutable(path.join(binDir, 'gdx.ps1'), shims.ps1);
       return true;
    }
 
    writeFileExecutable(path.join(binDir, 'gdx'), shims.sh);
+   return true;
+}
+
+/**
+ * Installs a native entrypoint without a shell boundary.
+ * @param binDir - npm bin directory to update.
+ * @param nativeAbsPath - Compiled gdx executable.
+ * @param platform - Target platform.
+ * @returns True when an entrypoint was installed.
+ */
+function overwriteNativeShim(binDir, nativeAbsPath, platform = process.platform) {
+   if (!binDir || !fs.existsSync(binDir)) return false;
+
+   if (platform === 'win32') {
+      const executablePath = path.join(binDir, 'gdx.exe');
+      if (!removeEntrypoint(executablePath)) return false;
+      try {
+         fs.linkSync(nativeAbsPath, executablePath);
+      } catch {
+         fs.copyFileSync(nativeAbsPath, executablePath);
+      }
+      fs.rmSync(path.join(binDir, 'gdx.cmd'), { force: true });
+      fs.rmSync(path.join(binDir, 'gdx.ps1'), { force: true });
+      writeFileExecutable(
+         path.join(binDir, 'gdx'),
+         ['#!/usr/bin/env sh', `exec "${nativeAbsPath}" "$@"`, ''].join('\n')
+      );
+      return true;
+   }
+
+   writeFileExecutable(
+      path.join(binDir, 'gdx'),
+      ['#!/usr/bin/env sh', `exec "${nativeAbsPath}" "$@"`, ''].join('\n')
+   );
    return true;
 }
 
@@ -232,37 +293,19 @@ function overwriteGlobalShim(nativeAbsPath) {
    const globalBin = getNpmGlobalBinDir();
    if (!globalBin) return false;
 
-   if (process.platform === 'win32') {
-      const cmdPath = path.join(globalBin, 'gdx.cmd');
-      const ps1Path = path.join(globalBin, 'gdx.ps1');
+   return overwriteNativeShim(globalBin, nativeAbsPath);
+}
 
-      const cmd = [
-         '@echo off',
-         `"${nativeAbsPath}" %*`,
-         'exit /b %ERRORLEVEL%',
-         ''
-      ].join('\r\n');
-
-      const ps1 = [
-         `& "${nativeAbsPath}" @args`,
-         'exit $LASTEXITCODE',
-         ''
-      ].join('\r\n');
-
-      writeFileExecutable(cmdPath, cmd);
-      writeFileExecutable(ps1Path, ps1);
-   } else {
-      const shPath = path.join(globalBin, 'gdx');
-
-      const sh = [
-         '#!/usr/bin/env sh',
-         `exec "${nativeAbsPath}" "$@"`,
-         ''
-      ].join('\n');
-
-      writeFileExecutable(shPath, sh);
-   }
-   return true;
+/**
+ * Installs native entrypoints in every npm bin directory available to this install.
+ * @param nativeAbsPath - Compiled gdx executable.
+ * @returns Per-directory installation results.
+ */
+function installNativeShims(nativeAbsPath) {
+   return {
+      local: overwriteNativeShim(getLocalNodeModulesBinDir(), nativeAbsPath),
+      global: overwriteGlobalShim(nativeAbsPath),
+   };
 }
 
 function findRuntimeExecutable(name, platform = process.platform) {
@@ -275,26 +318,33 @@ function findRuntimeExecutable(name, platform = process.platform) {
 
    for (const executable of String(located.stdout || '').split(/\r?\n/).filter(Boolean)) {
       const needsShell = platform === 'win32' && /\.(?:cmd|bat)$/i.test(executable);
-      const probe = spawnSync(
-         executable,
-         ['-e', "require('path');process.stdout.write('gdx-runtime')"],
-         {
+      const probe = needsShell
+         ? spawnSync(
+            process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', `""${executable}" -e "process.stdout.write(process.execPath)""`],
+            { encoding: 'utf8', windowsHide: true, windowsVerbatimArguments: true }
+         )
+         : spawnSync(executable, ['-e', 'process.stdout.write(process.execPath)'], {
             encoding: 'utf8',
-            shell: needsShell,
             windowsHide: true,
-         }
-      );
-      if (!probe.error && probe.status === 0 && probe.stdout === 'gdx-runtime') return executable;
+         });
+      const runtimeExecutable = String(probe.stdout || '').trim();
+      if (!probe.error && probe.status === 0 && fs.existsSync(runtimeExecutable)) {
+         return runtimeExecutable;
+      }
    }
    return null;
 }
 
+/**
+ * Selects the fastest available interpreted runtime without nested shell shims.
+ * @param findExecutable - Runtime executable resolver.
+ * @returns The selected runtime and executable.
+ */
 function selectFallbackRuntime(findExecutable = findRuntimeExecutable) {
-   for (const name of ['bun']) { // FIXME: waiting to runtimes with latency lower than Bun's
-      const executable = findExecutable(name);
-      if (executable) return { name, executable };
-   }
-   return { name: 'node', executable: process.execPath };
+   const bun = findExecutable('bun');
+   if (bun) return { name: 'bun', executable: bun };
+   return { name: 'node', executable: findExecutable('node') ?? process.execPath };
 }
 
 function installRuntimeFallbackShims(runtime) {
@@ -349,13 +399,18 @@ async function tryDownloadPrebuilt() {
 
    log(`Prebuilt binary installed to ${finalPath}`);
 
+   const shimInstall = installNativeShims(finalPath);
    writeInstallInfo({
       mode: 'prebuilt',
       platform,
       arch,
       version,
       userAgent: process.env.npm_config_user_agent || null,
-      useNativeShim: overwriteGlobalShim(finalPath),
+      useNativeShim: shimInstall.local || shimInstall.global,
+      useGlobalShim: shimInstall.global,
+      useLocalShim: shimInstall.local,
+      shimMode: process.platform === 'win32' ? 'native-executable' : 'native-shell',
+      shimLimitations: [],
       ts: (new Date).toLocaleString(),
       binaryPath: finalPath
    });
@@ -387,7 +442,14 @@ function tryBuildNative() {
 
    log(`Native binary built at ${finalPath}`);
 
-   writeInstallInfo(createInstallInfo('built', finalPath, overwriteGlobalShim(finalPath)));
+   const shimInstall = installNativeShims(finalPath);
+   writeInstallInfo({
+      ...createInstallInfo('built', finalPath, shimInstall.local || shimInstall.global),
+      useGlobalShim: shimInstall.global,
+      useLocalShim: shimInstall.local,
+      shimMode: process.platform === 'win32' ? 'native-executable' : 'native-shell',
+      shimLimitations: [],
+   });
 }
 
 async function main() {
@@ -417,6 +479,14 @@ async function main() {
             userAgent: process.env.npm_config_user_agent || null,
             useGlobalShim: shimInstall.global,
             useLocalShim: shimInstall.local,
+            shimMode: process.platform === 'win32' ? 'runtime-cmd' : 'runtime-shell',
+            shimLimitations: process.platform === 'win32'
+               ? [
+                  'powershell-empty-arguments',
+                  'powershell-percent-expansion',
+                  'powershell-cmd-metacharacters',
+               ]
+               : [],
             ts: (new Date).toLocaleString(),
             launcherPath: path.join(__dirname, 'launcher.cjs')
          });
@@ -440,6 +510,7 @@ module.exports = {
    getLocalNodeModulesBinDir,
    findRuntimeExecutable,
    installRuntimeFallbackShims,
+   overwriteNativeShim,
    overwriteRuntimeShim,
    readSha256FromText,
    selectFallbackRuntime,

@@ -31,7 +31,7 @@
     "README.md",
     "LICENSE"
   ],
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.0",
   "scripts": {
     "prepare-dev": "bun i && bun run transpile-esm",
     "start": "bun run src/index.ts",
@@ -69,7 +69,7 @@
     "@types/which": "^3.0.4",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
-    "bun-types": "1.3.14",
+    "bun-types": "1.4.0",
     "chai": "^6.2.2",
     "eslint": "^10.4.0",
     "execa": "^9.6.1",
