@@ -1,5 +1,6 @@
 import { describe, expect } from 'bun:test';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import pkg from '../../package.json';
 
@@ -14,7 +15,23 @@ describe('gdx doctor', async () => {
 
    const writeInstallInfo = (version: string, shimInstalled = false) => {
       const nativeDir = path.join(tmpRootDir, 'native');
-      fs.mkdirSync(nativeDir, { recursive: true });
+      const scriptsDir = path.join(tmpRootDir, 'scripts');
+      const workersDir = path.join(tmpRootDir, 'dist/workers');
+      const diagnosticsDir = path.join(tmpRootDir, 'dist/diagnostics');
+      for (const directory of [nativeDir, scriptsDir, workersDir, diagnosticsDir]) {
+         fs.mkdirSync(directory, { recursive: true });
+      }
+      fs.writeFileSync(path.join(tmpRootDir, 'package.json'), JSON.stringify(pkg));
+      fs.writeFileSync(path.join(scriptsDir, 'launcher.cjs'), '');
+      fs.writeFileSync(path.join(scriptsDir, 'postinstall.cjs'), '');
+      fs.writeFileSync(path.join(tmpRootDir, 'dist/index.js'), '');
+      fs.writeFileSync(path.join(workersDir, 'generic.worker.min.js'), '');
+      fs.writeFileSync(
+         path.join(diagnosticsDir, 'postinstall.validator.js'),
+         `export { runPostInstallDiagnostics } from ${JSON.stringify(
+            pathToFileURL(path.resolve(import.meta.dir, '../postinstall.validator.ts')).href
+         )};\n`
+      );
       fs.writeFileSync(
          path.join(nativeDir, 'install.json'),
          JSON.stringify({

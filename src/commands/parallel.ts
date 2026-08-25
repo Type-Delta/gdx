@@ -735,7 +735,13 @@ export async function removeParallelWorktree(
 
    try {
       Logger.debug(`Executing git worktree remove for '${alias}'...`, 'parallel');
-      const result = await $`${operationGit$} worktree remove ${targetPath}`;
+      const removeArgs = [
+         'worktree',
+         'remove',
+         ...(submodules.length > 0 ? ['--force'] : []),
+         targetPath,
+      ];
+      const result = await $`${operationGit$} ${removeArgs}`;
       spinnerCtrl.stop();
 
       quickPrint(result.stdout.trim());

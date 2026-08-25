@@ -946,11 +946,8 @@ describe('gdx parallel', async () => {
             const removeCtx = createGdxContext(tmpDir, ['parallel', 'remove', 'feature-deinit']);
             const removeResult = await parallel(removeCtx);
 
-            if (removeResult === 0) {
-               expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
-            } else {
-               expect(isSubmoduleRemovalBlockedError(buffer.stderr)).toBe(true);
-            }
+            expect(removeResult).toBe(0);
+            expect(buffer.stdout.toLowerCase()).toContain('removed worktree');
          } finally {
             await forceRemoveWorktreePath(forkPath);
             await fs.rm(path.join(tmpDir, 'deps'), { recursive: true, force: true });
