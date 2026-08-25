@@ -173,6 +173,7 @@ Run \`${SGR.cyan}${EXECUTABLE_NAME} ghelp <command>${SGR.reset}\` for detailed h
 ${SGR.bright + _2PointGradient('OPTIONS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
 ${SGR.cyan}--init <shell>         ${SGR.reset}Output shell initialization script for given shell.
 ${SGR.cyan}--bypass               ${SGR.reset}Bypass gdx and execute git directly with the provided arguments.
+${SGR.cyan}--[no-]color[=<value>] ${SGR.reset}Force color output or specify color level ('256', '16m').
 ${SGR.cyan}--no-enhance           ${SGR.reset}Bypass gdx enhanced Git's output.
 ${SGR.cyan}--loglevel <level>     ${SGR.reset}Set log level (error, warning, info, debug).
 ${SGR.cyan}--ghelp,               ${SGR.reset}Show GDX help message. ${SGR.dim}(use \`${SGR.cyan}ghelp <command>${SGR.reset}\`

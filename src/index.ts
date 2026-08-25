@@ -1,4 +1,5 @@
-import { Err, yuString } from '../lib/esm/Tools';
+import supportsColor from 'supports-color';
+import { CheckCache, Err, yuString } from '@lib/Tools';
 import path from 'path';
 
 import cmd from './commands';
@@ -19,6 +20,9 @@ global.runtimeShimPathFallback = process.env.GDX_RUNTIME_PATH_FALLBACK === '1';
 delete process.env.GDX_RUNTIME_SHIM;
 delete process.env.GDX_NODE_SHIM;
 delete process.env.GDX_RUNTIME_PATH_FALLBACK;
+
+CheckCache.supportsColor = typeof supportsColor.stdout === 'object'
+   ? supportsColor.stdout.level : (supportsColor.stdout ? 1 : 0);
 
 Logger.debug(`Raw arguments: ${yuString(process.argv)}`, 'gdx');
 

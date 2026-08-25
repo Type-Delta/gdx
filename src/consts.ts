@@ -268,10 +268,10 @@ export const GDX_SHORTHANDS = [
    'wt', // worktree
 ] as const;
 
-export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass', '--no-enhance'] as const;
+export const GDX_GLOBAL_FLAGS = ['--loglevel', '--ghelp', '--bypass', '--no-enhance', '--color', '--no-color'] as const;
 
-export const GDX_OPTIONS_WITH_VALUES = ['--loglevel', '--init', '--shell', '--cmd'] as const;
-export const GDX_OPTIONS_NO_VALUES = ['--ghelp', '--bypass', '--no-enhance', '-gh'] as const;
+export const GDX_OPTIONS_WITH_VALUES = ['--loglevel', '--init', '--shell', '--cmd', '--color'] as const;
+export const GDX_OPTIONS_NO_VALUES = ['--ghelp', '--bypass', '--no-enhance', '--no-color', '-gh'] as const;
 
 // Git stuff
 export const GIT_GLOBAL_OPTIONS_WITH_VALUES = [

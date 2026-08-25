@@ -78,6 +78,7 @@
     "litedent": "^0.1.0",
     "prettier": "^3.8.3",
     "smol-toml": "^1.6.1",
+    "supports-color": "^11.0.0",
     "tinybench": "^6.0.2",
     "tsx": "^4.22.3",
     "tty-strings": "^1.5.2",
