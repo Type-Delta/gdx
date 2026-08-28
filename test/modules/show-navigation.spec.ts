@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import litedent from 'litedent';
 
 import * as fs from '@/modules/fs';
 import {
@@ -45,16 +46,16 @@ describe('show navigation helpers', async () => {
    });
 
    it('should rebuild enhanced show text with enriched preamble before the diff body', () => {
-      const diffText = [
-         'commit abc123456789',
-         'Author: Test User <test@example.com>',
-         'Date:   Sat May 16 12:00:00 2026 +0700',
-         '',
-         '    subject',
-         '',
-         'diff --git a/README.md b/README.md',
-         'index 1111111..2222222 100644',
-      ].join('\n');
+      const diffText = litedent`
+         commit abc123456789
+         Author: Test User <test@example.com>
+         Date:   Sat May 16 12:00:00 2026 +0700
+
+             subject
+
+         diff --git a/README.md b/README.md
+         index 1111111..2222222 100644
+      `;
 
       expect(
          buildEnhancedShowDiffText(diffText, {
@@ -62,30 +63,30 @@ describe('show navigation helpers', async () => {
             stat: ' README.md | 1 +\n 1 file changed, 1 insertion(+)',
          })
       ).toBe(
-         [
-            'Commit: abc123456789 (HEAD)',
-            'Author: Test User <test@example.com>',
-            'Date:   Sat May 16 12:00:00 2026 +0700',
-            '',
-            '    subject',
-            '',
-            ' README.md | 1 +',
-            ' 1 file changed, 1 insertion(+)',
-            '',
-            'diff --git a/README.md b/README.md',
-            'index 1111111..2222222 100644',
-         ].join('\n')
+         litedent`
+            Commit: abc123456789 (HEAD)
+            Author: Test User <test@example.com>
+            Date:   Sat May 16 12:00:00 2026 +0700
+
+                subject
+
+             README.md | 1 +
+             1 file changed, 1 insertion(+)
+
+            diff --git a/README.md b/README.md
+            index 1111111..2222222 100644
+         `
       );
    });
 
    it('should rebuild enhanced show text for commits without a diff body', () => {
-      const diffText = [
-         'commit abc123456789',
-         'Author: Test User <test@example.com>',
-         'Date:   Sat May 16 12:00:00 2026 +0700',
-         '',
-         '    empty commit',
-      ].join('\n');
+      const diffText = litedent`
+         commit abc123456789
+         Author: Test User <test@example.com>
+         Date:   Sat May 16 12:00:00 2026 +0700
+
+             empty commit
+      `;
 
       expect(isGitShowCommitOutput(diffText)).toBeTrue();
       expect(separateShowPreamble(diffText)).toEqual({
@@ -93,15 +94,13 @@ describe('show navigation helpers', async () => {
          preamble: diffText.split('\n'),
       });
       expect(buildEnhancedShowDiffText(diffText, { relativeRef: 'HEAD~1' })).toBe(
-         [
-            'Commit: abc123456789 (HEAD~1)',
-            'Author: Test User <test@example.com>',
-            'Date:   Sat May 16 12:00:00 2026 +0700',
-            '',
-            '    empty commit',
-            '',
-            '',
-         ].join('\n')
+         litedent`
+            Commit: abc123456789 (HEAD~1)
+            Author: Test User <test@example.com>
+            Date:   Sat May 16 12:00:00 2026 +0700
+
+                empty commit
+         ` + '\n\n'
       );
    });
 
@@ -142,13 +141,7 @@ describe('show navigation helpers', async () => {
 
       expect(plan.targetRef).toBe('aaa');
       expect(plan.targetIndex).toBe(2);
-      expect(plan.navigationArgs).toEqual([
-         '--author',
-         'Test User',
-         'HEAD',
-         '--',
-         'README.md',
-      ]);
+      expect(plan.navigationArgs).toEqual(['--author', 'Test User', 'HEAD', '--', 'README.md']);
    });
 
    it('should hide unavailable show navigation actions', () => {
@@ -219,7 +212,11 @@ describe('show navigation helpers', async () => {
    });
 
    it('should skip line-log ranges while finding the target commit', () => {
-      const separateValuePlan = buildShowCommitNavigationPlan(['-L', ':handler:src/index.ts', 'abc']);
+      const separateValuePlan = buildShowCommitNavigationPlan([
+         '-L',
+         ':handler:src/index.ts',
+         'abc',
+      ]);
       const inlineValuePlan = buildShowCommitNavigationPlan(['-L:handler:src/index.ts', 'abc']);
 
       expect(separateValuePlan.targetRef).toBe('abc');
@@ -301,7 +298,8 @@ describe('show navigation helpers', async () => {
          prev: readmeOne,
          next: readmeTwo,
       });
-      expect(buildShowCommitNavigationActions(adjacentBlobCommits).map((action) => action.label))
-         .toEqual(['prev', 'next']);
+      expect(
+         buildShowCommitNavigationActions(adjacentBlobCommits).map((action) => action.label)
+      ).toEqual(['prev', 'next']);
    });
 });

@@ -1,5 +1,6 @@
 import { describe, expect } from 'bun:test';
 import fs from 'fs/promises';
+import litedent from 'litedent';
 import path from 'path';
 
 import { loadLocalWordlist } from '@/modules/spellcheck';
@@ -39,17 +40,17 @@ describe('spellcheck module', async () => {
       await fs.mkdir(path.dirname(settingsPath), { recursive: true });
       await fs.writeFile(
          settingsPath,
-         [
-            '{',
-            '   // Formatting preferences are irrelevant here.',
-            '   "editor.formatOnSave": true,',
-            '   /* block comment with a "quoted, comma" inside */',
-            '   "cSpell.words": ["Catppuccin", "VPALETTE"],',
-            '   "cSpell.userWords": ["medoid"],',
-            '   "cSpell.ignoreWords": ["asdfgh"],',
-            '   "cSpell.flagWords": ["hte"],',
-            '}',
-         ].join('\n')
+         litedent`
+            {
+               // Formatting preferences are irrelevant here.
+               "editor.formatOnSave": true,
+               /* block comment with a "quoted, comma" inside */
+               "cSpell.words": ["Catppuccin", "VPALETTE"],
+               "cSpell.userWords": ["medoid"],
+               "cSpell.ignoreWords": ["asdfgh"],
+               "cSpell.flagWords": ["hte"],
+            }
+         `
       );
 
       const wordlist = await loadLocalWordlist(root);

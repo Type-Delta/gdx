@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { describe, expect, it as bunIt } from 'bun:test';
+import litedent from 'litedent';
 
 import { whichExec } from '@/modules/shell';
 import { createTestEnv } from '@/utils/testHelper';
@@ -106,8 +107,8 @@ describe('source launch contract', async () => {
          Promise.all(
             children.map(
                (child) =>
-                  new Promise<{ status: number | null; signal: NodeJS.Signals | null }>(
-                     (done) => child.once('close', (status, signal) => done({ status, signal }))
+                  new Promise<{ status: number | null; signal: NodeJS.Signals | null }>((done) =>
+                     child.once('close', (status, signal) => done({ status, signal }))
                   )
             )
          ).then((statuses) =>
@@ -183,10 +184,10 @@ describe('source launch contract', async () => {
       const shellModule = pathToFileURL(
          path.resolve(import.meta.dir, '../../src/modules/shell.ts')
       ).href;
-      const probe = [
-         `import { execCommand } from ${JSON.stringify(shellModule)};`,
-         `await execCommand(${JSON.stringify(nodeExe)}, ['-e', ${JSON.stringify(selfTerminate)}], 'probe', null, '>', false);`,
-      ].join('\n');
+      const probe = litedent`
+         import { execCommand } from ${JSON.stringify(shellModule)};
+         await execCommand(${JSON.stringify(nodeExe)}, ['-e', ${JSON.stringify(selfTerminate)}], 'probe', null, '>', false);
+      `;
       expect(await run(process.execPath, ['-e', probe])).toEqual(direct);
    });
 
@@ -195,13 +196,12 @@ describe('source launch contract', async () => {
          path.resolve(import.meta.dir, '../../src/modules/shell.ts')
       ).href;
       const missing = path.join(tmpDir, '__gdx_missing_executable__');
-      const probe = [
-         `import { execCommand } from ${JSON.stringify(shellModule)};`,
-         `process.exit(await execCommand(${JSON.stringify(missing)}, [], 'probe', null, '>', false));`,
-      ].join('\n');
+      const probe = litedent`
+         import { execCommand } from ${JSON.stringify(shellModule)};
+         process.exit(await execCommand(${JSON.stringify(missing)}, [], 'probe', null, '>', false));
+      `;
       const result = await run(process.execPath, ['-e', probe]);
       expect(result.status).toBe(1);
       expect(result.signal).toBeNull();
    });
-
 });

@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'bun:test';
+import litedent from 'litedent';
 
 import { redactSensitiveContent } from '@/utils/redact';
 
 describe('redactSensitiveContent', () => {
    it('should redact sensitive-looking values and preserve surrounding text', () => {
-      const input = [
-         'before',
-         'api_key="first-secret"',
-         'middle',
-         'access_token="second-secret"',
-         'after',
-      ].join('\n');
+      const input = litedent`
+         before
+         api_key="first-secret"
+         middle
+         access_token="second-secret"
+         after
+      `;
 
       const result = redactSensitiveContent(input);
 
@@ -63,10 +64,10 @@ describe('redactSensitiveContent', () => {
    });
 
    it('should ignore object and expression values after sensitive-looking keys', () => {
-      const input = [
-         `apiKey: envRefSchema.default({ env: 'LLM_API_KEY' }),`,
-         `model: { apiKey: { env: 'LLM_API_KEY' }, model: { env: 'LLM_MODEL' } },`,
-      ].join('\n');
+      const input = litedent`
+         apiKey: envRefSchema.default({ env: 'LLM_API_KEY' }),
+         model: { apiKey: { env: 'LLM_API_KEY' }, model: { env: 'LLM_MODEL' } },
+      `;
 
       const result = redactSensitiveContent(input);
 

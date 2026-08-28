@@ -1,4 +1,5 @@
 import { ExecaError } from 'execa';
+import litedent from 'litedent';
 import path from 'path';
 
 import { yuString } from '@lib/Tools';
@@ -66,7 +67,10 @@ export default async function merge(ctx: GdxContext): Promise<number> {
 
    if (targetBranch) {
       if (mergeArgs.length === 0) {
-         Logger.error('`merge --target` requires merge arguments to apply to the target branch.', 'merge');
+         Logger.error(
+            '`merge --target` requires merge arguments to apply to the target branch.',
+            'merge'
+         );
          return 1;
       }
 
@@ -291,10 +295,7 @@ function canUseDirectFastForward(mergeArgs: ArgsSet, sourceRef: string): boolean
  * @param sourceRef User supplied merge source.
  * @returns True when the source resolves to a tag object.
  */
-async function isAnnotatedTag(
-   git$: GdxContext['git$'],
-   sourceRef: string
-): Promise<boolean> {
+async function isAnnotatedTag(git$: GdxContext['git$'], sourceRef: string): Promise<boolean> {
    try {
       const result = await $`${git$} cat-file -t ${sourceRef}`;
       return result.stdout.trim() === 'tag';
@@ -532,13 +533,12 @@ export const help = {
    long: () =>
       `Extends git merge with ${SGR.cyan}--target <branch>${SGR.reset} for merging into a local branch without checking it out first.`,
    short: 'Merge into the current branch or a target branch.',
-   usage: () =>
-      [
-         `${SGR.cyan}${EXECUTABLE_NAME} merge ${SGR.dim}<git-merge-args>${SGR.reset}`,
-         `${SGR.cyan}${EXECUTABLE_NAME} merge ${SGR.dim}<source>${SGR.reset} ${SGR.cyan}--target${SGR.reset} ${SGR.dim}<branch>${SGR.reset}`,
-         `${SGR.cyan}${EXECUTABLE_NAME} merge --continue${SGR.reset}`,
-         `${SGR.cyan}${EXECUTABLE_NAME} merge --abort${SGR.reset}`,
-      ].join('\n'),
+   usage: () => litedent`
+   ${SGR.cyan}${EXECUTABLE_NAME} merge ${SGR.dim}<git-merge-args>${SGR.reset}
+   ${SGR.cyan}${EXECUTABLE_NAME} merge ${SGR.dim}<source>${SGR.reset} ${SGR.cyan}--target${SGR.reset} ${SGR.dim}<branch>${SGR.reset}
+   ${SGR.cyan}${EXECUTABLE_NAME} merge --continue${SGR.reset}
+   ${SGR.cyan}${EXECUTABLE_NAME} merge --abort${SGR.reset}
+   `,
 } as const satisfies CommandHelpObj;
 
 export const structure = {
