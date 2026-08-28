@@ -1,5 +1,33 @@
 # Changelog
 
+## Version 0.5.1 - 2026-08-25
+
+### Added
+
+- `gdx merge <source> --target <branch>` merges into another local branch without checking it out. Fast-forward merges update the branch directly. Other merges use a registered worktree and preserve conflicts for review.
+- `gdx sync` pulls the current branch and pushes it after a successful pull. Use `--target <branch>` to sync another local branch with its configured upstream without checking it out.
+- `gdx parallel rename <alias> <new-alias>` renames a registered fork worktree and updates its metadata.
+- Git worktree command routing, including the `wt` alias and `ls` and `rm` subcommand aliases.
+- Global `--color`, `--color=<value>`, and `--no-color` options. Supported color values include `256` and `16m`.
+- Commit linting now reads repository terms from VS Code and cspell configuration files. Control this behavior with `lint.useLocalWordlist` or `GDX_LINT_USE_LOCAL_WORDLIST`.
+
+### Changed
+
+- `gdx parallel join` now rebases the fork before it fast-forwards the origin worktree. It preserves `--all` stashes, supports interactive commit removal, checks for origin changes, and updates submodules.
+- History transactions for rebase, cherry-pick, and reword now store replayable repository snapshots. Snapshots include refs, the index, tracked files, and required Git objects.
+- `gdx history` now retains diverged transactions as audit records and shows recorded, reverted, and diverged states.
+- Contributor links in `gdx stats` now open provider-specific user searches instead of assuming that commit author names are account names.
+
+### Fixed
+
+- Fixed native and runtime launchers so they preserve standard input, output streams, arguments, exit codes, and signals across platforms.
+- Fixed Windows installs to use a native executable instead of a PowerShell shim. Git Bash installs also receive an extensionless launcher.
+- Fixed launcher recovery after a stored Bun or Node executable moves. `gdx doctor` now reports fallback use and active shim limits.
+- Fixed routed history hooks so direct Git execution bypasses history guards and duplicate transactions are not recorded.
+- Fixed cache isolation and invalidation for Git data, macros, executable lookup paths, repository changes, and concurrent writes.
+- Fixed sensitive-content redaction for named secrets, credential URLs, API tokens, and private keys.
+- Fixed single-commit `gdx reword` output so it shows a concise old-to-new HEAD summary.
+
 ## Version 0.5.0 - 2026-07-03
 
 ### Added
