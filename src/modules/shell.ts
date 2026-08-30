@@ -145,10 +145,7 @@ export function createAbortableExec(options: Options = {}) {
    } as const;
 }
 
-/**
- * An execa instance configured to inherit stdin/stdout/stderr from the parent process.
- */
-export const $inherit = limitExeca(execa({
+const native$inherit = limitExeca(execa({
    env: GDX_HISTORY_GUARD_ENV,
    stdin: 'inherit',
    stdout: 'inherit',
@@ -156,13 +153,50 @@ export const $inherit = limitExeca(execa({
    verbose: execaCustomLogger,
 }));
 
-const $forward = limitExeca(execa({
+type InheritedExecInterceptor = (
+   executeNative: (...args: unknown[]) => unknown,
+   args: unknown[]
+) => unknown;
+
+let inheritedExecInterceptor: InheritedExecInterceptor | undefined;
+
+/**
+ * Installs a process-local interceptor for inherited subprocesses.
+ * This exists so the test harness can pipe native output into its per-test buffer.
+ * @param interceptor - Interceptor to install, or undefined to restore native inheritance.
+ */
+export function setInheritedExecInterceptorForTests(
+   interceptor: InheritedExecInterceptor | undefined
+): void {
+   inheritedExecInterceptor = interceptor;
+}
+
+/** Executes an inherited subprocess through the active test interceptor, when present. */
+function executeInherited(nativeExec: typeof native$inherit, args: unknown[]): unknown {
+   const executeNative = nativeExec as unknown as (...values: unknown[]) => unknown;
+   return inheritedExecInterceptor
+      ? inheritedExecInterceptor(executeNative, args)
+      : executeNative(...args);
+}
+
+/**
+ * An execa instance configured to inherit stdin/stdout/stderr from the parent process.
+ */
+export const $inherit = ((...args: unknown[]) => {
+   return executeInherited(native$inherit, args);
+}) as typeof native$inherit;
+
+const native$forward = limitExeca(execa({
    stdin: 'inherit',
    stdout: 'inherit',
    stderr: 'inherit',
    reject: false,
    verbose: execaCustomLogger,
 }));
+
+const $forward = ((...args: unknown[]) => {
+   return executeInherited(native$forward, args);
+}) as typeof native$forward;
 
 /**
  * Prints a styled command preview before executing an expanded wrapper command.

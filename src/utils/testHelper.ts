@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import * as fs from '@/modules/fs';
+import nativeFs from 'node:fs';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 
@@ -10,15 +11,22 @@ import type { LLMRequest } from '@/common/adapters/llm';
 import { ArgsSet } from '../modules/arguments';
 import { resetConfig } from '@/common/config';
 import { resetCache } from '@/common/cache';
-import { $, openInEditor, SpinnerController, whichExec } from '@/modules/shell';
+import {
+   $,
+   openInEditor,
+   setInheritedExecInterceptorForTests,
+   SpinnerController,
+   whichExec,
+} from '@/modules/shell';
 import { it, mock } from 'bun:test';
 import global from '../global';
-import { noop, setQuickPrintWriter } from '@/utils/utilities';
+import { noop, quickPrint, setQuickPrintWriter } from '@/utils/utilities';
 import { setLoggerSink, type LogRecord } from '@/utils/logger';
 import { stripAnsiColor } from '@/modules/graphics';
 import { MockLLMAdapter } from '@/common/adapters/llm/mock';
 
-let testEnvCleared = false;
+let fallbackTestRunDir: string | null = null;
+let testEnvironmentNoticeShown = false;
 let gitExePath: string | null = null;
 const stdioStore = new AsyncLocalStorage<{
    buffer: { stdout: string; stderr: string; logs: string };
@@ -30,6 +38,7 @@ let originalStderrWrite: typeof process.stderr.write | null = null;
 const USE_NATIVE_SUBMODULE_IN_TESTS = process.env.GDX_USE_INLINE_SUBMODULE === 'off';
 const USE_NATIVE_GIT_CONFIG_IN_TESTS = process.env.GDX_USE_INLINE_GIT_CONFIG === 'off';
 const BASE_TEST_ENV_DIR = path.resolve(import.meta.dir, '../../test/env');
+const RUN_DIRECTORY_NAME = /^\d{13}(?:-\d{1,3})?$/;
 const __openInEditor = openInEditor;
 
 interface TestSystem {
@@ -212,9 +221,7 @@ export async function unsetTestGitConfig(
  * @param options Configuration options for the test environment setup
  * @return An object containing the path to the temporary project directory, a shell function for executing commands within that directory, a buffer for captured output, a test environment tracker, a cleanup function to remove temporary files, and a custom 'it' function for defining tests if the test harness is initialized.
  */
-export async function createTestEnv(
-   options: TestEnvOptions = {}
-) {
+export async function createTestEnv(options: TestEnvOptions = {}) {
    const resolvedOptions = {
       autoResetBuffer: options.autoResetBuffer ?? true,
       liteMode: options.liteMode ?? false,
@@ -225,26 +232,12 @@ export async function createTestEnv(
          ...options.overwrites,
       },
    };
-   const clearedTestEnvs = clearTestEnvs();
-   if (clearedTestEnvs && process.platform === 'win32') {
-      if (USE_NATIVE_SUBMODULE_IN_TESTS) {
-         console.log(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
-      }
-
-      if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
-         console.log(ncc('Yellow') + 'Using native git config in tests' + ncc());
-      }
-
-      console.log(
-         ncc('Yellow') +
-         'Warning: Process forking/spawning and I/O operations on Windows are unbelievably slow (>10X slower); Expect tests timeout when host is busy. Close resources intensive apps before running tests.' +
-         ncc()
-      );
-   }
-   fs.mkdirSync(BASE_TEST_ENV_DIR, { recursive: true });
+   printTestEnvironmentNotices();
+   const testRunDir = getTestRunDir();
+   fs.mkdirSync(testRunDir, { recursive: true });
 
    const tmpDir = fs.mkdtempSync(
-      BASE_TEST_ENV_DIR + (resolvedOptions.suitName ? `/${resolvedOptions.suitName}-` : '/')
+      testRunDir + (resolvedOptions.suitName ? `/${resolvedOptions.suitName}-` : '/')
    );
    const tmpDirName = path.basename(tmpDir);
 
@@ -296,8 +289,8 @@ export async function createTestEnv(
       resolvedOptions.liteMode
          ? Promise.resolve()
          : // Native (non-inline) submodule commands clone fixtures from local paths,
-         // which git blocks by default since 2.38.1 (CVE-2022-39253).
-         fs.writeFile(globalConfigPath, '[protocol "file"]\n\tallow = always\n'),
+           // which git blocks by default since 2.38.1 (CVE-2022-39253).
+           fs.writeFile(globalConfigPath, '[protocol "file"]\n\tallow = always\n'),
    ];
 
    if (gdxConfigDir) {
@@ -406,48 +399,66 @@ function overrideModules(
    mock.clearAllMocks();
    mock.module('@/common/adapters/llm/index', () => ({
       getLLMProvider: () => {
-         return new MockLLMAdapter(
-            {
-               responseDelayMs: 1,
-               streamDelayMs: 0,
-            }
-         )
-      }
+         return new MockLLMAdapter({
+            responseDelayMs: 1,
+            streamDelayMs: 0,
+         });
+      },
    }));
 
    mock.module('@/modules/shell', () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const original = require('../modules/shell');
-      const inherited$ = original.$({ stdin: 'inherit' });
-      const $inherit = (strings: TemplateStringsArray, ...values: unknown[]) => {
-         const subprocess = inherited$(strings, ...values);
-         if (subprocess?.stdout) {
-            subprocess.stdout.on('data', (chunk: Buffer | string) => {
-               const text = typeof chunk === 'string' ? chunk : chunk.toString();
-               const store = stdioStore.getStore();
-               if (store) {
-                  store.buffer.stdout += text;
-               } else if (originalStdoutWrite) {
-                  originalStdoutWrite(text);
-               }
-            });
+      /** Copies completed inherited-process output into the active test buffer. */
+      const appendInheritedOutput = (result: unknown): void => {
+         if (!result || typeof result !== 'object') return;
+         const output = result as { stdout?: unknown; stderr?: unknown };
+         for (const [stream, value] of Object.entries(output)) {
+            if (stream !== 'stdout' && stream !== 'stderr') continue;
+            const text =
+               typeof value === 'string'
+                  ? value
+                  : value instanceof Uint8Array
+                    ? Buffer.from(value).toString()
+                    : '';
+            if (!text) continue;
+            const store = stdioStore.getStore();
+            if (store) {
+               store.buffer[stream] += text;
+            } else if (stream === 'stdout' && originalStdoutWrite) {
+               originalStdoutWrite(text);
+            } else if (stream === 'stderr' && originalStderrWrite) {
+               originalStderrWrite(text);
+            }
          }
-         if (subprocess?.stderr) {
-            subprocess.stderr.on('data', (chunk: Buffer | string) => {
-               const text = typeof chunk === 'string' ? chunk : chunk.toString();
-               const store = stdioStore.getStore();
-               if (store) {
-                  store.buffer.stderr += text;
-               } else if (originalStderrWrite) {
-                  originalStderrWrite(text);
-               }
-            });
-         }
-         return subprocess;
       };
+
+      /** Runs one otherwise-inherited process with stdout and stderr piped. */
+      const captureInheritedExec = async (
+         executeNative: (...args: unknown[]) => unknown,
+         args: unknown[]
+      ): Promise<unknown> => {
+         const pipedExec = executeNative({ stdout: 'pipe', stderr: 'pipe' }) as (
+            ...args: unknown[]
+         ) => Promise<unknown>;
+         try {
+            const result = await pipedExec(...args);
+            appendInheritedOutput(result);
+            return result;
+         } catch (error) {
+            appendInheritedOutput(error);
+            throw error;
+         }
+      };
+
+      setInheritedExecInterceptorForTests(
+         (executeNative: (...args: unknown[]) => unknown, args: unknown[]) =>
+            stdioStore.getStore()
+               ? captureInheritedExec(executeNative, args)
+               : executeNative(...args)
+      );
       return {
          ...original,
-         $inherit,
          copyToClipboard: async (content: string) => {
             tracker.sysClipboard.push(content);
             return true;
@@ -469,8 +480,8 @@ function overrideModules(
                stop: () => {
                   tracker.spinnerStatus = 'stopped';
                },
-               setMessage: () => { },
-               updateProgress: () => { },
+               setMessage: () => {},
+               updateProgress: () => {},
                options: {} as Required<SpinnerOptions>,
             } satisfies SpinnerController;
          },
@@ -530,7 +541,7 @@ function overrideModules(
             bgWhite: '',
             bgRed: '',
             bgYellow: '',
-         } as const satisfies Record<string, string>
+         } as const satisfies Record<string, string>,
       };
    });
 
@@ -538,14 +549,9 @@ function overrideModules(
 }
 
 /**
- * Identifier shared by every test process/module instance belonging to the same
- * `bun test` invocation.
- *
- * - With `bun test --parallel`, every worker is a child of the same orchestrator
- *   process, so the parent pid identifies the run across workers. (`--parallel`
- *   also implies `--isolate`, which reloads this module per file, so a module-level
- *   flag alone cannot dedupe the env clearing.)
- * - In serial mode a single process runs all files; its own pid identifies the run.
+ * Returns an identifier shared by workers belonging to one Bun test invocation.
+ * Parallel workers have the same orchestrator parent; a serial process uses its
+ * own pid. The identifier is only used for the non-coordinated fallback marker.
  */
 function getTestRunKey(): string {
    if (process.env.BUN_TEST_WORKER_ID) {
@@ -555,60 +561,197 @@ function getTestRunKey(): string {
 }
 
 /**
- * Removes leftovers in `test/env` from previous test runs, exactly once per
- * `bun test` invocation — even when multiple worker processes (`--parallel`)
- * or per-file module reloads (`--isolate`) race to call it.
+ * Resolves the root under which this invocation's suite environments live.
  *
- * Coordination protocol:
- * 1. If a marker file named after the current run key already exists, a sibling
- *    of this run has already claimed the clearing — do nothing.
- * 2. Otherwise snapshot the directory listing, then try to create the marker
- *    with the exclusive `wx` flag. Losing that race means a sibling claimed it
- *    first — do nothing.
- * 3. The winner deletes only the entries from its pre-claim snapshot. No sibling
- *    can have created an env before the marker existed, so everything in the
- *    snapshot (including markers of previous runs) is guaranteed stale, and
- *    envs created by siblings afterwards are never touched.
+ * Coordinated test wrappers provide an absolute `GDX_TEST_RUN_DIR` directly
+ * below `test/env`; that value is preferred. Direct imports use an atomic marker
+ * to make one unique fallback root discoverable by all Bun workers sharing the
+ * invocation. Fallback roots use the same compact timestamp names as the
+ * coordinated runner. The fallback deliberately leaves existing entries untouched;
+ * lifecycle cleanup belongs to the wrapper (or the returned suite cleanup).
  */
-function clearTestEnvs(): boolean {
-   if (testEnvCleared) return false;
+function getTestRunDir(): string {
+   const configuredRunDir = process.env.GDX_TEST_RUN_DIR?.trim();
+   if (configuredRunDir) {
+      // The wrapper supplies an absolute path. Resolving a relative value below
+      // the repository anchor keeps direct, hand-written imports safe as well.
+      const resolvedRunDir = path.isAbsolute(configuredRunDir)
+         ? path.resolve(configuredRunDir)
+         : path.resolve(BASE_TEST_ENV_DIR, configuredRunDir);
+      if (!isDirectChildPath(resolvedRunDir)) {
+         throw new Error(
+            `GDX_TEST_RUN_DIR must resolve to a direct child of "${BASE_TEST_ENV_DIR}"; received "${configuredRunDir}".`
+         );
+      }
+      // Do not follow a direct-child symlink out of the repository.
+      if (nativeFs.existsSync(resolvedRunDir)) {
+         try {
+            if (!isDirectChildPath(nativeFs.realpathSync.native(resolvedRunDir))) {
+               throw new Error('configured path resolves outside the test environment');
+            }
+         } catch {
+            throw new Error(
+               `GDX_TEST_RUN_DIR must resolve to a direct child of "${BASE_TEST_ENV_DIR}"; received "${configuredRunDir}".`
+            );
+         }
+      }
+      return resolvedRunDir;
+   }
 
-   const markerName = `.gdx-test-run-${getTestRunKey()}`;
-   const markerPath = path.join(BASE_TEST_ENV_DIR, markerName);
+   if (fallbackTestRunDir) return fallbackTestRunDir;
 
    fs.mkdirSync(BASE_TEST_ENV_DIR, { recursive: true });
 
-   if (fs.existsSync(markerPath)) {
-      testEnvCleared = true;
-      return false;
-   }
-
-   let staleEntries: string[];
-   try {
-      staleEntries = fs.readdirSync(BASE_TEST_ENV_DIR);
-   } catch {
-      console.error(`Failed to list test envs in: ${BASE_TEST_ENV_DIR}`);
-      return false;
-   }
-
-   try {
-      fs.writeFileSync(markerPath, `pid: ${process.pid}\n`, { flag: 'wx' });
-   } catch {
-      testEnvCleared = true;
-      return false;
-   }
-
-   console.log(`Clearing stale test envs in: ${BASE_TEST_ENV_DIR}`);
-   for (const entry of staleEntries) {
-      if (entry === markerName) continue;
+   const markerPath = path.join(BASE_TEST_ENV_DIR, `.gdx-fallback-run-${getTestRunKey()}`);
+   const invalidMarker = (reason: string): never => {
+      throw new Error(
+         `Invalid fallback test-run marker "${markerPath}": ${reason} Remove the marker and retry.`
+      );
+   };
+   const readMarker = (): string | undefined => {
+      let markerStats: nativeFs.Stats;
       try {
-         fs.rmSync(path.join(BASE_TEST_ENV_DIR, entry), { recursive: true, force: true });
+         markerStats = nativeFs.lstatSync(markerPath);
+      } catch (error) {
+         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            return undefined;
+         }
+         return invalidMarker('the marker cannot be read');
+      }
+      if (!markerStats.isFile()) return invalidMarker('it is not a regular file');
+
+      let candidate: string;
+      try {
+         candidate = nativeFs.readFileSync(markerPath, 'utf8').trim();
       } catch {
-         console.error(`Failed to remove stale test env: ${entry}`);
+         return invalidMarker('its contents cannot be read');
+      }
+      if (!candidate || !path.isAbsolute(candidate)) {
+         return invalidMarker('it does not contain an absolute run-root path');
+      }
+
+      const resolvedCandidate = path.resolve(candidate);
+      if (
+         !isDirectChildPath(resolvedCandidate) ||
+         !RUN_DIRECTORY_NAME.test(path.basename(resolvedCandidate))
+      ) {
+         return invalidMarker(
+            'its path must be a direct child named with a 13-digit epoch timestamp and optional numeric collision suffix'
+         );
+      }
+
+      try {
+         const targetStats = nativeFs.lstatSync(resolvedCandidate);
+         if (!targetStats.isDirectory() || targetStats.isSymbolicLink()) {
+            return invalidMarker('its run-root path is not a real directory');
+         }
+         if (!isDirectChildPath(nativeFs.realpathSync.native(resolvedCandidate))) {
+            return invalidMarker('its run-root path resolves outside the test environment');
+         }
+      } catch (error) {
+         if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+            return invalidMarker('its run-root path cannot be inspected safely');
+         }
+         // Cleanup can remove the target while retaining the marker. The same
+         // direct child is recreated below; the marker is never replaced.
+      }
+      return resolvedCandidate;
+   };
+   const ensureRunDir = (runDir: string): string => {
+      try {
+         const targetStats = nativeFs.lstatSync(runDir);
+         if (!targetStats.isDirectory() || targetStats.isSymbolicLink()) {
+            return invalidMarker('its run-root path is not a real directory');
+         }
+         if (!isDirectChildPath(nativeFs.realpathSync.native(runDir))) {
+            return invalidMarker('its run-root path resolves outside the test environment');
+         }
+      } catch (error) {
+         if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
+            return invalidMarker('its run-root path cannot be inspected safely');
+         }
+         fs.mkdirSync(runDir, { recursive: true });
+      }
+      try {
+         const now = new Date();
+         nativeFs.utimesSync(runDir, now, now);
+         nativeFs.utimesSync(markerPath, now, now);
+      } catch {
+         return invalidMarker('its run-root path cannot be refreshed safely');
+      }
+      return runDir;
+   };
+
+   const existingRunDir = readMarker();
+   if (existingRunDir) {
+      fallbackTestRunDir = ensureRunDir(existingRunDir);
+      return fallbackTestRunDir;
+   }
+
+   for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidateRunDir = createFallbackRunDir();
+      let claimed = false;
+      try {
+         // Claim only an absent marker. Replacing one after an earlier read can
+         // move a fresh marker published by another worker.
+         fs.writeFileSync(markerPath, `${candidateRunDir}\n`, { flag: 'wx' });
+         claimed = true;
+         fallbackTestRunDir = candidateRunDir;
+         return candidateRunDir;
+      } catch {
+         // Another worker claimed the marker after our read.
+      } finally {
+         if (!claimed) fs.rmSync(candidateRunDir, { recursive: true, force: true });
+      }
+
+      const claimedRunDir = readMarker();
+      if (claimedRunDir) {
+         fallbackTestRunDir = ensureRunDir(claimedRunDir);
+         return fallbackTestRunDir;
       }
    }
-   testEnvCleared = true;
-   return true;
+
+   throw new Error(`Unable to coordinate test run directory: ${markerPath}`);
+}
+
+function createFallbackRunDir(): string {
+   const timestamp = Date.now().toString();
+   for (let suffix = 0; suffix < 1_000; suffix += 1) {
+      const name = suffix === 0 ? timestamp : `${timestamp}-${suffix}`;
+      const candidate = path.join(BASE_TEST_ENV_DIR, name);
+      try {
+         fs.mkdirSync(candidate);
+         return candidate;
+      } catch (error) {
+         if (error instanceof Error && 'code' in error && error.code === 'EEXIST') continue;
+         throw error;
+      }
+   }
+   throw new Error(`Unable to allocate fallback test run directory in: ${BASE_TEST_ENV_DIR}`);
+}
+
+function isDirectChildPath(candidatePath: string): boolean {
+   const relativePath = path.relative(BASE_TEST_ENV_DIR, path.resolve(candidatePath));
+   return (
+      relativePath.length > 0 &&
+      relativePath !== '..' &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath) &&
+      !relativePath.includes(path.sep)
+   );
+}
+
+function printTestEnvironmentNotices(): void {
+   if (testEnvironmentNoticeShown) return;
+   testEnvironmentNoticeShown = true;
+
+   if (USE_NATIVE_SUBMODULE_IN_TESTS) {
+      quickPrint(ncc('Yellow') + 'Using native git submodules in tests' + ncc());
+   }
+
+   if (USE_NATIVE_GIT_CONFIG_IN_TESTS) {
+      quickPrint(ncc('Yellow') + 'Using native git config in tests' + ncc());
+   }
 }
 
 /**
@@ -641,22 +784,21 @@ function applyTestEnvState(envState: TestLifecycle['envState']): void {
    process.env.GDX_USE_INLINE_GIT_CONFIG = USE_NATIVE_GIT_CONFIG_IN_TESTS ? 'off' : 'internal';
 }
 
-async function writeTestDebugLog(
-   lifecycle: TestLifecycle,
-   testName: string
-): Promise<void> {
+async function writeTestDebugLog(lifecycle: TestLifecycle, testName: string): Promise<void> {
    const { buffer, testLogDir } = lifecycle;
    const logFilePath = path.join(
       testLogDir,
       `test-${testName.replaceAll(/[^a-zA-Z0-9]/g, '_')}.log`
    );
-   await fs.writeFile(
-      logFilePath,
-      `STDOUT:\n${buffer.stdout}\n\nSTDERR:\n${buffer.stderr}\n\nLOGS:\n${stripAnsiColor(buffer.logs)}`,
-      'utf-8'
-   ).catch((err) => {
-      console.error(`Failed to write test logs to file: ${err}`);
-   });
+   await fs
+      .writeFile(
+         logFilePath,
+         `STDOUT:\n${buffer.stdout}\n\nSTDERR:\n${buffer.stderr}\n\nLOGS:\n${stripAnsiColor(buffer.logs)}`,
+         'utf-8'
+      )
+      .catch((err) => {
+         console.error(`Failed to write test logs to file: ${err}`);
+      });
 }
 
 /**

@@ -20,7 +20,7 @@ import {
 import { createGdxContext, createTestEnv, resolvePosixShell } from '@/utils/testHelper';
 
 describe('history reference-transaction observer', async () => {
-   const { tmpDir, $, it, resetRepo } = await createTestEnv({ suitName: 'history-observer' });
+   const { tmpDir, $, it, resetRepo, buffer } = await createTestEnv({ suitName: 'history-observer' });
    const ctx = createGdxContext(tmpDir);
    const gitCommand = Array.isArray(ctx.git$) ? ctx.git$ : [ctx.git$];
    const shell = await resolvePosixShell(gitCommand[0]);
@@ -176,6 +176,7 @@ describe('history reference-transaction observer', async () => {
       try {
          expect(await dispatch(createGdxContext(tmpDir, ['branch', 'observer-checkout']))).toBe(0);
          expect(await dispatch(createGdxContext(tmpDir, ['checkout', 'observer-checkout']))).toBe(0);
+         expect(buffer.stderr).toContain("Switched to branch 'observer-checkout'");
 
          expect(await history(createGdxContext(tmpDir, ['history', 'list']))).toBe(0);
          const manifests = await listHistoryTransactions(ctx.git$);
@@ -257,6 +258,7 @@ describe('history reference-transaction observer', async () => {
       await fs.writeFile(path.join(tmpDir, 'dedupe.txt'), 'dedupe\n');
       await $`${ctx.git$} add dedupe.txt`;
       expect(await dispatch(createGdxContext(tmpDir, ['commit', '--no-verify', '-m', 'dedupe commit']))).toBe(0);
+      expect(buffer.stdout).toContain('dedupe commit');
       const after = (await $`${ctx.git$} rev-parse HEAD`).stdout.trim();
 
       // Each A->B movement below has a B->A reflog transition between it. The

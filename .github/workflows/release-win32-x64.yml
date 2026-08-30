@@ -35,7 +35,7 @@ jobs:
            run: bun run check
 
          - name: Run tests
-           run: bun test
+           run: bun run test:serial
 
          - name: Build native binary
            run: bun run build:release:win32-x64
