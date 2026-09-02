@@ -29,26 +29,12 @@ import {
    validateConfigValue,
 } from '@/modules/typebox';
 import { revParseCached } from '@/modules/git';
+import {
+   getSecretStore,
+   type SecretStore,
+   type SecretStoreProvider,
+} from '@/modules/secret-store';
 import { GdxRepositoryLocation } from '@/common/types';
-
-type KeytarApi = {
-   getPassword(service: string, account: string): Promise<string | null>;
-   setPassword(service: string, account: string, password: string): Promise<void>;
-   deletePassword(service: string, account: string): Promise<boolean>;
-};
-
-let keytarModulePromise: Promise<typeof import('keytar')> | null = null;
-async function getKeytar(): Promise<KeytarApi> {
-   keytarModulePromise ??= import('keytar');
-   const module = await keytarModulePromise;
-   const keytar = (module as { default?: KeytarApi }).default ?? (module as KeytarApi);
-
-   if (!keytar || typeof keytar.setPassword !== 'function') {
-      throw new Err('Keytar module does not expose setPassword.', 'KEYTAR_INVALID');
-   }
-
-   return keytar;
-}
 
 export class ConfigService {
    private configPath: string;
@@ -143,7 +129,7 @@ export class ConfigService {
 
    /**
     * Gets a secure configuration value by path (e.g., 'llm.apiKey').
-    * Loads from keychain if not already loaded.
+    * Loads from secure storage if not already loaded.
     */
    async getSecure<T = unknown>(keyPath: string, defaultValue: T): Promise<T>;
    async getSecure<T = unknown>(keyPath: string): Promise<T | undefined>;
@@ -158,14 +144,14 @@ export class ConfigService {
          return cached;
       }
 
-      // If it's a secure key, try to load from keychain
+      // If it's a secure key, try to load it from the configured secret store
       if (SECURE_CONF_KEYS.includes(keyPath)) {
          try {
-            const keytar = await getKeytar();
-            const value = await keytar.getPassword(KEYCHAIN_SERVICE, keyPath);
+            const secretStore = this.getConfiguredSecretStore();
+            const value = await secretStore.getPassword(KEYCHAIN_SERVICE, keyPath);
 
             if (value) {
-               // Update config cache without triggering save/keychain write
+               // Update config cache without triggering a secret-store write
                const keys = keyPath.split('.');
                let target: any = this.config;
 
@@ -182,7 +168,7 @@ export class ConfigService {
             }
          } catch (err) {
             this.logger.warn(
-               `Failed to load secure key '${keyPath}' from keychain:\n` +
+               `Failed to load secure key '${keyPath}' from secret storage:\n` +
                Err.from(err).toString({ color: true })
             );
          }
@@ -193,7 +179,7 @@ export class ConfigService {
 
    /**
     * Sets a configuration value by path (e.g., 'llm.apiKey', 'sk-...')
-    * Secure keys are stored in the system keychain instead of the config file.
+    * Secure keys are stored outside the config file.
     */
    async set(keyPath: string, value: any): Promise<void> {
       await this.setGlobal(keyPath, value);
@@ -213,17 +199,10 @@ export class ConfigService {
          return;
       }
 
-      // If this is a secure key, store it in keychain
+      // If this is a secure key, store it outside the config file
       if (SECURE_CONF_KEYS.includes(keyPath)) {
-         try {
-            const keytar = await getKeytar();
-            await keytar.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
-         } catch (err) {
-            this.logger.warn(
-               `Failed to save secure key '${keyPath}' to keychain:\n` +
-               Err.from(err).toString({ color: true })
-            );
-         }
+         const secretStore = this.getConfiguredSecretStore();
+         await secretStore.setPassword(KEYCHAIN_SERVICE, keyPath, String(value));
       }
 
       this.setValueAtPath(this.globalConfig, keyPath, value);
@@ -246,15 +225,8 @@ export class ConfigService {
 
       if (SECURE_CONF_KEYS.includes(keyPath)) {
          const account = this.getLocalSecureAccount(keyPath);
-         try {
-            const keytar = await getKeytar();
-            await keytar.setPassword(KEYCHAIN_SERVICE, account, String(value));
-         } catch (err) {
-            this.logger.warn(
-               `Failed to save secure key '${keyPath}' to keychain:\n` +
-               Err.from(err).toString({ color: true })
-            );
-         }
+         const secretStore = this.getConfiguredSecretStore();
+         await secretStore.setPassword(KEYCHAIN_SERVICE, account, String(value));
          this.setValueAtPath(this.localConfig, keyPath, account);
       } else {
          this.setValueAtPath(this.localConfig, keyPath, value);
@@ -490,17 +462,13 @@ export class ConfigService {
    }
 
    /**
-    * Deletes a secure key from the keychain.
+    * Deletes a secure key from secret storage.
     */
    async deleteSecureKey(keyPath: string): Promise<boolean> {
       if (!SECURE_CONF_KEYS.includes(keyPath)) return false;
 
-      try {
-         const keytar = await getKeytar();
-         return await keytar.deletePassword(KEYCHAIN_SERVICE, keyPath);
-      } catch {
-         return false;
-      }
+      const secretStore = this.getConfiguredSecretStore();
+      return await secretStore.deletePassword(KEYCHAIN_SERVICE, keyPath);
    }
 
    /**
@@ -602,12 +570,12 @@ export class ConfigService {
 
    private async getLocalSecureValue<T>(keyPath: string, account: string): Promise<T | undefined> {
       try {
-         const keytar = await getKeytar();
-         const value = await keytar.getPassword(KEYCHAIN_SERVICE, account);
+         const secretStore = this.getConfiguredSecretStore();
+         const value = await secretStore.getPassword(KEYCHAIN_SERVICE, account);
          return value === null ? undefined : (value as unknown as T);
       } catch (err) {
          this.logger.warn(
-            `Failed to load local secure key '${keyPath}' from keychain:\n` +
+            `Failed to load local secure key '${keyPath}' from secret storage:\n` +
             Err.from(err).toString({ color: true })
          );
          return undefined;
@@ -615,12 +583,14 @@ export class ConfigService {
    }
 
    private async deleteLocalSecureKey(account: string): Promise<boolean> {
-      try {
-         const keytar = await getKeytar();
-         return await keytar.deletePassword(KEYCHAIN_SERVICE, account);
-      } catch {
-         return false;
-      }
+      const secretStore = this.getConfiguredSecretStore();
+      return await secretStore.deletePassword(KEYCHAIN_SERVICE, account);
+   }
+
+   /** Loads the secret backend selected by the effective global configuration. */
+   private getConfiguredSecretStore(): SecretStore {
+      const provider = this.get<SecretStoreProvider>('security.secretStore', 'auto');
+      return getSecretStore(provider);
    }
 
    private hasLocalOverride(keyPath: string): boolean {

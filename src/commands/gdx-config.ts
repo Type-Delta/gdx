@@ -169,8 +169,13 @@ async function setConfigValue(ctx: GdxContext): Promise<number> {
       }
       await config.saveLocal();
    } else {
-      await config.set(key, parsed.value);
-      await config.save();
+      try {
+         await config.set(key, parsed.value);
+         await config.save();
+      } catch (err) {
+         Logger.error(Err.from(err).message, 'gdx-config');
+         return 1;
+      }
    }
 
    // Mask API key in output

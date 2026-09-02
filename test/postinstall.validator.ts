@@ -13,6 +13,7 @@ export interface PostInstallDiagnosticOptions {
    isNative: boolean;
    shimActive: boolean;
    shimPathFallback: boolean;
+   secretStoreProvider: 'auto' | 'keychain' | 'pass';
 }
 
 export interface PostInstallDiagnosticResult {
@@ -46,6 +47,13 @@ export async function runPostInstallDiagnostics(
          status: 'pass',
          detail: 'Bundled into the native executable; Node package probes are not required.',
       });
+      results.push({
+         name: 'Secret storage',
+         status: 'warn',
+         detail:
+            `Configured provider: ${options.secretStoreProvider}. ` +
+            'The standalone native diagnostic cannot run a disposable secret-store probe.',
+      });
       return results;
    }
 
@@ -62,7 +70,9 @@ export async function runPostInstallDiagnostics(
    }
 
    const dependencyResults = await Promise.all(
-      dependencies.map((dependency) => probeDependency(options.packageRoot, dependency))
+      dependencies.map((dependency) =>
+         probeDependency(options.packageRoot, dependency, options.secretStoreProvider)
+      )
    );
    results.push(...dependencyResults);
    return results;
@@ -246,16 +256,25 @@ function checkShim(options: PostInstallDiagnosticOptions): PostInstallDiagnostic
  * Imports and exercises one external dependency in a clean Node subprocess.
  * @param packageRoot - Installed gdx package directory.
  * @param dependency - Package name to probe.
+ * @param secretStoreProvider - Configured secret storage provider.
  * @returns A dependency-specific result.
  */
 async function probeDependency(
    packageRoot: string,
-   dependency: string
+   dependency: string,
+   secretStoreProvider: PostInstallDiagnosticOptions['secretStoreProvider']
 ): Promise<PostInstallDiagnosticResult> {
    try {
       const { stdout } = await execFileAsync(
          process.execPath,
-         ['--input-type=module', '--eval', createProbeScript(), packageRoot, dependency],
+         [
+            '--input-type=module',
+            '--eval',
+            createProbeScript(),
+            packageRoot,
+            dependency,
+            secretStoreProvider,
+         ],
          {
             cwd: packageRoot,
             timeout: PROBE_TIMEOUT_MS,
@@ -266,16 +285,18 @@ async function probeDependency(
       const output = JSON.parse(stdout.trim()) as ProbeOutput;
       const isKeychainWarning = dependency === 'keytar' && !output.ok;
       return {
-         name: `Dependency: ${dependency}`,
+         name: dependency === 'keytar' ? 'Secret storage' : `Dependency: ${dependency}`,
          status: output.ok ? 'pass' : isKeychainWarning ? 'warn' : 'fail',
          detail: output.detail,
       };
    } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       return {
-         name: `Dependency: ${dependency}`,
+         name: dependency === 'keytar' ? 'Secret storage' : `Dependency: ${dependency}`,
          status: dependency === 'keytar' ? 'warn' : 'fail',
-         detail: `Probe failed: ${detail}`,
+         detail: dependency === 'keytar'
+            ? `Configured provider: ${secretStoreProvider}. Probe failed: ${detail}`
+            : `Probe failed: ${detail}`,
       };
    }
 }
@@ -288,25 +309,143 @@ function createProbeScript(): string {
    return String.raw`
 const packageRoot = process.argv[1];
 const dependency = process.argv[2];
+const secretStoreProvider = process.argv[3];
 
 try {
    process.chdir(packageRoot);
-   const imported = await import(dependency);
-   const module = imported.default && Object.keys(imported).length === 1 ? imported.default : imported;
 
    if (dependency === 'keytar') {
-      const keytar = imported.default ?? imported;
       const service = 'gdx-doctor-probe';
       const account = 'probe-' + process.pid + '-' + Date.now();
       const secret = 'gdx-keychain-round-trip';
-      try {
-         await keytar.setPassword(service, account, secret);
-         const value = await keytar.getPassword(service, account);
-         if (value !== secret) throw new Error('Keychain returned an unexpected value.');
-      } finally {
-         await keytar.deletePassword(service, account).catch(() => false);
+      let keytarFailure;
+
+      if (secretStoreProvider !== 'pass') {
+         let keytarStored = false;
+         let keytarCleanupFailure;
+
+         try {
+            const imported = await import(dependency);
+            const keytar = imported.default ?? imported;
+            await keytar.setPassword(service, account, secret);
+            keytarStored = true;
+            const value = await keytar.getPassword(service, account);
+            if (value !== secret) throw new Error('Keychain returned an unexpected value.');
+         } catch (error) {
+            keytarFailure = error instanceof Error ? error.message : String(error);
+         } finally {
+            if (keytarStored) {
+               try {
+                  const imported = await import(dependency);
+                  const keytar = imported.default ?? imported;
+                  if (!await keytar.deletePassword(service, account)) {
+                     throw new Error('Keytar did not remove the probe entry.');
+                  }
+               } catch (error) {
+                  keytarCleanupFailure = error instanceof Error ? error.message : String(error);
+               }
+            }
+         }
+
+         if (keytarCleanupFailure) {
+            process.stdout.write(JSON.stringify({
+               ok: false,
+               detail: 'Configured provider: ' + secretStoreProvider + '; selected provider: keychain. Keytar probe cleanup failed: ' + keytarCleanupFailure
+            }));
+            process.exit(0);
+         }
+
+         if (!keytarFailure) {
+            process.stdout.write(JSON.stringify({
+               ok: true,
+               detail: 'Configured provider: ' + secretStoreProvider + '; selected provider: keychain. Keytar passed its keychain round-trip test.'
+            }));
+            process.exit(0);
+         }
+
+         if (secretStoreProvider === 'keychain' || process.platform !== 'linux') {
+            process.stdout.write(JSON.stringify({
+               ok: false,
+               detail: 'Configured provider: ' + secretStoreProvider + '; selected provider: keychain. Keytar failed: ' + keytarFailure
+            }));
+            process.exit(0);
+         }
       }
-   } else if (dependency === 'yaml') {
+
+      const { spawn } = await import('node:child_process');
+      const passEntry = 'gdx/doctor-probe/' + process.pid + '-' + Date.now();
+
+      /**
+       * Runs pass without placing secret input in argv or diagnostic output.
+       * @param {string[]} args - Arguments passed to the password-store executable.
+       * @param {string | undefined} input - Optional stdin content.
+       * @returns {Promise<string>} Captured stdout.
+       */
+      const runPass = (args, input) => new Promise((resolve, reject) => {
+         const child = spawn('pass', args, {
+            stdio: ['pipe', 'pipe', 'ignore'],
+            windowsHide: true,
+         });
+         const chunks = [];
+
+         child.stdout.on('data', (chunk) => chunks.push(chunk));
+         child.once('error', (error) => {
+            reject(new Error('Could not start pass: ' + error.message));
+         });
+         child.once('close', (code, signal) => {
+            if (code === 0) {
+               resolve(Buffer.concat(chunks).toString('utf8'));
+               return;
+            }
+            const result = signal ? 'signal ' + signal : 'exit code ' + String(code);
+            reject(new Error('pass ' + args[0] + ' failed with ' + result));
+         });
+         child.stdin.on('error', () => {});
+         child.stdin.end(input);
+      });
+
+      let passFailure;
+      let passStored = false;
+      try {
+         await runPass(['insert', '--multiline', '--force', passEntry], secret + '\n');
+         passStored = true;
+         const value = (await runPass(['show', passEntry])).replace(/\r?\n$/, '');
+         if (value !== secret) throw new Error('pass returned an unexpected value');
+      } catch (error) {
+         passFailure = error instanceof Error ? error.message : String(error);
+      }
+
+      if (passStored) {
+         try {
+            await runPass(['rm', '--force', passEntry]);
+         } catch (error) {
+            const cleanupFailure = error instanceof Error ? error.message : String(error);
+            passFailure = passFailure
+               ? passFailure + '; cleanup also failed: ' + cleanupFailure
+               : 'cleanup failed: ' + cleanupFailure;
+         }
+      }
+
+      if (passFailure) {
+         const keytarDetail = keytarFailure ? ' Keytar failed: ' + keytarFailure + ';' : '';
+         process.stdout.write(JSON.stringify({
+            ok: false,
+            detail: 'Configured provider: ' + secretStoreProvider + '; selected provider: pass.' + keytarDetail + ' pass probe failed: ' + passFailure
+         }));
+         process.exit(0);
+      }
+
+      process.stdout.write(JSON.stringify({
+         ok: true,
+         detail: 'Configured provider: ' + secretStoreProvider + '; selected provider: pass.' + (keytarFailure ? ' Keytar failed: ' + keytarFailure + ';' : '') + ' pass passed its round-trip test.'
+      }));
+      process.exit(0);
+   }
+
+   const imported = await import(dependency);
+   const module = imported.default && Object.keys(imported).length === 1 ? imported.default : imported;
+
+   if (dependency === 'yaml') {
       if (imported.parse('healthy: true').healthy !== true) throw new Error('YAML parse failed.');
    } else if (dependency === 'fflate') {
       const input = imported.strToU8('gdx');

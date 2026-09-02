@@ -4,7 +4,7 @@ import fs from 'fs';
 
 import gdxConfig from '@/commands/gdx-config';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
-import { getConfig } from '@/common/config';
+import { getConfig, resetConfig } from '@/common/config';
 import { DEFAULT_CONFIG } from '@/common/config/schema';
 
 describe('gdx gdx-config', async () => {
@@ -20,6 +20,9 @@ describe('gdx gdx-config', async () => {
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('[llm]');
       expect(buffer.stdout).toContain('provider');
+      expect(buffer.stdout).toContain('[security]');
+      expect(buffer.stdout).toContain('secretStore');
+      expect(buffer.stdout).toContain('auto');
    });
 
    it('should show config path', async () => {
@@ -133,6 +136,69 @@ describe('gdx gdx-config', async () => {
       ]);
       expect(await gdxConfig(invalidCtx)).toBe(1);
       expect(buffer.stderr).toContain("Expected one of 'off', 'internal'");
+   });
+
+   it('should accept and persist each secret storage backend', async () => {
+      for (const provider of ['keychain', 'pass', 'auto']) {
+         const setCtx = createGdxContext(tmpDir, [
+            'gdx-config',
+            'security.secretStore',
+            provider,
+         ]);
+         expect(await gdxConfig(setCtx)).toBe(0);
+
+         const config = await getConfig();
+         expect(config.get<string>('security.secretStore')).toBe(provider);
+      }
+
+      const configFile = fs.readFileSync(path.join(tmpRootDir, '.gdx', '.gdxrc.toml'), 'utf-8');
+      expect(configFile).toContain('[security]');
+      expect(configFile).toContain('secretStore = "auto"');
+   });
+
+   it('should reject an invalid secret storage backend', async () => {
+      const invalidCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         'security.secretStore',
+         'plaintext',
+      ]);
+      expect(await gdxConfig(invalidCtx)).toBe(1);
+      expect(buffer.stderr).toContain("Expected one of 'auto', 'keychain', 'pass'");
+   });
+
+   it('should apply GDX_SECRET_STORE over the persisted value', async () => {
+      const setCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         'security.secretStore',
+         'keychain',
+      ]);
+      expect(await gdxConfig(setCtx)).toBe(0);
+
+      const previous = process.env.GDX_SECRET_STORE;
+      process.env.GDX_SECRET_STORE = 'pass';
+      resetConfig();
+      try {
+         const config = await getConfig();
+         expect(config.get<string>('security.secretStore')).toBe('pass');
+      } finally {
+         if (previous === undefined) delete process.env.GDX_SECRET_STORE;
+         else process.env.GDX_SECRET_STORE = previous;
+         resetConfig();
+      }
+   });
+
+   it('should reject repository-local secret storage configuration', async () => {
+      fs.mkdirSync(path.join(tmpDir, '.git'), { recursive: true });
+      const localCtx = createGdxContext(tmpDir, [
+         'gdx-config',
+         '--local',
+         'security.secretStore',
+         'pass',
+      ]);
+      expect(await gdxConfig(localCtx)).toBe(1);
+      expect(buffer.stderr).toContain(
+         "Configuration key 'security.secretStore' cannot be set locally"
+      );
    });
 
    it('should set and get commit.noisyFiles as string array', async () => {

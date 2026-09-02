@@ -15,7 +15,10 @@ import { GDX_VPALETTE } from '../consts';
 import { _2PointGradient } from '../modules/graphics';
 import { CommandStructure } from '@/common/types';
 import { getCache } from '@/common/cache';
+import { getConfig } from '@/common/config';
 import { GDX_HISTORY_GUARD_ENV } from '@/modules/shell';
+
+type SecretStoreProvider = 'auto' | 'keychain' | 'pass';
 
 interface PostInstallDiagnosticResult {
    name: string;
@@ -30,6 +33,7 @@ interface PostInstallDiagnosticsModule {
       isNative: boolean;
       shimActive: boolean;
       shimPathFallback: boolean;
+      secretStoreProvider: SecretStoreProvider;
    }) => Promise<PostInstallDiagnosticResult[]>;
 }
 
@@ -205,7 +209,14 @@ export default async function doctor(): Promise<number> {
    }
 
    const packageRoot = findPackageRoot(installInfoPath);
-   const diagnostics = await runPostInstallDiagnostics(packageRoot, installInfo, isNative);
+   const config = await getConfig();
+   const secretStoreProvider = config.get<SecretStoreProvider>('security.secretStore', 'auto');
+   const diagnostics = await runPostInstallDiagnostics(
+      packageRoot,
+      installInfo,
+      isNative,
+      secretStoreProvider
+   );
    quickPrint(SGR.bright + `\nPost-install integration checks:` + SGR.reset);
    for (const result of diagnostics) {
       const marker = result.status === 'pass' ? 'PASS' : result.status === 'warn' ? 'WARN' : 'FAIL';
@@ -223,12 +234,14 @@ export default async function doctor(): Promise<number> {
  * @param packageRoot - Root directory of the current gdx installation.
  * @param installInfo - Parsed postinstall metadata, when available.
  * @param isNative - Whether gdx is running as a compiled executable.
+ * @param secretStoreProvider - Configured secret storage provider.
  * @returns Diagnostic results, including a failure when the sidecar cannot load.
  */
 async function runPostInstallDiagnostics(
    packageRoot: string,
    installInfo: Record<string, unknown> | null,
-   isNative: boolean
+   isNative: boolean,
+   secretStoreProvider: SecretStoreProvider
 ): Promise<PostInstallDiagnosticResult[]> {
    const candidates = [
       path.join(packageRoot, 'dist/diagnostics/postinstall.validator.js'),
@@ -259,6 +272,7 @@ async function runPostInstallDiagnostics(
          isNative,
          shimActive: global.runtimeShimActive,
          shimPathFallback: global.runtimeShimPathFallback,
+         secretStoreProvider,
       });
    } catch (e) {
       const err = Err.from(e);

@@ -52,6 +52,13 @@ export const GdxConfigSchema = t.Object({
          maxAgeMinutes: t.Optional(t.Number({ minimum: 0 })),
       })
    ),
+   security: t.Optional(
+      t.Object({
+         secretStore: t.Optional(
+            t.Union([t.Literal('auto'), t.Literal('keychain'), t.Literal('pass')])
+         ),
+      })
+   ),
    parallel: t.Optional(
       t.Object({
          init: t.Optional(t.String({ format: FORMATS.parallelInit })),
@@ -132,6 +139,9 @@ export const DEFAULT_CONFIG: GdxConfig = {
       enabled: true,
       maxAgeMinutes: DEFAULT_CACHE_MAX_AGE,
    },
+   security: {
+      secretStore: 'auto',
+   },
    parallel: {
       init: 'submodule,env',
       envPaths: '',
@@ -178,6 +188,7 @@ export const ENV_MAPPINGS: Record<string, string> = {
    'reword.editor': 'GDX_REWORD_EDITOR',
    'cache.enabled': 'GDX_CACHE_ENABLED',
    'cache.maxAgeMinutes': 'GDX_CACHE_MAX_AGE_MINUTES',
+   'security.secretStore': 'GDX_SECRET_STORE',
    'parallel.init': 'GDX_PARALLEL_INIT',
    'parallel.envPaths': 'GDX_PARALLEL_ENV_PATHS',
    'viewer.highlighting.fullfileHighlight': 'GDX_VIEWER_HIGHLIGHTING_FULLFILE_HIGHLIGHT',
@@ -223,6 +234,9 @@ export const CONFIG_DESCRIPTIONS: Record<string, string> = {
    'cache.enabled': 'Whether caching is enabled',
    'cache.maxAgeMinutes':
       'Default maximum age of cache entries in minutes (some cache ignore this)',
+   security: 'Configuration for storing secrets outside the config file',
+   'security.secretStore':
+      'Secret storage backend (auto: use the system keychain with pass fallback, keychain: require the system keychain, pass: require pass)',
    parallel: 'Configuration for parallel worktree automation',
    'parallel.init':
       'Comma-separated list specifying what to init for new forks (submodule, env, pkg)',
