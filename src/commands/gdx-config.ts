@@ -13,6 +13,26 @@ import global from '@/global';
 import { _2PointGradient } from '@/modules/graphics';
 import { coerceConfigStringValue } from '@/modules/typebox';
 import { ArgsSet } from '@/modules/arguments';
+import { $prompt, isTTY } from '@/modules/shell';
+
+type ConfigPrompt = typeof $prompt;
+
+/**
+ * Asks for a replacement secret and confirms the overwrite.
+ * @param key - Secure configuration key being changed.
+ * @param prompt - Prompt implementation, injectable for tests.
+ * @returns The confirmed replacement, null for empty input, or undefined when confirmation is declined.
+ */
+export async function promptForSecretReplacement(
+   key: string,
+   prompt: ConfigPrompt = $prompt
+): Promise<string | null | undefined> {
+   const replacement = await prompt(`New value for ${key}: `, { mask: '*' });
+   if (!replacement) return null;
+
+   const confirmation = await prompt(`Overwrite ${key}? (y/N): `);
+   return ['y', 'yes'].includes(confirmation.toLowerCase()) ? replacement : undefined;
+}
 
 async function listConfig(): Promise<number> {
    const config = await getConfig();
@@ -124,16 +144,40 @@ async function getConfigValue(ctx: GdxContext): Promise<number> {
       value = await config.getSecure(key);
    }
 
-   if (value === undefined) {
+   const isSecure = SECURE_CONF_KEYS.includes(key);
+   if (value === undefined && (!isSecure || reveal || !isTTY())) {
       Logger.warn(`Key '${key}' is not set`, 'gdx-config');
       return 1;
    }
 
-   if (SECURE_CONF_KEYS.includes(key) && !reveal) {
-      quickPrint(strClamp(String(value), 20, 'mid', -1));
+   if (isSecure && !reveal) {
+      quickPrint(value === undefined ? '(not set)' : strClamp(String(value), 20, 'mid', -1));
    } else {
       quickPrint(String(value));
    }
+
+   if (!isSecure || reveal || !isTTY()) return 0;
+
+   const replacement = await promptForSecretReplacement(key);
+   if (replacement === null) {
+      quickPrint(
+         `${SGR.dim}No value entered. To reset it, run: ${EXECUTABLE_NAME} gdx-config --unset ${key}${SGR.reset}`
+      );
+      return 0;
+   }
+   if (replacement === undefined) return 0;
+
+   try {
+      await config.set(key, replacement);
+      await config.save();
+   } catch (err) {
+      Logger.error(Err.from(err).message, 'gdx-config');
+      return 1;
+   }
+
+   quickPrint(
+      `${SGR.green}Configuration updated: ${key} = ${strClamp(replacement, 20, 'mid', -1)}${SGR.reset}`
+   );
    return 0;
 }
 
@@ -291,7 +335,7 @@ export const help = {
          ${SGR.bright + _2PointGradient('COMMANDS', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
          - list: Prints flattened configuration with defaults and modified markers.
          - path: Prints the path to the active config file used by gdx. Pass --local to print the repository-local config path.
-         - <key> [value]: Get or set a config key. Pass --local when setting to write a repository-local override.
+         - <key> [value]: Get or set a config key. Reading a secure key in a terminal also offers a masked replacement prompt. Pass --local when setting to write a repository-local override.
          - --unset, -u <key>: Reset a config key to its default value.
          `,
          Math.min(100, global.terminalWidth - 4),
