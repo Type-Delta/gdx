@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import path from 'path';
 
 import { whichExec } from './shell';
 import { getCache } from '@/common/cache';
@@ -21,14 +22,24 @@ interface CachedExecEntry {
 /**
  * Fingerprints the environment that determines executable resolution.
  *
- * Resolving a command is a pure function of the search path, so the result is only reusable
- * while that path is unchanged. `PATHEXT` participates on Windows because it decides which
- * extensions are probed, and in which order.
+ * Resolving a command is a pure function of the search path. Relative and empty PATH entries
+ * also depend on the current directory, so the fingerprint includes cwd when either is present.
+ * `PATHEXT` participates on Windows because it decides which extensions are probed, and in
+ * which order.
  *
  * @returns A short digest of the resolution-relevant environment.
  */
 function getExecLookupFingerprint(): string {
-   const material = JSON.stringify([process.env.PATH ?? '', process.env.PATHEXT ?? '']);
+   const rawSearchPath = process.env.PATH;
+   const searchPath = rawSearchPath ?? '';
+   const hasCwdSensitivePath =
+      rawSearchPath !== undefined &&
+      rawSearchPath.split(path.delimiter).some((entry) => entry === '' || !path.isAbsolute(entry));
+   const material = JSON.stringify([
+      searchPath,
+      process.env.PATHEXT ?? '',
+      hasCwdSensitivePath ? process.cwd() : '',
+   ]);
    return crypto.createHash('sha1').update(material).digest('base64url').slice(0, 22);
 }
 

@@ -14,6 +14,7 @@ import {
    getGitTagsCached,
    getRepoRootCached,
    getSubmoduleBaseSha,
+   getSubmodules,
    unsetGitConfigValue,
    getMainWorktreeRoot,
    updateSubmodules,
@@ -308,6 +309,161 @@ describe('git module', async () => {
       );
    });
 
+   it('should discover an ancestor repository initialized after nested failures', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const ancestorPath = path.join(tmpRootDir, 'nested-ancestor-repo');
+      const nestedPath = path.join(ancestorPath, 'nested');
+      const scopedGit = [gitExe, '-C', nestedPath];
+      await fs.mkdir(nestedPath, { recursive: true });
+
+      expect(await revParseCached(scopedGit, '--is-inside-work-tree')).toBe('');
+      expect(await getGitPath(gitExe, nestedPath, 'config')).toBeNull();
+
+      await $`${gitExe} -C ${ancestorPath} init`;
+
+      expect(await revParseCached(scopedGit, '--is-inside-work-tree')).toBe('true');
+      expect(asUnixPath((await getGitPath(gitExe, nestedPath, 'config'))!)).toBe(
+         asUnixPath(path.join(ancestorPath, '.git', 'config'))
+      );
+   });
+
+   it('should not persist empty rev-parse results before repository restoration', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'empty-rev-parse-cache');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+
+      expect(await revParseCached(scopedGit, '--is-inside-work-tree')).toBe('');
+
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'empty rev-parse cache base'}`;
+
+      const cache = await getCache();
+      const beforeInvalidRef = new Set(Object.keys((await cache.getAll()).entryMeta));
+      expect(await revParseCached(scopedGit, ['--verify', 'restored-ref'])).toBe('');
+
+      const afterInvalidRef = Object.keys((await cache.getAll()).entryMeta).filter(
+         (key) => key.includes('.revParse.') && !beforeInvalidRef.has(key)
+      );
+      expect(afterInvalidRef).toEqual([]);
+
+      expect(await revParseCached(scopedGit, '--show-superproject-working-tree')).toBe('');
+      await $`${gitExe} -C ${repoPath} branch ${'restored-ref'}`;
+
+      const restoredRef = (await revParseCached(scopedGit, ['--verify', 'restored-ref'])).trim();
+      expect(restoredRef).toBeTruthy();
+   });
+
+   it('should bypass legacy rev-parse cache values', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'legacy-rev-parse-cache');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'legacy rev-parse cache base'}`;
+      await $`${gitExe} -C ${repoPath} branch ${'legacy-ref'}`;
+
+      const cache = await getCache();
+      const cacheKeysBeforeLookup = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const expected = (await revParseCached(scopedGit, ['--verify', 'refs/heads/legacy-ref'])).trim();
+      const cacheKey = Object.keys((await cache.getAll()).entryMeta).find(
+         (key) => key.includes('.revParse.') && !cacheKeysBeforeLookup.has(key)
+      );
+      expect(cacheKey).toBeTruthy();
+
+      for (const legacyValue of ['', null, { invalid: true }]) {
+         await cache.set(cacheKey!, legacyValue);
+         expect(
+            (await revParseCached(scopedGit, ['--verify', 'refs/heads/legacy-ref'])).trim()
+         ).toBe(expected);
+      }
+   });
+
+   it('should retry submodule config discovery after a transient read error', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'transient-submodule-discovery');
+      const gitmodulesPath = path.join(repoPath, '.gitmodules');
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+
+      await withInlineGitConfigMode('off', async () => {
+         await fs.writeFile(gitmodulesPath, '[submodule "late"\n\tpath = deps/late\n');
+         const fixedMtime = 1_700_000_000;
+         await fs.utimes(gitmodulesPath, fixedMtime, fixedMtime);
+         expect(await getSubmodules(git$, repoPath)).toEqual([]);
+
+         await fs.writeFile(
+            gitmodulesPath,
+            '[submodule "late"]\n\tpath = deps/late\n\turl = ../late.git\n'
+         );
+         await fs.utimes(gitmodulesPath, fixedMtime, fixedMtime);
+
+         expect(await getSubmodules(git$, repoPath)).toEqual([
+            { path: 'deps/late', status: '-', initialized: false },
+         ]);
+      });
+   });
+
+   it('should throw for missing config files when requested', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'missing-config-read');
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+
+      await withInlineGitConfigMode('internal', async () => {
+         expect(
+            await getGitConfigRegexp(git$, 'path', {
+               repoPath,
+               filePath: '.gitmodules',
+            })
+         ).toEqual([]);
+         await expect(
+            getGitConfigRegexp(git$, 'path', {
+               repoPath,
+               filePath: '.gitmodules',
+               throwOnError: true,
+            })
+         ).rejects.toThrow();
+      });
+   });
+
+   it('should preserve cached gitlink metadata across submodule status reads', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const sourceRepo = path.join(tmpRootDir, 'cached-gitlink-source');
+      const parentRepo = path.join(tmpRootDir, 'cached-gitlink-parent');
+      const submodulePath = 'deps/late';
+      await fs.mkdir(sourceRepo, { recursive: true });
+      await fs.mkdir(parentRepo, { recursive: true });
+      await $`${gitExe} -C ${sourceRepo} init`;
+      await $`${gitExe} -C ${parentRepo} init`;
+      await setTestGitConfig(sourceRepo, 'user.name', 'Test User');
+      await setTestGitConfig(sourceRepo, 'user.email', 'test@example.com');
+      await fs.writeFile(path.join(sourceRepo, 'README.md'), 'first\n');
+      await $`${gitExe} -C ${sourceRepo} add README.md`;
+      await $`${gitExe} -C ${sourceRepo} commit -m ${'cached gitlink first'}`;
+      const firstSha = (await $`${gitExe} -C ${sourceRepo} rev-parse HEAD`).stdout.trim();
+      await fs.writeFile(path.join(sourceRepo, 'README.md'), 'second\n');
+      await $`${gitExe} -C ${sourceRepo} commit -am ${'cached gitlink second'}`;
+
+      await addSubmodule(git$, parentRepo, asUnixPath(sourceRepo), submodulePath);
+      await $`${gitExe} -C ${parentRepo} update-index --add --cacheinfo 160000 ${firstSha} ${submodulePath}`;
+
+      const firstRead = await getSubmodules(git$, parentRepo);
+      expect(firstRead).toEqual([{ path: submodulePath, status: '+', initialized: true }]);
+      const secondRead = await getSubmodules(git$, parentRepo);
+      expect(secondRead).toEqual([{ path: submodulePath, status: '+', initialized: true }]);
+   });
+
    it('should refresh a stale cached git path', async () => {
       const { git$ } = createGdxContext(tmpDir, []);
       const gitExe = Array.isArray(git$) ? git$[0] : git$;
@@ -475,6 +631,174 @@ describe('git module', async () => {
 
       const second = (await revParseCached(git$, 'cache-ref-target')).trim();
       expect(second).toBe(latestHead);
+      expect(second).not.toBe(first);
+   });
+
+   it('should invalidate slash branches and @ relative refs when git state changes', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'relative-rev-parse-cache');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'relative cache first'}`;
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'relative cache second'}`;
+
+      await $`${gitExe} -C ${repoPath} branch ${'feature/cache-target'}`;
+      const cache = await getCache();
+      const beforeShortBranch = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const firstBranch = (await revParseCached(scopedGit, 'feature/cache-target')).trim();
+      const afterShortBranch = new Set(Object.keys((await cache.getAll()).entryMeta));
+      expect(
+         [...afterShortBranch].filter(
+            (key) => key.includes('.revParse.') && !beforeShortBranch.has(key)
+         )
+      ).toEqual([]);
+      const firstAt = (await revParseCached(scopedGit, '@')).trim();
+      const firstAtRelative = (await revParseCached(scopedGit, '@~1')).trim();
+      const firstAtReflog = (await revParseCached(scopedGit, '@{1}')).trim();
+      const firstHeadPeel = (await revParseCached(scopedGit, 'HEAD^{}')).trim();
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'relative cache third'}`;
+      const latestHead = (await revParseCached(scopedGit, 'HEAD')).trim();
+      await $`${gitExe} -C ${repoPath} update-ref refs/heads/feature/cache-target ${latestHead}`;
+
+      const secondBranch = (await revParseCached(scopedGit, 'feature/cache-target')).trim();
+      const secondAt = (await revParseCached(scopedGit, '@')).trim();
+      const secondAtRelative = (await revParseCached(scopedGit, '@~1')).trim();
+      const secondAtReflog = (await revParseCached(scopedGit, '@{1}')).trim();
+      const secondHeadPeel = (await revParseCached(scopedGit, 'HEAD^{}')).trim();
+      expect(secondBranch).toBe(latestHead);
+      expect(secondBranch).not.toBe(firstBranch);
+      expect(secondAt).toBe(latestHead);
+      expect(secondAt).not.toBe(firstAt);
+      expect(secondAtRelative).not.toBe(firstAtRelative);
+      expect(secondAtReflog).not.toBe(firstAtReflog);
+      expect(secondHeadPeel).not.toBe(firstHeadPeel);
+   });
+
+   it('should invalidate short remote refs when remote HEAD moves', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'remote-head-ref-cache');
+      const remotePath = path.join(tmpRootDir, 'remote-head-ref-cache.git');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'remote head first'}`;
+      await $`${gitExe} -C ${repoPath} branch ${'remote-alt'}`;
+      await $`${gitExe} -C ${repoPath} checkout ${'remote-alt'}`;
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'remote head second'}`;
+      const alternateHead = (await $`${gitExe} -C ${repoPath} rev-parse HEAD`).stdout.trim();
+      await $`${gitExe} -C ${repoPath} init --bare ${remotePath}`;
+      await $`${gitExe} -C ${repoPath} remote add origin ${remotePath}`;
+      await $`${gitExe} -C ${repoPath} push origin ${'master'} ${'remote-alt'}`;
+      await $`${gitExe} -C ${repoPath} remote set-head origin ${'master'}`;
+
+      await $`${gitExe} -C ${repoPath} branch --set-upstream-to=${'origin/master'} ${'remote-alt'}`;
+      const cache = await getCache();
+      const beforeRawUpstream = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const originalMasterHead = (
+         await $`${gitExe} -C ${repoPath} rev-parse refs/remotes/origin/master`
+      ).stdout.trim();
+      const firstUpstream = (await revParseCached(scopedGit, '@{u}')).trim();
+      const afterRawUpstream = new Set(Object.keys((await cache.getAll()).entryMeta));
+      expect(firstUpstream).toBe(
+         (await $`${gitExe} -C ${repoPath} rev-parse refs/remotes/origin/master`).stdout.trim()
+      );
+      expect(
+         [...afterRawUpstream].filter(
+            (key) => key.includes('.revParse.') && !beforeRawUpstream.has(key)
+         )
+      ).toEqual([]);
+
+      await $`${gitExe} -C ${repoPath} update-ref refs/remotes/origin/master ${alternateHead}`;
+      const secondUpstream = (await revParseCached(scopedGit, '@{u}')).trim();
+      expect(secondUpstream).toBe(alternateHead);
+      const beforeSafeUpstream = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const safeUpstream = (
+         await revParseCached(scopedGit, ['--abbrev-ref', '--symbolic-full-name', '@{u}'])
+      ).trim();
+      expect(safeUpstream).toBe('origin/master');
+      const afterSafeUpstream = new Set(Object.keys((await cache.getAll()).entryMeta));
+      expect(
+         [...afterSafeUpstream].some(
+            (key) => key.includes('.revParse.') && !beforeSafeUpstream.has(key)
+         )
+      ).toBe(true);
+
+      await $`${gitExe} -C ${repoPath} update-ref refs/remotes/origin/master ${originalMasterHead}`;
+      const beforeShortRemote = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const first = (await revParseCached(scopedGit, 'origin')).trim();
+      const afterShortRemote = new Set(Object.keys((await cache.getAll()).entryMeta));
+      expect(
+         [...afterShortRemote].filter(
+            (key) => key.includes('.revParse.') && !beforeShortRemote.has(key)
+         )
+      ).toEqual([]);
+      await $`${gitExe} -C ${repoPath} remote set-head origin ${'remote-alt'}`;
+      const second = (await revParseCached(scopedGit, 'origin')).trim();
+
+      expect(first).not.toBe(alternateHead);
+      expect(second).toBe(alternateHead);
+   });
+
+   it('should bypass cache for dynamic rev-parse expressions', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'dynamic-rev-parse-cache');
+      const scopedGit = [gitExe, '-C', repoPath];
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'dynamic cache first'}`;
+
+      const cache = await getCache();
+      const beforeFirstDynamic = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const firstAll = await revParseCached(scopedGit, '--all');
+      const firstRange = await revParseCached(scopedGit, 'HEAD~1..HEAD');
+      await revParseCached(scopedGit, ['--show-toplevel', 'HEAD']);
+      expect(
+         Object.keys((await cache.getAll()).entryMeta).filter(
+            (key) => key.includes('.revParse.') && !beforeFirstDynamic.has(key)
+         )
+      ).toEqual([]);
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'dynamic cache second'}`;
+      const latestHead = (await revParseCached(scopedGit, 'HEAD')).trim();
+      const beforeSecondDynamic = new Set(Object.keys((await cache.getAll()).entryMeta));
+      const secondAll = await revParseCached(scopedGit, '--all');
+      const secondRange = await revParseCached(scopedGit, 'HEAD~1..HEAD');
+
+      expect(firstAll).not.toContain(latestHead);
+      expect(secondAll).toContain(latestHead);
+      expect(secondRange).not.toBe(firstRange);
+      expect(
+         Object.keys((await cache.getAll()).entryMeta).filter(
+            (key) => key.includes('.revParse.') && !beforeSecondDynamic.has(key)
+         )
+      ).toEqual([]);
+   });
+
+   it('should invalidate HEAD cache from its symbolic branch ref without reflogs', async () => {
+      const { git$ } = createGdxContext(tmpDir, []);
+      const gitExe = Array.isArray(git$) ? git$[0] : git$;
+      const repoPath = path.join(tmpRootDir, 'head-symbolic-ref-cache');
+      await fs.mkdir(repoPath, { recursive: true });
+      await $`${gitExe} -C ${repoPath} init`;
+      await setTestGitConfig(repoPath, 'user.name', 'Test User');
+      await setTestGitConfig(repoPath, 'user.email', 'test@example.com');
+      await $`${gitExe} -C ${repoPath} config core.logAllRefUpdates false`;
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'symbolic head first'}`;
+
+      const first = (await revParseCached(git$, 'HEAD', repoPath)).trim();
+      await $`${gitExe} -C ${repoPath} commit --allow-empty -m ${'symbolic head second'}`;
+      const second = (await revParseCached(git$, 'HEAD', repoPath)).trim();
+
+      expect(second).toBeTruthy();
       expect(second).not.toBe(first);
    });
 

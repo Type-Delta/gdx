@@ -127,7 +127,22 @@ let submoduleLocationCache: {
    expiresAt: number;
 } | null = null;
 
+/**
+ * Clears command-local discovery caches before a new command invocation.
+ *
+ * The command can be invoked repeatedly in the same process (for example by
+ * tests or an embedding shell). Discovery results are valid during one
+ * invocation, but a repository can be initialized, checked out, or otherwise
+ * reconfigured between invocations.
+ */
+function resetParallelDiscoveryCaches(): void {
+   parallelContextCache = null;
+   submoduleLocationCache = null;
+}
+
 async function listParallelAliases(git$: string | string[]): Promise<string[]> {
+   resetParallelDiscoveryCaches();
+
    const ctx = await getParallelContext(git$);
    if (!ctx) return [];
 
@@ -532,11 +547,6 @@ async function getParallelContext(git$: string | string[]): Promise<ParallelCont
       return context;
    } catch (err) {
       Logger.error(yuString(err, { color: true }), 'parallel');
-      parallelContextCache = {
-         cacheKey,
-         context: null,
-         expiresAt: Date.now() + PARALLEL_CONTEXT_TTL_MS,
-      };
       return null;
    }
 }
@@ -3534,6 +3544,8 @@ function getGitErrorOutput(err: unknown): { stdout?: unknown; stderr?: unknown }
  * Main entry point for the parallel command
  */
 export default async function parallel(ctx: GdxContext): Promise<number> {
+   resetParallelDiscoveryCaches();
+
    const { git$, args } = ctx;
 
    if (args.length < 2) {

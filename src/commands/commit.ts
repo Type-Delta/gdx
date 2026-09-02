@@ -31,7 +31,11 @@ import { _2PointGradient } from '@/modules/graphics';
 import global from '@/global';
 import { getConfig } from '@/common/config';
 import { getCache } from '@/common/cache';
-import { assertInGitWorktree, getMainWorktreeRoot, getNormalizedRemoteUrl } from '@/modules/git';
+import {
+   assertInGitWorktree,
+   getMainWorktreeRoot,
+   getNormalizedRemoteUrl,
+} from '@/modules/git';
 import { buildStagedCommitDiffSummary } from '@/modules/diff-summary';
 import { redactSensitiveContent } from '@/utils/redact';
 
@@ -317,15 +321,15 @@ async function getCommitGuidelines(
       }
    }
 
-   const cachedPath = await cache.get<string>(pathKey);
-   if (cachedPath) {
-      if (remoteKey) {
-         await cache.set(remoteKey, cachedPath, { maxAgeMinutes: cacheMinutes });
-         Logger.debug(`Promoted commit guidelines cache to remote ${remoteUrl}`, 'commit');
-      } else {
+   // A path cache learned before a remote was configured is local-only. Once a
+   // remote identity exists, only its cache can be reused; promoting a path
+   // entry here could apply unrelated repository guidelines to that remote.
+   if (!remoteKey) {
+      const cachedPath = await cache.get<string>(pathKey);
+      if (cachedPath) {
          Logger.debug(`Using cached commit guidelines for ${normalizedRepoRoot}`, 'commit');
+         return cachedPath;
       }
-      return cachedPath;
    }
 
    // Learn from repository history

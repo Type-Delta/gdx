@@ -47,6 +47,64 @@ describe('getWhichExecCached', async () => {
       }
    });
 
+   it('re-resolves cwd-sensitive PATH entries when cwd changes', async () => {
+      const originalPath = process.env.PATH;
+      const originalCwd = process.cwd();
+      const firstCwd = path.join(tmpDir, 'cwd-first');
+      const secondCwd = path.join(tmpDir, 'cwd-second');
+      await fs.mkdir(firstCwd);
+      await fs.mkdir(secondCwd);
+
+      let resolverCalls = 0;
+      let resolved = firstExe;
+      const resolver = async () => {
+         resolverCalls++;
+         return resolved;
+      };
+
+      try {
+         process.env.PATH = `.${path.delimiter}${path.delimiter}${originalPath ?? ''}`;
+         process.chdir(firstCwd);
+         expect(await getWhichExecCached('cwd-probe', resolver)).toBe(firstExe);
+
+         resolved = secondExe;
+         process.chdir(secondCwd);
+         expect(await getWhichExecCached('cwd-probe', resolver)).toBe(secondExe);
+         expect(resolverCalls).toBe(2);
+      } finally {
+         process.chdir(originalCwd);
+         process.env.PATH = originalPath;
+      }
+   });
+
+   it('reuses absolute PATH results when cwd changes', async () => {
+      const originalPath = process.env.PATH;
+      const originalCwd = process.cwd();
+      const firstCwd = path.join(tmpDir, 'absolute-cwd-first');
+      const secondCwd = path.join(tmpDir, 'absolute-cwd-second');
+      await fs.mkdir(firstCwd);
+      await fs.mkdir(secondCwd);
+
+      let resolverCalls = 0;
+      const resolver = async () => {
+         resolverCalls++;
+         return firstExe;
+      };
+
+      try {
+         process.env.PATH = tmpDir;
+         process.chdir(firstCwd);
+         expect(await getWhichExecCached('absolute-cwd-probe', resolver)).toBe(firstExe);
+
+         process.chdir(secondCwd);
+         expect(await getWhichExecCached('absolute-cwd-probe', resolver)).toBe(firstExe);
+         expect(resolverCalls).toBe(1);
+      } finally {
+         process.chdir(originalCwd);
+         process.env.PATH = originalPath;
+      }
+   });
+
    it('discards legacy bare-string entries written before env pinning', async () => {
       const cache = await getCache();
       await cache.set('which.legacy-probe', firstExe);

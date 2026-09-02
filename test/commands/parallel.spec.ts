@@ -149,6 +149,43 @@ describe('gdx parallel', async () => {
       expect(buffer.stdout.toLowerCase()).toContain('no forked worktrees found');
    });
 
+   it('should refresh discovery after repository initialization and branch changes', async () => {
+      const cacheRepoDir = path.join(tmpRootDir, 'parallel-cache-repo');
+      await fs.rm(cacheRepoDir, { recursive: true, force: true });
+      fs.mkdirSync(cacheRepoDir, { recursive: true });
+
+      try {
+         const cacheRepoCtx = createGdxContext(cacheRepoDir, ['parallel', 'list']);
+         expect(await parallel(cacheRepoCtx)).toBe(1);
+
+         const gitExe = Array.isArray(git$) ? git$[0] : git$;
+         await $`${gitExe} -C ${cacheRepoDir} init`;
+
+         buffer.stdout = '';
+         expect(await parallel(cacheRepoCtx)).toBe(0);
+         expect(buffer.stdout).toContain('Project: parallel-cache-repo');
+
+         await setTestGitConfig(cacheRepoDir, 'user.name', 'Test User');
+         await setTestGitConfig(cacheRepoDir, 'user.email', 'test@example.com');
+         await $`${gitExe} -C ${cacheRepoDir} commit --allow-empty --no-verify -m ${'Initial commit'}`;
+         const initialBranch = (
+            await $`${gitExe} -C ${cacheRepoDir} symbolic-ref --short HEAD`
+         ).stdout.trim();
+
+         await $`${gitExe} -C ${cacheRepoDir} checkout -b feature-cache`;
+         buffer.stdout = '';
+         expect(await parallel(cacheRepoCtx)).toBe(0);
+         expect(buffer.stdout).toContain('Branch: feature-cache');
+
+         await $`${gitExe} -C ${cacheRepoDir} checkout ${initialBranch}`;
+         buffer.stdout = '';
+         expect(await parallel(cacheRepoCtx)).toBe(0);
+         expect(buffer.stdout).toContain(`Branch: ${initialBranch}`);
+      } finally {
+         await fs.rm(cacheRepoDir, { recursive: true, force: true });
+      }
+   });
+
    it('should show correct list headers in origin', async () => {
       const branchName = (await $`${git$} rev-parse --abbrev-ref HEAD`).stdout.trim();
       const projectName = path.basename(tmpDir);

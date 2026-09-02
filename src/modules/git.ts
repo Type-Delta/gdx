@@ -31,6 +31,12 @@ export interface SubmoduleEntry {
    initialized: boolean;
 }
 
+interface CachedGitlinkData {
+   mtime: number | null;
+   paths: string[];
+   info?: Record<string, { sha: string; stage: string }>;
+}
+
 interface GitmodulesEntry {
    name: string;
    path: string;
@@ -151,7 +157,8 @@ async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promi
       `${gitExec}|${resolvedRepoPath}|${markerToken}`
    );
    const cached = await cache.getOneOff<string | null>(cacheKey);
-   if (cached !== undefined) return cached ?? resolvedRepoPath;
+   if (typeof cached === 'string' && cached.length > 0) return cached;
+   if (cached !== undefined) await cache.deleteOneOff(cacheKey);
 
    let repoRoot = resolvedRepoPath;
    let isRepository = false;
@@ -180,7 +187,7 @@ async function resolveRevParseRepoRoot(gitExec: string, repoPath: string): Promi
       repoRoot = resolvedRepoPath;
    }
 
-   await cache.setOneOff(cacheKey, isRepository ? repoRoot : null);
+   if (isRepository) await cache.setOneOff(cacheKey, repoRoot);
    return repoRoot;
 }
 
@@ -211,15 +218,20 @@ async function invalidateGitConfigValueCache(
  * @returns Token that changes when the worktree is initialized or redirected.
  */
 function getGitMarkerCacheToken(worktreePath: string): string {
-   const markerPath = path.join(path.resolve(worktreePath), '.git');
-   try {
-      const stat = nodeFs.statSync(markerPath);
-      if (stat.isFile()) {
-         return createShortHash(nodeFs.readFileSync(markerPath, 'utf-8').trim());
+   let currentPath = path.resolve(worktreePath);
+   while (true) {
+      const markerPath = path.join(currentPath, '.git');
+      try {
+         const stat = nodeFs.statSync(markerPath);
+         if (stat.isFile()) {
+            return createShortHash(`${markerPath}|${nodeFs.readFileSync(markerPath, 'utf-8').trim()}`);
+         }
+         return createShortHash(`${markerPath}|${stat.dev}|${stat.ino}|${stat.birthtimeMs}`);
+      } catch {
+         const parentPath = path.dirname(currentPath);
+         if (parentPath === currentPath) return createShortHash('missing');
+         currentPath = parentPath;
       }
-      return createShortHash(`${stat.dev}|${stat.ino}|${stat.birthtimeMs}`);
-   } catch {
-      return createShortHash('missing');
    }
 }
 
@@ -246,12 +258,21 @@ function resolveGitExecAndRepoPath(
 }
 
 function isHeadLikeRef(ref: string): boolean {
-   return /^head(?:[~^].*)?(?:\^\{.+\})?$/i.test(ref.trim());
+   const trimmed = ref.trim();
+   return (
+      trimmed === 'HEAD' ||
+      /^HEAD(?:[~^]|@\{)/i.test(trimmed) ||
+      trimmed === '@' ||
+      /^@(?:[~^]|\{)/.test(trimmed) ||
+      /^[~^]/.test(trimmed)
+   );
 }
+
+const UPSTREAM_REF_PATTERN = /@\{(?:u|upstream|push)\}/i;
 
 function getRevParseFeatureScope(refArgs: string[]): GitRevParseFeatureScope {
    const hasFlag = (flag: string) => refArgs.includes(flag);
-   const hasUpstreamRef = refArgs.some((arg) => arg.includes('@{u}'));
+   const hasUpstreamRef = refArgs.some((arg) => UPSTREAM_REF_PATTERN.test(arg));
 
    if (
       hasFlag('--git-path') ||
@@ -313,31 +334,131 @@ function normalizeRefCandidate(ref: string): string {
    return ref
       .trim()
       .replace(/\^\{[^}]+\}$/g, '')
+      .replace(/@\{[^}]+\}$/g, '')
       .replace(/[~^].*$/, '');
 }
 
 function getRefStatePaths(ref: string): string[] {
+   if (isHeadLikeRef(ref)) return ['HEAD', 'logs/HEAD'];
+
    const normalized = normalizeRefCandidate(ref);
    if (!normalized) return [];
 
    if (/^[0-9a-f]{7,40}$/i.test(normalized)) return [];
-   if (isHeadLikeRef(normalized)) return ['HEAD', 'logs/HEAD'];
    if (/^stash(?:@\{\d+\})?$/i.test(normalized)) return ['refs/stash', 'logs/refs/stash'];
 
    if (normalized.startsWith('refs/')) {
       return [normalized, `logs/${normalized}`];
    }
 
-   if (/^[a-z0-9._-]+\/.+/i.test(normalized)) {
-      return [`refs/remotes/${normalized}`, `logs/refs/remotes/${normalized}`];
+   return [];
+}
+
+const REV_PARSE_CACHEABLE_FLAGS = new Set([
+   '-q',
+   '--verify',
+   '--abbrev-ref',
+   '--symbolic-full-name',
+   '--path-format=absolute',
+   '--git-dir',
+   '--git-common-dir',
+   '--absolute-git-dir',
+   '--show-toplevel',
+   '--show-superproject-working-tree',
+   '--show-cdup',
+   '--show-prefix',
+   '--is-inside-work-tree',
+]);
+const REV_PARSE_TOPOLOGY_FLAGS = new Set([
+   '--git-path',
+   '--git-dir',
+   '--git-common-dir',
+   '--absolute-git-dir',
+   '--show-toplevel',
+   '--show-superproject-working-tree',
+   '--show-cdup',
+   '--show-prefix',
+   '--is-inside-work-tree',
+]);
+
+const SAFE_UPSTREAM_SELECTOR_PATTERN = /^@\{(?:u|upstream|push)\}$/i;
+
+function isSafeUpstreamRevParse(refArgs: string[]): boolean {
+   let hasAbbrevRef = false;
+   let hasSymbolicFullName = false;
+   let selectorCount = 0;
+
+   for (const arg of refArgs) {
+      if (arg === '--abbrev-ref') {
+         hasAbbrevRef = true;
+      } else if (arg === '--symbolic-full-name') {
+         hasSymbolicFullName = true;
+      } else if (SAFE_UPSTREAM_SELECTOR_PATTERN.test(arg)) {
+         selectorCount++;
+      } else {
+         return false;
+      }
    }
 
-   return [
-      `refs/heads/${normalized}`,
-      `logs/refs/heads/${normalized}`,
-      `refs/tags/${normalized}`,
-      `logs/refs/tags/${normalized}`,
-   ];
+   return hasAbbrevRef && hasSymbolicFullName && selectorCount === 1;
+}
+
+function isSimpleRevParseRef(ref: string): boolean {
+   if (!ref || ref.startsWith('-')) return false;
+   if (ref.includes('..') || ref.includes(':') || /^:\//.test(ref) || /\^[@!-]/.test(ref)) {
+      return false;
+   }
+   if (isHeadLikeRef(ref) || UPSTREAM_REF_PATTERN.test(ref)) return true;
+   if (
+      /^[0-9a-f]{40}(?:(?:~|\^)\d*|\^\{(?:commit|tag|tree|blob)?\})*$/.test(ref)
+   ) {
+      return true;
+   }
+
+   const normalized = ref.replace(/@\{[^}]+\}$/g, '');
+   return /^refs\/[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*(?:(?:~|\^)\d*|\^\{(?:commit|tag|tree|blob)?\})*$/i.test(
+      normalized
+   );
+}
+
+function isRevParseCacheable(refArgs: string[]): boolean {
+   if (
+      refArgs.some((arg) => UPSTREAM_REF_PATTERN.test(arg)) &&
+      !isSafeUpstreamRevParse(refArgs)
+   ) {
+      return false;
+   }
+
+   let refCount = 0;
+   let hasTopologyFlag = false;
+   for (let i = 0; i < refArgs.length; i++) {
+      const arg = refArgs[i];
+      if (arg === '--git-path') {
+         hasTopologyFlag = true;
+         if (!refArgs[i + 1] || refArgs[i + 1].startsWith('-')) return false;
+         i++;
+         continue;
+      }
+      if (REV_PARSE_TOPOLOGY_FLAGS.has(arg)) hasTopologyFlag = true;
+      if (REV_PARSE_CACHEABLE_FLAGS.has(arg)) continue;
+      if (!isSimpleRevParseRef(arg)) return false;
+      refCount++;
+   }
+   return refCount <= (hasTopologyFlag ? 0 : 1);
+}
+
+async function getHeadSymbolicRefStatePaths(gitExec: string, repoPath: string): Promise<string[]> {
+   try {
+      const headPath = await getGitPath(gitExec, repoPath, 'HEAD');
+      if (!headPath) return [];
+      const headContent = nodeFs.readFileSync(headPath, 'utf-8').trim();
+      const headRef = headContent.match(/^ref:\s*(refs\/heads\/[^\s]+)$/i)?.[1];
+      if (!headRef) return [];
+
+      return [headRef, `logs/${headRef}`];
+   } catch {
+      return [];
+   }
 }
 
 async function buildGitPathMtimeSignature(
@@ -823,15 +944,21 @@ function preprocessGitConfigForIniParser(content: string): string {
  * @param configFilePath - Absolute path to config file.
  * @returns Parsed ini object.
  */
-async function readParsedGitConfig(configFilePath: string): Promise<Record<string, unknown>> {
+async function readParsedGitConfig(
+   configFilePath: string,
+   throwOnError = false
+): Promise<Record<string, unknown>> {
    const resolvedPath = path.resolve(configFilePath);
    const mtime = (await fs.getStatMTime(resolvedPath)) ?? null;
    const cached = gitConfigFileCache.get(resolvedPath);
-   if (cached && cached.mtime === mtime) {
+   if (cached && cached.mtime === mtime && !(throwOnError && mtime === null)) {
       return cached.content;
    }
 
    if (mtime === null) {
+      if (throwOnError) {
+         throw new Err(`Git config file is unavailable at '${resolvedPath}'.`);
+      }
       const empty = {} as Record<string, unknown>;
       gitConfigFileCache.set(resolvedPath, { mtime: null, content: empty });
       return empty;
@@ -846,7 +973,8 @@ async function readParsedGitConfig(configFilePath: string): Promise<Record<strin
       >;
       gitConfigFileCache.set(resolvedPath, { mtime, content: parsed });
       return parsed;
-   } catch {
+   } catch (err) {
+      if (throwOnError) throw err;
       const empty = {} as Record<string, unknown>;
       gitConfigFileCache.set(resolvedPath, { mtime: null, content: empty });
       return empty;
@@ -1336,12 +1464,13 @@ export async function unsetGitConfigValue(
  * @param options - Read options.
  * @param options.repoPath - Optional repository path.
  * @param options.filePath - Config file path, absolute or repo-relative.
+ * @param options.throwOnError - Throw read/parse errors instead of returning an empty list.
  * @returns Matching key/value entries.
  */
 export async function getGitConfigRegexp(
    git$: GdxContext['git$'],
    keyPattern: string,
-   options?: { repoPath?: string; filePath?: string }
+   options?: { repoPath?: string; filePath?: string; throwOnError?: boolean }
 ): Promise<Array<{ key: string; value: string }>> {
    const mode = await getInlineGitConfigMode();
    const resolved = resolveGitExecAndRepoPath(git$, options?.repoPath);
@@ -1367,7 +1496,8 @@ export async function getGitConfigRegexp(
                return { key, value };
             })
             .filter((entry): entry is { key: string; value: string } => !!entry);
-      } catch {
+      } catch (err) {
+         if (options?.throwOnError) throw err;
          return [];
       }
    }
@@ -1387,7 +1517,7 @@ export async function getGitConfigRegexp(
       return [];
    }
 
-   const parsed = await readParsedGitConfig(targetFile);
+   const parsed = await readParsedGitConfig(targetFile, options?.throwOnError === true);
    const entries = flattenParsedGitConfigEntries(parsed);
    return entries.filter((entry) => regex.test(entry.key));
 }
@@ -1861,9 +1991,10 @@ export async function getGitPath(
    const scope = `${getGitScope(git$, worktreePath)}|${markerToken}|${gitPath}`;
    const cacheKey = createCacheKey('git.path', scope);
    const cached = await cache.getOneOff<string | null>(cacheKey);
-   if (cached !== undefined) {
-      if (cached === null) return null;
+   if (typeof cached === 'string' && cached.length > 0) {
       if (fs.existsSync(path.dirname(cached))) return cached;
+      await cache.deleteOneOff(cacheKey);
+   } else if (cached !== undefined) {
       await cache.deleteOneOff(cacheKey);
    }
 
@@ -1874,7 +2005,6 @@ export async function getGitPath(
          gitPath,
       ]);
       if (!output) {
-         await cache.setOneOff(cacheKey, null);
          return null;
       }
       const resolvedPath = path.isAbsolute(output) ? output : path.resolve(worktreePath, output);
@@ -1882,7 +2012,6 @@ export async function getGitPath(
       return resolvedPath;
    } catch (err) {
       Logger.debug(yuString(err, { color: true }), 'git');
-      await cache.setOneOff(cacheKey, null);
       return null;
    }
 }
@@ -1931,6 +2060,9 @@ async function getRevParseScopeToken(
    refArgs: string[]
 ): Promise<string> {
    const gitPaths = getRevParseScopeGitPaths(featureScope, refArgs);
+   if (featureScope === 'head') {
+      gitPaths.push(...(await getHeadSymbolicRefStatePaths(gitExec, repoPath)));
+   }
    if (gitPaths.length === 0) return 'stable';
 
    const signature = await buildGitPathMtimeSignature(gitExec, repoPath, gitPaths);
@@ -1951,11 +2083,19 @@ export async function getRevParseCached(
    repoPath: string,
    ref: string | string[]
 ): Promise<string> {
-   const cache = await getCache();
    const refArgs = Array.isArray(ref) ? ref : ref.trim().split(/\s+/).filter(Boolean);
    if (refArgs.length === 0) return '';
-   const refKey = refArgs.join(' ');
    const resolvedRepoPath = path.resolve(repoPath);
+   if (!isRevParseCacheable(refArgs)) {
+      try {
+         return await runRevParseRaw(gitExec, resolvedRepoPath, refArgs);
+      } catch {
+         return '';
+      }
+   }
+
+   const cache = await getCache();
+   const refKey = refArgs.join(' ');
    const repoRoot = await resolveRevParseRepoRoot(gitExec, resolvedRepoPath);
    const repoHash = createShortHash(normalizeWorktreePath(repoRoot));
    const worktreeHash = createShortHash(normalizeWorktreePath(resolvedRepoPath));
@@ -1982,7 +2122,14 @@ export async function getRevParseCached(
       isTopologyScope
          ? await cache.getOneOff<string>(cacheKey)
          : await cache.get<string>(cacheKey);
-   if (cached !== undefined) return cached;
+   if (typeof cached === 'string' && cached.trim().length > 0) return cached;
+   if (cached !== undefined) {
+      if (isTopologyScope) {
+         await cache.deleteOneOff(cacheKey);
+      } else {
+         await cache.delete(cacheKey);
+      }
+   }
 
    const inFlightKey = cacheKey;
    const existingPromise = revParseInFlight.get(inFlightKey);
@@ -1991,22 +2138,21 @@ export async function getRevParseCached(
    const resolvePromise = (async () => {
       try {
          const output = await runRevParseRaw(gitExec, resolvedRepoPath, refArgs);
-         if (isTopologyScope) {
-            await cache.setOneOff(cacheKey, output);
-         } else {
-            await cache.set(cacheKey, output, {
-               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-            });
+         // Empty output is either a valid negative result or a failed lookup. Do
+         // not cache it because the repository or ref may become available later.
+         if (output) {
+            if (isTopologyScope) {
+               await cache.setOneOff(cacheKey, output);
+            } else {
+               await cache.set(cacheKey, output, {
+                  maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
+               });
+            }
          }
          return output;
       } catch {
-         if (isTopologyScope) {
-            await cache.setOneOff(cacheKey, '');
-         } else {
-            await cache.set(cacheKey, '', {
-               maxAgeMinutes: GIT_HEAD_CACHE_TTL_MINUTES,
-            });
-         }
+         // Errors are transient from the cache's point of view. Avoid storing a
+         // synthetic empty value that could hide a later successful lookup.
          return '';
       }
    })();
@@ -2467,9 +2613,7 @@ export async function getSubmodules(
    const gitmodulesPath = path.join(worktreePath, '.gitmodules');
    const gitmodulesMtime = (await fs.getStatMTime(gitmodulesPath)) ?? null;
    let indexMtime: number | null = null;
-   const cachedGitlinks = await cache.get<{ mtime: number | null; paths: string[] }>(
-      gitlinksCacheKey
-   );
+   const cachedGitlinks = await cache.get<CachedGitlinkData>(gitlinksCacheKey);
 
    try {
       let configPaths: string[] = [];
@@ -2477,18 +2621,23 @@ export async function getSubmodules(
       if (cachedPaths && cachedPaths.mtime === gitmodulesMtime) {
          configPaths = cachedPaths.paths;
       } else if (gitmodulesMtime !== null) {
+         let canCacheConfigPaths = false;
          try {
             const entries = await getGitConfigRegexp(git$, 'path', {
                repoPath: worktreePath,
                filePath: '.gitmodules',
+               throwOnError: true,
             });
             configPaths = entries
                .map((entry) => entry.value.trim())
                .filter((submodulePath) => submodulePath.length > 0);
+            canCacheConfigPaths = true;
          } catch {
             configPaths = [];
          }
-         await cache.set(pathsCacheKey, { mtime: gitmodulesMtime, paths: configPaths });
+         if (canCacheConfigPaths) {
+            await cache.set(pathsCacheKey, { mtime: gitmodulesMtime, paths: configPaths });
+         }
       } else if (cachedPaths && cachedPaths.mtime === null) {
          configPaths = cachedPaths.paths;
       }
@@ -2499,9 +2648,30 @@ export async function getSubmodules(
          indexMtime =
             (await fs.getStatMTime(await getGitPath(git$, worktreePath, 'index'))) ?? null;
       }
-      if (cachedGitlinks && cachedGitlinks.mtime === indexMtime && indexMtime !== null) {
+      const cachedGitlinkInfo =
+         cachedGitlinks?.info &&
+         typeof cachedGitlinks.info === 'object' &&
+         !Array.isArray(cachedGitlinks.info) &&
+         Object.entries(cachedGitlinks.info).every(
+            ([submodulePath, info]) =>
+               submodulePath.length > 0 &&
+               !!info &&
+               typeof info.sha === 'string' &&
+               /^[0-9a-f]{40}$/i.test(info.sha) &&
+               (info.stage === '0' || info.stage === '1' || info.stage === '2' || info.stage === '3')
+         )
+            ? new Map(Object.entries(cachedGitlinks.info))
+            : null;
+      if (
+         cachedGitlinks &&
+         cachedGitlinks.mtime === indexMtime &&
+         indexMtime !== null &&
+         cachedGitlinkInfo
+      ) {
          gitlinkPaths = cachedGitlinks.paths;
+         gitlinkInfo = cachedGitlinkInfo;
       } else {
+         let canCacheGitlinkPaths = false;
          try {
             const lsFilesOutput = (await $`${gitExec} -C ${worktreePath} ls-files --stage`).stdout;
             const gitlinkEntries = lsFilesOutput
@@ -2519,10 +2689,17 @@ export async function getSubmodules(
                gitlinkEntries.map((entry) => [entry.path, { sha: entry.sha, stage: entry.stage }])
             );
             gitlinkPaths = Array.from(gitlinkInfo.keys());
+            canCacheGitlinkPaths = true;
          } catch {
             gitlinkPaths = [];
          }
-         await cache.set(gitlinksCacheKey, { mtime: indexMtime, paths: gitlinkPaths });
+         if (canCacheGitlinkPaths) {
+            await cache.set(gitlinksCacheKey, {
+               mtime: indexMtime,
+               paths: gitlinkPaths,
+               info: Object.fromEntries(gitlinkInfo),
+            });
+         }
       }
 
       const configPathSet = new Set([...configPaths, ...gitlinkPaths]);

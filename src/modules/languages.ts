@@ -185,6 +185,10 @@ function parseLanguagesYaml(rawYaml: string, parser: YamlParser): StoredLanguage
    languages = removeConflictingExtensions(languages);
    languages.sort((a, b) => a.name.localeCompare(b.name));
 
+   if (languages.length === 0) {
+      throw new Error('Language catalog contains no languages');
+   }
+
    return {
       catalogVersion: LANGUAGE_CATALOG_VERSION,
       lastUpdatedAt: new Date().toISOString(),
@@ -434,7 +438,8 @@ function parseColorToDecimal(colorInput: unknown): number | null {
  */
 function parseStoredLanguageCatalog(value: unknown): StoredLanguageCatalog | null {
    try {
-      return assertSchema(ZStoredLanguageCatalog, value);
+      const catalog = assertSchema(ZStoredLanguageCatalog, value);
+      return catalog.languages.length > 0 ? catalog : null;
    } catch {
       return null;
    }

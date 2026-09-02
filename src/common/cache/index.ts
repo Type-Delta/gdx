@@ -85,7 +85,7 @@ export class CacheService {
       // Find all expired entries
       const expiredKeys: string[] = [];
       for (const [keyPath, meta] of Object.entries(this.cache.entryMeta)) {
-         if (meta.expiresAt !== INFINITE_TTL_EXPIRES_AT && now > meta.expiresAt) {
+         if (meta.expiresAt !== INFINITE_TTL_EXPIRES_AT && now >= meta.expiresAt) {
             expiredKeys.push(keyPath);
          }
       }
@@ -250,7 +250,7 @@ export class CacheService {
          return defaultValue;
       }
 
-      if (Date.now() > entry.expiresAt) {
+      if (Date.now() >= entry.expiresAt) {
          this.logger.debug(
             `Cache entry expired: ${keyPath}. expiresAt=${new Date(entry.expiresAt).toISOString()}, now=${new Date().toISOString()}`
          );
@@ -313,6 +313,9 @@ export class CacheService {
       if (this.isDisabled) return;
       const config = await getConfig();
       await this.ensureLoaded();
+      if (this.isDisabled) return;
+
+      assertJsonCacheValue(value);
 
       const keys = keyPath.split('.');
       let target: any = this.cache.data;
@@ -320,6 +323,9 @@ export class CacheService {
          options?.maxAgeMinutes ??
          config.get<number>('cache.maxAgeMinutes') ??
          DEFAULT_CACHE_MAX_AGE;
+      if (cacheMaxAge !== Infinity && !Number.isFinite(cacheMaxAge)) {
+         throw new RangeError('Cache maxAgeMinutes must be finite or Infinity.');
+      }
 
       this.logger.debug(`Setting cache ${keyPath} with maxAgeMinutes=${cacheMaxAge}`);
 
@@ -343,7 +349,12 @@ export class CacheService {
       // Ensure intermediate objects exist
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
-         if (!(key in target) || target[key] === null || typeof target[key] !== 'object') {
+         if (
+            !(key in target) ||
+            target[key] === null ||
+            typeof target[key] !== 'object' ||
+            Array.isArray(target[key])
+         ) {
             target[key] = {};
          }
          target = target[key];
@@ -354,9 +365,11 @@ export class CacheService {
 
       // Update per-key metadata
       const now = Date.now();
-      const expiresAt = Number.isFinite(cacheMaxAge)
-         ? now + Math.max(cacheMaxAge, 0) * 60 * 1000
-         : INFINITE_TTL_EXPIRES_AT;
+      const maxFiniteMinutes = (INFINITE_TTL_EXPIRES_AT - now) / (60 * 1000);
+      const expiresAt =
+         cacheMaxAge === Infinity || cacheMaxAge > maxFiniteMinutes
+            ? INFINITE_TTL_EXPIRES_AT
+            : now + Math.max(cacheMaxAge, 0) * 60 * 1000;
       this.cache.entryMeta[keyPath] = {
          createdAt: this.cache.entryMeta[keyPath]?.createdAt ?? now,
          updatedAt: now,
@@ -380,6 +393,13 @@ export class CacheService {
 
       const keys = keyPath.split('.');
       let target: any = this.memoryData;
+
+      for (let i = 1; i < keys.length; i++) {
+         delete this.memoryEntryMeta[keys.slice(0, i).join('.')];
+      }
+      for (const existingKey of Object.keys(this.memoryEntryMeta)) {
+         if (existingKey.startsWith(`${keyPath}.`)) delete this.memoryEntryMeta[existingKey];
+      }
 
       for (let i = 0; i < keys.length - 1; i++) {
          const key = keys[i];
@@ -408,6 +428,7 @@ export class CacheService {
    async delete(keyPath: string): Promise<boolean> {
       if (this.isDisabled) return false;
       await this.ensureLoaded();
+      if (this.isDisabled) return false;
 
       // Check if entry exists
       if (!this.cache.entryMeta[keyPath]) {
@@ -417,6 +438,7 @@ export class CacheService {
       // Remove from entryMeta
       delete this.cache.entryMeta[keyPath];
       this.modifiedKeys.delete(keyPath);
+      const deletedAt = Date.now();
       this.deletedKeys.add(keyPath);
 
       // Remove from nested data structure
@@ -451,7 +473,7 @@ export class CacheService {
          }
       }
 
-      this.cache.meta.updatedAt = Date.now();
+      this.cache.meta.updatedAt = deletedAt;
       this.dirty = true;
       this.logger.debug(`Cache entry deleted: ${keyPath}`);
 
@@ -740,7 +762,12 @@ export class CacheService {
             }
             source = source[keys[i]];
             const key = keys[i];
-            if (!(key in target) || target[key] === null || typeof target[key] !== 'object') {
+            if (
+               !(key in target) ||
+               target[key] === null ||
+               typeof target[key] !== 'object' ||
+               Array.isArray(target[key])
+            ) {
                target[key] = {};
             }
             target = target[key];
@@ -785,9 +812,75 @@ export class CacheService {
     */
    async clear(): Promise<void> {
       await this.ensureLoaded();
+      if (this.isDisabled) return;
       this.resetCache();
       this.resetMemoryCache();
    }
+}
+
+/**
+ * Rejects values that JSON would drop, alter, or fail to serialize.
+ * @param value - Candidate persistent cache value.
+ */
+function assertJsonCacheValue(value: unknown): void {
+   const ancestors = new Set<object>();
+
+   const visit = (current: unknown): void => {
+      if (
+         current === null ||
+         typeof current === 'string' ||
+         typeof current === 'boolean'
+      ) {
+         return;
+      }
+      if (typeof current === 'number') {
+         if (Number.isFinite(current)) return;
+         throw new TypeError('Persistent cache values cannot contain non-finite numbers.');
+      }
+      if (typeof current !== 'object') {
+         throw new TypeError(`Persistent cache values cannot contain ${typeof current}.`);
+      }
+      if (ancestors.has(current)) {
+         throw new TypeError('Persistent cache values cannot contain circular references.');
+      }
+
+      const prototype = Object.getPrototypeOf(current);
+      if (!Array.isArray(current) && prototype !== Object.prototype && prototype !== null) {
+         throw new TypeError('Persistent cache values must contain only plain objects and arrays.');
+      }
+
+      ancestors.add(current);
+      if (Array.isArray(current)) {
+         for (const key of Reflect.ownKeys(current)) {
+            if (key === 'length') continue;
+            if (
+               typeof key !== 'string' ||
+               !/^(0|[1-9]\d*)$/.test(key) ||
+               Number(key) >= current.length
+            ) {
+               throw new TypeError(
+                  'Persistent cache arrays cannot contain custom or symbol properties.'
+               );
+            }
+         }
+         for (let index = 0; index < current.length; index++) {
+            if (!Object.hasOwn(current, index)) {
+               throw new TypeError('Persistent cache values cannot contain sparse arrays.');
+            }
+            visit(current[index]);
+         }
+      } else {
+         for (const key of Reflect.ownKeys(current)) {
+            if (typeof key !== 'string' || !Object.prototype.propertyIsEnumerable.call(current, key)) {
+               throw new TypeError('Persistent cache object properties must be enumerable strings.');
+            }
+            visit((current as Record<string, unknown>)[key]);
+         }
+      }
+      ancestors.delete(current);
+   };
+
+   visit(value);
 }
 
 // Singleton instance

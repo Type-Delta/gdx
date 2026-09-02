@@ -78,6 +78,105 @@ describe('languages module', async () => {
       }
    });
 
+   it('should keep the cached catalog when a successful refresh has no languages', async () => {
+      const cache = await getCache();
+      const cachedCatalog = {
+         catalogVersion: languageConsts.LANGUAGE_CATALOG_VERSION,
+         lastUpdatedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+         languages: [
+            {
+               name: 'Python',
+               extensions: ['.py'],
+               filenames: [],
+               color: parseInt('3572A5', 16),
+               id: 303,
+            },
+         ],
+      };
+      await cache.set(languageConsts.LANGUAGE_CACHE_KEY, cachedCatalog, {
+         maxAgeMinutes: Infinity,
+      });
+
+      const originalFetch = globalThis.fetch;
+      const emptyPayloads = ['null', '"scalar"', '{}', ''];
+      let payloadIndex = 0;
+      globalThis.fetch = (async () =>
+         new Response(emptyPayloads[payloadIndex++], { status: 200 })) as unknown as typeof fetch;
+
+      try {
+         for (let index = 0; index < emptyPayloads.length; index += 1) {
+            const catalog = await getLanguageCatalog();
+            expect(catalog?.languages[0].name).toBe('Python');
+            expect(
+               (await cache.get<typeof cachedCatalog>(languageConsts.LANGUAGE_CACHE_KEY))
+                  ?.languages[0].name
+            ).toBe('Python');
+         }
+         expect(payloadIndex).toBe(emptyPayloads.length);
+      } finally {
+         globalThis.fetch = originalFetch;
+      }
+   });
+
+   it('should replace a recent empty cached catalog with a valid refresh', async () => {
+      const cache = await getCache();
+      await cache.set(
+         languageConsts.LANGUAGE_CACHE_KEY,
+         {
+            catalogVersion: languageConsts.LANGUAGE_CATALOG_VERSION,
+            lastUpdatedAt: new Date().toISOString(),
+            languages: [],
+         },
+         { maxAgeMinutes: Infinity }
+      );
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+         new Response(
+            `TypeScript:
+  type: programming
+  color: "#3178c6"
+  extensions:
+  - ".ts"
+  language_id: 378
+`
+         )) as unknown as typeof fetch;
+
+      try {
+         const catalog = await getLanguageCatalog();
+         expect(catalog?.languages[0].name).toBe('TypeScript');
+         expect(
+            (await cache.get<typeof catalog>(languageConsts.LANGUAGE_CACHE_KEY))?.languages[0].name
+         ).toBe('TypeScript');
+      } finally {
+         globalThis.fetch = originalFetch;
+      }
+   });
+
+   it('should return null when refreshing a recent empty cached catalog fails', async () => {
+      const cache = await getCache();
+      await cache.set(
+         languageConsts.LANGUAGE_CACHE_KEY,
+         {
+            catalogVersion: languageConsts.LANGUAGE_CATALOG_VERSION,
+            lastUpdatedAt: new Date().toISOString(),
+            languages: [],
+         },
+         { maxAgeMinutes: Infinity }
+      );
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => {
+         throw new Error('network down');
+      }) as unknown as typeof fetch;
+
+      try {
+         expect(await getLanguageCatalog()).toBeNull();
+      } finally {
+         globalThis.fetch = originalFetch;
+      }
+   });
+
    it('should remove conflicting extensions from all conflicting languages', async () => {
       const cache = await getCache();
       await cache.set(

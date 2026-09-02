@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, expect } from 'bun:test';
+import { describe, expect, spyOn } from 'bun:test';
 import path from 'path';
 import nodeFs from 'fs';
 import * as fs from '@/modules/fs';
@@ -15,6 +15,7 @@ import {
 } from '@/consts';
 import { CacheStructure } from '@/common/schema';
 import { languageConsts } from '@/modules/languages';
+import { getConfig, resetConfig } from '@/common/config';
 
 describe('CacheService', async () => {
    const { tmpRootDir, it } = await createTestEnv({ liteMode: true, suitName: 'cache-service' });
@@ -51,6 +52,80 @@ describe('CacheService', async () => {
       const allData = await cache.getAll();
       expect(allData.entryMeta['git.version']).toBeDefined();
       expect(allData.entryMeta['git.version'].expiresAt).toBeGreaterThan(Date.now());
+   });
+
+   it('should not mutate or flush on a disabled first set or clear', async () => {
+      resetConfig();
+      const config = await getConfig();
+      await config.set('cache.enabled', false);
+      const cachePath = path.join(tmpRootDir, 'disabled-first-set.json');
+
+      try {
+         const cache = new CacheService(cachePath);
+         await cache.set('disabled.key', 'value');
+         await cache.clear();
+         cache.flush();
+
+         expect((await cache.getAll()).entryMeta['disabled.key']).toBeUndefined();
+         expect(fs.existsSync(cachePath)).toBe(false);
+      } finally {
+         await config.set('cache.enabled', true);
+         resetConfig();
+      }
+   });
+
+   it('should reject values that cannot round-trip through JSON', async () => {
+      const cache = new CacheService(path.join(tmpRootDir, 'invalid-values.json'));
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+      const arrayWithCustomProperty: unknown[] & { custom?: string } = [];
+      arrayWithCustomProperty.custom = 'dropped';
+      const arrayWithSymbolProperty: unknown[] = [];
+      (arrayWithSymbolProperty as unknown as { [key: symbol]: string })[Symbol('custom')] =
+         'dropped';
+
+      await expect(cache.set('invalid.undefined', undefined)).rejects.toThrow();
+      await expect(cache.set('invalid.number', Number.NaN)).rejects.toThrow();
+      await expect(cache.set('invalid.bigint', 1n)).rejects.toThrow();
+      await expect(cache.set('invalid.circular', circular)).rejects.toThrow();
+      await expect(cache.set('invalid.array-property', arrayWithCustomProperty)).rejects.toThrow();
+      await expect(cache.set('invalid.array-symbol', arrayWithSymbolProperty)).rejects.toThrow();
+      await expect(
+         cache.set('invalid.ttl', 'value', { maxAgeMinutes: Number.NaN })
+      ).rejects.toThrow();
+
+      expect(Object.keys((await cache.getAll()).entryMeta)).toHaveLength(0);
+      cache.flush();
+      expect(fs.existsSync(cache.getCachePath())).toBe(false);
+   });
+
+   it('should preserve JSON-compatible empty and false values', async () => {
+      const cache = new CacheService(path.join(tmpRootDir, 'empty-values.json'));
+
+      await cache.set('empty.string', '');
+      await cache.set('empty.array', []);
+      await cache.set('empty.null', null);
+      await cache.set('empty.false', false);
+      cache.flush();
+      const reloaded = new CacheService(cache.getCachePath());
+
+      expect(await reloaded.get<string>('empty.string')).toBe('');
+      expect(await reloaded.get<unknown[]>('empty.array')).toEqual([]);
+      expect(await reloaded.get<null>('empty.null')).toBeNull();
+      expect(await reloaded.get<boolean>('empty.false')).toBe(false);
+   });
+
+   it('should replace an intermediate array before persisting a nested key', async () => {
+      const cachePath = path.join(tmpRootDir, 'array-intermediate.json');
+      const cache = new CacheService(cachePath);
+      await cache.set('shared', []);
+      await cache.set('shared.child', 'value');
+      cache.flush();
+
+      const reloaded = new CacheService(cachePath);
+      expect(await reloaded.get<string>('shared.child')).toBe('value');
+      expect((await reloaded.getAll()).data.shared).toEqual({ child: 'value' });
+      expect((await reloaded.getAll()).entryMeta.shared).toBeUndefined();
    });
 
    it('should support nested key paths', async () => {
@@ -262,6 +337,16 @@ describe('CacheService', async () => {
       cache.flush();
       const reloaded = new CacheService(cache.getCachePath());
       expect(await reloaded.get<string>('persistent.key')).toBe('persistent');
+   });
+
+   it('should remove conflicting one-off metadata including for array parents', async () => {
+      const cache = new CacheService(path.join(tmpRootDir, 'one-off-overlap.json'));
+      await cache.setOneOff('shared', []);
+      await cache.setOneOff('shared.child', 'child');
+
+      expect(await cache.getOneOff<string>('shared.child')).toBe('child');
+      expect(await cache.deleteOneOff('shared')).toBe(false);
+      expect(await cache.getOneOff<string>('shared.child')).toBe('child');
    });
 
    it('should merge independent instance writes', async () => {
@@ -506,6 +591,20 @@ describe('CacheService', async () => {
       expect(defaultExpiry - now).toBeGreaterThan(5 * 60 * 1000); // > 5 min
    });
 
+   it('should expire a zero TTL entry at its exact expiry timestamp', async () => {
+      const now = 1_700_000_000_000;
+      const dateNow = spyOn(Date, 'now').mockReturnValue(now);
+      try {
+         const cache = new CacheService(path.join(tmpRootDir, 'zero-ttl.json'));
+         await cache.set('ttl.zero', 'expired', { maxAgeMinutes: 0 });
+
+         expect((await cache.getAll()).entryMeta['ttl.zero'].expiresAt).toBe(now);
+         expect(await cache.get('ttl.zero')).toBeUndefined();
+      } finally {
+         dateNow.mockRestore();
+      }
+   });
+
    it('should support infinity TTL entries', async () => {
       resetCache();
       const cache = new CacheService(cacheFilePath);
@@ -518,6 +617,19 @@ describe('CacheService', async () => {
 
       const value = await cache.get('ttl.infinity');
       expect(value).toBe('forever');
+   });
+
+   it('should clamp a huge finite TTL to a JSON-safe expiry', async () => {
+      const cachePath = path.join(tmpRootDir, 'huge-ttl.json');
+      const cache = new CacheService(cachePath);
+      await cache.set('ttl.huge', 'long-lived', { maxAgeMinutes: Number.MAX_VALUE });
+      cache.flush();
+
+      const persisted = JSON.parse(await fs.readFile(cachePath, 'utf-8')) as CacheStructure;
+      expect(persisted.entryMeta['ttl.huge'].expiresAt).toBe(
+         languageConsts.INFINITE_TTL_EXPIRES_AT
+      );
+      expect(await new CacheService(cachePath).get<string>('ttl.huge')).toBe('long-lived');
    });
 
    it('should initialize lastPruneAt on new cache', async () => {
@@ -592,6 +704,35 @@ describe('CacheService', async () => {
       // Verify lastPruneAt was updated
       const allData = await cache.getAll();
       expect(allData.meta.lastPruneAt).toBeGreaterThan(oldTimestamp);
+   });
+
+   it('should prune an entry at its exact expiry timestamp', async () => {
+      const now = 1_700_000_000_000;
+      const cachePath = path.join(tmpRootDir, 'exact-prune-expiry.json');
+      const oldTimestamp = now - (CACHE_PRUNE_INTERVAL_DAYS + 1) * ONE_DAY_MS;
+      const cacheData = {
+         meta: {
+            version: VERSION,
+            cacheSchemaVersion: GDX_CACHE_SCHEMA_VERSION,
+            createdAt: oldTimestamp,
+            updatedAt: oldTimestamp,
+            lastPruneAt: oldTimestamp,
+         },
+         data: { exact: 'expired' },
+         entryMeta: {
+            exact: { createdAt: oldTimestamp, updatedAt: oldTimestamp, expiresAt: now },
+         },
+      } satisfies CacheStructure;
+      await fs.writeFile(cachePath, JSON.stringify(cacheData));
+
+      const dateNow = spyOn(Date, 'now').mockReturnValue(now);
+      try {
+         const cache = new CacheService(cachePath);
+         await cache.getAll();
+         expect((await cache.getAll()).entryMeta.exact).toBeUndefined();
+      } finally {
+         dateNow.mockRestore();
+      }
    });
 
    it(`should not prune when last prune is within ${CACHE_PRUNE_INTERVAL_DAYS} days`, async () => {

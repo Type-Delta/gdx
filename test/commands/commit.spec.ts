@@ -247,6 +247,38 @@ describe('gdx commit auto - inherit mode', async () => {
       expect(cacheData).toContain('repoGuidelines');
    });
 
+   it('should not reuse no-remote guidelines after an unrelated remote is added', async () => {
+      await useInheritMode();
+      await resetRepo();
+      await clearRemotes($);
+      resetCache();
+
+      for (let i = 0; i < 6; i++) {
+         await $`${git$} commit -m ${'feat: add feature ' + i} --allow-empty --no-verify`;
+      }
+
+      tracker.llmMockGenerateResponse = 'no-remote guideline';
+      await fs.writeFile(path.join(tmpDir, 'before-remote.txt'), 'before remote');
+      await $`${git$} add before-remote.txt`;
+      expect(
+         await commit.auto(createGdxContext(tmpDir, ['commit', 'auto', '--preview']))
+      ).toBe(0);
+      expect(tracker.llmGenerateRequests.length).toBe(1);
+
+      await $`${git$} remote add unrelated https://example.com/unrelated.git`;
+      const cache = await getCache();
+      await cache.clearOneOff();
+      tracker.llmMockGenerateResponse = 'remote-specific guideline';
+      await fs.writeFile(path.join(tmpDir, 'after-remote.txt'), 'after remote');
+      await $`${git$} add after-remote.txt`;
+
+      expect(
+         await commit.auto(createGdxContext(tmpDir, ['commit', 'auto', '--preview']))
+      ).toBe(0);
+      expect(tracker.llmGenerateRequests.length).toBe(2);
+      expect(buffer.stdout).toContain('remote-specific guideline');
+   });
+
    it('should reuse guidelines cache across worktrees', async () => {
       await useInheritMode();
       await resetRepo();
