@@ -121,6 +121,7 @@ class TestEnvTracker {
    llmStreamRequests: LLMRequest[] = [];
    llmMockGenerateResponse = 'Mock response from LLM';
    llmMockStreamResponse = 'Mock response from LLM';
+   promptResponses: string[] = [];
    spinnerStatus: 'nottriggered' | 'started' | 'stopped' = 'nottriggered';
    testSystem: TestSystem = {
       lastTestStatus: 'notrun',
@@ -136,6 +137,7 @@ class TestEnvTracker {
       this.llmStreamRequests = [];
       this.llmMockGenerateResponse = 'Mock response from LLM';
       this.llmMockStreamResponse = 'Mock response from LLM';
+      this.promptResponses = [];
       this.spinnerStatus = 'nottriggered';
       this.testSystem.lastTestStatus = 'notrun';
    }
@@ -471,7 +473,7 @@ function overrideModules(
                await __openInEditor(targetPath, editorCommand);
             }
          }) satisfies typeof openInEditor,
-         $prompt: async () => 'y', // Auto-confirm prompts
+         $prompt: async () => tracker.promptResponses.shift() ?? 'y', // Auto-confirm prompts
          spinner: () => {
             return {
                start: () => {

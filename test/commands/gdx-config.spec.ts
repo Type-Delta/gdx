@@ -2,13 +2,13 @@ import { describe, expect } from 'bun:test';
 import path from 'path';
 import fs from 'fs';
 
-import gdxConfig from '@/commands/gdx-config';
+import gdxConfig, { promptForSecretReplacement } from '@/commands/gdx-config';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
 import { getConfig, resetConfig } from '@/common/config';
 import { DEFAULT_CONFIG } from '@/common/config/schema';
 
 describe('gdx gdx-config', async () => {
-   const { tmpDir, tmpRootDir, $, buffer, it } = await createTestEnv({
+   const { tmpDir, tmpRootDir, $, buffer, tracker, env, it } = await createTestEnv({
       liteMode: true,
       suitName: 'gdx-config'
    });
@@ -98,6 +98,50 @@ describe('gdx gdx-config', async () => {
 
       expect(result).toBe(0);
       expect(buffer.stdout).toContain('openai');
+   });
+
+   it('should mask replacement input and confirm before returning it', async () => {
+      const calls: unknown[][] = [];
+      const responses = ['replacement-secret', 'yes'];
+      const replacement = await promptForSecretReplacement('llm.apiKey', async (...args) => {
+         calls.push(args);
+         return responses.shift() ?? '';
+      });
+
+      expect(replacement).toBe('replacement-secret');
+      expect(calls).toEqual([
+         ['New value for llm.apiKey: ', { mask: '*' }],
+         ['Overwrite llm.apiKey? (y/N): '],
+      ]);
+   });
+
+   it('should keep the current secret when replacement is empty or unconfirmed', async () => {
+      const empty = await promptForSecretReplacement('llm.apiKey', async () => '');
+      const responses = ['replacement-secret', 'no'];
+      const rejected = await promptForSecretReplacement('llm.apiKey', async () => {
+         return responses.shift() ?? '';
+      });
+
+      expect(empty).toBeNull();
+      expect(rejected).toBeUndefined();
+   });
+
+   it('should suggest --unset after an empty interactive secret replacement', async () => {
+      const previous = process.env.GDX_LLM_API_KEY;
+      process.env.GDX_LLM_API_KEY = 'existing-verification-secret';
+      tracker.promptResponses.push('');
+      env.isTTY = true;
+      resetConfig();
+
+      try {
+         const ctx = createGdxContext(tmpDir, ['gdx-config', 'llm.apiKey']);
+         expect(await gdxConfig(ctx)).toBe(0);
+         expect(buffer.stdout).toContain('gdx gdx-config --unset llm.apiKey');
+      } finally {
+         if (previous === undefined) delete process.env.GDX_LLM_API_KEY;
+         else process.env.GDX_LLM_API_KEY = previous;
+         resetConfig();
+      }
    });
 
    it('should set experimental useInlineSubmodule value', async () => {

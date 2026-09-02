@@ -17,7 +17,7 @@ import Logger from '@/utils/logger';
 export const GDX_HISTORY_GUARD_ENV = { GDX_HISTORY_GUARD: '1' } as const;
 import { unlinkSync, writeFileSync } from './fs';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
-import { readLine } from './line-editor';
+import { readLine, ReadLineOptions } from './line-editor';
 
 export interface SpinnerController {
    /**
@@ -216,10 +216,11 @@ export function printCommandExecution(executable: string, args: string[]): void 
 /**
  * Prompts the user with a question and returns their input.
  * @param question - The question to ask the user.
+ * @param options - Input editing and display options.
  * @returns A promise that resolves to the user's input.
  */
-export async function $prompt(question: string): Promise<string> {
-   return (await readLine(question)).trim();
+export async function $prompt(question: string, options: ReadLineOptions = {}): Promise<string> {
+   return (await readLine(question, options)).trim();
 }
 
 /**
