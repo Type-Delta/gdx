@@ -110,15 +110,16 @@ export function guidelineLearningPrompt(commitMessages: string[]) {
    </commit-message-examples>
 
    <task>
-    Analyze the commit messages above and produce a concise "Commit Message Guideline" document (max 500 words) that captures:
+   Analyze the commit messages above and produce a concise "Commit Message Guideline" document (max 500 words) that captures:
    1. Overall structure (header/body/footer format)
    2. Header conventions (prefixes, types, scopes, title style)
    3. Body conventions (description style, bullets if used)
    4. Any recurring patterns or special formatting
 
-    CRITICAL RULES:
-    - Messages are separated by a NULL character (\x00) only as a delimiter; it is not part of any commit message
-    - Only document patterns that are CLEARLY EVIDENT in the examples
+   CRITICAL RULES:
+   - Messages are separated by a NULL character (\x00) only as a delimiter; it is not part of any commit message
+   - Do not document Git or GitHub commit trailers such as \`Co-authored-by:\`, \`Signed-off-by:\`, or \`Reviewed-by:\`, even if they appear in the examples
+   - Only document patterns that are CLEARLY EVIDENT in the examples
    - Do NOT invent rules that aren't demonstrated in the actual commits
    - If examples are inconsistent, note the variations
    - Be specific and actionable
