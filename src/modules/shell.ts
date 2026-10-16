@@ -131,12 +131,15 @@ export const $ = limitExeca(execa({
  */
 export function createAbortableExec(options: Options = {}) {
    const controller = new AbortController();
-   const _shell = limitExeca(execa({
+   const shell = execa({
       env: GDX_HISTORY_GUARD_ENV,
       cancelSignal: controller.signal,
       ...options,
       verbose: execaCustomLogger,
-   } satisfies Options));
+   } satisfies Options);
+   // The limiter returns a regular Promise, which would hide Execa's async
+   // iterator. Streaming callers must receive the native ResultPromise.
+   const _shell = options.buffer === false ? shell : limitExeca(shell);
 
    return {
       $: _shell as ExecaMethod<{ stdout: 'pipe'; stderr: 'pipe' }>,
