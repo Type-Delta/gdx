@@ -46,6 +46,20 @@ describe('shell', () => {
       expect(stdout.trim()).toBe(process.cwd());
    });
 
+   it('should stream output beyond the default capture limit', async () => {
+      const outputSize = 101_000_000;
+      const script = `const chunk = 'x'.repeat(1000000); for (let i = 0; i < 101; i++) process.stdout.write(chunk)`;
+      const command = createAbortableExec({ buffer: false }).$`${process.execPath} -e ${script}`;
+      let received = 0;
+
+      for await (const chunk of command.stdout) {
+         received += Buffer.byteLength(chunk);
+      }
+
+      await command;
+      expect(received).toBe(outputSize);
+   });
+
    it('should account for terminal word wrapping when redrawing text', () => {
       const output: string[] = [];
 

@@ -17,7 +17,7 @@ import Logger from '@/utils/logger';
 export const GDX_HISTORY_GUARD_ENV = { GDX_HISTORY_GUARD: '1' } as const;
 import { unlinkSync, writeFileSync } from './fs';
 import { escapeCmdArgs, quickPrint } from '@/utils/utilities';
-import { readLine } from './line-editor';
+import { readLine, ReadLineOptions } from './line-editor';
 
 export interface SpinnerController {
    /**
@@ -131,12 +131,15 @@ export const $ = limitExeca(execa({
  */
 export function createAbortableExec(options: Options = {}) {
    const controller = new AbortController();
-   const _shell = limitExeca(execa({
+   const shell = execa({
       env: GDX_HISTORY_GUARD_ENV,
       cancelSignal: controller.signal,
       ...options,
       verbose: execaCustomLogger,
-   } satisfies Options));
+   } satisfies Options);
+   // The limiter returns a regular Promise, which would hide Execa's async
+   // iterator. Streaming callers must receive the native ResultPromise.
+   const _shell = options.buffer === false ? shell : limitExeca(shell);
 
    return {
       $: _shell as ExecaMethod<{ stdout: 'pipe'; stderr: 'pipe' }>,
@@ -216,10 +219,11 @@ export function printCommandExecution(executable: string, args: string[]): void 
 /**
  * Prompts the user with a question and returns their input.
  * @param question - The question to ask the user.
+ * @param options - Input editing and display options.
  * @returns A promise that resolves to the user's input.
  */
-export async function $prompt(question: string): Promise<string> {
-   return (await readLine(question)).trim();
+export async function $prompt(question: string, options: ReadLineOptions = {}): Promise<string> {
+   return (await readLine(question, options)).trim();
 }
 
 /**

@@ -1,4 +1,5 @@
 import litedent from 'litedent';
+import { StringDecoder } from 'node:string_decoder';
 import * as path from 'path';
 
 import {
@@ -48,8 +49,14 @@ interface ParsedNumStat {
    totalAdded: number;
    totalRemoved: number;
    totalRecords: number;
+   byteLength: number;
    netFiles: Array<{ filePath: string; netLines: number }>;
    activityFiles: Array<{ filePath: string; activityLines: number }>;
+}
+
+interface StreamedNumStatResult {
+   stats: ParsedNumStat;
+   topContributor: TopContributor | null;
 }
 
 interface LanguageUsageBar {
@@ -61,6 +68,7 @@ interface TopContributor {
    email: string;
    username: string;
    contributionPct: string;
+   changedLines: number;
 }
 
 interface RemoteLinkInfo {
@@ -87,7 +95,9 @@ type ResolvedLanguageMetricMode = Exclude<LanguageMetricMode, 'auto'>;
 
 export default async function stats(ctx: GdxContext): Promise<number> {
    const exec = createAbortableExec();
+   const streamExec = createAbortableExec({ buffer: false });
    const $ = exec.$;
+   const stream$ = streamExec.$;
 
    const { args, git$ } = ctx;
 
@@ -124,6 +134,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          }
       } catch (err) {
          exec.abort();
+         streamExec.abort();
          Logger.error('Failed to read git config user.email.', 'stats');
          Logger.error(yuString(err, { color: true }), 'stats');
          return 1;
@@ -150,14 +161,19 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       const objectInventoryPromise = isAllScope
          ? $`${git$} cat-file --batch-all-objects --batch-check=%(objectname):%(objectsize)`
          : Promise.resolve({ stdout: '' });
-      const projectLineStatsPromise = $`${git$} log --all --pretty=tformat: --numstat`;
+      const projectLineStatsPromise = collectNumStat(
+         stream$`${git$} log --all --pretty=tformat: --numstat`
+      );
       const useCompactCommitTime = global.terminalWidth <= 100;
       const commitTimeFormat = useCompactCommitTime
          ? '%ar%x09%h%x09%aI'
          : '%ar%x09%h%x09%ad';
-      const topContributorRawPromise = isAllScope
-         ? $`${git$} log --all --format=%aN%x09%ae --numstat`
-         : Promise.resolve({ stdout: '' });
+      const topContributorPromise = isAllScope
+         ? collectNumStat(
+              stream$`${git$} log --all --format=%aN%x09%ae --numstat`,
+              true
+           )
+         : Promise.resolve(null);
       const scopedUsernamePromise = isAllScope
          ? Promise.resolve({ stdout: '' })
          : $`${git$} log --all --author=${email} -1 --format=%aN`;
@@ -170,7 +186,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          todayCommitsRes,
          scopedLogStatsRes,
          projectLineStatsRes,
-         topContributorRawRes,
+         topContributorRes,
          scopedUsernameRes,
          branches,
          firstCommitShasRes,
@@ -186,10 +202,12 @@ export default async function stats(ctx: GdxContext): Promise<number> {
             ? $`${git$} log --all --since=midnight --pretty=tformat:%h`
             : $`${git$} log --all --author=${email} --since=midnight --pretty=tformat:%h`,
          isAllScope
-            ? Promise.resolve({ stdout: '' })
-            : $`${git$} log --all --author=${email} --pretty=tformat: --numstat`,
+            ? Promise.resolve(emptyStreamedNumStatResult())
+            : collectNumStat(
+                 stream$`${git$} log --all --author=${email} --pretty=tformat: --numstat`
+              ),
          projectLineStatsPromise,
-         topContributorRawPromise,
+         topContributorPromise,
          scopedUsernamePromise,
          getGitBranchesCached(git$),
          isAllScope
@@ -236,8 +254,8 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          : `${projectName}${projectSuffix}`;
 
       const statParseStart = performance.now();
-      const projectNumStat = parseNumStat(projectLineStatsRes.stdout);
-      const scopedNumStat = isAllScope ? projectNumStat : parseNumStat(scopedLogStatsRes.stdout);
+      const projectNumStat = projectLineStatsRes.stats;
+      const scopedNumStat = isAllScope ? projectNumStat : scopedLogStatsRes.stats;
 
       const totalAdded = scopedNumStat.totalAdded;
       const totalRemoved = scopedNumStat.totalRemoved;
@@ -276,7 +294,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
          projChanged > 0 ? maxFraction((totalChanged / projChanged) * 100, 2, true) : '0.00';
 
       const topContributor = isAllScope
-         ? parseTopContributor(topContributorRawRes.stdout, projChanged)
+         ? addContributionPct(topContributorRes?.topContributor ?? null, projChanged)
          : null;
       const contributionPct = isAllScope
          ? topContributor
@@ -327,9 +345,7 @@ export default async function stats(ctx: GdxContext): Promise<number> {
       }
       const lastCommitTime =
          formatCommitTime(lastCommitTimeRes.stdout, useCompactCommitTime) || 'Never';
-      const numStatSize =
-         Buffer.byteLength(projectLineStatsRes.stdout) +
-         (isAllScope ? 0 : Buffer.byteLength(scopedLogStatsRes.stdout));
+      const numStatSize = projectNumStat.byteLength + (isAllScope ? 0 : scopedNumStat.byteLength);
       const recordsParsed =
          projectNumStat.totalRecords + (isAllScope ? 0 : scopedNumStat.totalRecords);
       const orphanColor = garbageObjCounts.commit > 0 ? SGR.red : SGR.white + SGR.dim;
@@ -412,6 +428,7 @@ ${contributionLine}
    } catch (err) {
       spinnerCtrl.stop();
       exec.abort();
+      streamExec.abort();
       Logger.error(yuString(err, { color: true }));
       return 1;
    }
@@ -449,57 +466,72 @@ function buildRemoteLinkInfo(normalizedRemoteUrl: string | null): RemoteLinkInfo
    };
 }
 
+type StreamedCommand = {
+   stdout: AsyncIterable<Uint8Array | string>;
+} & PromiseLike<unknown>;
+
 /**
- * Parses numstat output grouped by author identity and returns the top contributor.
+ * Consumes a numstat command without retaining its complete output.
  *
- * @param raw - Raw output from `git log --format=%aN%x09%ae --numstat`.
- * @param projectChangedLines - Total changed lines across the project scope.
- * @returns Top contributor metadata or null when unavailable.
+ * @param command - Execa subprocess configured with `buffer: false`.
+ * @param collectContributors - Whether author headers should be aggregated.
+ * @returns Aggregated line statistics and optional contributor information.
  */
-function parseTopContributor(raw: string, projectChangedLines: number): TopContributor | null {
-   if (!raw.trim()) return null;
-
+async function collectNumStat(
+   command: StreamedCommand,
+   collectContributors = false
+): Promise<StreamedNumStatResult> {
+   let totalAdded = 0;
+   let totalRemoved = 0;
+   let totalRecords = 0;
+   let byteLength = 0;
+   const fileNetLines = new Map<string, number>();
+   const fileActivityLines = new Map<string, number>();
    const contributors = new Map<string, { name: string; email: string; lines: number }>();
-   let currentEmail = '';
    let currentName = '';
+   let currentEmail = '';
+   const decoder = new StringDecoder('utf8');
+   let pending = '';
 
-   for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
+   const consumeLine = (line: string): void => {
+      totalRecords += 1;
       const parts = line.split('\t');
-      if (parts.length >= 3) {
-         if (!/^\d+$/.test(parts[0]) || !/^\d+$/.test(parts[1])) {
-            continue;
-         }
+      const addedRaw = parts[0] ?? '';
+      const removedRaw = parts[1] ?? '';
+      const isNumStat = parts.length >= 3 && /^\d+$/.test(addedRaw) && /^\d+$/.test(removedRaw);
 
-         if (!currentEmail) continue;
+      // Binary numstat records use `-\t-\tpath`; they are file records, not
+      // author headers, and must not replace the current contributor identity.
+      if (parts.length >= 3 && !isNumStat) return;
 
-         const changedLines = parseInt(parts[0], 10) + parseInt(parts[1], 10);
-         if (changedLines <= 0) continue;
+      if (isNumStat) {
+         const added = parseInt(addedRaw, 10);
+         const removed = parseInt(removedRaw, 10);
+         const changed = added + removed;
+         if (changed <= 0) return;
 
          const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
          if (KNOWN_GIT_FAULT_FILE_HEURISTICS.includes(path.extname(filePath).toLowerCase())) {
-            continue;
+            return;
          }
 
-         const identityKey = buildContributorIdentityKey(currentName, currentEmail);
-         const existing = contributors.get(identityKey);
-         if (existing) {
-            existing.lines += changedLines;
-            if (!existing.name && currentName) existing.name = currentName;
-            if (!existing.email && currentEmail) existing.email = currentEmail;
-         } else {
-            contributors.set(identityKey, {
-               name: currentName,
-               email: currentEmail,
-               lines: changedLines,
-            });
-         }
+         totalAdded += added;
+         totalRemoved += removed;
+         fileActivityLines.set(filePath, (fileActivityLines.get(filePath) ?? 0) + changed);
 
-         continue;
+         const net = added - removed;
+         if (net !== 0) fileNetLines.set(filePath, (fileNetLines.get(filePath) ?? 0) + net);
+
+         if (collectContributors && currentEmail) {
+            const identityKey = buildContributorIdentityKey(currentName, currentEmail);
+            const existing = contributors.get(identityKey);
+            if (existing) existing.lines += changed;
+            else contributors.set(identityKey, { name: currentName, email: currentEmail, lines: changed });
+         }
+         return;
       }
 
+      if (!collectContributors || !line.trim()) return;
       const tabIdx = line.lastIndexOf('\t');
       if (tabIdx > 0) {
          currentName = line.slice(0, tabIdx).trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
@@ -510,32 +542,90 @@ function parseTopContributor(raw: string, projectChangedLines: number): TopContr
             .replace(/^'|'$/g, '');
       } else {
          currentName = '';
-         currentEmail = trimmed.replace(/^"|"$/g, '').replace(/^'|'$/g, '');
+         currentEmail = line.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, '');
       }
+   };
+
+   for await (const chunk of command.stdout) {
+      const bytes = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.byteLength;
+      const text = decoder.write(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      byteLength += bytes;
+      pending += text;
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+      for (const line of lines) consumeLine(line.replace(/\r$/, ''));
    }
 
-   let topEmail = '';
-   let topName = '';
-   let topLines = 0;
-   for (const [, contributor] of contributors.entries()) {
-      if (contributor.lines > topLines) {
-         topEmail = contributor.email;
-         topName = contributor.name;
-         topLines = contributor.lines;
-      }
-   }
+   pending += decoder.end();
+   if (pending) consumeLine(pending.replace(/\r$/, ''));
 
-   if (!topEmail) return null;
+   await command;
+   const stats: ParsedNumStat = {
+      totalAdded,
+      totalRemoved,
+      totalRecords,
+      byteLength,
+      netFiles: Array.from(fileNetLines, ([filePath, netLines]) => ({ filePath, netLines })),
+      activityFiles: Array.from(fileActivityLines, ([filePath, activityLines]) => ({
+         filePath,
+         activityLines,
+      })),
+   };
 
    return {
-      email: topEmail,
-      username: topName || topEmail,
+      stats,
+      topContributor: collectContributors ? buildTopContributor(contributors) : null,
+   };
+}
+
+/** Returns the empty result used for the disabled scoped stream. */
+function emptyStreamedNumStatResult(): StreamedNumStatResult {
+   return {
+      stats: {
+         totalAdded: 0,
+         totalRemoved: 0,
+         totalRecords: 0,
+         byteLength: 0,
+         netFiles: [],
+         activityFiles: [],
+      },
+      topContributor: null,
+   };
+}
+
+/** Selects the contributor with the most changed lines. */
+function buildTopContributor(
+   contributors: Map<string, { name: string; email: string; lines: number }>
+): TopContributor | null {
+   let top: { name: string; email: string; lines: number } | null = null;
+   for (const contributor of contributors.values()) {
+      if (!top || contributor.lines > top.lines) top = contributor;
+   }
+   return top
+      ? {
+           email: top.email,
+           username: top.name || top.email,
+           contributionPct: '0.00',
+           changedLines: top.lines,
+        }
+      : null;
+}
+
+/** Adds the project-relative contribution percentage to a streamed contributor. */
+function addContributionPct(
+   contributor: TopContributor | null,
+   projectChangedLines: number
+): TopContributor | null {
+   if (!contributor) return null;
+   return {
+      ...contributor,
       contributionPct:
          projectChangedLines > 0
-            ? maxFraction((topLines / projectChangedLines) * 100, 2, true)
+            ? maxFraction((contributor.changedLines / projectChangedLines) * 100, 2, true)
             : '0.00',
    };
 }
+
 
 /**
  * Builds a stable identity key for contributor grouping.
@@ -654,65 +744,6 @@ export const help = {
 export const structure = {
    $root: ['--author', '--all', '-a', '--lang-metric'],
 } as const satisfies CommandStructure;
-
-/**
- * Parses git numstat output and accumulates changed lines per file.
- *
- * @param raw - Raw output from `git log --numstat`.
- * @returns Aggregated totals and file-level net deltas.
- */
-function parseNumStat(raw: string): ParsedNumStat {
-   let totalAdded = 0;
-   let totalRemoved = 0;
-   const fileNetLines = new Map<string, number>();
-   const fileActivityLines = new Map<string, number>();
-   const lines = raw.split('\n');
-
-   for (const line of lines) {
-      const parts = line.split('\t');
-      if (parts.length < 3) continue;
-
-      const [addedRaw, removedRaw] = parts;
-      if (!/^\d+$/.test(addedRaw) || !/^\d+$/.test(removedRaw)) continue;
-
-      const added = parseInt(addedRaw, 10);
-      const removed = parseInt(removedRaw, 10);
-      const changed = added + removed;
-      if (changed <= 0) continue;
-
-      const filePath = normalizeNumStatPath(parts.slice(2).join('\t').trim());
-      if (KNOWN_GIT_FAULT_FILE_HEURISTICS.includes(path.extname(filePath).toLowerCase())) continue;
-
-      totalAdded += added;
-      totalRemoved += removed;
-
-      fileActivityLines.set(filePath, (fileActivityLines.get(filePath) ?? 0) + changed);
-
-      const net = added - removed;
-      if (net === 0) continue;
-
-      fileNetLines.set(filePath, (fileNetLines.get(filePath) ?? 0) + net);
-   }
-
-   const netFiles = Array.from(fileNetLines.entries()).map(([filePath, netLines]) => ({
-      filePath,
-      netLines,
-   }));
-   const activityFiles = Array.from(fileActivityLines.entries()).map(
-      ([filePath, activityLines]) => ({
-         filePath,
-         activityLines,
-      })
-   );
-
-   return {
-      totalAdded,
-      totalRemoved,
-      totalRecords: lines.length,
-      netFiles,
-      activityFiles,
-   };
-}
 
 /**
  * Resolves a representative file path from numstat output.

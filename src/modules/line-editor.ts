@@ -17,6 +17,8 @@ export interface KeyEvent {
 export interface ReadLineOptions {
    /** Pre-filled editable text. */
    initial?: string;
+   /** Character displayed in place of each input character. */
+   mask?: string;
 }
 
 /** Characters considered part of a word for word-wise navigation/deletion. */
@@ -433,9 +435,14 @@ export async function readLine(question: string, options: ReadLineOptions = {}):
          viewOffset = Math.max(0, buffer.length - avail);
       }
 
-      const visible = buffer.slice(viewOffset, viewOffset + avail);
+      const visible = options.mask
+         ? options.mask.repeat(Math.min(avail, buffer.length - viewOffset))
+         : buffer.slice(viewOffset, viewOffset + avail);
       stdout.write('\x1b[2K\r' + question + visible);
-      const col = promptWidth + ttys.stringWidth(buffer.slice(viewOffset, buffer.cursor));
+      const beforeCursor = options.mask
+         ? options.mask.repeat(buffer.cursor - viewOffset)
+         : buffer.slice(viewOffset, buffer.cursor);
+      const col = promptWidth + ttys.stringWidth(beforeCursor);
       stdout.write('\r' + (col > 0 ? `\x1b[${col}C` : ''));
    };
 
