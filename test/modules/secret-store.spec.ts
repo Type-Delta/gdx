@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
 
 type KeytarMock = {
    getPassword(service: string, account: string): Promise<string | null>;
@@ -29,15 +29,9 @@ let execaImplementation = async (
 };
 
 mock.module('keytar', () => ({ default: keytar }));
-mock.module('execa', () => ({
-   execa: (
-      command: string,
-      args: string[],
-      options: Record<string, unknown>
-   ) => execaImplementation(command, args, options),
-}));
-
-const { SecretStoreError, getSecretStore } = await import('@/modules/secret-store');
+const { SecretStoreError, getSecretStore, setSecretStoreExecForTests } = await import(
+   '@/modules/secret-store'
+);
 
 describe('secret store', () => {
    beforeEach(() => {
@@ -66,6 +60,13 @@ describe('secret store', () => {
          }
          return { stdout: '', stderr: '', exitCode: 0, failed: false };
       };
+      setSecretStoreExecForTests((command, args, options) =>
+         execaImplementation(command, args, options)
+      );
+   });
+
+   afterEach(() => {
+      setSecretStoreExecForTests();
    });
 
    test('defaults to the auto provider', () => {

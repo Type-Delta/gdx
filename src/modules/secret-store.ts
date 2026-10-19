@@ -22,6 +22,35 @@ export interface SecretStoreBackendCause {
 
 type SecretStoreOperation = 'read' | 'write' | 'delete';
 
+interface SecretStoreExecResult {
+   stdout: string;
+   stderr: string;
+   exitCode: number;
+   failed?: boolean;
+}
+
+type SecretStoreExec = (
+   command: string,
+   args: string[],
+   options: Record<string, unknown>
+) => Promise<SecretStoreExecResult>;
+
+let secretStoreExecForTests: SecretStoreExec | undefined;
+
+/** Overrides pass execution for the secret-store test seam and restores it when unset. */
+export function setSecretStoreExecForTests(exec?: SecretStoreExec): void {
+   secretStoreExecForTests = exec;
+}
+
+async function runSecretStoreExec(
+   command: string,
+   args: string[],
+   options: Record<string, unknown>
+): Promise<SecretStoreExecResult> {
+   if (secretStoreExecForTests) return await secretStoreExecForTests(command, args, options);
+   return (await execa(command, args, options as never)) as SecretStoreExecResult;
+}
+
 /** Reports that no available secret backend could finish an operation. */
 export class SecretStoreError extends Error {
    readonly code = 'SECRET_STORE_UNAVAILABLE';
@@ -106,7 +135,7 @@ function isMissingPassEntry(stderr: string): boolean {
 
 /** Reads a password-store entry without invoking a shell. */
 async function getPassPassword(service: string, account: string): Promise<string | null> {
-   const result = await execa('pass', ['show', getPassEntry(service, account)], {
+   const result = await runSecretStoreExec('pass', ['show', getPassEntry(service, account)], {
       reject: false,
       stripFinalNewline: false,
    });
@@ -117,7 +146,7 @@ async function getPassPassword(service: string, account: string): Promise<string
 
 /** Writes a password-store entry with the secret supplied only on stdin. */
 async function setPassPassword(service: string, account: string, password: string): Promise<void> {
-   const result = await execa(
+   const result = await runSecretStoreExec(
       'pass',
       ['insert', '--multiline', '--force', getPassEntry(service, account)],
       {
@@ -132,7 +161,7 @@ async function setPassPassword(service: string, account: string, password: strin
 
 /** Deletes a password-store entry without invoking a shell. */
 async function deletePassPassword(service: string, account: string): Promise<boolean> {
-   const result = await execa('pass', ['rm', '--force', getPassEntry(service, account)], {
+   const result = await runSecretStoreExec('pass', ['rm', '--force', getPassEntry(service, account)], {
       reject: false,
    });
    if (result.exitCode === 0) return true;
