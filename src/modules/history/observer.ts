@@ -34,6 +34,7 @@ const MIN_REFERENCE_TRANSACTION_VERSION = '2.29.0';
 const PRIVATE_REF_PREFIX = 'refs/gdx/history/';
 const MAX_STORED_DEDUPE_KEYS = 4096;
 const OBSERVED_REFLOG_MATCH_WINDOW_MS = 5 * 60 * 1000;
+const ROUTED_HOOK_START_SKEW_MS = 100;
 
 /** Provenance literals persisted by the direct observer. */
 export type HistoryObservedSource = Extract<HistorySource, 'git-hook' | 'reflog'>;
@@ -131,6 +132,7 @@ interface KnownManifestTransition {
 
 interface RoutedHookTransition {
    dedupeKey: string | null;
+   dedupeKeyWithoutHead: string | null;
    startedAtMs: number;
    finishedAtMs: number;
    remaining: number;
@@ -592,6 +594,7 @@ export async function importHistoryObserverSpool(
          return [
             {
                dedupeKey: manifest.refs.length ? transitionDedupeKey(manifest.refs) : null,
+               dedupeKeyWithoutHead: transitionDedupeKeyWithoutHead(manifest.refs),
                startedAtMs,
                finishedAtMs,
                remaining: manifest.refs.length ? 1 : Number.POSITIVE_INFINITY,
@@ -664,11 +667,15 @@ function consumeRoutedHookTransition(
    const timestampMs = Date.parse(record.createdAt);
    if (!Number.isFinite(timestampMs)) return false;
    const dedupeKey = transitionDedupeKey(record.refs);
+   const dedupeKeyWithoutHead = transitionDedupeKeyWithoutHead(record.refs);
    const candidate = routed.find(
       (entry) =>
          entry.remaining > 0 &&
-         (entry.dedupeKey === dedupeKey || entry.dedupeKey === null) &&
-         timestampMs >= entry.startedAtMs &&
+         (entry.dedupeKey === dedupeKey ||
+            (dedupeKeyWithoutHead !== null &&
+               entry.dedupeKeyWithoutHead === dedupeKeyWithoutHead) ||
+            entry.dedupeKey === null) &&
+         timestampMs >= entry.startedAtMs - ROUTED_HOOK_START_SKEW_MS &&
          timestampMs <= entry.finishedAtMs
    );
    if (!candidate) return false;
@@ -1163,6 +1170,12 @@ function transitionDedupeKey(refs: HistoryRefChange[]): string {
       .sort()
       .join('\n');
    return hashText(canonical);
+}
+
+/** Produces a batch identity after dropping Git's synthetic HEAD ref. */
+function transitionDedupeKeyWithoutHead(refs: HistoryRefChange[]): string | null {
+   const withoutHead = refs.filter((change) => change.name !== 'HEAD');
+   return withoutHead.length > 0 ? transitionDedupeKey(withoutHead) : null;
 }
 
 /** Produces a durable identity for one raw reflog event. */
