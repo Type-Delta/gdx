@@ -2,6 +2,7 @@ import { beforeAll, describe, expect } from 'bun:test';
 import path from 'path';
 
 import * as fs from '@/modules/fs';
+import { dispatch } from '@/cli/dispatch';
 import status from '@/commands/status';
 import { createGdxContext, createTestEnv, setTestGitConfig } from '@/utils/testHelper';
 import { cleanString } from '@lib/Tools';
@@ -62,6 +63,23 @@ describe('gdx status', async () => {
          // Add as submodule to main repo
          try {
             await addSubmodule(git, tmpDir, submoduleDir, 'mysubmodule');
+
+            const nestedSubmoduleDir = path.join(tmpRootDir, 'nested-submodule');
+            fs.mkdirSync(nestedSubmoduleDir, { recursive: true });
+            await $({ cwd: nestedSubmoduleDir })`${git} init`;
+            await setTestGitConfig(nestedSubmoduleDir, 'user.name', 'Test User');
+            await setTestGitConfig(nestedSubmoduleDir, 'user.email', 'test@example.com');
+            fs.writeFileSync(path.join(nestedSubmoduleDir, 'nested.txt'), 'nested content');
+            await $({ cwd: nestedSubmoduleDir })`${git} add .`;
+            await $({ cwd: nestedSubmoduleDir })`${git} commit -m ${'Initial nested submodule commit'}`;
+
+            const submodulePath = path.join(tmpDir, 'mysubmodule');
+            await setTestGitConfig(submodulePath, 'user.name', 'Test User');
+            await setTestGitConfig(submodulePath, 'user.email', 'test@example.com');
+            await addSubmodule(git, submodulePath, nestedSubmoduleDir, 'nestedmodule');
+            await $({ cwd: submodulePath })`${git} add .gitmodules nestedmodule`;
+            await $({ cwd: submodulePath })`${git} commit -m ${'Add nested submodule'}`;
+
             await $`${git} add .gitmodules mysubmodule`;
             await $`${git} commit -m ${'Add submodule'}`;
             submoduleCreated = true;
@@ -92,6 +110,23 @@ describe('gdx status', async () => {
 
       // Should show the dirty file in submodule
       expect(output).toContain('dirty.txt');
+   });
+
+   it('should show nested submodule status with -rs', async () => {
+      expect(submoduleCreated, 'Expected submodule to be created in previous test, but it was not.').toBe(true);
+
+      const nestedPath = path.join(tmpDir, 'mysubmodule', 'nestedmodule');
+      fs.writeFileSync(path.join(nestedPath, 'nested-dirty.txt'), 'nested dirty content');
+
+      buffer.stdout = '';
+      buffer.stderr = '';
+
+      const exitCode = await dispatch(createGdxContext(tmpDir, ['status', '-rs']));
+
+      expect(exitCode).toBe(0);
+      const output = cleanString(buffer.stdout);
+      expect(output).toContain('Submodule: mysubmodule/nestedmodule');
+      expect(output).toContain('nested-dirty.txt');
    });
 
    it('should show recursive status with --recursive flag', async () => {

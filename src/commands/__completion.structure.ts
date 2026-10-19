@@ -35,17 +35,47 @@ export const GIT_EXTENSION_STRUCTURE: Record<string, CommandStructure> = {
    },
    push: {
       $root: {
-         $anyOf: ['-fl', '--no-lint'],
+         $anyOf: ['-fl', '-rs', '--recurse-submodules', '--no-lint'],
       },
    },
    pull: {
       $root: {
-         $anyOf: ['-au'],
+         $anyOf: ['-au', '-rs', '--recurse-submodules'],
+      },
+   },
+   fetch: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
+      },
+   },
+   clone: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
+      },
+   },
+   checkout: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
+      },
+   },
+   switch: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
+      },
+   },
+   reset: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
+      },
+   },
+   grep: {
+      $root: {
+         $anyOf: ['-rs', '--recurse-submodules'],
       },
    },
    status: {
       $root: {
-         $anyOf: ['--recursive', '-r'],
+         $anyOf: ['--recursive', '-r', '-rs'],
       },
    },
    log: {

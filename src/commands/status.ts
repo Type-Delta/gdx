@@ -11,6 +11,7 @@ import { _2PointGradient } from '@/modules/graphics';
 import Logger from '@/utils/logger';
 import global from '@/global';
 import { getGitConfigRegexp, getRepoRootCached } from '@/modules/git';
+import * as fs from '@/modules/fs';
 
 /**
  * Represents a git submodule with its path information
@@ -21,32 +22,51 @@ interface Submodule {
 }
 
 /**
- * Gets all submodules recursively from the repository
+ * Gets all initialized and uninitialized submodules, including nested ones.
+ *
+ * A nested submodule can only be discovered after its parent worktree has
+ * been initialized, so missing parents are still reported but not traversed.
  */
-async function getSubmodules(git$: string | string[]): Promise<Submodule[]> {
-   try {
-      const entries = await getGitConfigRegexp(git$, '^submodule\\..*\\.path$', {
-         filePath: '.gitmodules',
-      });
-      if (entries.length === 0) {
-         return [];
+async function getSubmodules(
+   git$: string | string[],
+   repoRoot: string
+): Promise<Submodule[]> {
+   const submodules: Submodule[] = [];
+   const visited = new Set<string>();
+
+   async function visit(repoPath: string, parentPath: string): Promise<void> {
+      const resolvedRepoPath = path.resolve(repoPath);
+      if (visited.has(resolvedRepoPath)) return;
+      visited.add(resolvedRepoPath);
+
+      let entries: Array<{ value: string }>;
+      try {
+         entries = await getGitConfigRegexp(git$, '^submodule\\..*\\.path$', {
+            repoPath: resolvedRepoPath,
+            filePath: '.gitmodules',
+         });
+      } catch {
+         return;
       }
-      const submodules: Submodule[] = [];
 
       for (const entry of entries) {
-         const submodulePath = entry.value.trim();
-         if (!submodulePath) continue;
-         submodules.push({
-            path: submodulePath,
-            status: ' ',
-         });
-      }
+         const configuredPath = entry.value.trim().replace(/\\/g, '/');
+         if (!configuredPath) continue;
 
-      return submodules;
-   } catch {
-      // If .gitmodules doesn't exist or has no submodules, return empty array
-      return [];
+         const displayPath = parentPath ? `${parentPath}/${configuredPath}` : configuredPath;
+         submodules.push({ path: displayPath, status: ' ' });
+
+         const absolutePath = path.resolve(resolvedRepoPath, configuredPath);
+         if (!fs.existsSync(absolutePath) || !fs.existsSync(path.join(absolutePath, '.git'))) {
+            continue;
+         }
+
+         await visit(absolutePath, displayPath);
+      }
    }
+
+   await visit(repoRoot, '');
+   return submodules;
 }
 
 /**
@@ -132,7 +152,7 @@ export default async function status(ctx: GdxContext): Promise<number> {
       await $inherit`${git$} status ${statusArgs}`;
 
       // Get all submodules
-      const submodules = await getSubmodules(git$);
+      const submodules = await getSubmodules(git$, repoRoot);
 
       if (submodules.length === 0) {
          quickPrint(`\n${SGR.dim}No submodules found.${SGR.reset}`);
@@ -177,10 +197,10 @@ export const help = {
          Show the working tree status for the repository and optionally all submodules.
 
          ${SGR.bright + _2PointGradient('OVERVIEW', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         \`${SGR.cyan}${EXECUTABLE_NAME} status${SGR.reset}\` is a wrapper around \`${SGR.cyan}git status${SGR.reset}\` with added support for recursive submodule status checking. When the \`${SGR.cyan}--recursive${SGR.reset}\` or \`${SGR.cyan}-r${SGR.reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
+         \`${SGR.cyan}${EXECUTABLE_NAME} status${SGR.reset}\` is a wrapper around \`${SGR.cyan}git status${SGR.reset}\` with added support for recursive submodule status checking. When the \`${SGR.cyan}--recursive${SGR.reset}\`, \`${SGR.cyan}-r${SGR.reset}\`, or \`${SGR.cyan}-rs${SGR.reset}\` flag is used, it will show the status of the main repository followed by the status of each submodule.
 
          ${SGR.bright + _2PointGradient('RECURSIVE MODE', GDX_VPALETTE.Zinc400, GDX_VPALETTE.Zinc100, 0.2) + SGR.reset}
-         When \`${SGR.cyan}--recursive${SGR.reset}\` or \`${SGR.cyan}-r${SGR.reset}\` is specified:
+         When \`${SGR.cyan}--recursive${SGR.reset}\`, \`${SGR.cyan}-r${SGR.reset}\`, or \`${SGR.cyan}-rs${SGR.reset}\` is specified:
          - Shows status of the main repository first
          - Then shows status for each submodule with clear headers
          - Displays both absolute submodule paths and paths relative to your current directory
@@ -192,6 +212,9 @@ export const help = {
 
          ${SGR.cyan}${EXECUTABLE_NAME} s -r${SGR.reset}
             Same as above using shorthand
+
+         ${SGR.cyan}${EXECUTABLE_NAME} status -rs${SGR.reset}
+            Same as above using the recursive submodule shorthand
 
          ${SGR.cyan}${EXECUTABLE_NAME} status -r --short${SGR.reset}
             Show short format status recursively
@@ -211,8 +234,8 @@ export const help = {
    usage: () => {
       return strWrap(
          litedent`
-         ${SGR.cyan}${EXECUTABLE_NAME} status ${SGR.dim}[--recursive|-r] [<git-status-options>]${SGR.reset}
-         ${SGR.cyan}${EXECUTABLE_NAME} s ${SGR.dim}[--recursive|-r] [<git-status-options>]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} status ${SGR.dim}[--recursive|-r|-rs] [<git-status-options>]${SGR.reset}
+         ${SGR.cyan}${EXECUTABLE_NAME} s ${SGR.dim}[--recursive|-r|-rs] [<git-status-options>]${SGR.reset}
 
          Examples:
             ${SGR.cyan}${EXECUTABLE_NAME} status --recursive ${SGR.reset + SGR.dim}# Show status for repo and all submodules${SGR.reset}
@@ -229,6 +252,6 @@ export const help = {
 
 export const structure = {
    $root: {
-      $allOf: ['-r', '--recursive', '--short', '--porcelain', '--branch', '--long'],
+      $allOf: ['-r', '--recursive', '-rs', '--short', '--porcelain', '--branch', '--long'],
    },
 } as const satisfies CommandStructure;

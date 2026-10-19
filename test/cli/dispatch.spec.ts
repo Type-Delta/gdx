@@ -6,6 +6,7 @@ import { getCache } from '@/common/cache';
 import * as fs from '@/modules/fs';
 import { execGit } from '@/modules/shell';
 import { createGdxContext, createTestEnv } from '@/utils/testHelper';
+import { cleanString } from '@lib/Tools';
 
 describe('dispatch separator forwarding', async () => {
    const { tmpDir, $, it, resetRepo } = await createTestEnv({ suitName: 'dispatch-separator' });
@@ -66,5 +67,21 @@ describe('dispatch one-off cache lifetime', async () => {
       await cache.setOneOff('dispatch.test', 'first-macro-command');
       expect(await dispatch(createGdxContext(tmpDir, ['macro', 'list']), { inMacro: true })).toBe(0);
       expect(await cache.getOneOff('dispatch.test')).toBeUndefined();
+   });
+});
+
+describe('recursive submodule shorthand', async () => {
+   const { tmpDir, buffer, it } = await createTestEnv({ suitName: 'dispatch-recursive-shorthand' });
+
+   it('expands -rs and leaves push value validation to Git', async () => {
+      buffer.stdout = '';
+      buffer.stderr = '';
+
+      const exitCode = await dispatch(createGdxContext(tmpDir, ['push', '-rs']));
+      const output = cleanString(`${buffer.stdout}\n${buffer.stderr}`);
+
+      expect(exitCode).not.toBe(0);
+      expect(output).toContain('git push --recurse-submodules');
+      expect(output).toContain('requires a value');
    });
 });

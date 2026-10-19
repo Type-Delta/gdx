@@ -29,7 +29,7 @@ import {
    viewInteractiveShow,
    viewInteractiveShowBlob,
 } from '@/modules/show-navigation';
-import { hasCommandHelp } from '@/commands/help';
+import { hasCommandHelp, isCommandExtension } from '@/commands/help';
 import { classifyHistoryAction, HistoryActionClassification } from '@/modules/history/classifier';
 import { runRoutedHistoryTransaction } from '@/modules/history/transaction';
 import { recordHistoryTransaction } from '@/modules/history/storage';
@@ -44,6 +44,47 @@ export interface DispatchState {
     * When true, macro expansion is disabled to prevent recursion.
     */
    inMacro: boolean;
+}
+
+const RECURSE_SUBMODULE_COMMANDS = new Set([
+   'pull',
+   'fetch',
+   'clone',
+   'checkout',
+   'switch',
+   'reset',
+   'push',
+   'grep',
+]);
+
+/**
+ * Expands GDX's recursive submodule shorthand while leaving Git to validate
+ * whether the command accepts a value or supports the option at all.
+ *
+ * `status` is the one exception: its recursive mode is implemented by GDX,
+ * so `-rs` is translated to the existing `-r` status flag.
+ *
+ * @param args - The mutable command argument set.
+ */
+function expandRecursiveSubmoduleShorthand(args: GdxContext['args']): void {
+   const commandAliases: Record<string, string> = {
+      s: 'status',
+      pl: 'pull',
+      pu: 'pull',
+      co: 'checkout',
+      ps: 'push',
+      rst: 'reset',
+   };
+   const command = commandAliases[args[0] || ''] || args[0];
+
+   if (command === 'status') {
+      args.spliceOption('-rs', ['-r']);
+      return;
+   }
+
+   if (command && RECURSE_SUBMODULE_COMMANDS.has(command)) {
+      args.spliceOption('-rs', ['--recurse-submodules']);
+   }
 }
 
 /**
@@ -184,8 +225,15 @@ async function dispatchCoreUnchecked(
 
       if (match) args[0] = match;
       if (hasCommandHelp(args[0]) && (args[1] === '-h' || args[1] === '--help')) {
+         if (isCommandExtension(args[0])) {
+            const exitCode = await execGit(ctx.git$, args, null, '>', false);
+            cmd.help(args[0]);
+            return exitCode;
+         }
          return cmd.help(args[0]);
       }
+
+      expandRecursiveSubmoduleShorthand(args);
 
       switch (args[0]) {
          case 's': // alias for 'status'

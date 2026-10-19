@@ -72,6 +72,14 @@ export function hasCommandHelp(name?: string): boolean {
    return name in COMMAND_HELP_MAP || name in EXTENSION_HELP_MAP || name === 'help';
 }
 
+/**
+ * Returns true when the command extends a Git command with GDX behavior.
+ * @param name - Command name to check.
+ */
+export function isCommandExtension(name?: string): boolean {
+   return !!name && name in EXTENSION_HELP_MAP;
+}
+
 export default function help(name?: string): number {
    if (!name) {
       // LINK: dn2jka text literal in spec
@@ -109,6 +117,7 @@ ${SGR.bright + _2PointGradient('KEY FEATURES', GDX_VPALETTE.Zinc400, GDX_VPALETT
       export (adds --author if missing).${SGR.reset}
    - pull: ${SGR.cyan}${EXECUTABLE_NAME} pl -au ${SGR.reset + SGR.dim}-> expands -au to --allow-unrelated-histories.${SGR.reset}
    - push: ${SGR.cyan}${EXECUTABLE_NAME} ps -fl ${SGR.reset + SGR.dim}-> expands -fl to --force-with-lease.${SGR.reset}
+   - submodules: ${SGR.cyan}${EXECUTABLE_NAME} pull -rs ${SGR.reset + SGR.dim}-> expands -rs to --recurse-submodules for Git commands that support it.${SGR.reset}
    - reset: ${SGR.cyan}${EXECUTABLE_NAME} res -h ${SGR.reset + SGR.dim}-> ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} reset --hard${SGR.reset + SGR.dim}; ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} res ~3 ${SGR.reset + SGR.dim}-> ${SGR.reset + SGR.cyan}${EXECUTABLE_NAME} reset HEAD~3${SGR.reset}
      ${SGR.dim}(also supports ${SGR.cyan}origin~N${SGR.reset + SGR.dim} for upstream-relative resets)${SGR.reset}
 - Clear convenience:
@@ -179,6 +188,7 @@ ${SGR.cyan}--loglevel <level>     ${SGR.reset}Set log level (error, warning, inf
 ${SGR.cyan}--ghelp,               ${SGR.reset}Show GDX help message. ${SGR.dim}(use \`${SGR.cyan}ghelp <command>${SGR.reset}\`
 ${SGR.cyan}  --gdx-help, -gh      ${SGR.reset + SGR.dim}for command-specific help)${SGR.reset}
 ${SGR.cyan}-r, --recursive        ${SGR.yellow}[For '${EXECUTABLE_NAME} status']${SGR.reset} Recursively show git status of submodules.
+${SGR.cyan}-rs                   ${SGR.yellow}[Git commands]${SGR.reset} Shorthand for ${SGR.cyan}--recurse-submodules${SGR.reset}; Git validates command-specific values.
 ${SGR.cyan}-au                    ${SGR.yellow}[For '${EXECUTABLE_NAME} pull']${SGR.reset} Shorthand for ${SGR.cyan}--allow-unrelated-histories${SGR.reset}.
 ${SGR.cyan}--no-lint              ${SGR.yellow}[For '${EXECUTABLE_NAME} push']${SGR.reset} Skip linting for this push${SGR.reset}.
 ${SGR.cyan}-fl                    ${SGR.yellow}[For '${EXECUTABLE_NAME} push']${SGR.reset} Shorthand for ${SGR.cyan}--force-with-lease${SGR.reset}.

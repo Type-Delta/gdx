@@ -131,6 +131,20 @@ describe('gdx __completion', async () => {
       delete process.env.GDX_CMP_IDX;
    });
 
+   it('suggests the recursive submodule shorthand for Git commands', async () => {
+      buffer.stdout = '';
+      process.env.GDX_CMP_IDX = '1';
+
+      const ctx = createGdxContext(tmpDir, ['__completion', 'pull', '-']);
+      const exitCode = await completion(ctx);
+
+      expect(exitCode).toBe(0);
+      expect(buffer.stdout).toContain('-rs');
+      expect(buffer.stdout).toContain('--recurse-submodules');
+
+      delete process.env.GDX_CMP_IDX;
+   });
+
    it('suggests fork aliases for parallel switch, join, and rename', async () => {
       buffer.stdout = '';
       const worktreeRoot = path.join(tmpRootDir, 'tmp', 'worktrees', 'project', 'master');
