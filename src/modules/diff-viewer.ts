@@ -106,6 +106,7 @@ interface DiffLine {
    oldLineNum?: number;
    newLineNum?: number;
    highlightedContent?: string;
+   oldHighlightedContent?: string;
    inlineSegments?: InlineDiffSegment[];
 }
 
@@ -125,6 +126,13 @@ interface HighlightedFullFileCacheEntry {
 }
 
 type FullFileHighlightResult = 'highlighted' | 'unavailable' | 'limited';
+
+/**
+ * Inline diffing is useful for small replacements, but jsdiff's character
+ * differ becomes disproportionately expensive for large replacement blocks.
+ * Keep the fast path bounded and leave larger blocks as regular +/- lines.
+ */
+const MAX_INLINE_DIFF_BLOCK_CHARS = MAX_INLINE_EDIT_DISTANCE * 2;
 
 export const WORKING_TREE_REVISION = '__GDX_WORKING_TREE__';
 export const INDEX_REVISION = '__GDX_INDEX__';
@@ -786,15 +794,17 @@ async function highlightDiffWithContext(
    highlighting: Required<DiffHighlightingOptions>,
    git$?: GdxContext['git$'],
    spinnerCtrl?: SpinnerController,
-): Promise<Map<DiffLine, string>> {
-   const result = new Map<DiffLine, string>();
+   tabWidth = PAGER_DEFAULT_OPTIONS.tabWidth,
+): Promise<{ highlighted: Map<DiffLine, string>; oldHighlighted: Map<DiffLine, string> }> {
+   const highlighted = new Map<DiffLine, string>();
+   const oldHighlighted = new Map<DiffLine, string>();
    const codeLines = diff.lines.filter(
       (l) => l.type === 'add' || l.type === 'delete' || l.type === 'context' || l.type === 'modify'
    );
-   if (codeLines.length === 0) return result;
+   if (codeLines.length === 0) return { highlighted, oldHighlighted };
 
    const newLines = codeLines.filter((line) => line.type !== 'delete');
-   const oldLines = codeLines.filter((line) => !(line.type === 'add' || line.type === 'modify'));
+   const oldLines = codeLines.filter((line) => line.type !== 'add');
 
    try {
       const shiki = await getShiki();
@@ -810,7 +820,8 @@ async function highlightDiffWithContext(
                maxHunkSize: highlighting.maxHunkSize,
                theme,
                shiki,
-               result,
+               result: highlighted,
+               tabWidth,
             }, spinnerCtrl),
             highlightFullFileSide({
                git$,
@@ -822,7 +833,8 @@ async function highlightDiffWithContext(
                maxHunkSize: highlighting.maxHunkSize,
                theme,
                shiki,
-               result,
+               result: oldHighlighted,
+               tabWidth,
             }, spinnerCtrl),
          ]);
 
@@ -830,24 +842,41 @@ async function highlightDiffWithContext(
             logger.debug(
                `Full-file syntax highlighting was skipped for ${diff.newFileName} due to file size. Falling back to context-only highlighting.`
             );
-            result.clear();
-            await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
+            highlighted.clear();
+            oldHighlighted.clear();
+            await highlightDiffContextLines({
+               diff,
+               theme,
+               shiki,
+               newLines,
+               oldLines,
+               highlighted,
+               oldHighlighted,
+            });
          }
 
-         return result;
+         return { highlighted, oldHighlighted };
       }
 
       logger.debug(
          `Full-file syntax highlighting is ${highlighting.fullfileHighlight ? 'unavailable' : 'disabled'} for ${diff.newFileName}. Falling back to context-only highlighting.`
       );
-      await highlightDiffContextLines({ diff, theme, shiki, newLines, oldLines, result });
+      await highlightDiffContextLines({
+         diff,
+         theme,
+         shiki,
+         newLines,
+         oldLines,
+         highlighted,
+         oldHighlighted,
+      });
    } catch (e) {
       logger.error(
          `Error highlighting diff for ${diff.newFileName}: ${Err.from(e)}`,
       );
-      codeLines.forEach((line) => result.set(line, line.content));
+      codeLines.forEach((line) => highlighted.set(line, line.content));
    }
-   return result;
+   return { highlighted, oldHighlighted };
 }
 
 /**
@@ -860,27 +889,37 @@ async function highlightDiffContextLines(options: {
    shiki: ShikijsCliModule;
    newLines: DiffLine[];
    oldLines: DiffLine[];
-   result: Map<DiffLine, string>;
+   highlighted: Map<DiffLine, string>;
+   oldHighlighted: Map<DiffLine, string>;
 }): Promise<void> {
-   const { diff, theme, shiki, newLines, oldLines, result } = options;
+   const { diff, theme, shiki, newLines, oldLines, highlighted, oldHighlighted } = options;
 
    if (newLines.length > 0) {
       const code = newLines.map((line) => line.content).join('\n');
-      const highlighted = await shiki.codeToANSI(code, diff.lang as never, theme as never);
-      const highlightedLines = highlighted.split('\n');
+      const highlightedCode = await shiki.codeToANSI(code, diff.lang as never, theme as never);
+      const highlightedLines = highlightedCode.split('\n');
       for (let i = 0; i < newLines.length; i++) {
-         if (highlightedLines[i]) result.set(newLines[i], highlightedLines[i]);
+         if (highlightedLines[i]) highlighted.set(newLines[i], highlightedLines[i]);
       }
    }
 
    if (oldLines.length > 0) {
-      const code = oldLines.map((line) => line.content).join('\n');
-      const highlighted = await shiki.codeToANSI(code, diff.lang as never, theme as never);
-      const highlightedLines = highlighted.split('\n');
+      const code = oldLines.map(getOldLineContent).join('\n');
+      const highlightedCode = await shiki.codeToANSI(code, diff.lang as never, theme as never);
+      const highlightedLines = highlightedCode.split('\n');
       for (let i = 0; i < oldLines.length; i++) {
-         if (highlightedLines[i]) result.set(oldLines[i], highlightedLines[i]);
+         if (highlightedLines[i]) oldHighlighted.set(oldLines[i], highlightedLines[i]);
       }
    }
+}
+
+/** Returns the source text represented by the old side of a diff line. */
+function getOldLineContent(line: DiffLine): string {
+   if (line.type !== 'modify' || !line.inlineSegments) return line.content;
+   return line.inlineSegments
+      .filter((segment) => segment.type !== 'add')
+      .map((segment) => segment.value)
+      .join('');
 }
 
 /**
@@ -900,10 +939,23 @@ async function highlightFullFileSide(
       theme: string;
       shiki: ShikijsCliModule;
       result: Map<DiffLine, string>;
+      tabWidth: number;
    },
    spinnerCtrl?: SpinnerController
 ): Promise<FullFileHighlightResult> {
-   const { git$, diff, lines, lineNumberKey, path, revision, maxHunkSize, theme, shiki, result } =
+   const {
+      git$,
+      diff,
+      lines,
+      lineNumberKey,
+      path,
+      revision,
+      maxHunkSize,
+      theme,
+      shiki,
+      result,
+      tabWidth,
+   } =
       options;
    if (lines.length === 0) return 'unavailable';
 
@@ -915,6 +967,7 @@ async function highlightFullFileSide(
       theme,
       maxHunkSize,
       shiki,
+      tabWidth,
    });
    spinnerCtrl?.updateProgress(1);
    if (!highlightedFile) return 'unavailable';
@@ -944,19 +997,21 @@ async function getHighlightedFullFileLines(options: {
    theme: string;
    maxHunkSize: number;
    shiki: ShikijsCliModule;
+   tabWidth: number;
 }): Promise<HighlightedFullFileCacheEntry | null> {
-   const { git$, path, revision, lang, theme, maxHunkSize, shiki } = options;
+   const { git$, path, revision, lang, theme, maxHunkSize, shiki, tabWidth } = options;
    const readsWorkingTree = revision === WORKING_TREE_REVISION;
    const readsIndex = revision === INDEX_REVISION;
    const cache = await getCache();
    const cacheKey = [
       'diffViewer',
       'highlightedFullFile',
-      'ansiV2',
+      'ansiV4',
       Array.isArray(git$) && git$[1] ? encodeCacheKeyPart(git$[1]) : 'd',
       encodeCacheKeyPart(revision),
       encodeCacheKeyPart(path),
       encodeCacheKeyPart(theme),
+      String(tabWidth),
    ].join('.');
    const cached = readsWorkingTree || readsIndex
       ? null
@@ -984,9 +1039,13 @@ async function getHighlightedFullFileLines(options: {
       return entry;
    }
 
+   // The parsed diff is normalized to LF before line numbers and widths are
+   // computed. Apply the same normalization to full-file source so Shiki does
+   // not return carriage returns that shift the ANSI overlay and width checks.
+   const normalizedContent = expandTabs(normalizeDiffLineEndings(content), tabWidth);
    const highlighted = canUseShikiHighlightWorker()
-      ? await highlightFullFileAnsiInWorker(content, lang, theme, shiki)
-      : await shiki.codeToANSI(content, lang as never, theme as never);
+      ? await highlightFullFileAnsiInWorker(normalizedContent, lang, theme, shiki)
+      : await shiki.codeToANSI(normalizedContent, lang as never, theme as never);
 
    const entry = {
       contentLength: content.length,
@@ -1185,11 +1244,19 @@ export class DiffViewerRenderer implements PagerRenderer {
             this.options.theme,
             this.options.highlighting as Required<DiffHighlightingOptions>,
             this.options.git$,
-            spinnerCtrl
+            spinnerCtrl,
+            this.options.tabWidth,
          ).then((highlightedMap) => {
             codeLines.forEach((line) => {
-               const highlighted = highlightedMap.get(line);
-               if (highlighted !== undefined) line.highlightedContent = highlighted;
+               const highlighted = highlightedMap.highlighted.get(line);
+               const oldHighlighted = highlightedMap.oldHighlighted.get(line);
+               if (line.type === 'delete') {
+                  if (oldHighlighted !== undefined) line.highlightedContent = oldHighlighted;
+               } else {
+                  if (highlighted !== undefined) line.highlightedContent = highlighted;
+                  if (line.type === 'modify' && oldHighlighted !== undefined)
+                     line.oldHighlightedContent = oldHighlighted;
+               }
             });
          });
          highlightPromises.push(prom);
@@ -1280,6 +1347,11 @@ export class DiffViewerRenderer implements PagerRenderer {
                addedLines.length === 1 &&
                deletedLines[0].oldLineNum !== undefined &&
                addedLines[0].newLineNum !== undefined;
+
+            const replacementLength =
+               deletedLines.reduce((total, line) => total + line.content.length, 0) +
+               addedLines.reduce((total, line) => total + line.content.length, 0);
+            if (replacementLength > MAX_INLINE_DIFF_BLOCK_CHARS) continue;
 
             let deletedText: string;
             let addedText: string;
@@ -1409,7 +1481,8 @@ export class DiffViewerRenderer implements PagerRenderer {
             line.type,
             bgCode,
             line.highlightedContent || line.content,
-            line.content
+            line.content,
+            line.oldHighlightedContent
          )
          : line.highlightedContent || line.content;
       if (searchRanges)
@@ -1454,49 +1527,70 @@ export class DiffViewerRenderer implements PagerRenderer {
       lineType: DiffLine['type'],
       lineBg: RgbVec,
       highlightedSource: string,
-      plainSource: string
+      plainSource: string,
+      oldHighlightedSource?: string
    ): string {
       const out: string[] = [];
       const lineBgAnsi = bgRgb(lineBg);
 
       const { tokens, trailingAnsi } = tokenizeAnsiByChar(highlightedSource);
+      const oldTokenized = oldHighlightedSource
+         ? tokenizeAnsiByChar(oldHighlightedSource)
+         : { tokens, trailingAnsi: '' };
       const plainChars = Array.from(plainSource);
+      const oldPlainChars = oldHighlightedSource
+         ? Array.from(
+              segments
+                 .filter((segment) => segment.type !== 'add')
+                 .map((segment) => segment.value)
+                 .join('')
+           )
+         : plainChars;
 
-      let tokenCursor = 0;
-
-      const consumeStyledChunk = (chunk: string): string => {
+      const consumeStyledChunk = (
+         chunk: string,
+         sourceTokens: AnsiCharToken[],
+         cursor: { value: number },
+         fallbackChars: string[]
+      ): string => {
          const chunkChars = Array.from(chunk);
          let chunkOut = '';
          for (const chunkChar of chunkChars) {
-            const token = tokens[tokenCursor];
+            const token = sourceTokens[cursor.value];
             if (token) {
                chunkOut += `${token.prefix}${token.char}`;
-               tokenCursor++;
+               cursor.value++;
                continue;
             }
 
-            const fallbackChar = plainChars[tokenCursor] ?? chunkChar;
+            const fallbackChar = fallbackChars[cursor.value] ?? chunkChar;
             chunkOut += fallbackChar;
-            tokenCursor++;
+            cursor.value++;
          }
          return chunkOut;
       };
+      const newCursor = { value: 0 };
+      const oldCursor = { value: 0 };
 
       for (const segment of segments) {
          if (segment.type === 'same') {
-            out.push(consumeStyledChunk(segment.value));
+            out.push(consumeStyledChunk(segment.value, tokens, newCursor, plainChars));
+            if (oldHighlightedSource)
+               consumeStyledChunk(segment.value, oldTokenized.tokens, oldCursor, plainChars);
             continue;
          }
 
          if (segment.type === 'add') {
             out.push(
-               `${bgRgb(this.ADDED_INLINE_BG)}${consumeStyledChunk(segment.value)}${lineBgAnsi}`
+               `${bgRgb(this.ADDED_INLINE_BG)}${consumeStyledChunk(segment.value, tokens, newCursor, plainChars)}${lineBgAnsi}`
             );
             continue;
          }
 
          const deletedChunk =
-            lineType === 'modify' ? segment.value : consumeStyledChunk(segment.value);
+            lineType === 'modify'
+               ? consumeStyledChunk(segment.value, oldTokenized.tokens, oldCursor, oldPlainChars)
+               : consumeStyledChunk(segment.value, tokens, newCursor, plainChars);
 
          const shouldStrike = lineType === 'modify';
          const strikeStart = shouldStrike ? '\x1b[9m' : '';
@@ -1508,6 +1602,7 @@ export class DiffViewerRenderer implements PagerRenderer {
 
       // keep any dangling ansi state emitted by highlighter
       if (trailingAnsi) out.push(trailingAnsi);
+      if (oldHighlightedSource && oldTokenized.trailingAnsi) out.push(oldTokenized.trailingAnsi);
 
       return out.join('');
    }
