@@ -221,6 +221,9 @@ async function dispatchCoreUnchecked(
    const noEnhancedOutput = !args.popOption('--no-enhance');
 
    AliasNCustomCmd: if (args[0]) {
+      // Normalize the status shorthand before command-help detection so
+      // `gdx s -h` follows the same Git-plus-extension path as `gdx status -h`.
+      if (args[0] === 's') args[0] = 'status';
       const { match, candidates } = progressiveMatch(args[0], GDX_COMMANDS);
 
       if (match) args[0] = match;

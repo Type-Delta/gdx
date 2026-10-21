@@ -17,13 +17,15 @@ describe('dispatch help flags for gdx commands', async () => {
       expect(cleanString(buffer.stdout)).toContain('Manually manage gdx cache entries and settings.');
    });
 
-   it('prints Git help followed by built-in help for command extensions', async () => {
-      const exitCode = await dispatch(createGdxContext(tmpDir, ['status', '-h']));
+   for (const command of ['status', 's']) {
+      it(`prints Git help and built-in help for ${command} -h`, async () => {
+         const exitCode = await dispatch(createGdxContext(tmpDir, [command, '-h']));
 
-      expect(exitCode).toBe(129);
-      expect(cleanString(buffer.stderr)).toContain('usage: git status');
-      expect(cleanString(buffer.stdout)).toContain(
-         'Show the working tree status for the repository and optionally all submodules.'
-      );
-   });
+         expect(exitCode).toBe(129);
+         expect(cleanString(buffer.stderr)).toContain('usage: git status');
+         expect(cleanString(buffer.stdout)).toContain(
+            'Show the working tree status for the repository and optionally all submodules.'
+         );
+      });
+   }
 });
