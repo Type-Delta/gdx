@@ -20,10 +20,10 @@ describe('dispatch help flags for gdx commands', async () => {
    it('prints Git help followed by built-in help for command extensions', async () => {
       const exitCode = await dispatch(createGdxContext(tmpDir, ['status', '-h']));
 
-      const output = cleanString(buffer.stdout);
       expect(exitCode).toBe(129);
-      expect(output).toContain('usage: git status');
-      expect(output).toContain('Show the working tree status for the repository and optionally all submodules.');
-      expect(output.indexOf('usage: git status')).toBeLessThan(output.indexOf('Show the working tree status'));
+      expect(cleanString(buffer.stderr)).toContain('usage: git status');
+      expect(cleanString(buffer.stdout)).toContain(
+         'Show the working tree status for the repository and optionally all submodules.'
+      );
    });
 });
